@@ -1,0 +1,17 @@
+{
+  "name": "@aqvl/compiler",
+  "version": "1.0.0",
+  "description": "AQVL Compiler",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "jest"
+  },
+  "dependencies": {
+    "@aqvl/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}

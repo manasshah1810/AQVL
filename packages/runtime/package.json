@@ -1,0 +1,19 @@
+{
+  "name": "@aqvl/runtime",
+  "version": "1.0.0",
+  "description": "AQVL Runtime Engine",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "jest"
+  },
+  "dependencies": {
+    "@aqvl/shared": "workspace:*",
+    "animejs": "^3.2.2"
+  },
+  "devDependencies": {
+    "@types/animejs": "^3.1.13",
+    "typescript": "^5.0.0"
+  }
+}

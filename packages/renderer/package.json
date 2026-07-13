@@ -1,0 +1,30 @@
+{
+  "name": "@aqvl/renderer",
+  "version": "1.0.0",
+  "description": "AQVE Renderer for React Three Fiber",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "jest"
+  },
+  "dependencies": {
+    "@aqvl/runtime": "workspace:*",
+    "@aqvl/shared": "workspace:*",
+    "@react-three/drei": "^9.121.4",
+    "@react-three/fiber": "^9.6.1",
+    "animejs": "^3.2.2",
+    "three": "^0.185.1"
+  },
+  "peerDependencies": {
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@types/animejs": "^3.1.13",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@types/three": "^0.185.1",
+    "typescript": "^5.0.0"
+  }
+}
