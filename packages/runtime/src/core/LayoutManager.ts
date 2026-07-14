@@ -134,8 +134,10 @@ export class LayoutManager {
       const layoutElements = elements.filter(el => !el.animationLayer);
       
       const subMap = strategy.applyLayout(layoutElements, this.relationshipManager);
+      const offsetY = i * -5; // Shift each group down to prevent overlap
       subMap.forEach((pos, id) => {
         if (!id.startsWith('__virtual_')) {
+          pos.y += offsetY;
           layoutMap.set(id, pos);
           // Also set worldTarget on the actual element in graph
           const el = graph.find(e => e.id === id);

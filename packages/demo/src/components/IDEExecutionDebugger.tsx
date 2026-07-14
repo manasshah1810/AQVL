@@ -17,73 +17,98 @@ export const IDEExecutionDebugger: React.FC<IDEExecutionDebuggerProps> = ({
   const totalInstructions = instructions.length;
   const isRuntimeReady = pipelineState.runtime === 'success';
 
+  let statusLabel = 'Compiling';
+  let dotClass = 'compiling';
+  let statusColor = '#a5b4fc';
+
+  if (isRuntimeReady) {
+    if (isPlaying) {
+      statusLabel = 'Playing';
+      dotClass = 'playing';
+      statusColor = 'var(--success)';
+    } else {
+      statusLabel = 'Paused';
+      dotClass = 'paused';
+      statusColor = 'var(--warning)';
+    }
+  }
+
+  const progress = totalInstructions > 0
+    ? Math.round((currentInstructionIndex / totalInstructions) * 100)
+    : 0;
+
   return (
-    <div style={{
-      position: 'absolute',
-      bottom: '16px',
-      right: '16px',
-      width: '320px',
-      background: 'rgba(20, 20, 20, 0.85)',
-      backdropFilter: 'blur(10px)',
-      border: '1px solid var(--border-color)',
-      borderRadius: '8px',
-      padding: '12px',
-      color: 'var(--text-primary)',
-      fontFamily: 'var(--font-mono)',
-      fontSize: '11px',
-      zIndex: 100,
-      display: 'flex',
-      flexDirection: 'column',
-      gap: '8px',
-      boxShadow: 'var(--shadow-lg)'
-    }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border-color)', paddingBottom: '4px' }}>
-        <strong style={{ color: 'var(--text-highlight)' }}>Execution Debugger</strong>
-        <span>
-          {isRuntimeReady ? (isPlaying ? '🟢 PLAYING' : '⏸ PAUSED') : '⚙️ COMPILING'}
+    <div className="exec-debugger">
+      {/* Header */}
+      <div className="exec-debugger-header">
+        <span className="exec-debugger-title">Execution Debugger</span>
+        <span className="exec-debugger-status" style={{ color: statusColor }}>
+          <span className={`exec-debugger-status-dot ${dotClass}`} />
+          {statusLabel}
         </span>
       </div>
 
-      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-        <span>Instr Pointer (IP):</span>
-        <span>{currentInstructionIndex} / {totalInstructions}</span>
+      {/* IP Counter */}
+      <div className="exec-debugger-ip">
+        <span className="exec-debugger-ip-label">Instr Pointer (IP):</span>
+        <span className="exec-debugger-ip-value">
+          {currentInstructionIndex} / {totalInstructions}
+        </span>
       </div>
 
-      <div style={{
-        marginTop: '4px',
-        maxHeight: '120px',
-        overflowY: 'auto',
-        background: 'rgba(0,0,0,0.4)',
-        borderRadius: '4px',
-        padding: '4px'
-      }}>
+      {/* Progress track */}
+      {totalInstructions > 0 && (
+        <div style={{
+          height: '3px',
+          background: 'rgba(255,255,255,0.08)',
+          borderRadius: '99px',
+          overflow: 'hidden',
+        }}>
+          <div style={{
+            height: '100%',
+            width: `${progress}%`,
+            background: 'linear-gradient(90deg, #6366f1, #22c55e)',
+            borderRadius: '99px',
+            transition: 'width 0.3s cubic-bezier(0.4,0,0.2,1)',
+            boxShadow: '0 0 6px rgba(99,102,241,.4)',
+          }} />
+        </div>
+      )}
+
+      {/* Instruction list */}
+      <div className="exec-debugger-instructions">
         {instructions.map((inst: any, idx: number) => {
           const isActive = idx === currentInstructionIndex;
-          const isPast = idx < currentInstructionIndex;
+          const isPast   = idx < currentInstructionIndex;
+
+          const actionName = inst.action === 'GENERIC_ACTION' ? inst.actionName : inst.action;
+          const args = [
+            inst.leftId && inst.rightId ? `(${inst.leftId}, ${inst.rightId})` : '',
+            !inst.rightId && inst.leftId ? `(${inst.leftId})` : '',
+            inst.targetId ? `(${inst.targetId})` : '',
+            inst.args ? `(${inst.args.join(', ')})` : '',
+          ].filter(Boolean).join('');
+
           return (
-            <div 
-              key={idx} 
-              style={{ 
-                padding: '2px 4px',
-                color: isActive ? '#4caf50' : (isPast ? '#666' : '#bbb'),
-                background: isActive ? 'rgba(76, 175, 80, 0.1)' : 'transparent',
-                borderLeft: isActive ? '2px solid #4caf50' : '2px solid transparent',
-                whiteSpace: 'nowrap',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis'
-              }}
+            <div
+              key={idx}
+              className={`exec-instr ${isActive ? 'active' : ''} ${isPast ? 'past' : ''}`}
             >
-              <span style={{ opacity: 0.5, marginRight: '8px' }}>{String(idx).padStart(3, '0')}</span>
-              {inst.action === 'GENERIC_ACTION' ? inst.actionName : inst.action}{' '}
-              {inst.leftId && inst.rightId ? `(${inst.leftId}, ${inst.rightId})` : ''}
-              {!inst.rightId && inst.leftId ? `(${inst.leftId})` : ''}
-              {inst.targetId ? `(${inst.targetId})` : ''}
-              {inst.args ? `(${inst.args.join(', ')})` : ''}
+              <span className="exec-instr-idx">{String(idx).padStart(3, '0')}</span>
+              {actionName}{args}
             </div>
           );
         })}
+
         {instructions.length === 0 && (
-          <div style={{ color: '#666', fontStyle: 'italic', padding: '4px' }}>No instructions loaded</div>
+          <div style={{
+            color: 'var(--text-subtle)',
+            fontStyle: 'italic',
+            padding: '4px 6px',
+            fontSize: '10.5px',
+          }}>
+            No instructions loaded
+          </div>
         )}
       </div>
     </div>

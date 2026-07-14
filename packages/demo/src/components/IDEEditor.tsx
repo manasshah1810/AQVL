@@ -22,9 +22,17 @@ export function IDEEditor({ initialValue, onChange, readOnly = false }: IDEEdito
   // Basic syntax highlighting overlay
   const highlightCode = (code: string) => {
     // Simple regex for basic AQVL keywords
-    const keywords = ['SCENE', 'DECLARE', 'ARRAY', 'SEQUENCE', 'COMPARE', 'SWAP', 'END', 'HIGHLIGHT', 'UPDATE', 'INSERT', 'DELETE', 'MOVE'];
+    const keywords = [
+      'SCENE', 'DECLARE', 'ARRAY', 'SEQUENCE', 'COMPARE', 'SWAP', 'END', 
+      'HIGHLIGHT', 'UPDATE', 'INSERT', 'DELETE', 'MOVE', 'LINKEDLIST', 
+      'INSERT_HEAD', 'INSERT_TAIL', 'DELETE_HEAD', 'DELETE_TAIL', 
+      'WAIT', 'LOOP', 'FROM', 'TO', 'IF', 'LENGTH', 'NULL', 'DOUBLY'
+    ];
     const keywordRegex = new RegExp(`\\b(${keywords.join('|')})\\b`, 'g');
     
+    // CIRCULAR is a structural modifier — distinct vivid purple
+    const circularRegex = /\bCIRCULAR\b/g;
+
     // Simple regex for numbers
     const numberRegex = /\b\d+\b/g;
 
@@ -32,6 +40,7 @@ export function IDEEditor({ initialValue, onChange, readOnly = false }: IDEEdito
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
       .replace(keywordRegex, '<span class="keyword">$1</span>')
+      .replace(circularRegex, '<span class="keyword-circular">CIRCULAR</span>')
       .replace(numberRegex, '<span class="number">$&</span>')
       .replace(/(\/\/.*)$/gm, '<span class="comment">$1</span>');
 

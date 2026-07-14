@@ -14,7 +14,7 @@ import { IDEExecutionDebugger } from './components/IDEExecutionDebugger';
 import { SortingScripts } from './examples/SortingLibrary';
 import { LinkedListScripts } from './examples/LinkedListLibrary';
 
-const initialScript = LinkedListScripts.PointerArchitecture;
+const initialScript = LinkedListScripts.CircularLinkedList;
 
 type PipelineStatus = 'pending' | 'success' | 'error';
 
@@ -55,6 +55,17 @@ export default function App() {
     tokens: 0,
     astNodes: 0
   });
+
+  // Theme State
+  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
+    return (localStorage.getItem('aqvl-docs-theme') as 'dark' | 'light') || 'dark';
+  });
+
+  const handleToggleTheme = () => {
+    const next = theme === 'dark' ? 'light' : 'dark';
+    setTheme(next);
+    localStorage.setItem('aqvl-docs-theme', next);
+  };
 
   const addLog = (text: string, type: 'log'|'error'|'success' = 'log') => {
     setConsoleLogs(prev => [...prev, { text, type }]);
@@ -261,7 +272,7 @@ export default function App() {
   const isRuntimeReady = pipelineState.runtime === 'success';
 
   return (
-    <div className="ide-container">
+    <div className="ide-container" data-theme={theme}>
       <IDEToolbar
         onCompile={handleCompile}
         onRun={handleRun}
@@ -272,11 +283,19 @@ export default function App() {
         onStop={handleStop}
         isPlaying={isPlaying}
         canRun={isRuntimeReady}
+        theme={theme}
+        onToggleTheme={handleToggleTheme}
       />
       
       <div className="ide-main">
         <div className="ide-panel ide-left-panel">
-          <div className="ide-panel-header">AQVL Source Editor</div>
+          <div className="ide-panel-header">
+            <svg className="ide-panel-header-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="16 18 22 12 16 6" />
+              <polyline points="8 6 2 12 8 18" />
+            </svg>
+            AQVL Source Editor
+          </div>
           <div className="ide-panel-content">
             <IDEEditor initialValue={sourceCode} onChange={setSourceCode} />
           </div>
@@ -290,8 +309,38 @@ export default function App() {
         />
 
         <div className="ide-panel ide-right-panel">
-          <div className="ide-panel-header" style={{ backgroundColor: '#1a1a1a' }}>Visualization</div>
-          <div className="ide-panel-content" style={{ backgroundColor: '#000', position: 'relative' }}>
+          <div className="ide-panel-header" style={{ justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <svg className="ide-panel-header-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polygon points="23 7 16 12 23 17 23 7" />
+                <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
+              </svg>
+              Visualization
+            </div>
+            {sceneState && (
+              <div style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+                padding: '2px 9px',
+                background: isPlaying ? 'var(--success-soft)' : 'rgba(99,102,241,0.1)',
+                border: `1px solid ${isPlaying ? 'rgba(34,197,94,.25)' : 'rgba(99,102,241,.25)'}`,
+                borderRadius: '20px',
+                fontSize: '10px',
+                fontWeight: 600,
+                color: isPlaying ? 'var(--success)' : '#a5b4fc',
+                letterSpacing: '0.03em',
+              }}>
+                <div style={{
+                  width: '5px', height: '5px', borderRadius: '50%',
+                  background: 'currentColor',
+                  animation: isPlaying ? 'pulseGreen 1.5s ease-in-out infinite' : 'none',
+                }} />
+                {isPlaying ? 'Animating' : 'Scene Ready'}
+              </div>
+            )}
+          </div>
+          <div className="ide-panel-content" style={{ backgroundColor: '#06060a', position: 'relative' }}>
             {sceneState ? (
               <>
                 <AQVECanvas sceneState={sceneState} />
@@ -303,8 +352,44 @@ export default function App() {
                 />
               </>
             ) : (
-              <div style={{ color: 'var(--text-secondary)', padding: '20px', textAlign: 'center' }}>
-                {pipelineState.runtime === 'error' ? 'Compilation Failed' : 'Waiting for Compilation...'}
+              <div style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                height: '100%',
+                gap: '14px',
+                color: 'var(--text-subtle)',
+              }}>
+                {/* Subtle grid bg */}
+                <div style={{
+                  position: 'absolute', inset: 0,
+                  backgroundImage: 'linear-gradient(rgba(99,102,241,.04) 1px, transparent 1px), linear-gradient(90deg, rgba(99,102,241,.04) 1px, transparent 1px)',
+                  backgroundSize: '32px 32px',
+                  pointerEvents: 'none',
+                }} />
+                <div style={{
+                  width: '52px', height: '52px',
+                  borderRadius: '50%',
+                  background: 'var(--bg-elevated)',
+                  border: '1px solid var(--border-color)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  color: 'var(--text-subtle)',
+                  position: 'relative', zIndex: 1,
+                }}>
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polygon points="23 7 16 12 23 17 23 7" />
+                    <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
+                  </svg>
+                </div>
+                <div style={{ textAlign: 'center', position: 'relative', zIndex: 1 }}>
+                  <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '4px' }}>
+                    {pipelineState.runtime === 'error' ? 'Compilation Failed' : 'Scene not loaded'}
+                  </div>
+                  <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                    {pipelineState.runtime === 'error' ? 'Fix errors and recompile.' : 'Press Compile to build the scene.'}
+                  </div>
+                </div>
               </div>
             )}
           </div>
@@ -319,7 +404,7 @@ export default function App() {
           objectsCount: aqir?.objects?.length || 0,
           instructionsCount: aqir?.instructions?.length || 0,
           timelineState: isPlaying ? 'Running' : 'Stopped',
-          compilerVersion: 'AQVL v0.1',
+          compilerVersion: 'AQVL',
           aqirVersion: aqir?.version || '0.1'
         }}
         stats={stats}

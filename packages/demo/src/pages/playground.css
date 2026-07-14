@@ -1,161 +1,1145 @@
 /* ============================================================
-   AQVL Playground — Educational Theme
+   AQVL Playground — Premium Educational Theme
+   Inspired by Linear, Vercel, and Stripe design systems
+   Fonts: Inter (UI) + JetBrains Mono (code)
    ============================================================ */
 
-.playground-root {
-  --pg-bg: #f8fafc;
-  --pg-surface: #ffffff;
-  --pg-border: #e2e8f0;
-  --pg-text-main: #0f172a;
-  --pg-text-muted: #64748b;
-  --pg-accent: #3b82f6;
-  --pg-accent-hover: #2563eb;
-  --pg-shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-  --pg-shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
-  --pg-radius: 12px;
+@import url('https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,300;0,14..32,400;0,14..32,500;0,14..32,600;0,14..32,700;0,14..32,800;1,14..32,400&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
-  display: flex;
-  height: 100vh;
-  width: 100vw;
-  background-color: var(--pg-bg);
-  color: var(--pg-text-main);
-  font-family: var(--font-ui);
-  overflow: hidden;
-  padding: 16px;
-  gap: 16px;
+/* ── Design Tokens (dark default) ─────────────────────────── */
+.playground-root {
+  /* Surface scale */
+  --pg-bg:           #09090b;
+  --pg-surface:      #111113;
+  --pg-surface-2:    #18181b;
+  --pg-surface-3:    #1f1f23;
+  --pg-hover:        #27272a;
+
+  /* Borders */
+  --pg-border:       #27272a;
+  --pg-border-2:     #3f3f46;
+
+  /* Text */
+  --pg-text-1:       #fafafa;
+  --pg-text-2:       #a1a1aa;
+  --pg-text-3:       #71717a;
+  --pg-text-4:       #52525b;
+
+  /* Accent — violet-blue gradient system */
+  --pg-accent:       #6366f1;
+  --pg-accent-2:     #8b5cf6;
+  --pg-accent-soft:  rgba(99, 102, 241, 0.12);
+  --pg-accent-glow:  rgba(99, 102, 241, 0.28);
+  --pg-accent-border: rgba(99, 102, 241, 0.35);
+
+  /* Success / Error */
+  --pg-success:      #22c55e;
+  --pg-success-soft: rgba(34, 197, 94, 0.1);
+  --pg-error:        #ef4444;
+  --pg-error-soft:   rgba(239, 68, 68, 0.1);
+  --pg-warning:      #f59e0b;
+  --pg-warning-soft: rgba(245, 158, 11, 0.1);
+
+  /* Shadows */
+  --pg-shadow-sm:   0 1px 3px rgba(0,0,0,.5), 0 1px 2px rgba(0,0,0,.3);
+  --pg-shadow-md:   0 4px 12px rgba(0,0,0,.5), 0 2px 4px rgba(0,0,0,.3);
+  --pg-shadow-lg:   0 16px 40px rgba(0,0,0,.6), 0 4px 8px rgba(0,0,0,.3);
+
+  /* Radius */
+  --pg-radius-sm:   6px;
+  --pg-radius-md:   10px;
+  --pg-radius-lg:   14px;
+  --pg-radius-xl:   18px;
+
+  /* Fonts */
+  --pg-font-ui:   'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --pg-font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', ui-monospace, monospace;
+
+  /* Layout */
+  --pg-topbar-h: 58px;
+  --pg-left-w:   420px;
+  --pg-ctrl-h:   72px;
+
+  color-scheme: dark;
 }
 
-/* ── Layout ────────────────────────────────────────────── */
-.pg-left-panel {
-  flex: 0 0 400px;
+/* ── Light Theme Override ──────────────────────────────────── */
+.playground-root[data-theme="light"] {
+  /* Surfaces — white/light-grey (docs light scale) */
+  --pg-bg:           #ffffff;
+  --pg-surface:      #f9fafb;
+  --pg-surface-2:    #f3f4f6;
+  --pg-surface-3:    #e5e7eb;
+  --pg-hover:        #dbeafe;
+
+  /* Borders */
+  --pg-border:       #e5e7eb;
+  --pg-border-2:     #d1d5db;
+
+  /* Text */
+  --pg-text-1:       #111827;
+  --pg-text-2:       #374151;
+  --pg-text-3:       #6b7280;
+  --pg-text-4:       #9ca3af;
+
+  /* Accent — blue (docs light accent) */
+  --pg-accent:       #2563eb;
+  --pg-accent-2:     #4f46e5;
+  --pg-accent-soft:  #eff6ff;
+  --pg-accent-glow:  rgba(37, 99, 235, 0.18);
+  --pg-accent-border: #bfdbfe;
+
+  /* Success / Error — adjusted for light bg */
+  --pg-success:      #16a34a;
+  --pg-success-soft: rgba(22, 163, 74, 0.08);
+  --pg-error:        #dc2626;
+  --pg-error-soft:   rgba(220, 38, 38, 0.07);
+  --pg-warning:      #d97706;
+  --pg-warning-soft: rgba(217, 119, 6, 0.08);
+
+  /* Shadows — subtle on white */
+  --pg-shadow-sm:   0 1px 3px rgba(0,0,0,.07), 0 1px 2px rgba(0,0,0,.04);
+  --pg-shadow-md:   0 4px 12px rgba(0,0,0,.08), 0 2px 4px rgba(0,0,0,.04);
+  --pg-shadow-lg:   0 16px 40px rgba(0,0,0,.10), 0 4px 8px rgba(0,0,0,.06);
+
+  color-scheme: light;
+}
+
+/* ── Full Reset Scope ──────────────────────────────────────── */
+.playground-root *,
+.playground-root *::before,
+.playground-root *::after {
+  box-sizing: border-box;
+}
+
+/* ── Root Layout ───────────────────────────────────────────── */
+.playground-root {
+  position: fixed;
+  inset: 0;
   display: flex;
   flex-direction: column;
+  background: var(--pg-bg);
+  color: var(--pg-text-1);
+  font-family: var(--pg-font-ui);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+
+/* ── Top Navigation Bar ────────────────────────────────────── */
+.pg-topbar {
+  display: flex;
+  align-items: center;
+  height: var(--pg-topbar-h);
+  min-height: var(--pg-topbar-h);
+  padding: 0 20px;
   background: var(--pg-surface);
-  border-radius: var(--pg-radius);
-  box-shadow: var(--pg-shadow-md);
+  border-bottom: 1px solid var(--pg-border);
+  position: relative;
+  z-index: 50;
+  gap: 0;
+  flex-shrink: 0;
+}
+
+/* Accent line at the very top */
+.pg-topbar::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, #6366f1, #8b5cf6, #a78bfa, #8b5cf6, #6366f1);
+  background-size: 200% 100%;
+  animation: accentShimmer 4s linear infinite;
+}
+
+@keyframes accentShimmer {
+  0%   { background-position: 0% 0; }
+  100% { background-position: 200% 0; }
+}
+
+/* Brand */
+.pg-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.pg-brand-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--pg-radius-md);
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 16px var(--pg-accent-glow);
+  flex-shrink: 0;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.pg-brand:hover .pg-brand-icon {
+  transform: scale(1.05);
+  box-shadow: 0 0 24px rgba(99,102,241,.4);
+}
+
+.pg-brand-icon svg {
+  color: #fff;
+}
+
+.pg-brand-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.pg-brand-name {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--pg-text-1);
+  letter-spacing: -0.4px;
+  line-height: 1;
+}
+
+.pg-brand-sub {
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--pg-text-3);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  line-height: 1;
+}
+
+/* Separator */
+.pg-topbar-sep {
+  width: 1px;
+  height: 22px;
+  background: var(--pg-border);
+  margin: 0 18px;
+  flex-shrink: 0;
+}
+
+/* Mode badge — "Playground" pill */
+.pg-mode-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: var(--pg-accent-soft);
+  border: 1px solid var(--pg-accent-border);
+  border-radius: 20px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #a5b4fc;
+  letter-spacing: 0.03em;
+}
+
+.pg-mode-badge-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--pg-accent);
+  box-shadow: 0 0 6px var(--pg-accent);
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.6; transform: scale(0.85); }
+}
+
+/* Spacer */
+.pg-topbar-spacer { flex: 1; }
+
+/* Top bar right controls */
+.pg-topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Compile & Run CTA in topbar */
+.pg-compile-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 18px;
+  height: 36px;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: #fff;
+  border: none;
+  border-radius: var(--pg-radius-md);
+  font-family: var(--pg-font-ui);
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  letter-spacing: -0.1px;
+  transition: all 0.2s ease;
+  box-shadow: 0 0 16px var(--pg-accent-glow), 0 2px 4px rgba(0,0,0,.3);
+  white-space: nowrap;
+}
+
+.pg-compile-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #7c3aed, #6366f1);
+  box-shadow: 0 0 24px rgba(99,102,241,.45), 0 2px 6px rgba(0,0,0,.4);
+  transform: translateY(-1px);
+}
+
+.pg-compile-btn:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: 0 0 12px var(--pg-accent-glow);
+}
+
+.pg-compile-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.pg-compile-btn svg {
+  flex-shrink: 0;
+}
+
+/* Docs link */
+.pg-docs-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 14px;
+  height: 36px;
+  background: var(--pg-surface-2);
+  color: var(--pg-text-2);
   border: 1px solid var(--pg-border);
+  border-radius: var(--pg-radius-md);
+  font-family: var(--pg-font-ui);
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.pg-docs-link:hover {
+  background: var(--pg-surface-3);
+  color: var(--pg-text-1);
+  border-color: var(--pg-border-2);
+}
+
+/* ── Content Area ──────────────────────────────────────────── */
+.pg-body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  gap: 0;
+  min-height: 0;
+}
+
+/* ── Left Panel — Editor ───────────────────────────────────── */
+.pg-left-panel {
+  display: flex;
+  flex-direction: column;
+  width: var(--pg-left-w);
+  min-width: 320px;
+  flex-shrink: 0;
+  background: var(--pg-surface);
+  border-right: 1px solid var(--pg-border);
   overflow: hidden;
 }
 
+.pg-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 42px;
+  padding: 0 16px;
+  background: var(--pg-surface-2);
+  border-bottom: 1px solid var(--pg-border);
+  flex-shrink: 0;
+}
+
+.pg-panel-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--pg-text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+}
+
+.pg-panel-title svg {
+  color: var(--pg-text-4);
+}
+
+.pg-panel-pills {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pg-lang-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  background: var(--pg-accent-soft);
+  border: 1px solid var(--pg-accent-border);
+  border-radius: 12px;
+  font-family: var(--pg-font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  color: #a5b4fc;
+  letter-spacing: 0.04em;
+}
+
+/* Editor container */
+.pg-editor-container {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  background: var(--pg-bg);
+}
+
+/* Ensure IDE editor fills this */
+.pg-editor-container .aqvl-editor-container {
+  background: var(--pg-bg) !important;
+}
+
+/* ── Right Panel — Visualization ───────────────────────────── */
 .pg-right-panel {
   flex: 1;
   display: flex;
   flex-direction: column;
   background: var(--pg-surface);
-  border-radius: var(--pg-radius);
-  box-shadow: var(--pg-shadow-md);
+  overflow: hidden;
+  position: relative;
+  min-width: 0;
+}
+
+.pg-viz-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 42px;
+  padding: 0 16px;
+  background: var(--pg-surface-2);
+  border-bottom: 1px solid var(--pg-border);
+  flex-shrink: 0;
+}
+
+.pg-status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  transition: all 0.2s ease;
+}
+
+.pg-status-chip.idle {
+  background: var(--pg-surface-3);
+  color: var(--pg-text-3);
   border: 1px solid var(--pg-border);
+}
+
+.pg-status-chip.running {
+  background: var(--pg-success-soft);
+  color: var(--pg-success);
+  border: 1px solid rgba(34,197,94,.25);
+}
+
+.pg-status-chip.compiling {
+  background: var(--pg-warning-soft);
+  color: var(--pg-warning);
+  border: 1px solid rgba(245,158,11,.25);
+}
+
+.pg-status-chip.error {
+  background: var(--pg-error-soft);
+  color: var(--pg-error);
+  border: 1px solid rgba(239,68,68,.25);
+}
+
+.pg-status-chip-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+.pg-status-chip.running .pg-status-chip-dot {
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+/* Canvas */
+.pg-canvas-container {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  background: #06060a;
+  min-height: 0;
+}
+
+/* Subtle grid background when no scene */
+.pg-canvas-empty-bg {
+  position: absolute;
+  inset: 0;
+  background-image: 
+    linear-gradient(rgba(99,102,241,.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(99,102,241,.04) 1px, transparent 1px);
+  background-size: 32px 32px;
+  pointer-events: none;
+}
+
+/* Loading / Error Overlays */
+.pg-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  z-index: 20;
+  backdrop-filter: blur(2px);
+}
+
+.pg-overlay-compiling {
+  background: rgba(6, 6, 10, 0.85);
+}
+
+.pg-overlay-error {
+  background: rgba(6, 6, 10, 0.92);
+}
+
+.pg-overlay-empty {
+  background: transparent;
+}
+
+.pg-spinner {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 3px solid var(--pg-border);
+  border-top-color: var(--pg-accent);
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.pg-overlay-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--pg-text-1);
+  letter-spacing: -0.2px;
+}
+
+.pg-overlay-sub {
+  font-size: 12.5px;
+  color: var(--pg-text-3);
+}
+
+/* Error box */
+.pg-error-box {
+  max-width: 520px;
+  width: 90%;
+  background: var(--pg-error-soft);
+  border: 1px solid rgba(239,68,68,.3);
+  border-radius: var(--pg-radius-lg);
+  padding: 20px 24px;
+  text-align: left;
+}
+
+.pg-error-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--pg-error);
+  margin-bottom: 12px;
+}
+
+.pg-error-body {
+  font-family: var(--pg-font-mono);
+  font-size: 12px;
+  line-height: 1.7;
+  color: #fca5a5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 200px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(239,68,68,.2) transparent;
+}
+
+/* Empty / welcome state */
+.pg-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  text-align: center;
+}
+
+.pg-empty-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--pg-surface-2);
+  border: 1px solid var(--pg-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--pg-text-4);
+}
+
+.pg-empty-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--pg-text-2);
+  letter-spacing: -0.2px;
+}
+
+.pg-empty-hint {
+  font-size: 12.5px;
+  color: var(--pg-text-3);
+  max-width: 280px;
+  line-height: 1.6;
+}
+
+/* ── Playback Controls Bar ─────────────────────────────────── */
+.pg-controls-bar {
+  height: var(--pg-ctrl-h);
+  min-height: var(--pg-ctrl-h);
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  background: var(--pg-surface-2);
+  border-top: 1px solid var(--pg-border);
+  gap: 8px;
+  flex-shrink: 0;
+  position: relative;
+}
+
+/* Accent line at top of controls */
+.pg-controls-bar::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--pg-border-2), transparent);
+}
+
+/* Group container */
+.pg-ctrl-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--pg-surface-3);
+  border: 1px solid var(--pg-border);
+  border-radius: var(--pg-radius-md);
+  padding: 4px;
+}
+
+/* ── Control Buttons ───────────────────────────────────────── */
+.pg-ctrl-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--pg-radius-sm);
+  background: transparent;
+  color: var(--pg-text-2);
+  border: none;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-family: var(--pg-font-ui);
+  font-size: 12px;
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.pg-ctrl-btn:hover:not(:disabled) {
+  background: var(--pg-hover);
+  color: var(--pg-text-1);
+}
+
+.pg-ctrl-btn:active:not(:disabled) {
+  transform: scale(0.94);
+  background: var(--pg-border);
+}
+
+.pg-ctrl-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* Play button — accent */
+.pg-ctrl-btn.play {
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: #fff;
+  box-shadow: 0 0 12px var(--pg-accent-glow);
+  width: 40px;
+  height: 36px;
+  border-radius: var(--pg-radius-md);
+}
+
+.pg-ctrl-btn.play:hover:not(:disabled) {
+  background: linear-gradient(135deg, #7c3aed, #6366f1);
+  box-shadow: 0 0 20px rgba(99,102,241,.4);
+  transform: translateY(-1px);
+}
+
+.pg-ctrl-btn.play:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+.pg-ctrl-btn.play:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Pause button */
+.pg-ctrl-btn.pause {
+  background: var(--pg-surface-3);
+  color: var(--pg-text-1);
+  border: 1px solid var(--pg-border-2);
+  width: 40px;
+  height: 36px;
+  border-radius: var(--pg-radius-md);
+}
+
+.pg-ctrl-btn.pause:hover:not(:disabled) {
+  background: var(--pg-hover);
+  border-color: var(--pg-text-4);
+}
+
+/* Divider between ctrl groups */
+.pg-ctrl-sep {
+  width: 1px;
+  height: 22px;
+  background: var(--pg-border);
+  flex-shrink: 0;
+  margin: 0 4px;
+}
+
+/* ── Progress / Step Indicator ─────────────────────────────── */
+.pg-progress-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 8px;
+}
+
+.pg-progress-track {
+  height: 4px;
+  background: var(--pg-surface-3);
+  border-radius: 99px;
   overflow: hidden;
   position: relative;
 }
 
-.pg-panel-header {
-  padding: 12px 16px;
-  font-weight: 600;
-  font-size: 14px;
-  border-bottom: 1px solid var(--pg-border);
-  background-color: #f1f5f9;
-  color: var(--pg-text-main);
+.pg-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #6366f1, #8b5cf6);
+  border-radius: 99px;
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 0 8px var(--pg-accent-glow);
+}
+
+.pg-progress-labels {
   display: flex;
   justify-content: space-between;
   align-items: center;
 }
 
-.pg-editor-container {
-  flex: 1;
-  position: relative;
-  /* Override IDE dark theme internally for the editor to look light or keep dark inside a light shell */
-  background: #1e293b; 
+.pg-step-label {
+  font-family: var(--pg-font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--pg-text-3);
 }
 
-/* We need to override the IDEEditor's internal styles if we use it directly, 
-   but since IDEEditor uses inline styles or generic classes, we'll just 
-   let it be dark mode as a nice contrast inside the light layout. */
-.pg-editor-container .aqvl-editor-container {
-  background: #1e293b; 
+.pg-step-current {
+  color: #a5b4fc;
+  font-weight: 600;
 }
 
-.pg-canvas-container {
-  flex: 1;
-  background: #0f172a; /* Dark background for 3D canvas is usually better */
-  position: relative;
-  overflow: hidden;
-}
-
-/* ── Controls Toolbar ────────────────────────────────────── */
-.pg-controls {
-  padding: 12px 20px;
-  background: var(--pg-surface);
-  border-top: 1px solid var(--pg-border);
+/* ── Speed Control ─────────────────────────────────────────── */
+.pg-speed-section {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 12px;
+  gap: 8px;
+  flex-shrink: 0;
 }
 
-.pg-button {
+.pg-speed-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--pg-text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+.pg-speed-btns {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  background: var(--pg-surface-3);
+  border: 1px solid var(--pg-border);
+  border-radius: var(--pg-radius-sm);
+  padding: 3px;
+}
+
+.pg-speed-opt {
+  padding: 3px 9px;
+  border-radius: 4px;
+  font-family: var(--pg-font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--pg-text-3);
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  transition: all 0.12s ease;
+  font-family: var(--pg-font-ui);
+}
+
+.pg-speed-opt:hover {
+  color: var(--pg-text-1);
+  background: var(--pg-hover);
+}
+
+.pg-speed-opt.active {
+  background: var(--pg-accent-soft);
+  color: #a5b4fc;
+  border: 1px solid var(--pg-accent-border);
+}
+
+/* ── Keyboard Shortcut Hints ───────────────────────────────── */
+.pg-kbd-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+}
+
+.pg-kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1px 6px;
+  background: var(--pg-surface-3);
+  border: 1px solid var(--pg-border-2);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  font-family: var(--pg-font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--pg-text-3);
+  line-height: 1.6;
+}
+
+/* ── Tooltip ───────────────────────────────────────────────── */
+[data-tip] {
+  position: relative;
+}
+
+[data-tip]::after {
+  content: attr(data-tip);
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--pg-hover);
+  border: 1px solid var(--pg-border-2);
+  color: var(--pg-text-1);
+  font-family: var(--pg-font-ui);
+  font-size: 11px;
+  font-weight: 500;
+  padding: 4px 8px;
+  border-radius: 6px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+  box-shadow: var(--pg-shadow-sm);
+  z-index: 100;
+}
+
+[data-tip]:hover::after {
+  opacity: 1;
+}
+
+/* ── Fade-in animation ─────────────────────────────────────── */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.pg-left-panel,
+.pg-right-panel {
+  animation: fadeInUp 0.35s ease both;
+}
+
+.pg-right-panel {
+  animation-delay: 0.05s;
+}
+
+/* ── Scrollbars ────────────────────────────────────────────── */
+.playground-root ::-webkit-scrollbar { width: 5px; height: 5px; }
+.playground-root ::-webkit-scrollbar-track { background: transparent; }
+.playground-root ::-webkit-scrollbar-thumb { background: var(--pg-border-2); border-radius: 3px; }
+.playground-root ::-webkit-scrollbar-thumb:hover { background: var(--pg-text-4); }
+.playground-root * { scrollbar-width: thin; scrollbar-color: var(--pg-border-2) transparent; }
+
+/* ── Selection ─────────────────────────────────────────────── */
+.playground-root ::selection {
+  background: var(--pg-accent-glow);
+  color: var(--pg-text-1);
+}
+
+/* ── Override global index.css button styles ───────────────── */
+.playground-root button {
+  all: unset;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  font-family: var(--pg-font-ui);
+}
+
+/* Re-apply compile btn over the reset */
+.playground-root .pg-compile-btn {
+  all: unset;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 18px;
+  height: 36px;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: #fff;
+  border-radius: var(--pg-radius-md);
+  font-family: var(--pg-font-ui);
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  letter-spacing: -0.1px;
+  transition: all 0.2s ease;
+  box-shadow: 0 0 16px var(--pg-accent-glow), 0 2px 4px rgba(0,0,0,.3);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.playground-root .pg-compile-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #7c3aed, #6366f1);
+  box-shadow: 0 0 24px rgba(99,102,241,.45), 0 2px 6px rgba(0,0,0,.4);
+  transform: translateY(-1px);
+}
+
+.playground-root .pg-compile-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.playground-root .pg-compile-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.playground-root .pg-docs-link {
+  all: unset;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 14px;
+  height: 36px;
+  background: var(--pg-surface-2);
+  color: var(--pg-text-2);
+  border: 1px solid var(--pg-border);
+  border-radius: var(--pg-radius-md);
+  font-family: var(--pg-font-ui);
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.playground-root .pg-docs-link:hover {
+  background: var(--pg-surface-3);
+  color: var(--pg-text-1);
+  border-color: var(--pg-border-2);
+}
+
+.playground-root .pg-ctrl-btn {
+  all: unset;
+  box-sizing: border-box;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
-  padding: 8px 16px;
-  border-radius: 8px;
-  font-size: 13px;
-  font-weight: 600;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--pg-radius-sm);
+  background: transparent;
+  color: var(--pg-text-2);
   cursor: pointer;
-  border: 1px solid var(--pg-border);
-  background: var(--pg-surface);
-  color: var(--pg-text-main);
-  transition: all 0.2s ease;
-  box-shadow: var(--pg-shadow-sm);
+  transition: all 0.15s ease;
+  font-family: var(--pg-font-ui);
+  font-size: 12px;
+  font-weight: 500;
+  flex-shrink: 0;
 }
 
-.pg-button:hover:not(:disabled) {
-  background: #f8fafc;
-  border-color: #cbd5e1;
+.playground-root .pg-ctrl-btn:hover:not(:disabled) {
+  background: var(--pg-hover);
+  color: var(--pg-text-1);
 }
 
-.pg-button:active:not(:disabled) {
-  transform: translateY(1px);
+.playground-root .pg-ctrl-btn:active:not(:disabled) {
+  transform: scale(0.94);
 }
 
-.pg-button:disabled {
-  opacity: 0.5;
+.playground-root .pg-ctrl-btn:disabled {
+  opacity: 0.32;
   cursor: not-allowed;
 }
 
-.pg-button.primary {
-  background: var(--pg-accent);
+.playground-root .pg-ctrl-btn.play {
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
   color: #fff;
-  border-color: var(--pg-accent);
+  box-shadow: 0 0 12px var(--pg-accent-glow);
+  width: 40px;
+  height: 36px;
+  border-radius: var(--pg-radius-md);
 }
 
-.pg-button.primary:hover:not(:disabled) {
-  background: var(--pg-accent-hover);
-  border-color: var(--pg-accent-hover);
+.playground-root .pg-ctrl-btn.play:hover:not(:disabled) {
+  background: linear-gradient(135deg, #7c3aed, #6366f1);
+  box-shadow: 0 0 20px rgba(99,102,241,.4);
+  transform: translateY(-1px);
 }
 
-.pg-step-indicator {
-  margin-left: auto;
-  font-family: var(--font-mono);
-  font-size: 13px;
-  color: var(--pg-text-muted);
-  background: #f1f5f9;
-  padding: 4px 12px;
-  border-radius: 16px;
-  font-weight: 500;
+.playground-root .pg-ctrl-btn.play:active:not(:disabled) {
+  transform: scale(0.96);
 }
 
-/* Loading Overlay */
-.pg-loading-overlay {
-  position: absolute;
-  inset: 0;
-  display: flex;
+.playground-root .pg-ctrl-btn.play:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.playground-root .pg-ctrl-btn.pause {
+  background: var(--pg-surface-3);
+  color: var(--pg-text-1);
+  border: 1px solid var(--pg-border-2);
+  width: 40px;
+  height: 36px;
+  border-radius: var(--pg-radius-md);
+}
+
+.playground-root .pg-ctrl-btn.pause:hover:not(:disabled) {
+  background: var(--pg-hover);
+  border-color: var(--pg-text-4);
+}
+
+.playground-root .pg-speed-opt {
+  all: unset;
+  box-sizing: border-box;
+  padding: 3px 9px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--pg-text-3);
+  cursor: pointer;
+  background: transparent;
+  transition: all 0.12s ease;
+}
+
+.playground-root .pg-speed-opt:hover {
+  color: var(--pg-text-1);
+  background: var(--pg-hover);
+}
+
+.playground-root .pg-speed-opt.active {
+  background: var(--pg-accent-soft);
+  color: var(--pg-accent);
+  border: 1px solid var(--pg-accent-border);
+}
+
+/* ── Playground Theme Toggle ──────────────────────────────── */
+.pg-theme-btn {
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: rgba(15, 23, 42, 0.8);
-  color: #fff;
-  font-size: 15px;
-  font-weight: 500;
-  z-index: 10;
+  width: 36px;
+  height: 36px;
+  background: var(--pg-surface-2);
+  color: var(--pg-text-2);
+  border: 1px solid var(--pg-border);
+  border-radius: var(--pg-radius-md);
+  cursor: pointer;
+  transition: all 0.15s ease;
 }
+
+.pg-theme-btn:hover {
+  background: var(--pg-surface-3);
+  color: var(--pg-text-1);
+  border-color: var(--pg-border-2);
+  transform: rotate(14deg);
+}
+
+.pg-theme-btn:active {
+  transform: rotate(14deg) scale(0.92);
+}
+
+/* ── Light-mode overrides for playground elements ─────────── */
+.playground-root[data-theme="light"] .pg-editor-container {
+  background: #fafafa;
+}
+
+.playground-root[data-theme="light"] .pg-mode-badge {
+  color: var(--pg-accent);
+}
+
+.playground-root[data-theme="light"] .pg-speed-opt.active {
+  color: var(--pg-accent);
+}
+
+.playground-root[data-theme="light"] .pg-status-chip.idle {
+  background: var(--pg-surface-2);
+  border-color: var(--pg-border);
+  color: var(--pg-text-2);
+}
+
+.playground-root[data-theme="light"] .pg-canvas-container {
+  background-color: #fafafa;
+}
+
+.playground-root[data-theme="light"] .pg-controls-bar {
+  background: var(--pg-surface);
+  border-top: 1px solid var(--pg-border);
+}
+

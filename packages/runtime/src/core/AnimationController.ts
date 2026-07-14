@@ -413,13 +413,16 @@ export class AnimationController {
           } else if (actionName === 'INSERT_HEAD' || actionName === 'INSERT_TAIL') {
             const logicalParent = (gen as any).payload?.logicalParent;
             const valueToInsert = gen.args?.[gen.args.length - 1];
-            if (logicalParent && valueToInsert !== undefined) {
+            if (logicalParent !== undefined && valueToInsert !== undefined) {
               const allEls = this.sceneManager.getSceneGraph().filter((el: any) => el.logicalParent === logicalParent);
               const edges = allEls.filter((el: any) => el.type === 'edge');
               const headNode = allEls.find((el: any) => el.originalType === 'HEAD');
               const nullNode = allEls.find((el: any) => el.originalType === 'NULL');
               
-              if (headNode && nullNode) {
+              const circularEdge = edges.find((e: any) => e.properties?.circular);
+              const isCircular = !!circularEdge;
+
+              if (headNode && (nullNode || isCircular)) {
                 const newId = `obj_dyn_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
                 const newEl: any = {
                   id: newId,
@@ -444,18 +447,24 @@ export class AnimationController {
                 let nextNodeId: string = '';
 
                 if (actionName === 'INSERT_HEAD') {
-                  const edgeFromHead = edges.find((e: any) => e.sourceId === headNode.id);
+                  const edgeFromHead = edges.find((e: any) => e.sourceId === headNode.id && !(e.backward || e.properties?.backward));
                   if (edgeFromHead) {
                     edgeToRemove = edgeFromHead;
                     prevNodeId = headNode.id;
                     nextNodeId = (edgeFromHead as any).targetId;
                   }
                 } else { // INSERT_TAIL
-                  const edgeToNull = edges.find((e: any) => e.targetId === nullNode.id);
-                  if (edgeToNull) {
-                    edgeToRemove = edgeToNull;
-                    prevNodeId = (edgeToNull as any).sourceId;
-                    nextNodeId = nullNode.id;
+                  if (isCircular) {
+                    edgeToRemove = circularEdge;
+                    prevNodeId = (circularEdge as any).sourceId;
+                    nextNodeId = (circularEdge as any).targetId;
+                  } else {
+                    const edgeToNull = edges.find((e: any) => e.targetId === nullNode?.id && !(e.backward || e.properties?.backward));
+                    if (edgeToNull && nullNode) {
+                      edgeToRemove = edgeToNull;
+                      prevNodeId = (edgeToNull as any).sourceId;
+                      nextNodeId = nullNode.id;
+                    }
                   }
                 }
 
@@ -465,6 +474,8 @@ export class AnimationController {
                   const edge1Id = `edge_dyn_${prevNodeId}_${newId}`;
                   const edge2Id = `edge_dyn_${newId}_${nextNodeId}`;
                   
+                  const isEdge2Circular = actionName === 'INSERT_TAIL' && isCircular;
+
                   this.sceneManager.addElement({
                     id: edge1Id, type: 'edge', position: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 }, color: '#888888',
                     sourceId: prevNodeId, targetId: newId, directed: true, logicalParent, originalType: 'EDGE'
@@ -472,11 +483,36 @@ export class AnimationController {
                   
                   this.sceneManager.addElement({
                     id: edge2Id, type: 'edge', position: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 }, color: '#888888',
-                    sourceId: newId, targetId: nextNodeId, directed: true, logicalParent, originalType: 'EDGE'
+                    sourceId: newId, targetId: nextNodeId, directed: true, logicalParent, originalType: 'EDGE',
+                    properties: isEdge2Circular ? { circular: true } : undefined
                   } as any);
                   
                   this.relationshipManager.addRelationship({ id: edge1Id, sourceId: prevNodeId, targetId: newId, type: 'edge', directed: true });
                   this.relationshipManager.addRelationship({ id: edge2Id, sourceId: newId, targetId: nextNodeId, type: 'edge', directed: true });
+
+                  if (actionName === 'INSERT_HEAD' && isCircular && circularEdge) {
+                    (circularEdge as any).targetId = newId;
+                  }
+
+                  const isDoubly = edges.some((e: any) => e.backward === true || e.properties?.backward === true);
+                  if (isDoubly) {
+                    const bEdgeToRemove = edges.find((e: any) => (e.backward === true || e.properties?.backward === true) && e.sourceId === nextNodeId && e.targetId === prevNodeId);
+                    if (bEdgeToRemove) {
+                      this.sceneManager.removeElement(bEdgeToRemove.id);
+                    }
+                    const bEdge1Id = `edge_dyn_b_${nextNodeId}_${newId}`;
+                    const bEdge2Id = `edge_dyn_b_${newId}_${prevNodeId}`;
+                    this.sceneManager.addElement({
+                      id: bEdge1Id, type: 'edge', position: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 }, color: '#888888',
+                      sourceId: nextNodeId, targetId: newId, directed: true, backward: true, logicalParent, originalType: 'EDGE'
+                    } as any);
+                    this.sceneManager.addElement({
+                      id: bEdge2Id, type: 'edge', position: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 }, color: '#888888',
+                      sourceId: newId, targetId: prevNodeId, directed: true, backward: true, logicalParent, originalType: 'EDGE'
+                    } as any);
+                    this.relationshipManager.addRelationship({ id: bEdge1Id, sourceId: nextNodeId, targetId: newId, type: 'edge', directed: true });
+                    this.relationshipManager.addRelationship({ id: bEdge2Id, sourceId: newId, targetId: prevNodeId, type: 'edge', directed: true });
+                  }
                 }
 
                 this.layoutManager.updateLayout(this.sceneManager.getSceneGraph());
@@ -536,29 +572,40 @@ export class AnimationController {
               const headNode = allEls.find((el: any) => el.originalType === 'HEAD');
               const nullNode = allEls.find((el: any) => el.originalType === 'NULL');
               
-              if (headNode && nullNode) {
+              const circularEdge = edges.find((e: any) => e.properties?.circular);
+              const isCircular = !!circularEdge;
+
+              if (headNode && (nullNode || isCircular)) {
                 let nodeToDeleteId: string | null = null;
                 let prevNodeId: string = headNode.id;
-                let nextNodeId: string = nullNode.id;
+                let nextNodeId: string = nullNode ? nullNode.id : '';
                 
                 if (actionName === 'DELETE_HEAD') {
-                  const edgeFromHead = edges.find((e: any) => e.sourceId === headNode.id);
+                  const edgeFromHead = edges.find((e: any) => e.sourceId === headNode.id && !(e.backward || e.properties?.backward));
                   if (edgeFromHead) {
                     nodeToDeleteId = (edgeFromHead as any).targetId;
-                    if (nodeToDeleteId === nullNode.id) nodeToDeleteId = null; // empty list
+                    if (nullNode && nodeToDeleteId === nullNode.id) nodeToDeleteId = null; // empty list
                   }
                 } else { // DELETE_TAIL
-                  const edgeToNull = edges.find((e: any) => e.targetId === nullNode.id);
-                  if (edgeToNull) {
-                    nodeToDeleteId = (edgeToNull as any).sourceId;
-                    if (nodeToDeleteId === headNode.id) nodeToDeleteId = null; // empty list
+                  if (isCircular) {
+                    nodeToDeleteId = (circularEdge as any).sourceId;
+                  } else {
+                    const edgeToNull = edges.find((e: any) => e.targetId === nullNode?.id && !(e.backward || e.properties?.backward));
+                    if (edgeToNull && nullNode) {
+                      nodeToDeleteId = (edgeToNull as any).sourceId;
+                      if (nodeToDeleteId === headNode.id) nodeToDeleteId = null; // empty list
+                    }
                   }
                 }
                 
                 if (nodeToDeleteId) {
-                  const edgeToDel = edges.find((e: any) => e.targetId === nodeToDeleteId);
-                  const edgeFromDel = edges.find((e: any) => e.sourceId === nodeToDeleteId);
+                  const edgeToDel = edges.find((e: any) => e.targetId === nodeToDeleteId && !(e.backward || e.properties?.backward) && !e.properties?.circular);
+                  let edgeFromDel = edges.find((e: any) => e.sourceId === nodeToDeleteId && !(e.backward || e.properties?.backward) && !e.properties?.circular);
                   
+                  if (isCircular && actionName === 'DELETE_TAIL') {
+                    edgeFromDel = circularEdge;
+                  }
+
                   if (edgeToDel) {
                     prevNodeId = (edgeToDel as any).sourceId;
                     this.sceneManager.removeElement(edgeToDel.id);
@@ -568,12 +615,34 @@ export class AnimationController {
                     this.sceneManager.removeElement(edgeFromDel.id);
                   }
                   
+                  if (isCircular && actionName === 'DELETE_HEAD' && circularEdge) {
+                    (circularEdge as any).targetId = nextNodeId;
+                  }
+                  
                   const newEdgeId = `edge_dyn_${prevNodeId}_${nextNodeId}`;
+                  const isNewEdgeCircular = isCircular && actionName === 'DELETE_TAIL';
+                  
                   this.sceneManager.addElement({
                     id: newEdgeId, type: 'edge', position: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 }, color: '#888888',
-                    sourceId: prevNodeId, targetId: nextNodeId, directed: true, logicalParent, originalType: 'EDGE'
+                    sourceId: prevNodeId, targetId: nextNodeId, directed: true, logicalParent, originalType: 'EDGE',
+                    properties: isNewEdgeCircular ? { circular: true } : undefined
                   } as any);
                   this.relationshipManager.addRelationship({ id: newEdgeId, sourceId: prevNodeId, targetId: nextNodeId, type: 'edge', directed: true });
+                  
+                  const isDoubly = edges.some((e: any) => e.backward === true || e.properties?.backward === true);
+                  if (isDoubly) {
+                    const bEdgeToDel = edges.find((e: any) => (e.backward || e.properties?.backward) && e.targetId === nodeToDeleteId);
+                    const bEdgeFromDel = edges.find((e: any) => (e.backward || e.properties?.backward) && e.sourceId === nodeToDeleteId);
+                    if (bEdgeToDel) this.sceneManager.removeElement(bEdgeToDel.id);
+                    if (bEdgeFromDel) this.sceneManager.removeElement(bEdgeFromDel.id);
+
+                    const bNewEdgeId = `edge_dyn_b_${nextNodeId}_${prevNodeId}`;
+                    this.sceneManager.addElement({
+                      id: bNewEdgeId, type: 'edge', position: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 }, color: '#888888',
+                      sourceId: nextNodeId, targetId: prevNodeId, directed: true, backward: true, logicalParent, originalType: 'EDGE'
+                    } as any);
+                    this.relationshipManager.addRelationship({ id: bNewEdgeId, sourceId: nextNodeId, targetId: prevNodeId, type: 'edge', directed: true });
+                  }
                   
                   const targetEl = this.sceneManager.getElement(nodeToDeleteId) as any;
                   this.layoutManager.updateLayout(this.sceneManager.getSceneGraph());

@@ -138,17 +138,23 @@ export class AQIRGenerator {
           });
         }
         
-        this.generatedObjects.push({
-          id: nullId,
-          type: 'sphere',
-          originalType: 'NULL',
-          logicalParent: list.name.name,
-          value: 'NULL',
-          label: 'NULL',
-          color: '#ff6b6b' // Distinct red color for boundary
-        });
+        const isCircular = list.variant === 'CIRCULAR';
+        const isEmpty = nodeIds.length === 0;
+        const needsNull = !isCircular || isEmpty;
 
-        // Generate NEXT edges
+        if (needsNull) {
+          this.generatedObjects.push({
+            id: nullId,
+            type: 'sphere',
+            originalType: 'NULL',
+            logicalParent: list.name.name,
+            value: 'NULL',
+            label: 'NULL',
+            color: '#ff6b6b' // Distinct red color for boundary
+          });
+        }
+
+        // Generate NEXT and PREV edges
         let prevId = headId;
         for (let i = 0; i < nodeIds.length; i++) {
           this.generatedObjects.push({
@@ -158,17 +164,48 @@ export class AQIRGenerator {
             args: [prevId, nodeIds[i]],
             properties: { directed: true, forward: true }
           });
+          
+          if (list.variant === 'DOUBLY') {
+            this.generatedObjects.push({
+              id: this.generateId(),
+              type: 'EDGE',
+              logicalParent: list.name.name,
+              args: [nodeIds[i], prevId],
+              properties: { directed: true, backward: true }
+            });
+          }
+          
           prevId = nodeIds[i];
         }
         
-        // Link last node to NULL
-        this.generatedObjects.push({
-          id: this.generateId(),
-          type: 'EDGE',
-          logicalParent: list.name.name,
-          args: [prevId, nullId],
-          properties: { directed: true, forward: true }
-        });
+        if (isCircular && !isEmpty) {
+          this.generatedObjects.push({
+            id: this.generateId(),
+            type: 'EDGE',
+            logicalParent: list.name.name,
+            args: [prevId, nodeIds[0]],
+            properties: { directed: true, forward: true, circular: true }
+          });
+        } else {
+          // Link last node to NULL
+          this.generatedObjects.push({
+            id: this.generateId(),
+            type: 'EDGE',
+            logicalParent: list.name.name,
+            args: [prevId, nullId],
+            properties: { directed: true, forward: true }
+          });
+
+          if (list.variant === 'DOUBLY') {
+            this.generatedObjects.push({
+              id: this.generateId(),
+              type: 'EDGE',
+              logicalParent: list.name.name,
+              args: [nullId, prevId],
+              properties: { directed: true, backward: true }
+            });
+          }
+        }
       } else if (v.type === 'StackDeclNode') {
         const stack = v as StackDeclNode;
         let elements = stack.initialElements ? stack.initialElements.map(e => e.value) : [];

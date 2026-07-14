@@ -379,6 +379,57 @@
   cursor: default;
 }
 
+/* Parent item — a child is active, parent gets a softer highlight */
+.docs-nav-item.is-parent-active {
+  color: var(--text-1);
+  font-weight: 500;
+  background: transparent;
+}
+
+/* ── Nested child nav items ─────────────────────── */
+/* The connecting tree-line container */
+.docs-nav-children {
+  position: relative;
+  margin-left: 10px;
+  padding-left: 12px;
+  border-left: 1.5px solid var(--border);
+  margin-top: 1px;
+  margin-bottom: 3px;
+  /* Smooth open/close */
+  animation: navChildrenIn 0.18s ease both;
+}
+
+@keyframes navChildrenIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Individual child item — smaller, more subdued */
+.docs-nav-item.docs-nav-child {
+  font-size: 12.5px;
+  font-weight: 400;
+  padding: 5px var(--space-2);
+  color: var(--text-3);
+  letter-spacing: 0;
+}
+
+.docs-nav-item.docs-nav-child:hover:not(.is-active) {
+  color: var(--text-1);
+  background: var(--bg-tertiary);
+}
+
+/* Active child — uses the same accent + left bar, but bar is on the
+   border-left of the .docs-nav-children container instead */
+.docs-nav-item.docs-nav-child.is-active {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* Highlight the tree-line when a child is active */
+.docs-nav-children:has(.is-active) {
+  border-left-color: var(--accent);
+}
+
 .docs-nav-badge {
   display: inline-block;
   margin-left: auto;
@@ -619,6 +670,37 @@
 .tok-comment  { color: var(--syn-comment); font-style: italic; }
 .tok-variable { color: var(--syn-variable); }
 .tok-operator { color: var(--syn-operator); }
+
+/* CIRCULAR — distinct vivid purple to signal "structural modifier" */
+.tok-circular {
+  color: #a855f7;
+  font-weight: 700;
+}
+[data-theme="dark"] .tok-circular {
+  color: #c084fc;
+}
+
+/* Overview page — "Open full docs" link-buttons */
+.docs-overview-link {
+  display: inline-flex;
+  align-items: center;
+  margin-top: var(--space-3);
+  padding: 8px var(--space-4);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--accent) !important;
+  background: var(--accent-bg);
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: background .15s, border-color .15s;
+  text-decoration: none;
+  width: auto;
+}
+.docs-overview-link:hover {
+  background: var(--accent-border);
+  border-color: var(--accent);
+}
 
 /* ── COMMAND REFERENCE TABLE ────────────────────────────── */
 .docs-cmd-table {

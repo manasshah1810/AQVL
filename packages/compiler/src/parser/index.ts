@@ -96,7 +96,16 @@ export class Parser {
       } else if (this.matchKeyword('QUEUE')) {
         variables.push(this.parseQueueDecl());
       } else if (this.matchKeyword('LINKEDLIST')) {
-        variables.push(this.parseLinkedListDecl());
+        variables.push(this.parseLinkedListDecl('SINGLY'));
+      } else if (this.matchKeyword('DOUBLY')) {
+        this.consumeKeyword('LINKEDLIST', 'Expected LINKEDLIST after DOUBLY.');
+        variables.push(this.parseLinkedListDecl('DOUBLY'));
+      } else if (this.matchKeyword('SINGLY')) {
+        this.consumeKeyword('LINKEDLIST', 'Expected LINKEDLIST after SINGLY.');
+        variables.push(this.parseLinkedListDecl('SINGLY'));
+      } else if (this.matchKeyword('CIRCULAR')) {
+        this.consumeKeyword('LINKEDLIST', 'Expected LINKEDLIST after CIRCULAR.');
+        variables.push(this.parseLinkedListDecl('CIRCULAR'));
       } else if (this.matchKeyword('TREE')) {
         variables.push(this.parseTreeDecl());
       } else if (this.matchKeyword('HEAP')) {
@@ -287,7 +296,7 @@ export class Parser {
       pos
     };
   }
-  private parseLinkedListDecl(): any {
+  private parseLinkedListDecl(variant: string = 'SINGLY'): any {
     const pos = this.previous().pos;
     const nameToken = this.consume(TokenType.Identifier, 'Expected linked list name.');
 
@@ -314,6 +323,7 @@ export class Parser {
       type: 'LinkedListDeclNode',
       name: { type: 'IdentifierNode', name: nameToken.value, pos: nameToken.pos },
       initialElements,
+      variant,
       pos
     };
   }
@@ -504,12 +514,6 @@ export class Parser {
     // Consume END
     this.consumeKeyword('END', 'Expected END to close LOOP block.');
 
-    // In AQVL we just use END for scenes, sequences and loops.
-    // If it's END LOOP, we might optionally consume LOOP.
-    if (this.checkKeyword('LOOP')) {
-      this.advance();
-    }
-
     return {
       type: 'LoopNode',
       iterator: { type: 'IdentifierNode', name: iteratorToken.value, pos: iteratorToken.pos },
@@ -550,9 +554,6 @@ export class Parser {
     }
 
     this.consumeKeyword('END', 'Expected END to close IF block.');
-    if (this.checkKeyword('IF')) {
-      this.advance();
-    }
 
     return { type: 'IfNode', condition, body, pos };
   }

@@ -53,8 +53,11 @@ export const EdgeRenderer: React.FC<EdgeRendererProps> = ({ element, sceneState 
           
           if (isCurve && curve) {
             // For a curve, calculate position and tangent near the end
-            arrowPos = curve.getPointAt(0.9);
-            dir = curve.getTangentAt(0.9).normalize();
+            // Use absolute distance from the end to place the arrowhead outside the target node
+            const curveLength = curve.getLength();
+            const t = Math.max(0, 1 - (0.7 / curveLength));
+            arrowPos = curve.getPointAt(t);
+            dir = curve.getTangentAt(t).normalize();
           } else {
             // Place arrowhead slightly before the target center so it doesn't clip into the box too much
             dir = new THREE.Vector3().subVectors(p2, p1).normalize();

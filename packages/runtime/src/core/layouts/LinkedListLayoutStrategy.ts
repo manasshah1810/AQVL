@@ -30,7 +30,9 @@ export class LinkedListLayoutStrategy implements LayoutStrategy {
     // Build a map of source -> target
     const adjacency = new Map<string, string>();
     edges.forEach(e => {
-      adjacency.set((e as any).sourceId, (e as any).targetId);
+      if (!(e as any).backward && !(e as any).properties?.backward) {
+        adjacency.set((e as any).sourceId, (e as any).targetId);
+      }
     });
 
     const orderedNodes: SceneElement[] = [];
