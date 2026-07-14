@@ -429,7 +429,7 @@ export class Parser {
         statements.push(this.parseLoop());
       } else if (this.matchKeyword('IF')) {
         statements.push(this.parseIf());
-      } else if (this.peek().type === TokenType.Keyword && new Set(['HIGHLIGHT', 'INSERT', 'DELETE', 'UPDATE', 'MOVE', 'CONNECT', 'DISCONNECT', 'PUSH', 'POP', 'PEEK', 'ENQUEUE', 'DEQUEUE', 'FRONT', 'REAR', 'VISIT', 'MARK', 'TRAVERSE', 'ROTATE', 'SEARCH', 'HEAPIFY']).has(this.peek().value.toUpperCase())) {
+      } else if (this.peek().type === TokenType.Keyword && new Set(['HIGHLIGHT', 'INSERT', 'DELETE', 'INSERT_HEAD', 'INSERT_TAIL', 'DELETE_HEAD', 'DELETE_TAIL', 'UPDATE', 'MOVE', 'CONNECT', 'DISCONNECT', 'PUSH', 'POP', 'PEEK', 'ENQUEUE', 'DEQUEUE', 'FRONT', 'REAR', 'VISIT', 'MARK', 'TRAVERSE', 'ROTATE', 'SEARCH', 'HEAPIFY']).has(this.peek().value.toUpperCase())) {
         statements.push(this.parseGenericAction());
       } else if (this.matchKeyword('SET')) {
         statements.push(this.parseSetState());

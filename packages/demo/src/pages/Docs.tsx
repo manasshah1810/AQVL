@@ -50,9 +50,10 @@ const TipIcon = () => (
 
 // ─── Syntax Highlighter ───────────────────────────────────
 const KEYWORDS = new Set([
-  'SCENE','DECLARE','SEQUENCE','END','ARRAY',
+  'SCENE','DECLARE','SEQUENCE','END','ARRAY','LINKEDLIST',
   'HIGHLIGHT','COMPARE','SWAP','UPDATE','INSERT','DELETE',
-  'LOOP','FROM','TO','IF','LENGTH'
+  'INSERT_HEAD','INSERT_TAIL','DELETE_HEAD','DELETE_TAIL',
+  'LOOP','FROM','TO','IF','LENGTH','NULL'
 ]);
 
 function highlightAQVL(source: string): React.ReactNode[] {
@@ -158,7 +159,7 @@ const C: React.FC<{ children: React.ReactNode }> = ({ children }) => (
 );
 
 // ─── TOC definition ───────────────────────────────────────
-const TOC_ITEMS = [
+const TOC_ITEMS_ARRAYS = [
   { id: 'introduction',  label: 'Introduction' },
   { id: 'declaration',   label: 'Declaring an Array' },
   { id: 'commands',      label: 'Commands Reference' },
@@ -166,12 +167,24 @@ const TOC_ITEMS = [
   { id: 'errors',        label: 'Errors & Tips' },
 ];
 
+const TOC_ITEMS_LINKED_LISTS = [
+  { id: 'll-introduction',  label: 'Introduction' },
+  { id: 'll-singly',        label: 'Singly Linked List' },
+  { id: 'll-declaration',   label: 'Declaring a Singly Linked List' },
+  { id: 'll-commands',      label: 'Commands Reference' },
+  { id: 'll-examples',      label: 'Examples' },
+  { id: 'll-errors',        label: 'Errors & Tips' },
+];
+
 // ─── Main Docs page ───────────────────────────────────────
 export default function Docs() {
+  const [activePage, setActivePage] = useState<'arrays'|'linked-lists'>('arrays');
   const [theme, setTheme]           = useState<'light'|'dark'>('dark');
   const [activeId, setActiveId]     = useState('introduction');
   const [scrollPct, setScrollPct]   = useState(0);
   const observerRef                 = useRef<IntersectionObserver | null>(null);
+
+  const TOC_ITEMS = activePage === 'arrays' ? TOC_ITEMS_ARRAYS : TOC_ITEMS_LINKED_LISTS;
 
   // Restore theme
   useEffect(() => {
@@ -205,7 +218,7 @@ export default function Docs() {
       if (el) observerRef.current!.observe(el);
     });
     return () => observerRef.current?.disconnect();
-  }, []);
+  }, [activePage, TOC_ITEMS]);
 
   // Scroll progress bar — track .docs-main-wrap, not window
   useEffect(() => {
@@ -272,11 +285,18 @@ export default function Docs() {
 
             <div className="docs-nav-group">
               <div className="docs-nav-group-label">Data Structures</div>
-              <button className="docs-nav-item is-active">Arrays</button>
-              <a href="#" className="docs-nav-item is-disabled">
+              <button 
+                className={`docs-nav-item ${activePage === 'arrays' ? 'is-active' : ''}`}
+                onClick={() => { setActivePage('arrays'); setActiveId('introduction'); }}
+              >
+                Arrays
+              </button>
+              <button 
+                className={`docs-nav-item ${activePage === 'linked-lists' ? 'is-active' : ''}`}
+                onClick={() => { setActivePage('linked-lists'); setActiveId('ll-introduction'); }}
+              >
                 Linked Lists
-                <span className="docs-nav-badge">Soon</span>
-              </a>
+              </button>
               <a href="#" className="docs-nav-item is-disabled">
                 Trees
                 <span className="docs-nav-badge">Soon</span>
@@ -309,214 +329,357 @@ export default function Docs() {
         <div className="docs-main-wrap">
           <div className="docs-content">
 
-            {/* Page hero */}
-            <header className="docs-page-hero">
-              <div className="docs-page-tag">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-                  <line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/>
-                  <line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/>
-                </svg>
-                Data Structures
-              </div>
-              <h1 className="docs-page-title">Arrays</h1>
-              <p className="docs-page-lead">
-                Learn how to declare, manipulate, and animate arrays in AQVL — the language built for visualizing algorithms.
-              </p>
-            </header>
+            {activePage === 'arrays' && (
+              <>
+                {/* Page hero */}
+                <header className="docs-page-hero">
+                  <div className="docs-page-tag">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                      <line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/>
+                      <line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/>
+                    </svg>
+                    Data Structures
+                  </div>
+                  <h1 className="docs-page-title">Arrays</h1>
+                  <p className="docs-page-lead">
+                    Learn how to declare, manipulate, and animate arrays in AQVL — the language built for visualizing algorithms.
+                  </p>
+                </header>
 
-            {/* ── § Introduction ─────────────────────── */}
-            <section id="introduction" className="docs-section">
-              <h2 className="docs-h2">Introduction</h2>
-              <p className="docs-p">
-                In AQVL, an <C>ARRAY</C> is a fixed-width, contiguous sequence of integer elements. When you declare
-                one, the runtime immediately renders each element as a numbered box on screen — so you can see your
-                data right away, before a single instruction runs.
-              </p>
-              <p className="docs-p">
-                Arrays are the first data structure in AQVL and are paired with a set of high-level commands — 
-                <C>HIGHLIGHT</C>, <C>COMPARE</C>, <C>SWAP</C>, <C>UPDATE</C>, <C>INSERT</C>, and <C>DELETE</C> — that 
-                produce smooth, step-by-step animations. Combine them with <C>LOOP</C> and <C>IF</C> control flow to 
-                express any sorting or searching algorithm in just a few readable lines.
-              </p>
-              <Alert kind="note" title="Note">
-                AQVL programs consist of three top-level blocks: <C>DECLARE</C> (define data), <C>SEQUENCE</C> (define 
-                steps), and the wrapping <C>SCENE</C> / <C>END</C> pair. All three must be present for a valid program.
-              </Alert>
-            </section>
+                {/* ── § Introduction ─────────────────────── */}
+                <section id="introduction" className="docs-section">
+                  <h2 className="docs-h2">Introduction</h2>
+                  <p className="docs-p">
+                    In AQVL, an <C>ARRAY</C> is a fixed-width, contiguous sequence of integer elements. When you declare
+                    one, the runtime immediately renders each element as a numbered box on screen — so you can see your
+                    data right away, before a single instruction runs.
+                  </p>
+                  <p className="docs-p">
+                    Arrays are the first data structure in AQVL and are paired with a set of high-level commands — 
+                    <C>HIGHLIGHT</C>, <C>COMPARE</C>, <C>SWAP</C>, <C>UPDATE</C>, <C>INSERT</C>, and <C>DELETE</C> — that 
+                    produce smooth, step-by-step animations. Combine them with <C>LOOP</C> and <C>IF</C> control flow to 
+                    express any sorting or searching algorithm in just a few readable lines.
+                  </p>
+                  <Alert kind="note" title="Note">
+                    AQVL programs consist of three top-level blocks: <C>DECLARE</C> (define data), <C>SEQUENCE</C> (define 
+                    steps), and the wrapping <C>SCENE</C> / <C>END</C> pair. All three must be present for a valid program.
+                  </Alert>
+                </section>
 
-            {/* ── § Declaration ──────────────────────── */}
-            <section id="declaration" className="docs-section">
-              <h2 className="docs-h2">Declaring an Array</h2>
-              <p className="docs-p">
-                Place your array declaration inside the <C>DECLARE</C> block. Provide a name and an initial list of
-                integer values enclosed in square brackets.
-              </p>
+                {/* ── § Declaration ──────────────────────── */}
+                <section id="declaration" className="docs-section">
+                  <h2 className="docs-h2">Declaring an Array</h2>
+                  <p className="docs-p">
+                    Place your array declaration inside the <C>DECLARE</C> block. Provide a name and an initial list of
+                    integer values enclosed in square brackets.
+                  </p>
 
-              <CodeBlock
-                label="Syntax"
-                code={`ARRAY <name> = [<value>, <value>, ...]`}
-              />
+                  <CodeBlock
+                    label="Syntax"
+                    code={`ARRAY <name> = [<value>, <value>, ...]`}
+                  />
 
-              <p className="docs-p">A full minimal program looks like this:</p>
+                  <p className="docs-p">A full minimal program looks like this:</p>
 
-              <CodeBlock
-                code={`SCENE MyFirstArray\n\nDECLARE\n  ARRAY nums = [10, 20, 30, 40, 50]\n\nSEQUENCE\n  HIGHLIGHT nums[0]\nEND`}
-              />
+                  <CodeBlock
+                    code={`SCENE MyFirstArray\n\nDECLARE\n  ARRAY nums = [10, 20, 30, 40, 50]\n\nSEQUENCE\n  HIGHLIGHT nums[0]\nEND`}
+                  />
 
-              <p className="docs-p">
-                When this program is loaded, the visualizer will instantly render five boxes labeled <em>10, 20, 30, 40, 50</em>.
-                Running the sequence will then animate the first element lighting up.
-              </p>
+                  <p className="docs-p">
+                    When this program is loaded, the visualizer will instantly render five boxes labeled <em>10, 20, 30, 40, 50</em>.
+                    Running the sequence will then animate the first element lighting up.
+                  </p>
 
-              <Alert kind="warn" title="No empty arrays">
-                <C>ARRAY arr = []</C> is not valid. You must provide at least one initial value. Elements can be added
-                dynamically using <C>INSERT</C> after the scene starts.
-              </Alert>
-            </section>
+                  <Alert kind="warn" title="No empty arrays">
+                    <C>ARRAY arr = []</C> is not valid. You must provide at least one initial value. Elements can be added
+                    dynamically using <C>INSERT</C> after the scene starts.
+                  </Alert>
+                </section>
 
-            {/* ── § Commands ─────────────────────────── */}
-            <section id="commands" className="docs-section">
-              <h2 className="docs-h2">Commands Reference</h2>
-              <p className="docs-p">
-                All array commands live inside the <C>SEQUENCE</C> block. Each command maps 1-to-1 to an animation
-                step the runtime plays back.
-              </p>
+                {/* ── § Commands ─────────────────────────── */}
+                <section id="commands" className="docs-section">
+                  <h2 className="docs-h2">Commands Reference</h2>
+                  <p className="docs-p">
+                    All array commands live inside the <C>SEQUENCE</C> block. Each command maps 1-to-1 to an animation
+                    step the runtime plays back.
+                  </p>
 
-              <table className="docs-cmd-table">
-                <thead>
-                  <tr>
-                    <th>Command</th>
-                    <th>Description</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td><span className="tok-keyword">HIGHLIGHT</span> <span className="tok-param">name[i]</span></td>
-                    <td>Pulses the element at index <C>i</C> with a bright accent color. Use it to mark the current element of interest — e.g., the minimum candidate in Selection Sort.</td>
-                  </tr>
-                  <tr>
-                    <td><span className="tok-keyword">COMPARE</span> <span className="tok-param">name[i] name[j]</span></td>
-                    <td>Simultaneously highlights two elements to show they are being evaluated against each other. Neither is modified.</td>
-                  </tr>
-                  <tr>
-                    <td><span className="tok-keyword">SWAP</span> <span className="tok-param">name[i] name[j]</span></td>
-                    <td>Animates an arc-swap of the values at indices <C>i</C> and <C>j</C>. Both the visual position and the internal value are exchanged.</td>
-                  </tr>
-                  <tr>
-                    <td><span className="tok-keyword">UPDATE</span> <span className="tok-param">name[i] value</span></td>
-                    <td>Sets the element at index <C>i</C> to <C>value</C>, animating the number changing inside the box.</td>
-                  </tr>
-                  <tr>
-                    <td><span className="tok-keyword">INSERT</span> <span className="tok-param">name[i] value</span></td>
-                    <td>Inserts a new box containing <C>value</C> at position <C>i</C>. All subsequent elements shift right with a slide animation. The array grows by one.</td>
-                  </tr>
-                  <tr>
-                    <td><span className="tok-keyword">DELETE</span> <span className="tok-param">name[i]</span></td>
-                    <td>Removes the element at index <C>i</C>. All subsequent elements shift left to close the gap. The array shrinks by one.</td>
-                  </tr>
-                </tbody>
-              </table>
+                  <table className="docs-cmd-table">
+                    <thead>
+                      <tr>
+                        <th>Command</th>
+                        <th>Description</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td><span className="tok-keyword">HIGHLIGHT</span> <span className="tok-param">name[i]</span></td>
+                        <td>Pulses the element at index <C>i</C> with a bright accent color. Use it to mark the current element of interest — e.g., the minimum candidate in Selection Sort.</td>
+                      </tr>
+                      <tr>
+                        <td><span className="tok-keyword">COMPARE</span> <span className="tok-param">name[i] name[j]</span></td>
+                        <td>Simultaneously highlights two elements to show they are being evaluated against each other. Neither is modified.</td>
+                      </tr>
+                      <tr>
+                        <td><span className="tok-keyword">SWAP</span> <span className="tok-param">name[i] name[j]</span></td>
+                        <td>Animates an arc-swap of the values at indices <C>i</C> and <C>j</C>. Both the visual position and the internal value are exchanged.</td>
+                      </tr>
+                      <tr>
+                        <td><span className="tok-keyword">UPDATE</span> <span className="tok-param">name[i] value</span></td>
+                        <td>Sets the element at index <C>i</C> to <C>value</C>, animating the number changing inside the box.</td>
+                      </tr>
+                      <tr>
+                        <td><span className="tok-keyword">INSERT</span> <span className="tok-param">name[i] value</span></td>
+                        <td>Inserts a new box containing <C>value</C> at position <C>i</C>. All subsequent elements shift right with a slide animation. The array grows by one.</td>
+                      </tr>
+                      <tr>
+                        <td><span className="tok-keyword">DELETE</span> <span className="tok-param">name[i]</span></td>
+                        <td>Removes the element at index <C>i</C>. All subsequent elements shift left to close the gap. The array shrinks by one.</td>
+                      </tr>
+                    </tbody>
+                  </table>
 
-              <h3 className="docs-h3">Control Flow</h3>
-              <p className="docs-p">
-                You can use <C>LOOP</C> and <C>IF</C> to build algorithm logic around the array commands above.
-              </p>
+                  <h3 className="docs-h3">Control Flow</h3>
+                  <p className="docs-p">
+                    You can use <C>LOOP</C> and <C>IF</C> to build algorithm logic around the array commands above.
+                  </p>
 
-              <table className="docs-cmd-table">
-                <thead>
-                  <tr>
-                    <th>Construct</th>
-                    <th>Description</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td><span className="tok-keyword">LOOP</span> <span className="tok-param">var</span> <span className="tok-keyword">FROM</span> <span className="tok-param">start</span> <span className="tok-keyword">TO</span> <span className="tok-param">end</span></td>
-                    <td>Iterates <C>var</C> from <C>start</C> to <C>end</C> (inclusive). Close with <C>END</C>.</td>
-                  </tr>
-                  <tr>
-                    <td><span className="tok-keyword">IF</span> <span className="tok-param">expr</span></td>
-                    <td>Conditionally executes its body if <C>expr</C> is truthy. Supports <C>&gt;</C>, <C>&lt;</C>, <C>=</C>. Close with <C>END</C>.</td>
-                  </tr>
-                  <tr>
-                    <td><span className="tok-builtin">LENGTH</span>(<span className="tok-param">name</span>)</td>
-                    <td>Returns the current length of the named array. Useful as the upper bound of a loop.</td>
-                  </tr>
-                </tbody>
-              </table>
-            </section>
+                  <table className="docs-cmd-table">
+                    <thead>
+                      <tr>
+                        <th>Construct</th>
+                        <th>Description</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td><span className="tok-keyword">LOOP</span> <span className="tok-param">var</span> <span className="tok-keyword">FROM</span> <span className="tok-param">start</span> <span className="tok-keyword">TO</span> <span className="tok-param">end</span></td>
+                        <td>Iterates <C>var</C> from <C>start</C> to <C>end</C> (inclusive). Close with <C>END</C>.</td>
+                      </tr>
+                      <tr>
+                        <td><span className="tok-keyword">IF</span> <span className="tok-param">expr</span></td>
+                        <td>Conditionally executes its body if <C>expr</C> is truthy. Supports <C>&gt;</C>, <C>&lt;</C>, <C>=</C>. Close with <C>END</C>.</td>
+                      </tr>
+                      <tr>
+                        <td><span className="tok-builtin">LENGTH</span>(<span className="tok-param">name</span>)</td>
+                        <td>Returns the current length of the named array. Useful as the upper bound of a loop.</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </section>
 
-            {/* ── § Examples ─────────────────────────── */}
-            <section id="examples" className="docs-section">
-              <h2 className="docs-h2">Examples</h2>
+                {/* ── § Examples ─────────────────────────── */}
+                <section id="examples" className="docs-section">
+                  <h2 className="docs-h2">Examples</h2>
 
-              <h3 className="docs-h3">Example 1 — All Basic Operations</h3>
-              <p className="docs-p">
-                This program exercises every array command in sequence so you can see exactly what each one does in
-                the visualizer.
-              </p>
-              <CodeBlock
-                code={`SCENE ArrayOps\n\nDECLARE\n  ARRAY arr = [10, 20, 30, 40]\n\nSEQUENCE\n  // Draw attention to arr[0]\n  HIGHLIGHT arr[0]\n\n  // Show arr[0] vs arr[1]\n  COMPARE arr[0] arr[1]\n\n  // Exchange them\n  SWAP arr[0] arr[1]\n\n  // Overwrite arr[1] with 99\n  UPDATE arr[1] 99\n\n  // Insert 25 before arr[2]\n  INSERT arr[2] 25\n\n  // Remove the element now at arr[3]\n  DELETE arr[3]\nEND`}
-              />
-              <p className="docs-p">
-                <strong>Expected behaviour:</strong> After SWAP, <C>arr</C> becomes <C>[20, 10, 30, 40]</C>.
-                After UPDATE it becomes <C>[20, 99, 30, 40]</C>. After INSERT, <C>[20, 99, 25, 30, 40]</C>.
-                After DELETE, <C>[20, 99, 25, 40]</C>.
-              </p>
+                  <h3 className="docs-h3">Example 1 — All Basic Operations</h3>
+                  <p className="docs-p">
+                    This program exercises every array command in sequence so you can see exactly what each one does in
+                    the visualizer.
+                  </p>
+                  <CodeBlock
+                    code={`SCENE ArrayOps\n\nDECLARE\n  ARRAY arr = [10, 20, 30, 40]\n\nSEQUENCE\n  // Draw attention to arr[0]\n  HIGHLIGHT arr[0]\n\n  // Show arr[0] vs arr[1]\n  COMPARE arr[0] arr[1]\n\n  // Exchange them\n  SWAP arr[0] arr[1]\n\n  // Overwrite arr[1] with 99\n  UPDATE arr[1] 99\n\n  // Insert 25 before arr[2]\n  INSERT arr[2] 25\n\n  // Remove the element now at arr[3]\n  DELETE arr[3]\nEND`}
+                  />
+                  <p className="docs-p">
+                    <strong>Expected behaviour:</strong> After SWAP, <C>arr</C> becomes <C>[20, 10, 30, 40]</C>.
+                    After UPDATE it becomes <C>[20, 99, 30, 40]</C>. After INSERT, <C>[20, 99, 25, 30, 40]</C>.
+                    After DELETE, <C>[20, 99, 25, 40]</C>.
+                  </p>
 
-              <h3 className="docs-h3">Example 2 — Bubble Sort</h3>
-              <p className="docs-p">
-                Classic O(n²) comparison sort. The largest unsorted element "bubbles" to its correct position on each
-                outer pass.
-              </p>
-              <CodeBlock
-                code={`SCENE BubbleSort\n\nDECLARE\n  ARRAY arr = [64, 34, 25, 12, 22, 11, 90]\n\nSEQUENCE\n  LOOP i FROM 0 TO LENGTH(arr) - 2\n    LOOP j FROM 0 TO LENGTH(arr) - i - 2\n      COMPARE arr[j] arr[j+1]\n      IF arr[j] > arr[j+1]\n        SWAP arr[j] arr[j+1]\n      END\n    END\n    HIGHLIGHT arr[LENGTH(arr) - i - 1]\n  END\n  HIGHLIGHT arr[0]\nEND`}
-              />
-              <p className="docs-p">
-                <strong>Expected behaviour:</strong> After every outer pass, the rightmost unsorted element snaps into
-                its final position (highlighted in green). The final <C>HIGHLIGHT arr[0]</C> marks the last remaining
-                element as sorted.
-              </p>
+                  <h3 className="docs-h3">Example 2 — Bubble Sort</h3>
+                  <p className="docs-p">
+                    Classic O(n²) comparison sort. The largest unsorted element "bubbles" to its correct position on each
+                    outer pass.
+                  </p>
+                  <CodeBlock
+                    code={`SCENE BubbleSort\n\nDECLARE\n  ARRAY arr = [64, 34, 25, 12, 22, 11, 90]\n\nSEQUENCE\n  LOOP i FROM 0 TO LENGTH(arr) - 2\n    LOOP j FROM 0 TO LENGTH(arr) - i - 2\n      COMPARE arr[j] arr[j+1]\n      IF arr[j] > arr[j+1]\n        SWAP arr[j] arr[j+1]\n      END\n    END\n    HIGHLIGHT arr[LENGTH(arr) - i - 1]\n  END\n  HIGHLIGHT arr[0]\nEND`}
+                  />
+                  <p className="docs-p">
+                    <strong>Expected behaviour:</strong> After every outer pass, the rightmost unsorted element snaps into
+                    its final position (highlighted in green). The final <C>HIGHLIGHT arr[0]</C> marks the last remaining
+                    element as sorted.
+                  </p>
 
-              <h3 className="docs-h3">Example 3 — Selection Sort</h3>
-              <p className="docs-p">
-                On each pass, the current minimum in the unsorted portion is found and swapped into place.
-              </p>
-              <CodeBlock
-                code={`SCENE SelectionSort\n\nDECLARE\n  ARRAY arr = [64, 25, 12, 22, 11]\n\nSEQUENCE\n  LOOP i FROM 0 TO LENGTH(arr) - 2\n    HIGHLIGHT arr[i]\n    LOOP j FROM i + 1 TO LENGTH(arr) - 1\n      COMPARE arr[i] arr[j]\n      IF arr[i] > arr[j]\n        SWAP arr[i] arr[j]\n      END\n    END\n  END\nEND`}
-              />
-            </section>
+                  <h3 className="docs-h3">Example 3 — Selection Sort</h3>
+                  <p className="docs-p">
+                    On each pass, the current minimum in the unsorted portion is found and swapped into place.
+                  </p>
+                  <CodeBlock
+                    code={`SCENE SelectionSort\n\nDECLARE\n  ARRAY arr = [64, 25, 12, 22, 11]\n\nSEQUENCE\n  LOOP i FROM 0 TO LENGTH(arr) - 2\n    HIGHLIGHT arr[i]\n    LOOP j FROM i + 1 TO LENGTH(arr) - 1\n      COMPARE arr[i] arr[j]\n      IF arr[i] > arr[j]\n        SWAP arr[i] arr[j]\n      END\n    END\n  END\nEND`}
+                  />
+                </section>
 
-            {/* ── § Errors ───────────────────────────── */}
-            <section id="errors" className="docs-section">
-              <h2 className="docs-h2">Errors &amp; Tips</h2>
+                {/* ── § Errors ───────────────────────────── */}
+                <section id="errors" className="docs-section">
+                  <h2 className="docs-h2">Errors &amp; Tips</h2>
 
-              <Alert kind="warn" title="Index out of bounds">
-                Accessing <C>arr[5]</C> on a 5-element array (indices 0–4) triggers a runtime error and halts
-                execution. Always use <C>LENGTH(arr) - 1</C> as your upper bound in loops.
-              </Alert>
+                  <Alert kind="warn" title="Index out of bounds">
+                    Accessing <C>arr[5]</C> on a 5-element array (indices 0–4) triggers a runtime error and halts
+                    execution. Always use <C>LENGTH(arr) - 1</C> as your upper bound in loops.
+                  </Alert>
 
-              <Alert kind="warn" title="Missing SCENE or END">
-                Every AQVL program must open with <C>SCENE &lt;name&gt;</C> and close with <C>END</C>. Forgetting
-                either is the most common source of parse errors.
-              </Alert>
+                  <Alert kind="warn" title="Missing SCENE or END">
+                    Every AQVL program must open with <C>SCENE &lt;name&gt;</C> and close with <C>END</C>. Forgetting
+                    either is the most common source of parse errors.
+                  </Alert>
 
-              <Alert kind="warn" title="Unclosed blocks">
-                Each <C>LOOP</C> and <C>IF</C> block must have its own <C>END</C> keyword. A missing <C>END</C>
-                causes the parser to fail with an "unexpected token" error.
-              </Alert>
+                  <Alert kind="warn" title="Unclosed blocks">
+                    Each <C>LOOP</C> and <C>IF</C> block must have its own <C>END</C> keyword. A missing <C>END</C>
+                    causes the parser to fail with an "unexpected token" error.
+                  </Alert>
 
-              <Alert kind="tip" title="Tip: use LENGTH() for dynamic arrays">
-                If your program uses <C>INSERT</C> or <C>DELETE</C>, the array length changes at runtime. 
-                Always reference <C>LENGTH(arr)</C> instead of a hardcoded number in your loop bounds.
-              </Alert>
+                  <Alert kind="tip" title="Tip: use LENGTH() for dynamic arrays">
+                    If your program uses <C>INSERT</C> or <C>DELETE</C>, the array length changes at runtime. 
+                    Always reference <C>LENGTH(arr)</C> instead of a hardcoded number in your loop bounds.
+                  </Alert>
 
-              <Alert kind="note" title="Comments for clarity">
-                Single-line comments start with <C>//</C>. They have no effect on execution and are stripped by the
-                lexer — use them liberally to document the intent of each step.
-              </Alert>
-            </section>
+                  <Alert kind="note" title="Comments for clarity">
+                    Single-line comments start with <C>//</C>. They have no effect on execution and are stripped by the
+                    lexer — use them liberally to document the intent of each step.
+                  </Alert>
+                </section>
+              </>
+            )}
+
+            {activePage === 'linked-lists' && (
+              <>
+                {/* Page hero */}
+                <header className="docs-page-hero">
+                  <div className="docs-page-tag">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                      <line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/>
+                      <line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/>
+                    </svg>
+                    Data Structures
+                  </div>
+                  <h1 className="docs-page-title">Linked Lists</h1>
+                  <p className="docs-page-lead">
+                    Learn how to declare, manipulate, and animate Linked Lists in AQVL. Understand dynamic node allocations and pointer re-assignments.
+                  </p>
+                </header>
+
+                {/* ── § Introduction ─────────────────────── */}
+                <section id="ll-introduction" className="docs-section">
+                  <h2 className="docs-h2">Introduction</h2>
+                  <p className="docs-p">
+                    In AQVL, a Linked List is a dynamic sequence of nodes. Unlike Arrays, Linked Lists are not contiguous in memory and rely on explicit relationships (edges) to connect nodes.
+                  </p>
+                  <p className="docs-p">
+                    Currently, AQVL supports the <strong>Singly Linked List</strong> structure, where every node points to a single next node, culminating in a special <C>NULL</C> terminator. The entire list is accessible starting from a special <C>HEAD</C> pointer.
+                  </p>
+                  <Alert kind="note" title="Dynamic Nature">
+                    Unlike arrays, Linked List nodes are rendered as spheres and edges represent pointers. The visualizer will automatically re-layout the structure beautifully as you insert or delete nodes.
+                  </Alert>
+                </section>
+
+                {/* ── § Singly Linked List ─────────────────────── */}
+                <section id="ll-singly" className="docs-section">
+                  <h2 className="docs-h2">Singly Linked List</h2>
+                  <p className="docs-p">
+                    A Singly Linked List is a linear data structure wherein each element is a separate object, called a node. Each node comprises two items: the data and a reference to the next node.
+                  </p>
+                  <p className="docs-p">
+                    The entry point into a linked list is called the head of the list. It should be noted that head is not a separate node, but the reference to the first node. If the list is empty then the head is a null reference.
+                  </p>
+                  <p className="docs-p">
+                    AQVL handles these pointers dynamically behind the scenes, visually animating the breakdown and re-attachment of edges during insertion and deletion.
+                  </p>
+                </section>
+
+                {/* ── § Declaration ──────────────────────── */}
+                <section id="ll-declaration" className="docs-section">
+                  <h2 className="docs-h2">Declaring a Singly Linked List</h2>
+                  <p className="docs-p">
+                    Place your linked list declaration inside the <C>DECLARE</C> block. AQVL allows syntactic sugar to initialize it similarly to an array, but internally creates nodes and edges.
+                  </p>
+
+                  <CodeBlock
+                    label="Syntax"
+                    code={`LINKEDLIST <name> = [<value>, <value>, ...]`}
+                  />
+
+                  <p className="docs-p">A full minimal program looks like this:</p>
+
+                  <CodeBlock
+                    code={`SCENE ListIntro\n\nDECLARE\n  LINKEDLIST list = [10, 20, 30]\n\nSEQUENCE\n  HIGHLIGHT list[0]\nEND`}
+                  />
+
+                  <p className="docs-p">
+                    When this program is loaded, the visualizer renders the <C>HEAD</C> node pointing to a sequence of nodes: <em>10, 20, 30</em>, terminated by a <C>NULL</C> node.
+                  </p>
+                </section>
+
+                {/* ── § Commands ─────────────────────────── */}
+                <section id="ll-commands" className="docs-section">
+                  <h2 className="docs-h2">Commands Reference</h2>
+                  <p className="docs-p">
+                    Linked List commands abstract away pointer manipulation, automatically creating and destroying nodes and edges as needed.
+                  </p>
+
+                  <table className="docs-cmd-table">
+                    <thead>
+                      <tr>
+                        <th>Command</th>
+                        <th>Description</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td><span className="tok-keyword">HIGHLIGHT</span> <span className="tok-param">name[i]</span></td>
+                        <td>Highlights the node at logical index <C>i</C>. Note that this index is only for identifying the node in the script; the visualizer still traverses the edges correctly.</td>
+                      </tr>
+                      <tr>
+                        <td><span className="tok-keyword">INSERT_HEAD</span> <span className="tok-param">name value</span></td>
+                        <td>Creates a new node with <C>value</C> and inserts it at the beginning of the list, automatically updating the <C>HEAD</C> edge.</td>
+                      </tr>
+                      <tr>
+                        <td><span className="tok-keyword">INSERT_TAIL</span> <span className="tok-param">name value</span></td>
+                        <td>Creates a new node with <C>value</C> and inserts it at the end of the list, correctly pointing it to <C>NULL</C>.</td>
+                      </tr>
+                      <tr>
+                        <td><span className="tok-keyword">DELETE_HEAD</span> <span className="tok-param">name</span></td>
+                        <td>Removes the first node and re-routes the <C>HEAD</C> edge to the next node.</td>
+                      </tr>
+                      <tr>
+                        <td><span className="tok-keyword">DELETE_TAIL</span> <span className="tok-param">name</span></td>
+                        <td>Removes the last node in the sequence, updating the previous node to point directly to <C>NULL</C>.</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </section>
+
+                {/* ── § Examples ─────────────────────────── */}
+                <section id="ll-examples" className="docs-section">
+                  <h2 className="docs-h2">Examples</h2>
+
+                  <h3 className="docs-h3">Example 1 — Basic Insertions and Deletions</h3>
+                  <p className="docs-p">
+                    This program demonstrates dynamic insertions and deletions at the extremities of a linked list.
+                  </p>
+                  <CodeBlock
+                    code={`SCENE LinkedListOps\n\nDECLARE\n  LINKEDLIST list = [10, 20, 30]\n\nSEQUENCE\n  // Insert at the head\n  INSERT_HEAD list 5\n\n  // Insert at the tail\n  INSERT_TAIL list 40\n\n  // Delete the head\n  DELETE_HEAD list\n\n  // Delete the tail\n  DELETE_TAIL list\nEND`}
+                  />
+                  <p className="docs-p">
+                    <strong>Expected behaviour:</strong> The nodes and edges dynamically animate the creation and destruction of pointers during each instruction.
+                  </p>
+                </section>
+
+                {/* ── § Errors ───────────────────────────── */}
+                <section id="ll-errors" className="docs-section">
+                  <h2 className="docs-h2">Errors &amp; Tips</h2>
+
+                  <Alert kind="warn" title="Index out of bounds">
+                    Just like arrays, highlighting <C>list[5]</C> on a 3-element list will result in an out-of-bounds execution error.
+                  </Alert>
+
+                  <Alert kind="tip" title="Using the HEAD pointer">
+                    The <C>HEAD</C> pointer is automatically managed. You cannot manually override the <C>HEAD</C> identifier.
+                  </Alert>
+                </section>
+              </>
+            )}
 
           </div>
         </div>

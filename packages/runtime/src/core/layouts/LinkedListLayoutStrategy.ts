@@ -22,17 +22,33 @@ export class LinkedListLayoutStrategy implements LayoutStrategy {
   public applyLayout(elements: SceneElement[], relationshipManager: RelationshipManager): Map<string, { x: number; y: number; z: number }> {
     const map = new Map<string, { x: number; y: number; z: number }>();
     
-    // For linked lists, we just want to sort the nodes by logicalIndex and lay them out linearly.
-    // The EdgeRenderer will handle the curved arrows.
-    const nodes = elements.filter(el => el.type !== 'edge' && el.originalType === 'LINKEDLIST_NODE') as any[];
-    const sortedNodes = [...nodes].sort((a, b) => (a.logicalIndex || 0) - (b.logicalIndex || 0));
+    const headNode = elements.find(el => el.originalType === 'HEAD');
+    if (!headNode) return map;
 
-    if (sortedNodes.length === 0) return map;
+    const edges = elements.filter(el => el.type === 'edge');
+    
+    // Build a map of source -> target
+    const adjacency = new Map<string, string>();
+    edges.forEach(e => {
+      adjacency.set((e as any).sourceId, (e as any).targetId);
+    });
 
-    const totalLength = (sortedNodes.length - 1) * this.spacing;
+    const orderedNodes: SceneElement[] = [];
+    let currentId: string | undefined = headNode.id;
+    
+    // Guard against infinite loops in case of circular lists, though we don't support them yet
+    const visited = new Set<string>();
+    
+    while (currentId && !visited.has(currentId)) {
+      visited.add(currentId);
+      const node = elements.find(el => el.id === currentId);
+      if (node) orderedNodes.push(node);
+      currentId = adjacency.get(currentId);
+    }
 
-    sortedNodes.forEach((node, idx) => {
-      // Center the list around startX
+    const totalLength = (orderedNodes.length - 1) * this.spacing;
+
+    orderedNodes.forEach((node, idx) => {
       const x = this.startX - totalLength / 2 + idx * this.spacing;
       const y = this.startY;
       

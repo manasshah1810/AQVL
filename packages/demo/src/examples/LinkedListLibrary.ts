@@ -1,28 +1,26 @@
 export const LinkedListScripts = {
-  ComprehensiveTest: `SCENE LinkedListTest
+  PointerArchitecture: `SCENE LinkedListArchitecture
 
 DECLARE
   LINKEDLIST list = [10, 20, 30]
 
 SEQUENCE
-  // 1. Highlight head
+  // 1. Traverse nodes
   HIGHLIGHT list[0]
+  HIGHLIGHT list[1]
+  HIGHLIGHT list[2]
 
-  // 2. Insert Middle (Index 1)
-  INSERT list[1] 15
+  // 2. Insert Head
+  INSERT_HEAD list 5
 
-  // 3. Insert Head (Index 0)
-  INSERT list[0] 5
+  // 3. Insert Tail
+  INSERT_TAIL list 40
 
-  // 4. Insert Tail (Index 5)
-  INSERT list[5] 40
+  // 4. Delete Head
+  DELETE_HEAD list
 
-  // 5. Delete Middle (Index 2)
-  DELETE list[2]
-
-  // 6. Manual Pointer Updates
-  LINK list[0] TO list[2]
-  DISCONNECT list[0] list[1]
+  // 5. Delete Tail
+  DELETE_TAIL list
 END
 `
 };

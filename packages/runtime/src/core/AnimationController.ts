@@ -274,24 +274,20 @@ export class AnimationController {
             const valueToInsert = gen.args?.[gen.args.length - 1];
 
             if (logicalParent !== undefined && insertIndex !== undefined) {
-              const allContainerEls = this.sceneManager.getSceneGraph().filter((el: any) => el.logicalParent === logicalParent);
-              const nodeEls = allContainerEls.filter((el: any) => el.originalType !== 'EDGE');
-              const elsToShift = nodeEls.filter((el: any) => el.logicalIndex >= insertIndex);
+              const allArrayEls = this.sceneManager.getSceneGraph().filter((el: any) => el.logicalParent === logicalParent);
+              const elsToShift = allArrayEls.filter((el: any) => el.logicalIndex >= insertIndex);
               
-              const isLinkedList = nodeEls.some((el: any) => el.originalType === 'LINKEDLIST_NODE');
-
               // Synchronous update
               elsToShift.forEach((el: any) => el.logicalIndex += 1);
               
-              const newElId = `obj_dyn_${Date.now()}_${insertIndex}`;
               const newEl: any = {
-                id: newElId,
-                type: isLinkedList ? 'sphere' : 'box',
+                id: `obj_dyn_${Date.now()}_${insertIndex}`,
+                type: 'box',
                 value: valueToInsert,
                 logicalIndex: insertIndex,
                 index: insertIndex,
                 logicalParent: logicalParent,
-                originalType: isLinkedList ? 'LINKEDLIST_NODE' : 'ARRAY_ELEMENT',
+                originalType: 'ARRAY_ELEMENT',
                 label: `${logicalParent}[${insertIndex}]`,
                 position: { x: 0, y: -5, z: 0 },
                 scale: { x: 0, y: 0, z: 0 },
@@ -303,58 +299,6 @@ export class AnimationController {
                 opacity: 1
               };
               this.sceneManager.addElement(newEl);
-
-              let edgeToRemove: string | null = null;
-              if (isLinkedList) {
-                const prevNode = nodeEls.find((el: any) => el.logicalIndex === insertIndex - 1);
-                const nextNode = elsToShift.find((el: any) => el.logicalIndex === insertIndex + 1);
-                
-                if (prevNode && nextNode) {
-                  const oldEdge = allContainerEls.find((el: any) => el.originalType === 'EDGE' && el.sourceId === prevNode.id && el.targetId === nextNode.id);
-                  if (oldEdge) {
-                     edgeToRemove = oldEdge.id;
-                     this.sceneManager.removeElement(edgeToRemove);
-                  }
-                }
-                
-                if (prevNode) {
-                  const edge1 = `edge_dyn_${prevNode.id}_${newElId}`;
-                  this.sceneManager.addElement({
-                    id: edge1,
-                    type: 'edge',
-                    position: { x: 0, y: 0, z: 0 },
-                    scale: { x: 1, y: 1, z: 1 },
-                    color: '#888888',
-                    sourceId: prevNode.id,
-                    targetId: newElId,
-                    directed: true,
-                    logicalParent: logicalParent,
-                    originalType: 'EDGE'
-                  } as any);
-                  this.relationshipManager.addRelationship({
-                    id: edge1, sourceId: prevNode.id, targetId: newElId, type: 'edge', directed: true
-                  });
-                }
-                if (nextNode) {
-                  const edge2 = `edge_dyn_${newElId}_${nextNode.id}`;
-                  this.sceneManager.addElement({
-                    id: edge2,
-                    type: 'edge',
-                    position: { x: 0, y: 0, z: 0 },
-                    scale: { x: 1, y: 1, z: 1 },
-                    color: '#888888',
-                    sourceId: newElId,
-                    targetId: nextNode.id,
-                    directed: true,
-                    logicalParent: logicalParent,
-                    originalType: 'EDGE'
-                  } as any);
-                  this.relationshipManager.addRelationship({
-                    id: edge2, sourceId: newElId, targetId: nextNode.id, type: 'edge', directed: true
-                  });
-                }
-              }
-
               this.layoutManager.updateLayout(this.sceneManager.getSceneGraph());
 
               if (newEl.worldTarget) {
@@ -362,9 +306,9 @@ export class AnimationController {
                  newEl.position.z = newEl.worldTarget.z;
               }
               
-              // Animate ALL elements to their new centered world target
-              const updatedContainerEls = nodeEls.filter((el: any) => el.id !== newEl.id);
-              updatedContainerEls.forEach((el: any) => {
+              // Animate ALL array elements to their new centered world target
+              const updatedArrayEls = this.sceneManager.getSceneGraph().filter((el: any) => el.logicalParent === logicalParent && el.id !== newEl.id);
+              updatedArrayEls.forEach((el: any) => {
                 if (el.worldTarget) {
                   this.animationScheduler.enqueue({
                     targets: el.position,
@@ -398,7 +342,7 @@ export class AnimationController {
                 targets: {},
                 duration: 1,
                 complete: () => {
-                  updatedContainerEls.forEach((el: any) => {
+                  updatedArrayEls.forEach((el: any) => {
                     el.label = `${el.logicalParent}[${el.logicalIndex}]`;
                   });
                   newEl.label = `${newEl.logicalParent}[${newEl.logicalIndex}]`;
@@ -414,43 +358,11 @@ export class AnimationController {
             const targetEl = gen.targetId ? this.sceneManager.getElement(gen.targetId) as any : null;
             
             if (logicalParent !== undefined && deleteIndex !== undefined && targetEl) {
-              const allContainerEls = this.sceneManager.getSceneGraph().filter((el: any) => el.logicalParent === logicalParent);
-              const nodeEls = allContainerEls.filter((el: any) => el.originalType !== 'EDGE');
-              const elsToShift = nodeEls.filter((el: any) => el.logicalIndex > deleteIndex);
+              const allArrayEls = this.sceneManager.getSceneGraph().filter((el: any) => el.logicalParent === logicalParent);
+              const elsToShift = allArrayEls.filter((el: any) => el.logicalIndex > deleteIndex);
               
-              const isLinkedList = nodeEls.some((el: any) => el.originalType === 'LINKEDLIST_NODE');
-
               // Synchronous layout update
               elsToShift.forEach((el: any) => el.logicalIndex -= 1);
-              
-              if (isLinkedList) {
-                const prevNode = nodeEls.find((el: any) => el.logicalIndex === deleteIndex - 1);
-                const nextNode = elsToShift.find((el: any) => el.logicalIndex === deleteIndex);
-                
-                // Remove edges connected to targetEl
-                const oldEdges = allContainerEls.filter((el: any) => el.originalType === 'EDGE' && (el.sourceId === targetEl.id || el.targetId === targetEl.id));
-                oldEdges.forEach((e: any) => this.sceneManager.removeElement(e.id));
-                
-                if (prevNode && nextNode) {
-                  const newEdgeId = `edge_dyn_${prevNode.id}_${nextNode.id}`;
-                  this.sceneManager.addElement({
-                    id: newEdgeId,
-                    type: 'edge',
-                    position: { x: 0, y: 0, z: 0 },
-                    scale: { x: 1, y: 1, z: 1 },
-                    color: '#888888',
-                    sourceId: prevNode.id,
-                    targetId: nextNode.id,
-                    directed: true,
-                    logicalParent: logicalParent,
-                    originalType: 'EDGE'
-                  } as any);
-                  this.relationshipManager.addRelationship({
-                    id: newEdgeId, sourceId: prevNode.id, targetId: nextNode.id, type: 'edge', directed: true
-                  });
-                }
-              }
-              
               this.layoutManager.updateLayout(this.sceneManager.getSceneGraph());
               
               // Animate removal
@@ -469,7 +381,7 @@ export class AnimationController {
               this.animationScheduler.commitGroup(true);
               
               // Animate ALL remaining elements to re-center
-              const remainingEls = nodeEls.filter((el: any) => el.id !== targetEl.id);
+              const remainingEls = allArrayEls.filter((el: any) => el.id !== targetEl.id);
               remainingEls.forEach((el: any) => {
                 if (el.worldTarget) {
                   this.animationScheduler.enqueue({
@@ -497,6 +409,199 @@ export class AnimationController {
                 }
               });
               this.animationScheduler.commitSequential();
+            }
+          } else if (actionName === 'INSERT_HEAD' || actionName === 'INSERT_TAIL') {
+            const logicalParent = (gen as any).payload?.logicalParent;
+            const valueToInsert = gen.args?.[gen.args.length - 1];
+            if (logicalParent && valueToInsert !== undefined) {
+              const allEls = this.sceneManager.getSceneGraph().filter((el: any) => el.logicalParent === logicalParent);
+              const edges = allEls.filter((el: any) => el.type === 'edge');
+              const headNode = allEls.find((el: any) => el.originalType === 'HEAD');
+              const nullNode = allEls.find((el: any) => el.originalType === 'NULL');
+              
+              if (headNode && nullNode) {
+                const newId = `obj_dyn_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+                const newEl: any = {
+                  id: newId,
+                  type: 'sphere',
+                  originalType: 'LINKEDLIST_NODE',
+                  logicalParent: logicalParent,
+                  value: valueToInsert,
+                  label: String(valueToInsert),
+                  position: { x: 0, y: -5, z: 0 },
+                  scale: { x: 0, y: 0, z: 0 },
+                  color: '#4facfe',
+                  emissiveIntensity: 0,
+                  emissiveColor: '#000000',
+                  lifecycleState: 'ACTIVE',
+                  visible: true,
+                  opacity: 1
+                };
+                this.sceneManager.addElement(newEl);
+
+                let edgeToRemove: any = null;
+                let prevNodeId: string = '';
+                let nextNodeId: string = '';
+
+                if (actionName === 'INSERT_HEAD') {
+                  const edgeFromHead = edges.find((e: any) => e.sourceId === headNode.id);
+                  if (edgeFromHead) {
+                    edgeToRemove = edgeFromHead;
+                    prevNodeId = headNode.id;
+                    nextNodeId = (edgeFromHead as any).targetId;
+                  }
+                } else { // INSERT_TAIL
+                  const edgeToNull = edges.find((e: any) => e.targetId === nullNode.id);
+                  if (edgeToNull) {
+                    edgeToRemove = edgeToNull;
+                    prevNodeId = (edgeToNull as any).sourceId;
+                    nextNodeId = nullNode.id;
+                  }
+                }
+
+                if (edgeToRemove) {
+                  this.sceneManager.removeElement(edgeToRemove.id);
+                  
+                  const edge1Id = `edge_dyn_${prevNodeId}_${newId}`;
+                  const edge2Id = `edge_dyn_${newId}_${nextNodeId}`;
+                  
+                  this.sceneManager.addElement({
+                    id: edge1Id, type: 'edge', position: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 }, color: '#888888',
+                    sourceId: prevNodeId, targetId: newId, directed: true, logicalParent, originalType: 'EDGE'
+                  } as any);
+                  
+                  this.sceneManager.addElement({
+                    id: edge2Id, type: 'edge', position: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 }, color: '#888888',
+                    sourceId: newId, targetId: nextNodeId, directed: true, logicalParent, originalType: 'EDGE'
+                  } as any);
+                  
+                  this.relationshipManager.addRelationship({ id: edge1Id, sourceId: prevNodeId, targetId: newId, type: 'edge', directed: true });
+                  this.relationshipManager.addRelationship({ id: edge2Id, sourceId: newId, targetId: nextNodeId, type: 'edge', directed: true });
+                }
+
+                this.layoutManager.updateLayout(this.sceneManager.getSceneGraph());
+
+                if (newEl.worldTarget) {
+                  newEl.position.x = newEl.worldTarget.x;
+                  newEl.position.z = newEl.worldTarget.z;
+                }
+
+                const updatedArrayEls = this.sceneManager.getSceneGraph().filter((el: any) => el.logicalParent === logicalParent && el.id !== newEl.id && el.originalType !== 'EDGE');
+                updatedArrayEls.forEach((el: any) => {
+                  if (el.worldTarget) {
+                    this.animationScheduler.enqueue({
+                      targets: el.position,
+                      x: el.worldTarget.x,
+                      y: el.worldTarget.y,
+                      z: el.worldTarget.z,
+                      duration: 500,
+                      easing: 'easeOutCubic'
+                    });
+                  }
+                });
+                this.animationScheduler.commitGroup(true);
+
+                if (newEl.worldTarget) {
+                  this.animationScheduler.enqueue({
+                    targets: newEl.position,
+                    y: newEl.worldTarget.y,
+                    duration: 600,
+                    easing: 'easeOutBounce'
+                  });
+                  this.animationScheduler.enqueue({
+                    targets: newEl.scale,
+                    x: 1, y: 1, z: 1,
+                    duration: 600,
+                    easing: 'easeOutBack'
+                  });
+                  this.animationScheduler.commitGroup(true);
+                }
+
+                this.animationScheduler.enqueue({
+                  targets: {},
+                  duration: 1,
+                  complete: () => {
+                    this.stateManager.saveState(this.sceneManager.getSceneGraph(), `${actionName} ${valueToInsert}`, this.animationScheduler.getCurrentTime());
+                    this.eventDispatcher.dispatch('STATE_UPDATED', this.stateManager.getCurrentState());
+                  }
+                });
+                this.animationScheduler.commitSequential();
+              }
+            }
+          } else if (actionName === 'DELETE_HEAD' || actionName === 'DELETE_TAIL') {
+            const logicalParent = (gen as any).payload?.logicalParent;
+            if (logicalParent) {
+              const allEls = this.sceneManager.getSceneGraph().filter((el: any) => el.logicalParent === logicalParent);
+              const edges = allEls.filter((el: any) => el.type === 'edge');
+              const headNode = allEls.find((el: any) => el.originalType === 'HEAD');
+              const nullNode = allEls.find((el: any) => el.originalType === 'NULL');
+              
+              if (headNode && nullNode) {
+                let nodeToDeleteId: string | null = null;
+                let prevNodeId: string = headNode.id;
+                let nextNodeId: string = nullNode.id;
+                
+                if (actionName === 'DELETE_HEAD') {
+                  const edgeFromHead = edges.find((e: any) => e.sourceId === headNode.id);
+                  if (edgeFromHead) {
+                    nodeToDeleteId = (edgeFromHead as any).targetId;
+                    if (nodeToDeleteId === nullNode.id) nodeToDeleteId = null; // empty list
+                  }
+                } else { // DELETE_TAIL
+                  const edgeToNull = edges.find((e: any) => e.targetId === nullNode.id);
+                  if (edgeToNull) {
+                    nodeToDeleteId = (edgeToNull as any).sourceId;
+                    if (nodeToDeleteId === headNode.id) nodeToDeleteId = null; // empty list
+                  }
+                }
+                
+                if (nodeToDeleteId) {
+                  const edgeToDel = edges.find((e: any) => e.targetId === nodeToDeleteId);
+                  const edgeFromDel = edges.find((e: any) => e.sourceId === nodeToDeleteId);
+                  
+                  if (edgeToDel) {
+                    prevNodeId = (edgeToDel as any).sourceId;
+                    this.sceneManager.removeElement(edgeToDel.id);
+                  }
+                  if (edgeFromDel) {
+                    nextNodeId = (edgeFromDel as any).targetId;
+                    this.sceneManager.removeElement(edgeFromDel.id);
+                  }
+                  
+                  const newEdgeId = `edge_dyn_${prevNodeId}_${nextNodeId}`;
+                  this.sceneManager.addElement({
+                    id: newEdgeId, type: 'edge', position: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 }, color: '#888888',
+                    sourceId: prevNodeId, targetId: nextNodeId, directed: true, logicalParent, originalType: 'EDGE'
+                  } as any);
+                  this.relationshipManager.addRelationship({ id: newEdgeId, sourceId: prevNodeId, targetId: nextNodeId, type: 'edge', directed: true });
+                  
+                  const targetEl = this.sceneManager.getElement(nodeToDeleteId) as any;
+                  this.layoutManager.updateLayout(this.sceneManager.getSceneGraph());
+                  
+                  if (targetEl) {
+                    this.animationScheduler.enqueue({ targets: targetEl.scale, x: 0, y: 0, z: 0, duration: 500, easing: 'easeInBack' });
+                    this.animationScheduler.enqueue({ targets: targetEl.position, y: '+=2', duration: 500, easing: 'easeInBack' });
+                    this.animationScheduler.commitGroup(true);
+                  }
+                  
+                  const remainingEls = allEls.filter((el: any) => el.id !== nodeToDeleteId && el.originalType !== 'EDGE');
+                  remainingEls.forEach((el: any) => {
+                    if (el.worldTarget) {
+                      this.animationScheduler.enqueue({ targets: el.position, x: el.worldTarget.x, y: el.worldTarget.y, z: el.worldTarget.z, duration: 500, easing: 'easeOutCubic' });
+                    }
+                  });
+                  this.animationScheduler.commitGroup(true);
+                  
+                  this.animationScheduler.enqueue({
+                    targets: {}, duration: 1, complete: () => {
+                      this.sceneManager.removeElement(nodeToDeleteId!);
+                      this.stateManager.saveState(this.sceneManager.getSceneGraph(), `${actionName}`, this.animationScheduler.getCurrentTime());
+                      this.eventDispatcher.dispatch('STATE_UPDATED', this.stateManager.getCurrentState());
+                    }
+                  });
+                  this.animationScheduler.commitSequential();
+                }
+              }
             }
           } else if (actionName === 'UPDATE') {
             const targetEl = gen.targetId ? this.sceneManager.getElement(gen.targetId) as any : null;

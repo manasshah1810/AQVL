@@ -116,6 +116,24 @@ export class SemanticValidator {
             this.visitExpression(prop.value);
           }
         }
+      } else {
+        // Handle LinkedListDeclNode, StackDeclNode, QueueDeclNode, etc.
+        const decl = variable as any;
+        if (decl.name) {
+          let t = 'ARRAY'; // fallback
+          if (variable.type.endsWith('DeclNode')) {
+            t = variable.type.replace('DeclNode', '').toUpperCase();
+          }
+          if (
+            !this.currentSymbolTable.define({
+              name: decl.name.name,
+              type: t as any,
+              declaredAt: decl.name.pos,
+            })
+          ) {
+            this.reportError(decl.name, `Variable '${decl.name.name}' is already declared.`);
+          }
+        }
       }
     }
   }
@@ -207,8 +225,8 @@ export class SemanticValidator {
         const arrSymbol = this.currentSymbolTable.lookup(node.array.name);
         if (!arrSymbol) {
           this.reportError(node.array, `Undeclared array '${node.array.name}'.`);
-        } else if (arrSymbol.type !== 'ARRAY') {
-          this.reportError(node.array, `Identifier '${node.array.name}' is not an array.`);
+        } else if (!['ARRAY', 'LINKEDLIST', 'STACK', 'QUEUE', 'TREE', 'HEAP', 'TRIE', 'GRAPH'].includes(arrSymbol.type)) {
+          this.reportError(node.array, `Identifier '${node.array.name}' is not indexable.`);
         }
         this.visitExpression(node.index);
         break;

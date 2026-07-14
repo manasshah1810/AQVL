@@ -33,8 +33,16 @@ export const EdgeRenderer: React.FC<EdgeRendererProps> = ({ element, sceneState 
         points = curve.getPoints(20);
       }
       
-      // Update line points
-      lineRef.current.setPoints(points);
+      // Update line points safely for Drei Line / Line2
+      if (lineRef.current.geometry && typeof lineRef.current.geometry.setPositions === 'function') {
+        const flatArray: number[] = [];
+        points.forEach((p: THREE.Vector3) => {
+          flatArray.push(p.x, p.y, p.z);
+        });
+        lineRef.current.geometry.setPositions(flatArray);
+      } else if (typeof lineRef.current.setPoints === 'function') {
+        lineRef.current.setPoints(points);
+      }
 
       // If directed, update arrowhead position/rotation
       if (element.directed && arrowRef.current) {

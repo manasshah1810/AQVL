@@ -14,6 +14,8 @@ export interface AQIRObject {
   value?: any;
   args?: any[]; // for storing structural arguments like targets of an edge
   label?: string;
+  originalType?: string;
+  color?: string;
   properties?: Record<string, any>;
 }
 

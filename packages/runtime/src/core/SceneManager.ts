@@ -14,22 +14,22 @@ export class SceneManager {
 
     // Bootstrap visual elements strictly from the compiler's Object payload
     objects.forEach((obj) => {
-      if (obj.type === 'ARRAY_ELEMENT' || obj.type === 'TREE_NODE' || obj.type === 'NODE' || obj.type === 'VERTEX' || obj.type === 'MATRIX_ELEMENT' || obj.type === 'GRID_ELEMENT') {
-        const el: BoxElement = {
+      if (obj.type === 'ARRAY_ELEMENT' || obj.type === 'TREE_NODE' || obj.type === 'NODE' || obj.type === 'VERTEX' || obj.type === 'MATRIX_ELEMENT' || obj.type === 'GRID_ELEMENT' || obj.type === 'sphere') {
+        const el: any = {
           id: obj.id, // e.g. obj_001
-          type: 'box',
+          type: obj.type === 'sphere' ? 'sphere' : 'box',
           value: obj.value,
           index: obj.logicalIndex || 0,
           logicalIndex: obj.logicalIndex,
           logicalParent: obj.logicalParent,
-          originalType: obj.type,
+          originalType: obj.originalType || obj.type,
           row: obj.properties?.row,
           col: obj.properties?.col,
           columns: obj.properties?.columns,
           label: obj.label || (obj.logicalParent ? `${obj.logicalParent}[${obj.logicalIndex || 0}]` : obj.id),
           position: { x: 0, y: 0, z: 0 }, // LayoutManager handles this
           scale: { x: 1, y: 1, z: 1 },
-          color: '#4facfe',
+          color: obj.color || '#4facfe',
           emissiveIntensity: 0,
           emissiveColor: '#000000',
           lifecycleState: 'ACTIVE',

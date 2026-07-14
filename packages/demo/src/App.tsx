@@ -14,7 +14,7 @@ import { IDEExecutionDebugger } from './components/IDEExecutionDebugger';
 import { SortingScripts } from './examples/SortingLibrary';
 import { LinkedListScripts } from './examples/LinkedListLibrary';
 
-const initialScript = LinkedListScripts.ComprehensiveTest;
+const initialScript = LinkedListScripts.PointerArchitecture;
 
 type PipelineStatus = 'pending' | 'success' | 'error';
 

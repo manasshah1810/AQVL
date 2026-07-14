@@ -9,7 +9,7 @@ export interface SemanticDiagnostic {
   message: string;
 }
 
-export type SymbolType = 'ARRAY' | 'SCALAR' | 'COLOR' | 'SCENE';
+export type SymbolType = 'ARRAY' | 'SCALAR' | 'COLOR' | 'SCENE' | 'LINKEDLIST' | 'STACK' | 'QUEUE' | 'TREE' | 'HEAP' | 'TRIE' | 'GRAPH' | 'NODE' | 'EDGE';
 
 export interface SymbolRecord {
   name: string;

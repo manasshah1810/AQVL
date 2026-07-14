@@ -109,8 +109,19 @@ export class AQIRGenerator {
           elements = userInputs[list.name.name];
         }
         
-        // this.env.set(`LENGTH(${list.name.name})`, elements.length);
+        const headId = this.generateId();
+        const nullId = this.generateId();
         
+        this.generatedObjects.push({
+          id: headId,
+          type: 'sphere',
+          originalType: 'HEAD',
+          logicalParent: list.name.name,
+          value: 'HEAD',
+          label: 'HEAD',
+          color: '#ff6b6b' // Distinct red color for boundary
+        });
+
         const nodeIds: string[] = [];
         for (let i = 0; i < elements.length; i++) {
           const id = this.generateId();
@@ -119,48 +130,45 @@ export class AQIRGenerator {
           
           this.generatedObjects.push({
             id,
-            type: 'LINKEDLIST_NODE',
+            type: 'sphere',
+            originalType: 'LINKEDLIST_NODE',
             logicalParent: list.name.name,
-            logicalIndex: i,
             value: elements[i],
-            label: `${list.name.name}[${i}]`,
+            label: `${elements[i]}`
           });
         }
+        
+        this.generatedObjects.push({
+          id: nullId,
+          type: 'sphere',
+          originalType: 'NULL',
+          logicalParent: list.name.name,
+          value: 'NULL',
+          label: 'NULL',
+          color: '#ff6b6b' // Distinct red color for boundary
+        });
 
-        // Generate edges based on variant
-        const variant = list.variant || 'SINGLY';
+        // Generate NEXT edges
+        let prevId = headId;
         for (let i = 0; i < nodeIds.length; i++) {
-          if (i < nodeIds.length - 1) {
-            // Forward edge
-            this.generatedObjects.push({
-              id: this.generateId(),
-              type: 'EDGE',
-              logicalParent: list.name.name,
-              args: [nodeIds[i], nodeIds[i + 1]],
-              properties: { directed: true, forward: true }
-            });
-          }
-          if (variant === 'DOUBLY' && i > 0) {
-            // Backward edge
-            this.generatedObjects.push({
-              id: this.generateId(),
-              type: 'EDGE',
-              logicalParent: list.name.name,
-              args: [nodeIds[i], nodeIds[i - 1]],
-              properties: { directed: true, backward: true }
-            });
-          }
-        }
-        if (variant === 'CIRCULAR' && nodeIds.length > 1) {
-          // Circular edge (tail to head)
           this.generatedObjects.push({
             id: this.generateId(),
             type: 'EDGE',
             logicalParent: list.name.name,
-            args: [nodeIds[nodeIds.length - 1], nodeIds[0]],
-            properties: { directed: true, circular: true }
+            args: [prevId, nodeIds[i]],
+            properties: { directed: true, forward: true }
           });
+          prevId = nodeIds[i];
         }
+        
+        // Link last node to NULL
+        this.generatedObjects.push({
+          id: this.generateId(),
+          type: 'EDGE',
+          logicalParent: list.name.name,
+          args: [prevId, nullId],
+          properties: { directed: true, forward: true }
+        });
       } else if (v.type === 'StackDeclNode') {
         const stack = v as StackDeclNode;
         let elements = stack.initialElements ? stack.initialElements.map(e => e.value) : [];
@@ -551,6 +559,8 @@ export class AQIRGenerator {
         if (actionNode.args[0]?.type === 'ArrayAccessNode') {
           logicalParent = actionNode.args[0].array.name;
           logicalIndex = actionNode.args[0].index.value;
+        } else if (actionNode.args[0]?.type === 'IdentifierNode') {
+          logicalParent = actionNode.args[0].name;
         }
 
         outInstructions.push({

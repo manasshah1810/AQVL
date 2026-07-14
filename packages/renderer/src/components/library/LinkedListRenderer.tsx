@@ -10,7 +10,7 @@ export interface LinkedListRendererProps {
 }
 
 export const LinkedListRenderer: React.FC<LinkedListRendererProps> = ({ parentName, elements, sceneState }) => {
-  const nodes = elements.filter(el => el.originalType === 'LINKEDLIST_NODE');
+  const nodes = elements.filter(el => el.originalType === 'LINKEDLIST_NODE' || el.originalType === 'HEAD' || el.originalType === 'NULL');
   const edges = elements.filter(el => el.type === 'edge');
 
   let minX = Infinity;

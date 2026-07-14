@@ -2,6 +2,7 @@ import React from 'react';
 import { SceneElement, BoxElement, EdgeElement, SceneState } from '@aqvl/runtime';
 import { BoxRenderer } from './elements/BoxRenderer';
 import { EdgeRenderer } from './elements/EdgeRenderer';
+import { SphereRenderer } from './elements/SphereRenderer';
 
 export interface SceneElementRendererProps {
   element: SceneElement;
@@ -13,6 +14,8 @@ export const SceneElementRenderer: React.FC<SceneElementRendererProps> = ({ elem
   switch (element.type) {
     case 'box':
       return <BoxRenderer element={element as BoxElement} />;
+    case 'sphere':
+      return <SphereRenderer element={element} />;
     case 'edge':
       return <EdgeRenderer element={element as EdgeElement} sceneState={sceneState} />;
     default:
