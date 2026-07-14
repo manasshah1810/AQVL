@@ -9,37 +9,11 @@ import { IDEEditor } from './components/IDEEditor';
 import { IDEToolbar } from './components/IDEToolbar';
 import { IDECompilerPanel } from './components/IDECompilerPanel';
 import { IDEBottomPanel } from './components/IDEBottomPanel';
+import { IDEExecutionDebugger } from './components/IDEExecutionDebugger';
 
-// Full BubbleSort script per requirements
-const initialScript = `SCENE BubbleSort
+import { SortingScripts } from './examples/SortingLibrary';
 
-DECLARE
-  ARRAY arr = [5,2,4,1]
-
-SEQUENCE
-  COMPARE arr[0] arr[1]
-  SWAP arr[0] arr[1]
-
-  COMPARE arr[1] arr[2]
-
-  COMPARE arr[2] arr[3]
-  SWAP arr[2] arr[3]
-
-  COMPARE arr[0] arr[1]
-
-  COMPARE arr[1] arr[2]
-  SWAP arr[1] arr[2]
-
-  COMPARE arr[2] arr[3]
-
-  COMPARE arr[0] arr[1]
-  SWAP arr[0] arr[1]
-
-  COMPARE arr[1] arr[2]
-
-  COMPARE arr[2] arr[3]
-END
-`;
+const initialScript = SortingScripts.ArrayTest;
 
 type PipelineStatus = 'pending' | 'success' | 'error';
 
@@ -70,6 +44,7 @@ export default function App() {
   
   // App State
   const [consoleLogs, setConsoleLogs] = useState<{type: 'log'|'error'|'success', text: string}[]>([]);
+  const [userInputs, setUserInputs] = useState<Record<string, any>>({});
   const [stats, setStats] = useState({
     compileTime: 0,
     executionTime: 0,
@@ -97,7 +72,7 @@ export default function App() {
     return count;
   };
 
-  const handleCompile = () => {
+  const handleCompile = (inputs: Record<string, any> = userInputs) => {
     setConsoleLogs([]);
     setPipelineState({
       lexer: 'pending', parser: 'pending', semantic: 'pending', 
@@ -151,7 +126,7 @@ export default function App() {
 
       // 4. Optimizer
       const optimizer = new Optimizer();
-      const optimizedAst = optimizer.optimize(generatedAst);
+      const optimizedAst = optimizer.optimize(generatedAst, inputs);
       setPipelineState(p => ({ ...p, optimizer: 'success' }));
       addLog('✓ Optimizer Complete', 'success');
 
@@ -202,33 +177,31 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   
-  // Set up animation loop polling to update current instruction index (hack for timeline)
-  // Or we just approximate the instruction progress over time since anime.js doesn't natively expose it 
-  // via a callback per instruction unless we hack TimelineEngine. We'll use a rough polling for now.
   useEffect(() => {
-    let interval: number;
-    if (isPlaying && engineRef.current) {
-      interval = window.setInterval(() => {
-        if (!engineRef.current) return;
-        const timelineEngine = engineRef.current.timelineEngine as any;
-        if (timelineEngine && timelineEngine.timeline) {
-          // timeline progress 0 to 100
-          const progress = timelineEngine.timeline.progress;
-          const totalInst = aqir?.instructions?.length || 0;
-          if (totalInst > 0) {
-            let nextIdx = Math.floor((progress / 100) * totalInst);
-            if (nextIdx >= totalInst) nextIdx = totalInst - 1;
-            if (progress === 100) nextIdx = totalInst;
-            setCurrentInstructionIndex(nextIdx);
-          }
-          if (progress === 100 && isPlaying) {
-            setIsPlaying(false);
-          }
-        }
-      }, 100);
-    }
-    return () => clearInterval(interval);
-  }, [isPlaying, aqir]);
+    if (!engineRef.current) return;
+    
+    const handleStart = (idx: any) => {
+      setCurrentInstructionIndex(idx);
+    };
+    
+    const handleComplete = (idx: any) => {
+      // Just visually track, the actual index increments
+    };
+    
+    const handleFinished = () => {
+      setIsPlaying(false);
+    };
+
+    engineRef.current.eventDispatcher.on('INSTRUCTION_START', handleStart);
+    engineRef.current.eventDispatcher.on('INSTRUCTION_COMPLETE', handleComplete);
+    engineRef.current.eventDispatcher.on('EXECUTION_FINISHED', handleFinished);
+
+    return () => {
+      if (engineRef.current) {
+        // Simple cleanup for now
+      }
+    };
+  }, [pipelineState.runtime, isPlaying]);
 
   const handleRun = () => {
     if (engineRef.current) {
@@ -317,9 +290,17 @@ export default function App() {
 
         <div className="ide-panel ide-right-panel">
           <div className="ide-panel-header" style={{ backgroundColor: '#1a1a1a' }}>Visualization</div>
-          <div className="ide-panel-content" style={{ backgroundColor: '#000' }}>
+          <div className="ide-panel-content" style={{ backgroundColor: '#000', position: 'relative' }}>
             {sceneState ? (
-              <AQVECanvas sceneState={sceneState} />
+              <>
+                <AQVECanvas sceneState={sceneState} />
+                <IDEExecutionDebugger 
+                  aqir={aqir} 
+                  currentInstructionIndex={currentInstructionIndex} 
+                  isPlaying={isPlaying} 
+                  pipelineState={pipelineState} 
+                />
+              </>
             ) : (
               <div style={{ color: 'var(--text-secondary)', padding: '20px', textAlign: 'center' }}>
                 {pipelineState.runtime === 'error' ? 'Compilation Failed' : 'Waiting for Compilation...'}

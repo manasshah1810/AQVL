@@ -1,4 +1,4 @@
-export type { SceneElement, BoxElement } from './models/SceneElement';
+export type { SceneElement, BoxElement, EdgeElement } from './models/SceneElement';
 export type { SceneState } from './models/SceneState';
 export { SceneManager } from './core/SceneManager';
 export { StateManager } from './core/StateManager';

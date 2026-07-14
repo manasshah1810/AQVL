@@ -14,12 +14,13 @@
     "allowImportingTsExtensions": true,
     "moduleDetection": "force",
     "noEmit": true,
-    "jsx": "react-jsx",
+    "jsx": "react",
     /* Linting */
     "noFallthroughCasesInSwitch": true,
     "paths": {
       "@aqvl/*": ["../../packages/*/src"]
-    }
+    },
+    "types": ["react", "react-dom"]
   },
   "include": ["src"]
 }

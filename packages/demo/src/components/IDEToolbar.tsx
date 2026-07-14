@@ -34,7 +34,9 @@ export function IDEToolbar({
       <div style={{ width: '1px', height: '24px', backgroundColor: 'var(--border-color)', margin: '0 8px' }}></div>
       
       {!isPlaying ? (
-        <button onClick={canRun ? onRun : onResume} disabled={!canRun}>Run</button>
+        <button onClick={onRun} disabled={!canRun}>
+          {canRun ? 'Run / Resume' : 'Run'}
+        </button>
       ) : (
         <button onClick={onPause}>Pause</button>
       )}

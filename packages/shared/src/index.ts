@@ -7,4 +7,7 @@ export type {
   HighlightObjectInstruction,
   LoopInstruction,
   WaitInstruction,
+  LinkObjectsInstruction,
+  GenericActionInstruction,
+  SetStateInstruction,
 } from './aqir/types';

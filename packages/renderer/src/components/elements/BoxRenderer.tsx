@@ -57,20 +57,19 @@ export const BoxRenderer: React.FC<BoxRendererProps> = ({ element }) => {
         >
           {String(element.value)}
         </Text>
-      </group>
 
-      {/* Fixed part: the label remains at the element's original logical slot */}
-      {element.label && element.logicalIndex !== undefined && (
-        <Text
-          position={[element.logicalIndex * 1.5, -0.8, 0]}
-          fontSize={0.25}
-          color="#aaaaaa"
-          anchorX="center"
-          anchorY="middle"
-        >
-          {element.label}
-        </Text>
-      )}
+        {element.label && element.logicalIndex !== undefined && (
+          <Text
+            position={[0, -0.8, 0]}
+            fontSize={0.25}
+            color="#aaaaaa"
+            anchorX="center"
+            anchorY="middle"
+          >
+            {element.label}
+          </Text>
+        )}
+      </group>
     </group>
   );
 };

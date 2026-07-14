@@ -527,3 +527,9 @@ pre {
   background: var(--accent-glow);
   color: var(--text-primary);
 }
+
+/* ── Form Elements ───────────────────────────────────────── */
+select option, select optgroup {
+  background-color: var(--bg-surface);
+  color: var(--text-primary);
+}

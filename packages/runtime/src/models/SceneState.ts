@@ -10,4 +10,9 @@ export interface SceneState {
    * Optional description of the action that caused this state (e.g., 'Swap arr[0] and arr[1]')
    */
   description?: string;
+
+  /**
+   * The timeline position in milliseconds when this state snapshot was created.
+   */
+  timeMs?: number;
 }

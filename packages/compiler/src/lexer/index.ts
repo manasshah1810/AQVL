@@ -20,7 +20,15 @@ export interface Token {
 
 const KEYWORDS = new Set([
   'SCENE', 'DECLARE', 'ARRAY', 'SEQUENCE', 
-  'COMPARE', 'SWAP', 'HIGHLIGHT', 'WAIT', 'END'
+  'COMPARE', 'SWAP', 'HIGHLIGHT', 'WAIT', 'END',
+  'LINKEDLIST', 'TYPE', 'SINGLY', 'DOUBLY', 'CIRCULAR',
+  'NODE', 'EDGE', 'POINTER', 'STACK', 'QUEUE', 'HEAP',
+  'GRAPH', 'VERTEX', 'GRAPH_EDGE', 'TREE', 'TREE_NODE',
+  'LABEL', 'ANNOTATION', 'LINK', 'RELATION', 'DIRECTED', 'UNDIRECTED',
+  'TO', 'FROM', 'PARENT', 'CHILD',
+  'INSERT', 'DELETE', 'MOVE', 'CONNECT', 'DISCONNECT', 'PUSH', 'POP', 'PEEK',
+  'ENQUEUE', 'DEQUEUE', 'FRONT', 'REAR', 'VISIT', 'MARK', 'TRAVERSE', 'ROTATE', 'SEARCH', 'HEAPIFY', 'UPDATE',
+  'SET', 'STATE', 'LOOP', 'LENGTH', 'NULL', 'TRIE', 'IF'
 ]);
 
 export class Lexer {
@@ -61,7 +69,29 @@ export class Lexer {
       return this.readNumber();
     }
 
-    if ('=[]+,'.includes(c)) {
+    if (c === '"' || c === "'") {
+      return this.readString();
+    }
+
+    if (c === '<' && this.peekNext() === '-' && this.peekNext(2) === '>') {
+      const pos = this.getPos();
+      this.advance(); this.advance(); this.advance();
+      return { type: TokenType.Symbol, value: '<->', pos };
+    }
+
+    if (c === '<' && this.peekNext() === '-') {
+      const pos = this.getPos();
+      this.advance(); this.advance();
+      return { type: TokenType.Symbol, value: '<-', pos };
+    }
+
+    if (c === '-' && this.peekNext() === '>') {
+      const pos = this.getPos();
+      this.advance(); this.advance();
+      return { type: TokenType.Symbol, value: '->', pos };
+    }
+
+    if ('=[]+,{}:-<>()'.includes(c)) {
       const pos = this.getPos();
       this.advance();
       return { type: TokenType.Symbol, value: c, pos };
@@ -79,6 +109,10 @@ export class Lexer {
         this.line++;
         this.column = 1;
         this.current++;
+      } else if (c === '/' && this.peekNext() === '/') {
+        while (!this.isAtEnd() && this.peek() !== '\n') {
+          this.advance();
+        }
       } else {
         break;
       }
@@ -98,10 +132,33 @@ export class Lexer {
   private readNumber(): Token {
     const pos = this.getPos();
     let value = '';
-    while (!this.isAtEnd() && this.isDigit(this.peek())) {
-      value += this.advance();
+    let hasDot = false;
+    while (!this.isAtEnd()) {
+      const c = this.peek();
+      if (this.isDigit(c)) {
+        value += this.advance();
+      } else if (c === '.' && !hasDot) {
+        hasDot = true;
+        value += this.advance();
+      } else {
+        break;
+      }
     }
     return { type: TokenType.Number, value, pos };
+  }
+
+  private readString(): Token {
+    const pos = this.getPos();
+    const quote = this.advance(); // consume opening quote
+    let value = '';
+    while (!this.isAtEnd() && this.peek() !== quote) {
+      value += this.advance();
+    }
+    if (this.isAtEnd()) {
+      throw new Error(`Unterminated string at line ${pos.line}, column ${pos.column}`);
+    }
+    this.advance(); // consume closing quote
+    return { type: TokenType.String, value, pos };
   }
 
   private isAlpha(c: string): boolean {
@@ -122,6 +179,11 @@ export class Lexer {
 
   private peek(): string {
     return this.source.charAt(this.current);
+  }
+
+  private peekNext(offset: number = 1): string {
+    if (this.current + offset >= this.source.length) return '\0';
+    return this.source.charAt(this.current + offset);
   }
 
   private advance(): string {

@@ -40,7 +40,13 @@ export interface SequenceBlockNode extends ASTNode {
 }
 
 // Declarations
-export type VariableDeclNode = ArrayDeclNode; // Extensible for other types
+export type VariableDeclNode = ArrayDeclNode | ObjectDeclNode | LinkedListDeclNode | StackDeclNode | QueueDeclNode | TreeDeclNode | HeapDeclNode | TrieDeclNode | GraphDeclNode;
+
+export interface PropertyNode extends ASTNode {
+  type: 'PropertyNode';
+  name: string;
+  value: ExpressionNode;
+}
 
 export interface ArrayDeclNode extends ASTNode {
   type: 'ArrayDeclNode';
@@ -48,8 +54,58 @@ export interface ArrayDeclNode extends ASTNode {
   initialElements?: LiteralNode[];
 }
 
+export interface ObjectDeclNode extends ASTNode {
+  type: 'ObjectDeclNode';
+  objectType: string; // e.g., 'NODE', 'EDGE'
+  name: IdentifierNode;
+  args?: ExpressionNode[]; // Using 'args' to avoid conflict with 'arguments' JS keyword
+  properties?: PropertyNode[];
+}
+
+export interface LinkedListDeclNode extends ASTNode {
+  type: 'LinkedListDeclNode';
+  name: IdentifierNode;
+  initialElements?: LiteralNode[];
+  variant?: 'SINGLY' | 'DOUBLY' | 'CIRCULAR';
+}
+
+export interface StackDeclNode extends ASTNode {
+  type: 'StackDeclNode';
+  name: IdentifierNode;
+  initialElements?: LiteralNode[];
+}
+
+export interface QueueDeclNode extends ASTNode {
+  type: 'QueueDeclNode';
+  name: IdentifierNode;
+  initialElements?: LiteralNode[];
+}
+
+export interface TreeDeclNode extends ASTNode {
+  type: 'TreeDeclNode';
+  name: IdentifierNode;
+  initialElements?: LiteralNode[];
+}
+export interface HeapDeclNode extends ASTNode {
+  type: 'HeapDeclNode';
+  name: IdentifierNode;
+  initialElements?: LiteralNode[];
+}
+
+export interface TrieDeclNode extends ASTNode {
+  type: 'TrieDeclNode';
+  name: IdentifierNode;
+  initialElements?: LiteralNode[]; // Can be strings
+}
+
+export interface GraphDeclNode extends ASTNode {
+  type: 'GraphDeclNode';
+  name: IdentifierNode;
+  initialElements?: LiteralNode[];
+}
+
 // Statements
-export type StatementNode = CompareNode | SwapNode | HighlightNode | LoopNode | ExpressionStatementNode | WaitNode;
+export type StatementNode = CompareNode | SwapNode | HighlightNode | LoopNode | IfNode | ExpressionStatementNode | WaitNode | RelationshipNode | GenericActionNode | SetStateNode;
 
 export interface CompareNode extends ASTNode {
   type: 'CompareNode';
@@ -66,6 +122,26 @@ export interface SwapNode extends ASTNode {
 
 export interface WaitNode extends ASTNode {
   type: 'WaitNode';
+}
+
+export interface RelationshipNode extends ASTNode {
+  type: 'RelationshipNode';
+  source: ExpressionNode;
+  target: ExpressionNode;
+  directed: boolean;
+  relationType: string;
+}
+
+export interface GenericActionNode extends ASTNode {
+  type: 'GenericActionNode';
+  actionName: string;
+  args: ExpressionNode[];
+}
+
+export interface SetStateNode extends ASTNode {
+  type: 'SetStateNode';
+  target: ExpressionNode;
+  stateName: string;
 }
 
 export interface HighlightNode extends ASTNode {
@@ -85,6 +161,12 @@ export interface LoopNode extends ASTNode {
 export interface ExpressionStatementNode extends ASTNode {
   type: 'ExpressionStatementNode';
   expression: ExpressionNode;
+}
+
+export interface IfNode extends ASTNode {
+  type: 'IfNode';
+  condition: ExpressionNode;
+  body: StatementNode[];
 }
 
 // Expressions

@@ -18,6 +18,9 @@ import {
   ArrayAccessNode,
   BinaryOpNode,
   LiteralNode,
+  RelationshipNode,
+  GenericActionNode,
+  SetStateNode,
 } from '../ast/types';
 import { SymbolTable, SemanticDiagnostic } from './types';
 
@@ -96,6 +99,23 @@ export class SemanticValidator {
         ) {
           this.reportError(arrDecl.name, `Variable '${arrDecl.name.name}' is already declared.`);
         }
+      } else if (variable.type === 'ObjectDeclNode') {
+        const objDecl = variable as any; // Avoid importing ObjectDeclNode if missing
+        if (
+          !this.currentSymbolTable.define({
+            name: objDecl.name.name,
+            type: objDecl.objectType,
+            declaredAt: objDecl.name.pos,
+          })
+        ) {
+          this.reportError(objDecl.name, `Variable '${objDecl.name.name}' is already declared.`);
+        }
+        
+        if (objDecl.properties) {
+          for (const prop of objDecl.properties) {
+            this.visitExpression(prop.value);
+          }
+        }
       }
     }
   }
@@ -133,6 +153,18 @@ export class SemanticValidator {
         break;
       case 'ExpressionStatementNode':
         this.visitExpression(node.expression);
+        break;
+      case 'RelationshipNode':
+        this.visitExpression(node.source);
+        this.visitExpression(node.target);
+        break;
+      case 'GenericActionNode':
+        for (const arg of node.args) {
+          this.visitExpression(arg);
+        }
+        break;
+      case 'SetStateNode':
+        this.visitExpression(node.target);
         break;
     }
   }

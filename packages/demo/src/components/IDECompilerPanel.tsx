@@ -11,11 +11,12 @@ interface IDECompilerPanelProps {
     optimizer: 'pending' | 'success' | 'error';
     generator: 'pending' | 'success' | 'error';
     runtime: 'pending' | 'success' | 'error';
+    expandedAst?: any;
   };
 }
 
 export function IDECompilerPanel({ tokens, ast, aqir, pipelineState }: IDECompilerPanelProps) {
-  const [activeTab, setActiveTab] = useState<'pipeline' | 'tokens' | 'ast' | 'aqir'>('pipeline');
+  const [activeTab, setActiveTab] = useState<'pipeline' | 'tokens' | 'ast' | 'expandedAst' | 'aqir'>('pipeline');
 
   const getStatusIcon = (status: 'pending' | 'success' | 'error') => {
     switch (status) {
@@ -42,6 +43,10 @@ export function IDECompilerPanel({ tokens, ast, aqir, pipelineState }: IDECompil
           className={`ide-tab ${activeTab === 'ast' ? 'active' : ''}`}
           onClick={() => setActiveTab('ast')}
         >AST</div>
+        <div 
+          className={`ide-tab ${activeTab === 'expandedAst' ? 'active' : ''}`}
+          onClick={() => setActiveTab('expandedAst')}
+        >Expanded AST</div>
         <div 
           className={`ide-tab ${activeTab === 'aqir' ? 'active' : ''}`}
           onClick={() => setActiveTab('aqir')}
@@ -83,6 +88,12 @@ export function IDECompilerPanel({ tokens, ast, aqir, pipelineState }: IDECompil
         {activeTab === 'ast' && (
           <pre>
             {ast ? JSON.stringify(ast, null, 2) : 'No AST generated'}
+          </pre>
+        )}
+
+        {activeTab === 'expandedAst' && (
+          <pre>
+            {pipelineState.expandedAst ? JSON.stringify(pipelineState.expandedAst, null, 2) : 'No Expanded AST generated'}
           </pre>
         )}
         
