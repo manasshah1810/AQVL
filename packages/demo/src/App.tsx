@@ -12,8 +12,9 @@ import { IDEBottomPanel } from './components/IDEBottomPanel';
 import { IDEExecutionDebugger } from './components/IDEExecutionDebugger';
 
 import { SortingScripts } from './examples/SortingLibrary';
+import { LinkedListScripts } from './examples/LinkedListLibrary';
 
-const initialScript = SortingScripts.ArrayTest;
+const initialScript = LinkedListScripts.ComprehensiveTest;
 
 type PipelineStatus = 'pending' | 'success' | 'error';
 
