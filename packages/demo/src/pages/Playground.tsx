@@ -273,7 +273,7 @@ export default function Playground() {
       {/* ── Top Navigation Bar ──────────────────────────────────────────────── */}
       <header className="pg-topbar">
         {/* Brand */}
-        <div className="pg-brand" onClick={() => window.location.href = '/'}>
+        <div className="pg-brand" onClick={() => window.location.hash = '#/'}>
           <div className="pg-brand-icon">
             <AQVLLogo />
           </div>
@@ -297,7 +297,7 @@ export default function Playground() {
         <div className="pg-topbar-actions">
           <button
             className="pg-docs-link"
-            onClick={() => window.location.href = '/docs'}
+            onClick={() => window.location.hash = '#/docs'}
           >
             <IconBook />
             Docs

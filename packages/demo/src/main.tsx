@@ -11,15 +11,24 @@ import { ErrorBoundary } from './ErrorBoundary'
 
 import Landing from './pages/Landing.tsx'
 
-const path = window.location.pathname;
+function Router() {
+  const [hash, setHash] = React.useState(window.location.hash);
+  React.useEffect(() => {
+    const handler = () => setHash(window.location.hash);
+    window.addEventListener('hashchange', handler);
+    return () => window.removeEventListener('hashchange', handler);
+  }, []);
+
+  if (hash.startsWith('#/docs')) return <Docs />;
+  if (hash.startsWith('#/playground')) return <Playground />;
+  if (hash.startsWith('#/ide')) return <App />;
+  return <Landing />;
+}
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ErrorBoundary>
-      {path.startsWith('/docs') ? <Docs /> : 
-       path.startsWith('/playground') ? <Playground /> : 
-       path.startsWith('/ide') ? <App /> : 
-       <Landing />}
+      <Router />
     </ErrorBoundary>
   </StrictMode>,
 )

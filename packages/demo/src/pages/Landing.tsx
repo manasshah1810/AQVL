@@ -56,7 +56,7 @@ export default function Landing() {
 
         <div className="landing-cards">
           {/* Playground */}
-          <a href="/playground" className="landing-card">
+          <a href="#/playground" className="landing-card">
             <div className="landing-card-icon">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <polygon points="5 3 19 12 5 21 5 3"/>
@@ -75,7 +75,7 @@ export default function Landing() {
           </a>
 
           {/* Developer IDE */}
-          <a href="/ide" className="landing-card">
+          <a href="#/ide" className="landing-card">
             <div className="landing-card-icon">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
@@ -94,7 +94,7 @@ export default function Landing() {
           </a>
 
           {/* Documentation */}
-          <a href="/docs" className="landing-card">
+          <a href="#/docs" className="landing-card">
             <div className="landing-card-icon">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>

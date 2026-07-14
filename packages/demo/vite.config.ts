@@ -3,7 +3,8 @@ import react from '@vitejs/plugin-react'
 import path from 'path'
 
 // https://vite.dev/config/
-export default defineConfig({
+export default defineConfig(({ command }) => ({
+  base: command === 'build' ? '/AQVL/' : '/',
   plugins: [react()],
   resolve: {
     alias: {
@@ -13,4 +14,4 @@ export default defineConfig({
       '@aqvl/shared': path.resolve(__dirname, '../shared/src/index.ts'),
     }
   }
-})
+}))

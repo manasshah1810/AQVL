@@ -287,7 +287,7 @@ export default function Docs() {
         {/* ── Left Sidebar ─────────────────────────────── */}
         <aside className="docs-sidebar">
           <div className="docs-sidebar-topbar">
-            <a href="/" className="docs-brand">
+            <a href="#/" className="docs-brand">
               <div className="docs-brand-logo">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>

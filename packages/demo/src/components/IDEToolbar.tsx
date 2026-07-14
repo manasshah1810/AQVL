@@ -47,7 +47,7 @@ export function IDEToolbar({
     <div className="ide-toolbar">
 
       {/* ── AQVL Logo ─────────────────────────────────────── */}
-      <a href="/" className="ide-logo" style={{ textDecoration: 'none' }}>
+      <a href="#/" className="ide-logo" style={{ textDecoration: 'none' }}>
         <div className="ide-logo-icon">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <polygon points="12 2 22 8.5 22 15.5 12 22 2 15.5 2 8.5 12 2" />
