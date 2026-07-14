@@ -140,7 +140,18 @@ export class ExecutionEngine {
   }
 
   public stepBackward() {
-    // Backwards seeking is not implemented
+    console.log('[ExecutionEngine] stepBackward() called');
+    this.isPlaying = false;
+    const prevState = this.stateManager.stepBackward();
+    if (prevState) {
+      this.syncToState(prevState);
+      if (this.currentInstructionIndex > 0) {
+        this.currentInstructionIndex--;
+        this.eventDispatcher.dispatch('INSTRUCTION_START', this.currentInstructionIndex);
+      }
+    } else {
+      console.log('[ExecutionEngine] Cannot step backward further');
+    }
   }
 
   public restart() {

@@ -22,7 +22,7 @@ export function IDEEditor({ initialValue, onChange, readOnly = false }: IDEEdito
   // Basic syntax highlighting overlay
   const highlightCode = (code: string) => {
     // Simple regex for basic AQVL keywords
-    const keywords = ['SCENE', 'DECLARE', 'ARRAY', 'SEQUENCE', 'COMPARE', 'SWAP', 'END'];
+    const keywords = ['SCENE', 'DECLARE', 'ARRAY', 'SEQUENCE', 'COMPARE', 'SWAP', 'END', 'HIGHLIGHT', 'UPDATE', 'INSERT', 'DELETE', 'MOVE'];
     const keywordRegex = new RegExp(`\\b(${keywords.join('|')})\\b`, 'g');
     
     // Simple regex for numbers
@@ -32,7 +32,8 @@ export function IDEEditor({ initialValue, onChange, readOnly = false }: IDEEdito
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
       .replace(keywordRegex, '<span class="keyword">$1</span>')
-      .replace(numberRegex, '<span class="number">$&</span>');
+      .replace(numberRegex, '<span class="number">$&</span>')
+      .replace(/(\/\/.*)$/gm, '<span class="comment">$1</span>');
 
     return html;
   };

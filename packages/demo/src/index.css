@@ -398,6 +398,7 @@ pre {
 .aqvl-editor-overlay .keyword { color: var(--keyword-color); font-weight: 600; }
 .aqvl-editor-overlay .number  { color: var(--number-color); }
 .aqvl-editor-overlay .string  { color: var(--string-color); }
+.aqvl-editor-overlay .comment { color: #e5c07b; }
 
 /* ── Bottom Panel ────────────────────────────────────────── */
 .ide-bottom-panel {

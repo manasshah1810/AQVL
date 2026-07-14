@@ -74,7 +74,7 @@ export const IDEExecutionDebugger: React.FC<IDEExecutionDebuggerProps> = ({
               }}
             >
               <span style={{ opacity: 0.5, marginRight: '8px' }}>{String(idx).padStart(3, '0')}</span>
-              {inst.action}{' '}
+              {inst.action === 'GENERIC_ACTION' ? inst.actionName : inst.action}{' '}
               {inst.leftId && inst.rightId ? `(${inst.leftId}, ${inst.rightId})` : ''}
               {!inst.rightId && inst.leftId ? `(${inst.leftId})` : ''}
               {inst.targetId ? `(${inst.targetId})` : ''}

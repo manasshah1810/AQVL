@@ -1,0 +1,991 @@
+/* ============================================================
+   AQVL DOCS — Design System
+   Inspired by Stripe, Vercel, and Linear documentation
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,300;0,14..32,400;0,14..32,500;0,14..32,600;0,14..32,700;0,14..32,800;1,14..32,400&family=JetBrains+Mono:wght@400;500&display=swap');
+
+/* ── TOKENS ─────────────────────────────────────────────── */
+:root {
+  /* Palette */
+  --blue-50:  #eff6ff;
+  --blue-100: #dbeafe;
+  --blue-500: #3b82f6;
+  --blue-600: #2563eb;
+  --blue-700: #1d4ed8;
+  --violet-500: #8b5cf6;
+  --amber-400: #fbbf24;
+  --amber-500: #f59e0b;
+  --red-500:   #ef4444;
+  --emerald-500: #10b981;
+
+  /* Spacing scale */
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  20px;
+  --space-6:  24px;
+  --space-8:  32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  /* Radius */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+
+  /* Type scale */
+  --text-xs:   0.75rem;    /* 12px */
+  --text-sm:   0.875rem;   /* 14px */
+  --text-base: 1rem;       /* 16px */
+  --text-lg:   1.125rem;   /* 18px */
+  --text-xl:   1.25rem;    /* 20px */
+  --text-2xl:  1.5rem;     /* 24px */
+  --text-3xl:  1.875rem;   /* 30px */
+  --text-4xl:  2.25rem;    /* 36px */
+  --text-5xl:  3rem;       /* 48px */
+
+  /* Sidebar & layout */
+  --sidebar-width: 256px;
+  --toc-width: 220px;
+  --content-max: 720px;
+  --nav-height: 56px;
+
+  /* Font */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', ui-monospace, monospace;
+}
+
+/* ── LIGHT THEME (default) ─────────────────────────────── */
+:root,
+[data-theme="light"] {
+  --bg:            #ffffff;
+  --bg-secondary:  #f9fafb;
+  --bg-tertiary:   #f3f4f6;
+  --border:        #e5e7eb;
+  --border-strong: #d1d5db;
+  --text-1:        #111827;   /* headings */
+  --text-2:        #374151;   /* body */
+  --text-3:        #6b7280;   /* muted */
+  --text-4:        #9ca3af;   /* subtle/placeholder */
+  --accent:        #2563eb;
+  --accent-bg:     #eff6ff;
+  --accent-border: #bfdbfe;
+
+  /* Code */
+  --code-bg:      #f8fafc;
+  --code-border:  #e2e8f0;
+  --code-header:  #f1f5f9;
+
+  /* Syntax — Light */
+  --syn-keyword:   #7c3aed;
+  --syn-builtin:   #1d4ed8;
+  --syn-number:    #b45309;
+  --syn-string:    #047857;
+  --syn-comment:   #9ca3af;
+  --syn-variable:  #be123c;
+  --syn-default:   #1e293b;
+  --syn-operator:  #64748b;
+
+  /* Shadows */
+  --shadow-xs: 0 1px 2px rgba(0,0,0,.05);
+  --shadow-sm: 0 1px 3px rgba(0,0,0,.07), 0 1px 2px rgba(0,0,0,.04);
+  --shadow-md: 0 4px 6px -1px rgba(0,0,0,.07), 0 2px 4px -1px rgba(0,0,0,.04);
+  --shadow-lg: 0 10px 15px -3px rgba(0,0,0,.07), 0 4px 6px -2px rgba(0,0,0,.04);
+
+  /* Alerts */
+  --alert-note-bg:    #eff6ff;
+  --alert-note-bd:    #bfdbfe;
+  --alert-note-text:  #1d4ed8;
+  --alert-warn-bg:    #fffbeb;
+  --alert-warn-bd:    #fde68a;
+  --alert-warn-text:  #92400e;
+  --alert-tip-bg:     #ecfdf5;
+  --alert-tip-bd:     #a7f3d0;
+  --alert-tip-text:   #065f46;
+
+  color-scheme: light;
+}
+
+/* ── DARK THEME ────────────────────────────────────────── */
+[data-theme="dark"] {
+  --bg:            #0a0a0a;
+  --bg-secondary:  #111111;
+  --bg-tertiary:   #1a1a1a;
+  --border:        #222222;
+  --border-strong: #333333;
+  --text-1:        #f5f5f5;
+  --text-2:        #d4d4d4;
+  --text-3:        #888888;
+  --text-4:        #555555;
+  --accent:        #60a5fa;
+  --accent-bg:     rgba(59,130,246,.08);
+  --accent-border: rgba(59,130,246,.2);
+
+  /* Code */
+  --code-bg:      #0d0d0d;
+  --code-border:  #1e1e1e;
+  --code-header:  #111111;
+
+  /* Syntax — Dark (Dracula-inspired) */
+  --syn-keyword:   #bd93f9;
+  --syn-builtin:   #8be9fd;
+  --syn-number:    #ffb86c;
+  --syn-string:    #50fa7b;
+  --syn-comment:   #6272a4;
+  --syn-variable:  #ff79c6;
+  --syn-default:   #cdd6f4;
+  --syn-operator:  #94a3b8;
+
+  /* Shadows */
+  --shadow-xs: 0 1px 2px rgba(0,0,0,.4);
+  --shadow-sm: 0 1px 3px rgba(0,0,0,.5), 0 1px 2px rgba(0,0,0,.3);
+  --shadow-md: 0 4px 6px -1px rgba(0,0,0,.5), 0 2px 4px -1px rgba(0,0,0,.3);
+  --shadow-lg: 0 10px 15px -3px rgba(0,0,0,.5), 0 4px 6px -2px rgba(0,0,0,.3);
+
+  /* Alerts */
+  --alert-note-bg:    rgba(59,130,246,.06);
+  --alert-note-bd:    rgba(59,130,246,.2);
+  --alert-note-text:  #93c5fd;
+  --alert-warn-bg:    rgba(245,158,11,.06);
+  --alert-warn-bd:    rgba(245,158,11,.25);
+  --alert-warn-text:  #fcd34d;
+  --alert-tip-bg:     rgba(16,185,129,.06);
+  --alert-tip-bd:     rgba(16,185,129,.2);
+  --alert-tip-text:   #6ee7b7;
+
+  color-scheme: dark;
+}
+
+/* ── RESET ─────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
+.docs-root {
+  /* Scope all doc styles; don't pollute global */
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: 1.75;
+  color: var(--text-2);
+  background: var(--bg);
+  min-height: 100vh;
+  transition: background .2s ease, color .2s ease;
+}
+
+/* ── LAYOUT ─────────────────────────────────────────────── */
+
+/*
+  The IDE's index.css sets  html, body, #root { overflow: hidden }
+  which would kill this page's scroll entirely.
+  We self-contain: docs-root fills the viewport, docs-main-wrap
+  is the scrollable element, sidebar and TOC are fixed-position.
+*/
+.docs-root {
+  position: fixed;   /* take over the full viewport from inside #root */
+  inset: 0;
+  overflow: hidden;
+  display: flex;
+}
+
+.docs-layout {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* ── SIDEBAR ────────────────────────────────────────────── */
+.docs-sidebar {
+  position: absolute;   /* absolute inside fixed docs-root, not relative to html */
+  top: 0;
+  left: 0;
+  width: var(--sidebar-width);
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+  z-index: 40;
+}
+
+.docs-sidebar::-webkit-scrollbar { width: 4px; }
+.docs-sidebar::-webkit-scrollbar-track { background: transparent; }
+.docs-sidebar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+/* Sidebar top bar */
+.docs-sidebar-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  padding: 0 var(--space-4);
+  height: var(--nav-height);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+
+.docs-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  text-decoration: none;
+}
+
+.docs-brand-logo {
+  width: 28px;
+  height: 28px;
+  background: linear-gradient(135deg, var(--blue-500), var(--violet-500));
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.docs-brand-logo svg {
+  color: #fff;
+}
+
+.docs-brand-name {
+  font-size: var(--text-base);
+  font-weight: 700;
+  color: var(--text-1);
+  letter-spacing: -0.3px;
+}
+
+.docs-brand-version {
+  font-size: var(--text-xs);
+  font-weight: 500;
+  color: var(--text-4);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  padding: 1px 6px;
+  border-radius: 10px;
+  margin-left: 2px;
+}
+
+.theme-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-3);
+  cursor: pointer;
+  transition: background .15s, border-color .15s, color .15s, transform .15s;
+  flex-shrink: 0;
+}
+
+.theme-btn:hover {
+  background: var(--border);
+  color: var(--text-1);
+  transform: rotate(12deg);
+}
+
+/* Sidebar nav */
+.docs-sidebar-nav {
+  padding: var(--space-3) var(--space-4) var(--space-8);
+  flex: 1;
+}
+
+.docs-nav-group {
+  margin-bottom: var(--space-6);
+}
+
+.docs-nav-group-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--text-4);
+  text-transform: uppercase;
+  letter-spacing: .09em;
+  padding: 0 var(--space-2);
+  margin-bottom: var(--space-2);
+  margin-top: var(--space-1);
+}
+
+.docs-nav-item {
+  /* Layout */
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 7px var(--space-2);
+  border-radius: 6px;
+  gap: var(--space-2);
+
+  /* Text */
+  font-family: var(--font-sans);
+  font-size: 13.5px;
+  font-weight: 450;
+  line-height: 1.4;
+  color: var(--text-3);
+  text-decoration: none;
+  text-align: left;
+  letter-spacing: -0.1px;
+
+  /* Base appearance */
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  margin-bottom: 1px;
+
+  /* Smooth transitions */
+  transition: background 0.12s ease, color 0.12s ease;
+
+  /* For the active indicator */
+  position: relative;
+}
+
+/* Hover — subtle light fill, text brightens */
+.docs-nav-item:hover:not(.is-active):not(.is-disabled) {
+  background: var(--bg-tertiary);
+  color: var(--text-1);
+}
+
+/* Active — just the text color + a thin left line. No big fill. */
+.docs-nav-item.is-active {
+  color: var(--accent);
+  font-weight: 600;
+  background: transparent;
+}
+
+.docs-nav-item.is-active::after {
+  content: '';
+  position: absolute;
+  left: -4px;      /* just outside the padding edge */
+  top: 25%;
+  bottom: 25%;
+  width: 2px;
+  background: var(--accent);
+  border-radius: 0 2px 2px 0;
+}
+
+/* Disabled — greyed out, no interaction */
+.docs-nav-item.is-disabled {
+  opacity: 0.38;
+  pointer-events: none;
+  cursor: default;
+}
+
+.docs-nav-badge {
+  display: inline-block;
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: 20px;
+  background: var(--bg-tertiary);
+  color: var(--text-4);
+  border: 1px solid var(--border);
+  letter-spacing: .02em;
+}
+
+/* ── MAIN CONTENT ───────────────────────────────────────── */
+.docs-main-wrap {
+  flex: 1;
+  margin-left: var(--sidebar-width);
+  margin-right: var(--toc-width);
+  min-width: 0;
+  height: 100%;           /* fill the fixed docs-root height  */
+  overflow-y: auto;       /* THIS is the scroll container     */
+  overflow-x: hidden;
+  scroll-behavior: smooth;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+.docs-main-wrap::-webkit-scrollbar { width: 6px; }
+.docs-main-wrap::-webkit-scrollbar-track { background: transparent; }
+.docs-main-wrap::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+.docs-content {
+  max-width: var(--content-max);
+  margin: 0 auto;
+  padding: var(--space-16) var(--space-8) calc(var(--space-16) * 2);
+}
+
+/* Page hero */
+.docs-page-hero {
+  padding-bottom: var(--space-10);
+  margin-bottom: var(--space-10);
+  border-bottom: 1px solid var(--border);
+}
+
+.docs-page-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  margin-bottom: var(--space-4);
+}
+
+.docs-page-tag svg {
+  opacity: .8;
+}
+
+.docs-page-title {
+  font-size: var(--text-5xl);
+  font-weight: 800;
+  color: var(--text-1);
+  line-height: 1.1;
+  letter-spacing: -1.5px;
+  margin: 0 0 var(--space-4);
+}
+
+.docs-page-lead {
+  font-size: var(--text-lg);
+  color: var(--text-3);
+  line-height: 1.7;
+  max-width: 580px;
+  margin: 0;
+  font-weight: 400;
+}
+
+/* ── SECTIONS ───────────────────────────────────────────── */
+.docs-section {
+  padding-top: var(--space-12);
+  margin-bottom: var(--space-10);
+  scroll-margin-top: var(--space-8);
+}
+
+.docs-section + .docs-section {
+  border-top: 1px solid var(--border);
+}
+
+.docs-h2 {
+  font-size: var(--text-3xl);
+  font-weight: 700;
+  color: var(--text-1);
+  letter-spacing: -0.6px;
+  line-height: 1.2;
+  margin: 0 0 var(--space-4);
+}
+
+.docs-h3 {
+  font-size: var(--text-xl);
+  font-weight: 600;
+  color: var(--text-1);
+  letter-spacing: -0.3px;
+  line-height: 1.4;
+  margin: var(--space-8) 0 var(--space-3);
+}
+
+.docs-p {
+  font-size: var(--text-base);
+  color: var(--text-2);
+  line-height: 1.8;
+  margin: 0 0 var(--space-5);
+}
+
+.docs-p:last-child { margin-bottom: 0; }
+
+/* Inline code */
+.docs-ic {
+  font-family: var(--font-mono);
+  font-size: .85em;
+  font-weight: 500;
+  color: var(--accent);
+  background: var(--accent-bg);
+  border: 1px solid var(--accent-border);
+  padding: .1em .4em;
+  border-radius: var(--radius-sm);
+}
+
+/* ── CODE BLOCK ─────────────────────────────────────────── */
+.docs-codeblock {
+  background: var(--code-bg);
+  border: 1px solid var(--code-border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  margin: var(--space-5) 0;
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow .2s;
+}
+
+.docs-codeblock:hover {
+  box-shadow: var(--shadow-md);
+}
+
+.docs-codeblock-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--space-4);
+  height: 40px;
+  background: var(--code-header);
+  border-bottom: 1px solid var(--code-border);
+}
+
+.docs-codeblock-dots {
+  display: flex;
+  gap: 6px;
+}
+
+.docs-codeblock-dots span {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--border-strong);
+}
+
+.docs-codeblock-dots span:nth-child(1) { background: #ff5f57; }
+.docs-codeblock-dots span:nth-child(2) { background: #ffbd2e; }
+.docs-codeblock-dots span:nth-child(3) { background: #28c840; }
+
+.docs-codeblock-lang {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-4);
+  letter-spacing: .04em;
+  font-weight: 500;
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.docs-codeblock-header { position: relative; }
+
+.docs-copy-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 4px 10px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  color: var(--text-3);
+  cursor: pointer;
+  transition: background .12s, color .12s, border-color .12s;
+  white-space: nowrap;
+}
+
+.docs-copy-btn:hover {
+  background: var(--border);
+  color: var(--text-1);
+}
+
+.docs-copy-btn.is-copied {
+  color: var(--alert-tip-text);
+  border-color: var(--alert-tip-bd);
+  background: var(--alert-tip-bg);
+}
+
+.docs-codeblock-body {
+  overflow-x: auto;
+  padding: var(--space-5) var(--space-5);
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+.docs-codeblock-body::-webkit-scrollbar { height: 4px; }
+.docs-codeblock-body::-webkit-scrollbar-track { background: transparent; }
+.docs-codeblock-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+.docs-codeblock-body pre {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  line-height: 1.7;
+  color: var(--syn-default);
+  white-space: pre;
+}
+
+/* Syntax tokens */
+.tok-keyword  { color: var(--syn-keyword); font-weight: 600; }
+.tok-builtin  { color: var(--syn-builtin); }
+.tok-number   { color: var(--syn-number); }
+.tok-string   { color: var(--syn-string); }
+.tok-comment  { color: var(--syn-comment); font-style: italic; }
+.tok-variable { color: var(--syn-variable); }
+.tok-operator { color: var(--syn-operator); }
+
+/* ── COMMAND REFERENCE TABLE ────────────────────────────── */
+.docs-cmd-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: var(--space-6) 0;
+  font-size: var(--text-sm);
+}
+
+.docs-cmd-table thead tr {
+  background: var(--bg-secondary);
+  border-bottom: 2px solid var(--border-strong);
+}
+
+.docs-cmd-table thead th {
+  text-align: left;
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  color: var(--text-4);
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+
+.docs-cmd-table tbody tr {
+  border-bottom: 1px solid var(--border);
+  transition: background .1s;
+}
+
+.docs-cmd-table tbody tr:last-child { border-bottom: none; }
+
+.docs-cmd-table tbody tr:hover {
+  background: var(--bg-secondary);
+}
+
+.docs-cmd-table td {
+  padding: var(--space-3) var(--space-4);
+  color: var(--text-2);
+  vertical-align: top;
+  line-height: 1.6;
+}
+
+.docs-cmd-table td:first-child {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--syn-keyword);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.docs-cmd-table td .tok-param {
+  color: var(--syn-variable);
+  font-weight: 400;
+}
+
+/* ── ALERTS ─────────────────────────────────────────────── */
+.docs-alert {
+  display: flex;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-radius: var(--radius-lg);
+  border: 1px solid;
+  margin: var(--space-6) 0;
+}
+
+.docs-alert-icon {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  margin-top: 1px;
+}
+
+.docs-alert-body { flex: 1; min-width: 0; }
+
+.docs-alert-title {
+  font-size: var(--text-sm);
+  font-weight: 700;
+  margin: 0 0 var(--space-1);
+}
+
+.docs-alert-body p {
+  font-size: var(--text-sm);
+  line-height: 1.65;
+  margin: 0;
+}
+
+/* Note / info */
+.docs-alert-note {
+  background: var(--alert-note-bg);
+  border-color: var(--alert-note-bd);
+}
+.docs-alert-note .docs-alert-icon,
+.docs-alert-note .docs-alert-title { color: var(--alert-note-text); }
+
+/* Warning */
+.docs-alert-warn {
+  background: var(--alert-warn-bg);
+  border-color: var(--alert-warn-bd);
+}
+.docs-alert-warn .docs-alert-icon,
+.docs-alert-warn .docs-alert-title { color: var(--alert-warn-text); }
+
+/* Tip */
+.docs-alert-tip {
+  background: var(--alert-tip-bg);
+  border-color: var(--alert-tip-bd);
+}
+.docs-alert-tip .docs-alert-icon,
+.docs-alert-tip .docs-alert-title { color: var(--alert-tip-text); }
+
+/* ── RIGHT TOC ───────────────────────────────────────────── */
+.docs-toc-panel {
+  position: absolute;  /* absolute inside fixed docs-root */
+  top: 0;
+  right: 0;
+  width: var(--toc-width);
+  height: 100%;
+  overflow-y: auto;
+  padding: calc(var(--space-16) + var(--space-4)) var(--space-5) var(--space-16);
+  scrollbar-width: none;
+}
+
+.docs-toc-panel::-webkit-scrollbar { display: none; }
+
+.docs-toc-inner {
+  position: sticky;
+  top: var(--space-8);
+}
+
+.docs-toc-label {
+  font-size: var(--text-xs);
+  font-weight: 700;
+  color: var(--text-4);
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  margin-bottom: var(--space-3);
+}
+
+.docs-toc-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-left: 1px solid var(--border);
+}
+
+.docs-toc-item { margin: 0; }
+
+.docs-toc-btn {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  color: var(--text-3);
+  padding: 5px 0 5px var(--space-3);
+  line-height: 1.5;
+  transition: color .12s;
+  position: relative;
+}
+
+.docs-toc-btn:hover { color: var(--text-1); }
+
+.docs-toc-btn.is-active {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.docs-toc-btn.is-active::before {
+  content: '';
+  position: absolute;
+  left: -1px;
+  top: 4px;
+  bottom: 4px;
+  width: 2px;
+  background: var(--accent);
+  border-radius: 0 1px 1px 0;
+}
+
+/* ── SCROLL PROGRESS BAR ─────────────────────────────────── */
+.docs-progress-bar {
+  position: absolute;   /* inside fixed docs-root */
+  top: 0;
+  left: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--blue-500), var(--violet-500));
+  z-index: 100;
+  transition: width .1s linear;
+  border-radius: 0 1px 1px 0;
+  pointer-events: none;
+}
+
+/* ── OVERRIDE global index.css rules that break docs ────── */
+
+/*
+  index.css sets  pre { white-space: pre-wrap; word-break: break-all }
+  That destroys horizontal scrolling in code blocks. Undo it.
+*/
+.docs-root pre {
+  white-space: pre !important;
+  word-break: normal !important;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  line-height: 1.7;
+  color: var(--syn-default);
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  margin: 0;
+}
+
+/*
+  index.css declares a global  button { height: 30px; padding: 5px 12px; … }
+  which destroys every button inside the docs. We reset ALL buttons inside
+  .docs-root to a blank slate, then restyle only the ones we need.
+*/
+.docs-root button {
+  all: unset;          /* nuclear reset — clears every inherited IDE style */
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  font-family: var(--font-sans);
+  line-height: 1.4;
+}
+
+/* ── Theme toggle button ─────────────────────────────── */
+.docs-root .theme-btn {
+  width: 30px;
+  height: 30px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-3);
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background 0.15s, border-color 0.15s, color 0.15s, transform 0.2s;
+}
+
+.docs-root .theme-btn:hover {
+  background: var(--bg-tertiary);
+  border-color: var(--border-strong);
+  color: var(--text-1);
+  transform: rotate(15deg) scale(1.08);
+}
+
+/* ── Copy button ───────────────────────────────────── */
+.docs-root .docs-copy-btn {
+  gap: 5px;
+  padding: 4px 10px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  color: var(--text-3);
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+
+.docs-root .docs-copy-btn:hover {
+  background: var(--border);
+  border-color: var(--border-strong);
+  color: var(--text-1);
+}
+
+.docs-root .docs-copy-btn.is-copied {
+  color: var(--alert-tip-text);
+  border-color: var(--alert-tip-bd);
+  background: var(--alert-tip-bg);
+}
+
+/* ── Sidebar nav buttons ────────────────────────────── */
+.docs-root .docs-nav-item {
+  /* Re-apply the nav-item layout (all: unset wiped it) */
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 7px 8px;
+  border-radius: 6px;
+  gap: 6px;
+  font-family: var(--font-sans);
+  font-size: 13.5px;
+  font-weight: 450;
+  line-height: 1.4;
+  letter-spacing: -0.1px;
+  color: var(--text-3);
+  text-decoration: none;
+  text-align: left;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  margin-bottom: 1px;
+  transition: background 0.12s ease, color 0.12s ease;
+  position: relative;
+}
+
+.docs-root .docs-nav-item:hover:not(.is-active):not(.is-disabled) {
+  background: var(--bg-tertiary);
+  color: var(--text-1);
+}
+
+.docs-root .docs-nav-item.is-active {
+  color: var(--accent);
+  font-weight: 600;
+  background: transparent;
+}
+
+.docs-root .docs-nav-item.is-active::after {
+  content: '';
+  position: absolute;
+  left: -4px;
+  top: 25%;
+  bottom: 25%;
+  width: 2px;
+  background: var(--accent);
+  border-radius: 0 2px 2px 0;
+}
+
+.docs-root .docs-nav-item.is-disabled {
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+/* ── TOC buttons ────────────────────────────────────── */
+.docs-root .docs-toc-btn {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-3);
+  padding: 5px 0 5px var(--space-3);
+  line-height: 1.5;
+  transition: color 0.12s;
+  position: relative;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.docs-root .docs-toc-btn:hover { color: var(--text-1); }
+
+.docs-root .docs-toc-btn.is-active {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.docs-root .docs-toc-btn.is-active::before {
+  content: '';
+  position: absolute;
+  left: -1px;
+  top: 4px;
+  bottom: 4px;
+  width: 2px;
+  background: var(--accent);
+  border-radius: 0 1px 1px 0;
+}
+
+/* ── DIVIDER ─────────────────────────────────────────────── */
+.docs-divider {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: var(--space-10) 0;
+}

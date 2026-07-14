@@ -1,0 +1,161 @@
+/* ============================================================
+   AQVL Playground — Educational Theme
+   ============================================================ */
+
+.playground-root {
+  --pg-bg: #f8fafc;
+  --pg-surface: #ffffff;
+  --pg-border: #e2e8f0;
+  --pg-text-main: #0f172a;
+  --pg-text-muted: #64748b;
+  --pg-accent: #3b82f6;
+  --pg-accent-hover: #2563eb;
+  --pg-shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --pg-shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --pg-radius: 12px;
+
+  display: flex;
+  height: 100vh;
+  width: 100vw;
+  background-color: var(--pg-bg);
+  color: var(--pg-text-main);
+  font-family: var(--font-ui);
+  overflow: hidden;
+  padding: 16px;
+  gap: 16px;
+}
+
+/* ── Layout ────────────────────────────────────────────── */
+.pg-left-panel {
+  flex: 0 0 400px;
+  display: flex;
+  flex-direction: column;
+  background: var(--pg-surface);
+  border-radius: var(--pg-radius);
+  box-shadow: var(--pg-shadow-md);
+  border: 1px solid var(--pg-border);
+  overflow: hidden;
+}
+
+.pg-right-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: var(--pg-surface);
+  border-radius: var(--pg-radius);
+  box-shadow: var(--pg-shadow-md);
+  border: 1px solid var(--pg-border);
+  overflow: hidden;
+  position: relative;
+}
+
+.pg-panel-header {
+  padding: 12px 16px;
+  font-weight: 600;
+  font-size: 14px;
+  border-bottom: 1px solid var(--pg-border);
+  background-color: #f1f5f9;
+  color: var(--pg-text-main);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.pg-editor-container {
+  flex: 1;
+  position: relative;
+  /* Override IDE dark theme internally for the editor to look light or keep dark inside a light shell */
+  background: #1e293b; 
+}
+
+/* We need to override the IDEEditor's internal styles if we use it directly, 
+   but since IDEEditor uses inline styles or generic classes, we'll just 
+   let it be dark mode as a nice contrast inside the light layout. */
+.pg-editor-container .aqvl-editor-container {
+  background: #1e293b; 
+}
+
+.pg-canvas-container {
+  flex: 1;
+  background: #0f172a; /* Dark background for 3D canvas is usually better */
+  position: relative;
+  overflow: hidden;
+}
+
+/* ── Controls Toolbar ────────────────────────────────────── */
+.pg-controls {
+  padding: 12px 20px;
+  background: var(--pg-surface);
+  border-top: 1px solid var(--pg-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+
+.pg-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid var(--pg-border);
+  background: var(--pg-surface);
+  color: var(--pg-text-main);
+  transition: all 0.2s ease;
+  box-shadow: var(--pg-shadow-sm);
+}
+
+.pg-button:hover:not(:disabled) {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+}
+
+.pg-button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.pg-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.pg-button.primary {
+  background: var(--pg-accent);
+  color: #fff;
+  border-color: var(--pg-accent);
+}
+
+.pg-button.primary:hover:not(:disabled) {
+  background: var(--pg-accent-hover);
+  border-color: var(--pg-accent-hover);
+}
+
+.pg-step-indicator {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--pg-text-muted);
+  background: #f1f5f9;
+  padding: 4px 12px;
+  border-radius: 16px;
+  font-weight: 500;
+}
+
+/* Loading Overlay */
+.pg-loading-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 23, 42, 0.8);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 500;
+  z-index: 10;
+}
