@@ -26,7 +26,9 @@ export function IDEEditor({ initialValue, onChange, readOnly = false }: IDEEdito
       'SCENE', 'DECLARE', 'ARRAY', 'SEQUENCE', 'COMPARE', 'SWAP', 'END', 
       'HIGHLIGHT', 'UPDATE', 'INSERT', 'DELETE', 'MOVE', 'LINKEDLIST', 
       'INSERT_HEAD', 'INSERT_TAIL', 'DELETE_HEAD', 'DELETE_TAIL', 
-      'WAIT', 'LOOP', 'FROM', 'TO', 'IF', 'LENGTH', 'NULL', 'DOUBLY'
+      'WAIT', 'LOOP', 'FROM', 'TO', 'IF', 'LENGTH', 'NULL', 'DOUBLY',
+      'TREE', 'ROOT', 'CHILD', 'PARENT', 'PREORDER', 'POSTORDER', 'LEVELORDER', 'DFS', 'BFS', 'SEARCH',
+      'INTO', 'HEIGHT', 'SIZE', 'LEAVES', 'ANCESTORS', 'PATH'
     ];
     const keywordRegex = new RegExp(`\\b(${keywords.join('|')})\\b`, 'g');
     

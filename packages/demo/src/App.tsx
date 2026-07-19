@@ -10,11 +10,14 @@ import { IDEToolbar } from './components/IDEToolbar';
 import { IDECompilerPanel } from './components/IDECompilerPanel';
 import { IDEBottomPanel } from './components/IDEBottomPanel';
 import { IDEExecutionDebugger } from './components/IDEExecutionDebugger';
+import { RuntimeOutputPanel, RuntimeLogEntry } from './components/RuntimeOutputPanel';
 
 import { SortingScripts } from './examples/SortingLibrary';
 import { LinkedListScripts } from './examples/LinkedListLibrary';
+import { TreeScripts } from './examples/TreeLibrary';
+import { LoopScripts } from './examples/LoopLibrary';
 
-const initialScript = LinkedListScripts.CircularLinkedList;
+const initialScript = TreeScripts.BasicTree;
 
 type PipelineStatus = 'pending' | 'success' | 'error';
 
@@ -45,6 +48,8 @@ export default function App() {
   
   // App State
   const [consoleLogs, setConsoleLogs] = useState<{type: 'log'|'error'|'success', text: string}[]>([]);
+  const [runtimeLogs, setRuntimeLogs] = useState<RuntimeLogEntry[]>([]);
+  const runtimeLogIdRef = useRef(0);
   const [userInputs, setUserInputs] = useState<Record<string, any>>({});
   const [stats, setStats] = useState({
     compileTime: 0,
@@ -86,6 +91,7 @@ export default function App() {
 
   const handleCompile = (inputs: Record<string, any> = userInputs) => {
     setConsoleLogs([]);
+    setRuntimeLogs([]);
     setPipelineState({
       lexer: 'pending', parser: 'pending', semantic: 'pending', 
       optimizer: 'pending', generator: 'pending', runtime: 'pending'
@@ -156,6 +162,10 @@ export default function App() {
       });
       engine.eventDispatcher.on('STATE_UPDATED', (newState) => {
         setSceneState(newState);
+      });
+      engine.eventDispatcher.on('RUNTIME_LOG', (entry: RuntimeLogEntry) => {
+        setRuntimeLogs(prev => [...prev, { ...entry, id: ++runtimeLogIdRef.current }]);
+        addLog(`[${entry.keyword}] ${entry.message}`);
       });
       engine.loadProgram(generatedAqir);
       
@@ -340,10 +350,14 @@ export default function App() {
               </div>
             )}
           </div>
-          <div className="ide-panel-content" style={{ backgroundColor: '#06060a', position: 'relative' }}>
+          <div className="ide-panel-content" style={{ backgroundColor: '#06060a', position: 'relative', overflow: 'hidden' }}>
             {sceneState ? (
               <>
                 <AQVECanvas sceneState={sceneState} />
+                <RuntimeOutputPanel
+                  logs={runtimeLogs}
+                  onClear={() => setRuntimeLogs([])}
+                />
                 <IDEExecutionDebugger 
                   aqir={aqir} 
                   currentInstructionIndex={currentInstructionIndex} 

@@ -40,7 +40,7 @@ export interface SequenceBlockNode extends ASTNode {
 }
 
 // Declarations
-export type VariableDeclNode = ArrayDeclNode | ObjectDeclNode | LinkedListDeclNode | StackDeclNode | QueueDeclNode | TreeDeclNode | HeapDeclNode | TrieDeclNode | GraphDeclNode;
+export type VariableDeclNode = ArrayDeclNode | ObjectDeclNode | LinkedListDeclNode | StackDeclNode | QueueDeclNode | TreeDeclNode | BinaryTreeDeclNode | HeapDeclNode | TrieDeclNode | GraphDeclNode;
 
 export interface PropertyNode extends ASTNode {
   type: 'PropertyNode';
@@ -83,6 +83,11 @@ export interface QueueDeclNode extends ASTNode {
 
 export interface TreeDeclNode extends ASTNode {
   type: 'TreeDeclNode';
+  name: IdentifierNode;
+  initialElements?: LiteralNode[];
+}
+export interface BinaryTreeDeclNode extends ASTNode {
+  type: 'BinaryTreeDeclNode';
   name: IdentifierNode;
   initialElements?: LiteralNode[];
 }

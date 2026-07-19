@@ -26,7 +26,7 @@ export class LayoutManager {
   private reservedSlots: Map<string, Set<number | string>> = new Map();
 
   constructor(private sceneManager: SceneManager, private relationshipManager: RelationshipManager) {
-    this.treeStrategy = new TreeLayoutStrategy({ startY: 4 });
+    this.treeStrategy = new TreeLayoutStrategy({ startY: 2 });
     this.arrayHeapStrategy = new ArrayLayoutStrategy({ startY: -4 });
   }
 
@@ -149,8 +149,18 @@ export class LayoutManager {
     // Apply default strategy for unparented elements if needed, 
     // or leave them as they are for now.
     if (unparentedElements.length > 0) {
-      const subMap = this.defaultStrategy.applyLayout(unparentedElements, this.relationshipManager);
-      subMap.forEach((pos, id) => layoutMap.set(id, pos));
+      const unparentedTreeElements = unparentedElements.filter(el => el.originalType === 'TREE_NODE');
+      const otherUnparentedElements = unparentedElements.filter(el => el.originalType !== 'TREE_NODE');
+      
+      if (unparentedTreeElements.length > 0) {
+        const subMap = this.treeStrategy.applyLayout(unparentedTreeElements, this.relationshipManager);
+        subMap.forEach((pos, id) => layoutMap.set(id, pos));
+      }
+      
+      if (otherUnparentedElements.length > 0) {
+        const subMap = this.defaultStrategy.applyLayout(otherUnparentedElements, this.relationshipManager);
+        subMap.forEach((pos, id) => layoutMap.set(id, pos));
+      }
     }
 
     return layoutMap;

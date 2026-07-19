@@ -252,57 +252,25 @@ export class AQIRGenerator {
         }
       } else if (v.type === 'TreeDeclNode') {
         const tree = v as TreeDeclNode;
-        let elements = tree.initialElements ? tree.initialElements.map(e => e.value) : [];
-        if (userInputs[tree.name.name] && Array.isArray(userInputs[tree.name.name])) {
-          elements = userInputs[tree.name.name];
-        }
+        // Generate a virtual tree object to hold a reference
+        const id = this.generateId();
+        this.symbolMap.set(tree.name.name, id);
         
-        // this.env.set(`LENGTH(${tree.name.name})`, elements.length);
+        this.generatedObjects.push({
+          id,
+          type: 'TREE',
+          label: tree.name.name,
+        });
+      } else if (v.type === 'BinaryTreeDeclNode') {
+        const tree = v as any;
+        const id = this.generateId();
+        this.symbolMap.set(tree.name.name, id);
         
-        const nodeIds: string[] = [];
-        for (let i = 0; i < elements.length; i++) {
-          if (elements[i] !== null && elements[i] !== undefined) {
-            const id = this.generateId();
-            nodeIds[i] = id;
-            this.symbolMap.set(`${tree.name.name}[${i}]`, id);
-            
-            this.generatedObjects.push({
-              id,
-              type: 'TREE_NODE',
-              logicalParent: tree.name.name,
-              logicalIndex: i,
-              value: elements[i],
-              label: `${tree.name.name}[${i}]`,
-            });
-          }
-        }
-
-        // Generate edges based on binary tree 2i+1, 2i+2
-        for (let i = 0; i < nodeIds.length; i++) {
-          if (!nodeIds[i]) continue;
-          
-          const leftChildIdx = 2 * i + 1;
-          const rightChildIdx = 2 * i + 2;
-          
-          if (leftChildIdx < nodeIds.length && nodeIds[leftChildIdx]) {
-            this.generatedObjects.push({
-              id: this.generateId(),
-              type: 'EDGE',
-              logicalParent: tree.name.name,
-              args: [nodeIds[i], nodeIds[leftChildIdx]],
-              properties: { directed: true, label: 'L' }
-            });
-          }
-          if (rightChildIdx < nodeIds.length && nodeIds[rightChildIdx]) {
-            this.generatedObjects.push({
-              id: this.generateId(),
-              type: 'EDGE',
-              logicalParent: tree.name.name,
-              args: [nodeIds[i], nodeIds[rightChildIdx]],
-              properties: { directed: true, label: 'R' }
-            });
-          }
-        }
+        this.generatedObjects.push({
+          id,
+          type: 'BINARY_TREE',
+          label: tree.name.name,
+        });
       } else if (v.type === 'HeapDeclNode') {
         const heap = v as HeapDeclNode;
         let elements = heap.initialElements ? heap.initialElements.map(e => e.value) : [];
@@ -501,10 +469,15 @@ export class AQIRGenerator {
           }
         }
 
+        const isTreeNode = obj.objectType === 'TREE_NODE';
+
         this.generatedObjects.push({
           id,
-          type: obj.objectType,
+          type: isTreeNode ? 'sphere' : obj.objectType,
+          originalType: obj.objectType,
           label: obj.name.name,
+          value: isTreeNode && args.length > 0 ? args[0] : undefined,
+          logicalParent: properties['parent'] || undefined,
           args,
           ...(Object.keys(properties).length > 0 ? { properties } : {}),
         });
@@ -644,8 +617,9 @@ export class AQIRGenerator {
     if (expr.type === 'IdentifierNode') {
       const logicalName = expr.name;
       const id = this.symbolMap.get(logicalName);
-      if (!id) throw new Error(`Reference Error: Unknown object ${logicalName}`);
-      return id;
+      // For dynamic tree nodes that are implicitly created (e.g. ROOT CEO), they won't be in the symbolMap yet.
+      // Fallback to their logicalName.
+      return id || logicalName;
     }
 
     throw new Error(`Invalid object reference in instruction`);

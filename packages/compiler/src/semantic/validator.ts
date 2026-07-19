@@ -176,11 +176,18 @@ export class SemanticValidator {
         this.visitExpression(node.source);
         this.visitExpression(node.target);
         break;
-      case 'GenericActionNode':
+      case 'GenericActionNode': {
+        const treeActions = ['TREE', 'ROOT', 'CHILD', 'PARENT', 'INSERT', 'DELETE', 'REMOVE', 'MOVE', 'COPY', 'SEARCH', 'FIND', 'HIGHLIGHT', 'SELECT', 'PREORDER', 'POSTORDER', 'LEVELORDER', 'DFS', 'BFS', 'HEIGHT', 'DEPTH', 'SIZE', 'LEAVES', 'INTERNAL', 'DEGREE', 'STATS', 'PARENTOF', 'CHILDRENOF', 'ANCESTORS', 'DESCENDANTS', 'SIBLINGS', 'PATH'];
+        if (treeActions.includes(node.actionName)) {
+          // Tree actions use dynamically created node IDs that aren't defined in the DECLARE block.
+          // Skip identifier validation for their arguments.
+          break;
+        }
         for (const arg of node.args) {
           this.visitExpression(arg);
         }
         break;
+      }
       case 'SetStateNode':
         this.visitExpression(node.target);
         break;

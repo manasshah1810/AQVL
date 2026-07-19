@@ -10,9 +10,10 @@ export interface TreeLayoutOptions {
 }
 
 interface TreeNode {
-  element: BoxElement;
+  element: SceneElement;
   children: TreeNode[];
   width: number;
+  depth: number;
   x: number;
   y: number;
 }
@@ -32,8 +33,9 @@ export class TreeLayoutStrategy implements LayoutStrategy {
 
   public applyLayout(elements: SceneElement[], relationshipManager: RelationshipManager): Map<string, { x: number; y: number; z: number }> {
     const map = new Map<string, { x: number; y: number; z: number }>();
-    const nodes = elements.filter((el): el is BoxElement => el.type === 'box');
-    const edges = relationshipManager.getEdges();
+    const nodes = elements.filter(el => el.type === 'box' || el.originalType === 'TREE_NODE');
+    const edges = elements.filter(el => el.type === 'edge' || el.originalType === 'EDGE') as any[];
+    console.log(`[TreeLayoutStrategy] nodes: ${nodes.length}, edges: ${edges.length}`, elements);
 
     if (nodes.length === 0) return map;
 
@@ -44,6 +46,7 @@ export class TreeLayoutStrategy implements LayoutStrategy {
         element: node,
         children: [],
         width: 0,
+        depth: 1,
         x: 0,
         y: 0
       });
@@ -73,14 +76,16 @@ export class TreeLayoutStrategy implements LayoutStrategy {
       if (firstNode) roots.push(firstNode);
     }
 
-    // Pass 1: Compute subtree widths
-    this.computeWidths(roots);
+    // Pass 1: Compute subtree widths and max depth
+    const { width: totalWidth, depth: maxDepth } = this.computeWidthAndDepth(roots);
 
-    // Pass 2: Assign coordinates
-    let currentX = this.startX;
+    // Pass 2: Assign coordinates (Center everything around startX, raise above ground)
+    const dynamicStartY = Math.max(this.startY, 0.5 + (maxDepth - 1) * this.levelSpacing);
+    
+    let currentX = this.startX - (totalWidth / 2) + (this.siblingSpacing / 2);
     roots.forEach(root => {
-      this.assignCoordinates(root, currentX, this.startY);
-      currentX += root.width + this.siblingSpacing;
+      this.assignCoordinates(root, currentX, dynamicStartY);
+      currentX += root.width;
     });
 
     // Populate coordinate map
@@ -91,17 +96,22 @@ export class TreeLayoutStrategy implements LayoutStrategy {
     return map;
   }
 
-  private computeWidths(nodes: TreeNode[]): number {
+  private computeWidthAndDepth(nodes: TreeNode[]): { width: number, depth: number } {
     let totalWidth = 0;
+    let maxDepth = 1;
     nodes.forEach(node => {
       if (node.children.length === 0) {
         node.width = this.siblingSpacing;
+        node.depth = 1;
       } else {
-        node.width = this.computeWidths(node.children);
+        const { width, depth } = this.computeWidthAndDepth(node.children);
+        node.width = width;
+        node.depth = depth + 1;
+        if (node.depth > maxDepth) maxDepth = node.depth;
       }
       totalWidth += node.width;
     });
-    return totalWidth;
+    return { width: totalWidth, depth: maxDepth };
   }
 
   private assignCoordinates(node: TreeNode, x: number, y: number): void {

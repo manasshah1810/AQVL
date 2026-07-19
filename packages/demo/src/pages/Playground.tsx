@@ -5,6 +5,8 @@ import { AQVECanvas } from '@aqvl/renderer';
 
 import { IDEEditor } from '../components/IDEEditor';
 import { SortingScripts } from '../examples/SortingLibrary';
+import { PlaygroundOutputConsole } from '../components/PlaygroundOutputConsole';
+import type { RuntimeLogEntry } from '../components/RuntimeOutputPanel';
 
 import './playground.css';
 
@@ -127,6 +129,10 @@ export default function Playground() {
   const [totalInstructions, setTotalInstructions] = useState(0);
   const [resetKey, setResetKey] = useState(0);
 
+  // Runtime Output Logs
+  const [runtimeLogs, setRuntimeLogs] = useState<RuntimeLogEntry[]>([]);
+  const runtimeLogIdRef = useRef(0);
+
   // Speed
   const [speed, setSpeed] = useState<'0.5x' | '1x' | '2x' | '4x'>('1x');
 
@@ -164,6 +170,7 @@ export default function Playground() {
     setCurrentInstructionIndex(0);
     setIsPlaying(false);
     setResetKey(prev => prev + 1);
+    setRuntimeLogs([]);
 
     if (engineRef.current) {
       engineRef.current.pause();
@@ -198,6 +205,9 @@ export default function Playground() {
       });
       engine.eventDispatcher.on('STATE_UPDATED', (newState) => {
         setSceneState({ ...newState });
+      });
+      engine.eventDispatcher.on('RUNTIME_LOG', (entry: RuntimeLogEntry) => {
+        setRuntimeLogs(prev => [...prev, { ...entry, id: ++runtimeLogIdRef.current }]);
       });
       engine.eventDispatcher.on('INSTRUCTION_START', (idx: any) => {
         setCurrentInstructionIndex(idx);
@@ -507,6 +517,12 @@ export default function Playground() {
             </div>
 
           </div>
+
+          {/* ── Output Console ─────────────────────────────────────────────── */}
+          <PlaygroundOutputConsole
+            logs={runtimeLogs}
+            onClear={() => setRuntimeLogs([])}
+          />
 
         </section>
       </div>

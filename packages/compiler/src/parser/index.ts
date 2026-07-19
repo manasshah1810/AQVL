@@ -24,6 +24,7 @@ import {
   SetStateNode,
   LoopNode,
   IfNode,
+  BinaryTreeDeclNode,
 } from '../ast/types';
 
 export class Parser {
@@ -108,6 +109,8 @@ export class Parser {
         variables.push(this.parseLinkedListDecl('CIRCULAR'));
       } else if (this.matchKeyword('TREE')) {
         variables.push(this.parseTreeDecl());
+      } else if (this.matchKeyword('BINARY_TREE')) {
+        variables.push(this.parseBinaryTreeDecl());
       } else if (this.matchKeyword('HEAP')) {
         variables.push(this.parseHeapDecl());
       } else if (this.matchKeyword('TRIE')) {
@@ -238,7 +241,12 @@ export class Parser {
     const properties: any[] = [];
     if (this.matchSymbol('{')) {
       while (!this.checkSymbol('}')) {
-        const propNameToken = this.consume(TokenType.Identifier, 'Expected property name.');
+        let propNameToken;
+        if (this.peek().type === TokenType.Identifier || this.peek().type === TokenType.Keyword) {
+          propNameToken = this.advance();
+        } else {
+          throw new Error(`Expected property name at line ${this.peek().pos.line}`);
+        }
         this.consumeSymbol(':', 'Expected ":" after property name.');
         const propValue = this.parseExpression();
 
@@ -391,6 +399,37 @@ export class Parser {
     };
   }
 
+  private parseBinaryTreeDecl(): BinaryTreeDeclNode {
+    const pos = this.previous().pos;
+    const nameToken = this.consume(TokenType.Identifier, 'Expected binary tree name.');
+
+    let initialElements: LiteralNode[] | undefined;
+
+    if (this.matchSymbol('=')) {
+      this.consumeSymbol('[', 'Expected "[" for binary tree initialization.');
+      initialElements = [];
+      if (!this.checkSymbol(']')) {
+        do {
+          const numToken = this.consume(TokenType.Number, 'Expected number in binary tree array.');
+          initialElements.push({
+            type: 'LiteralNode',
+            dataType: 'number',
+            value: parseFloat(numToken.value),
+            pos: numToken.pos,
+          });
+        } while (this.matchSymbol(','));
+      }
+      this.consumeSymbol(']', 'Expected "]" after binary tree elements.');
+    }
+
+    return {
+      type: 'BinaryTreeDeclNode',
+      name: { type: 'IdentifierNode', name: nameToken.value, pos: nameToken.pos },
+      initialElements,
+      pos
+    };
+  }
+
   private parseHeapDecl(): HeapDeclNode {
     const pos = this.previous().pos;
     const nameToken = this.consume(TokenType.Identifier, 'Expected heap name.');
@@ -439,7 +478,7 @@ export class Parser {
         statements.push(this.parseLoop());
       } else if (this.matchKeyword('IF')) {
         statements.push(this.parseIf());
-      } else if (this.peek().type === TokenType.Keyword && new Set(['HIGHLIGHT', 'INSERT', 'DELETE', 'INSERT_HEAD', 'INSERT_TAIL', 'DELETE_HEAD', 'DELETE_TAIL', 'UPDATE', 'MOVE', 'CONNECT', 'DISCONNECT', 'PUSH', 'POP', 'PEEK', 'ENQUEUE', 'DEQUEUE', 'FRONT', 'REAR', 'VISIT', 'MARK', 'TRAVERSE', 'ROTATE', 'SEARCH', 'HEAPIFY']).has(this.peek().value.toUpperCase())) {
+      } else if (this.peek().type === TokenType.Keyword && new Set(['TREE', 'ROOT', 'REMOVE', 'COPY', 'FIND', 'SELECT', 'PREORDER', 'INORDER', 'POSTORDER', 'LEVELORDER', 'REVERSELEVELORDER', 'ZIGZAG', 'DFS', 'BFS', 'HEIGHT', 'DEPTH', 'LEVEL', 'MAX_DEPTH', 'MIN_DEPTH', 'SIZE', 'LEAVES', 'INTERNAL', 'DEGREE', 'STATS', 'PARENTOF', 'CHILDRENOF', 'ANCESTORS', 'DESCENDANTS', 'SIBLINGS', 'PATH', 'HIGHLIGHT', 'INSERT', 'DELETE', 'INSERT_HEAD', 'INSERT_TAIL', 'DELETE_HEAD', 'DELETE_TAIL', 'UPDATE', 'MOVE', 'CONNECT', 'DISCONNECT', 'PUSH', 'POP', 'PEEK', 'ENQUEUE', 'DEQUEUE', 'FRONT', 'REAR', 'VISIT', 'MARK', 'TRAVERSE', 'ROTATE', 'SEARCH', 'HEAPIFY', 'CHILD', 'PARENT', 'LEFT_CHILD', 'RIGHT_CHILD', 'SIBLING', 'CLEAR', 'IS_EMPTY', 'COUNT_NODES', 'COUNT_LEAVES', 'COUNT_INTERNAL', 'COUNT_LEFT_LEAVES', 'COUNT_RIGHT_LEAVES', 'COUNT_FULL', 'COUNT_HALF', 'IS_FULL', 'IS_COMPLETE', 'IS_PERFECT', 'IS_BALANCED', 'IS_DEGENERATE', 'IS_LEFT_SKEWED', 'IS_RIGHT_SKEWED', 'IS_SYMMETRIC', 'LCA', 'DISTANCE', 'GRANDPARENT', 'UNCLE', 'COUSINS', 'ROOT_TO_NODE', 'ROOT_TO_LEAVES', 'LONGEST_PATH', 'SHORTEST_PATH', 'MIRROR', 'INVERT', 'CLONE', 'REMOVE_LEAVES', 'PRUNE', 'LEFT_VIEW', 'RIGHT_VIEW', 'TOP_VIEW', 'BOTTOM_VIEW', 'BOUNDARY', 'VERTICAL_ORDER', 'DIAGONAL', 'MAX_VALUE', 'MIN_VALUE', 'SUM', 'AVERAGE', 'MAX_LEVEL_SUM']).has(this.peek().value.toUpperCase())) {
         statements.push(this.parseGenericAction());
       } else if (this.matchKeyword('SET')) {
         statements.push(this.parseSetState());
@@ -500,7 +539,7 @@ export class Parser {
         body.push(this.parseLoop());
       } else if (this.matchKeyword('IF')) {
         body.push(this.parseIf());
-      } else if (this.peek().type === TokenType.Keyword && new Set(['HIGHLIGHT', 'INSERT', 'DELETE', 'MOVE', 'CONNECT', 'DISCONNECT', 'PUSH', 'POP', 'PEEK', 'ENQUEUE', 'DEQUEUE', 'FRONT', 'REAR', 'VISIT', 'MARK', 'TRAVERSE', 'ROTATE', 'SEARCH', 'HEAPIFY']).has(this.peek().value.toUpperCase())) {
+      } else if (this.peek().type === TokenType.Keyword && new Set(['TREE', 'ROOT', 'REMOVE', 'COPY', 'FIND', 'SELECT', 'PREORDER', 'INORDER', 'POSTORDER', 'LEVELORDER', 'REVERSELEVELORDER', 'ZIGZAG', 'DFS', 'BFS', 'HEIGHT', 'DEPTH', 'LEVEL', 'MAX_DEPTH', 'MIN_DEPTH', 'SIZE', 'LEAVES', 'INTERNAL', 'DEGREE', 'STATS', 'PARENTOF', 'CHILDRENOF', 'ANCESTORS', 'DESCENDANTS', 'SIBLINGS', 'PATH', 'HIGHLIGHT', 'INSERT', 'DELETE', 'INSERT_HEAD', 'INSERT_TAIL', 'DELETE_HEAD', 'DELETE_TAIL', 'UPDATE', 'MOVE', 'CONNECT', 'DISCONNECT', 'PUSH', 'POP', 'PEEK', 'ENQUEUE', 'DEQUEUE', 'FRONT', 'REAR', 'VISIT', 'MARK', 'TRAVERSE', 'ROTATE', 'SEARCH', 'HEAPIFY', 'CHILD', 'PARENT', 'LEFT_CHILD', 'RIGHT_CHILD', 'SIBLING', 'CLEAR', 'IS_EMPTY', 'COUNT_NODES', 'COUNT_LEAVES', 'COUNT_INTERNAL', 'COUNT_LEFT_LEAVES', 'COUNT_RIGHT_LEAVES', 'COUNT_FULL', 'COUNT_HALF', 'IS_FULL', 'IS_COMPLETE', 'IS_PERFECT', 'IS_BALANCED', 'IS_DEGENERATE', 'IS_LEFT_SKEWED', 'IS_RIGHT_SKEWED', 'IS_SYMMETRIC', 'LCA', 'DISTANCE', 'GRANDPARENT', 'UNCLE', 'COUSINS', 'ROOT_TO_NODE', 'ROOT_TO_LEAVES', 'LONGEST_PATH', 'SHORTEST_PATH', 'MIRROR', 'INVERT', 'CLONE', 'REMOVE_LEAVES', 'PRUNE', 'LEFT_VIEW', 'RIGHT_VIEW', 'TOP_VIEW', 'BOTTOM_VIEW', 'BOUNDARY', 'VERTICAL_ORDER', 'DIAGONAL', 'MAX_VALUE', 'MIN_VALUE', 'SUM', 'AVERAGE', 'MAX_LEVEL_SUM']).has(this.peek().value.toUpperCase())) {
         body.push(this.parseGenericAction());
       } else if (this.matchKeyword('SET')) {
         body.push(this.parseSetState());
@@ -542,7 +581,7 @@ export class Parser {
         body.push(this.parseLoop());
       } else if (this.matchKeyword('IF')) {
         body.push(this.parseIf());
-      } else if (this.peek().type === TokenType.Keyword && new Set(['HIGHLIGHT', 'INSERT', 'DELETE', 'MOVE', 'CONNECT', 'DISCONNECT', 'PUSH', 'POP', 'PEEK', 'ENQUEUE', 'DEQUEUE', 'FRONT', 'REAR', 'VISIT', 'MARK', 'TRAVERSE', 'ROTATE', 'SEARCH', 'HEAPIFY']).has(this.peek().value.toUpperCase())) {
+      } else if (this.peek().type === TokenType.Keyword && new Set(['TREE', 'ROOT', 'REMOVE', 'COPY', 'FIND', 'SELECT', 'PREORDER', 'INORDER', 'POSTORDER', 'LEVELORDER', 'REVERSELEVELORDER', 'ZIGZAG', 'DFS', 'BFS', 'HEIGHT', 'DEPTH', 'LEVEL', 'MAX_DEPTH', 'MIN_DEPTH', 'SIZE', 'LEAVES', 'INTERNAL', 'DEGREE', 'STATS', 'PARENTOF', 'CHILDRENOF', 'ANCESTORS', 'DESCENDANTS', 'SIBLINGS', 'PATH', 'HIGHLIGHT', 'INSERT', 'DELETE', 'INSERT_HEAD', 'INSERT_TAIL', 'DELETE_HEAD', 'DELETE_TAIL', 'UPDATE', 'MOVE', 'CONNECT', 'DISCONNECT', 'PUSH', 'POP', 'PEEK', 'ENQUEUE', 'DEQUEUE', 'FRONT', 'REAR', 'VISIT', 'MARK', 'TRAVERSE', 'ROTATE', 'SEARCH', 'HEAPIFY', 'CHILD', 'PARENT', 'LEFT_CHILD', 'RIGHT_CHILD', 'SIBLING', 'CLEAR', 'IS_EMPTY', 'COUNT_NODES', 'COUNT_LEAVES', 'COUNT_INTERNAL', 'COUNT_LEFT_LEAVES', 'COUNT_RIGHT_LEAVES', 'COUNT_FULL', 'COUNT_HALF', 'IS_FULL', 'IS_COMPLETE', 'IS_PERFECT', 'IS_BALANCED', 'IS_DEGENERATE', 'IS_LEFT_SKEWED', 'IS_RIGHT_SKEWED', 'IS_SYMMETRIC', 'LCA', 'DISTANCE', 'GRANDPARENT', 'UNCLE', 'COUSINS', 'ROOT_TO_NODE', 'ROOT_TO_LEAVES', 'LONGEST_PATH', 'SHORTEST_PATH', 'MIRROR', 'INVERT', 'CLONE', 'REMOVE_LEAVES', 'PRUNE', 'LEFT_VIEW', 'RIGHT_VIEW', 'TOP_VIEW', 'BOTTOM_VIEW', 'BOUNDARY', 'VERTICAL_ORDER', 'DIAGONAL', 'MAX_VALUE', 'MIN_VALUE', 'SUM', 'AVERAGE', 'MAX_LEVEL_SUM']).has(this.peek().value.toUpperCase())) {
         body.push(this.parseGenericAction());
       } else if (this.matchKeyword('SET')) {
         body.push(this.parseSetState());
@@ -579,8 +618,9 @@ export class Parser {
       const nextType = this.peek().type;
       if (nextType === TokenType.Identifier || nextType === TokenType.Number || nextType === TokenType.String) {
         args.push(this.parseExpression());
+      } else if (nextType === TokenType.Keyword && ['TO', 'FROM', 'INTO'].includes(this.peek().value.toUpperCase())) {
+        this.advance(); // consume filler keyword
       } else if (nextType === TokenType.Symbol && this.peek().value === '[') {
-        // Handle standalone array indexing logic if needed, but parseExpression covers it if it starts with Identifier
         break;
       } else {
         break; // Stop parsing args if we hit a Keyword or other Symbol

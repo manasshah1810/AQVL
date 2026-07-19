@@ -748,7 +748,7 @@
   font-size: var(--text-sm);
   color: var(--syn-keyword);
   font-weight: 600;
-  white-space: nowrap;
+  white-space: normal;
 }
 
 .docs-cmd-table td .tok-param {

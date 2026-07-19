@@ -4,56 +4,64 @@ import './docs.css';
 // ─── Icons ───────────────────────────────────────────────
 const SunIcon = () => (
   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
-    <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
-    <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
-    <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+    <circle cx="12" cy="12" r="5" /><line x1="12" y1="1" x2="12" y2="3" /><line x1="12" y1="21" x2="12" y2="23" />
+    <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" /><line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+    <line x1="1" y1="12" x2="3" y2="12" /><line x1="21" y1="12" x2="23" y2="12" />
+    <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" /><line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
   </svg>
 );
 
 const MoonIcon = () => (
   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
   </svg>
 );
 
 const CopyIcon = () => (
   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+    <rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
   </svg>
 );
 
 const CheckIcon = () => (
   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-    <polyline points="20 6 9 17 4 12"/>
+    <polyline points="20 6 9 17 4 12" />
   </svg>
 );
 
 const InfoIcon = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+    <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
   </svg>
 );
 
 const WarnIcon = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-    <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+    <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
   </svg>
 );
 
 const TipIcon = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
   </svg>
 );
 
 // ─── Syntax Highlighter ───────────────────────────────────
 const KEYWORDS = new Set([
-  'SCENE','DECLARE','SEQUENCE','END','ARRAY','LINKEDLIST',
-  'HIGHLIGHT','COMPARE','SWAP','UPDATE','INSERT','DELETE',
-  'INSERT_HEAD','INSERT_TAIL','DELETE_HEAD','DELETE_TAIL',
-  'LOOP','FROM','TO','IF','LENGTH','NULL','WAIT','DOUBLY'
+  'SCENE', 'DECLARE', 'SEQUENCE', 'END', 'ARRAY', 'LINKEDLIST',
+  'HIGHLIGHT', 'COMPARE', 'SWAP', 'UPDATE', 'INSERT', 'DELETE',
+  'INSERT_HEAD', 'INSERT_TAIL', 'DELETE_HEAD', 'DELETE_TAIL',
+  'LOOP', 'FROM', 'TO', 'IF', 'LENGTH', 'NULL', 'WAIT', 'DOUBLY',
+  'TREE', 'ROOT', 'CHILD', 'PARENT', 'PREORDER', 'POSTORDER', 'LEVELORDER', 'DFS', 'BFS', 'SEARCH',
+  'INTO', 'HEIGHT', 'SIZE', 'LEAVES', 'ANCESTORS', 'PATH',
+  'IS_FULL', 'IS_COMPLETE', 'IS_PERFECT', 'IS_BALANCED', 'IS_DEGENERATE', 'IS_LEFT_SKEWED', 'IS_RIGHT_SKEWED', 'IS_SYMMETRIC',
+  'LCA', 'DISTANCE', 'GRANDPARENT', 'UNCLE', 'COUSINS',
+  'ROOT_TO_NODE', 'ROOT_TO_LEAVES', 'LONGEST_PATH', 'SHORTEST_PATH',
+  'MIRROR', 'INVERT', 'CLONE', 'REMOVE_LEAVES', 'PRUNE',
+  'LEFT_VIEW', 'RIGHT_VIEW', 'TOP_VIEW', 'BOTTOM_VIEW', 'BOUNDARY', 'VERTICAL_ORDER', 'DIAGONAL',
+  'MAX_VALUE', 'MIN_VALUE', 'SUM', 'AVERAGE', 'MAX_LEVEL_SUM'
 ]);
 
 // CIRCULAR gets its own class to distinguish it visually as a structural modifier
@@ -78,7 +86,7 @@ function highlightAQVL(source: string): React.ReactNode[] {
     const nodes = parts.map((part, partIdx) => {
       if (part === CIRCULAR_KEYWORD) return <span key={partIdx} className="tok-circular">{part}</span>;
       if (KEYWORDS.has(part)) return <span key={partIdx} className="tok-keyword">{part}</span>;
-      if (/^\d+$/.test(part))  return <span key={partIdx} className="tok-number">{part}</span>;
+      if (/^\d+$/.test(part)) return <span key={partIdx} className="tok-number">{part}</span>;
       if (/^[a-z_][a-z0-9_]*$/i.test(part) && part.length > 0)
         return <span key={partIdx} className="tok-variable">{part}</span>;
       if (/^[=><+\-*/,[\]()]+$/.test(part) && part.trim())
@@ -139,12 +147,12 @@ const Alert: React.FC<{ kind: AlertKind; title: string; children: React.ReactNod
   const icons: Record<AlertKind, React.ReactNode> = {
     note: <InfoIcon />,
     warn: <WarnIcon />,
-    tip:  <TipIcon />,
+    tip: <TipIcon />,
   };
   const cls: Record<AlertKind, string> = {
     note: 'docs-alert-note',
     warn: 'docs-alert-warn',
-    tip:  'docs-alert-tip',
+    tip: 'docs-alert-tip',
   };
   return (
     <div className={`docs-alert ${cls[kind]}`}>
@@ -164,62 +172,87 @@ const C: React.FC<{ children: React.ReactNode }> = ({ children }) => (
 
 // ─── TOC definition ───────────────────────────────────────
 const TOC_ITEMS_ARRAYS = [
-  { id: 'introduction',  label: 'Introduction' },
-  { id: 'declaration',   label: 'Declaring an Array' },
-  { id: 'commands',      label: 'Commands Reference' },
-  { id: 'examples',      label: 'Examples' },
-  { id: 'errors',        label: 'Errors & Tips' },
+  { id: 'introduction', label: 'Introduction' },
+  { id: 'declaration', label: 'Declaring an Array' },
+  { id: 'commands', label: 'Commands Reference' },
+  { id: 'examples', label: 'Examples' },
+  { id: 'errors', label: 'Errors & Tips' },
 ];
 
 const TOC_ITEMS_LINKED_LISTS = [
-  { id: 'll-introduction',  label: 'Introduction' },
-  { id: 'll-overview-singly',label: 'Singly Linked List' },
-  { id: 'll-overview-doubly',label: 'Doubly Linked List' },
-  { id: 'll-overview-circular',label: 'Circular Linked List' },
+  { id: 'll-introduction', label: 'Introduction' },
+  { id: 'll-overview-singly', label: 'Singly Linked List' },
+  { id: 'll-overview-doubly', label: 'Doubly Linked List' },
+  { id: 'll-overview-circular', label: 'Circular Linked List' },
 ];
 
 const TOC_ITEMS_SINGLY = [
-  { id: 'sl-introduction',  label: 'Introduction' },
-  { id: 'sl-declaration',   label: 'Declaring a Singly List' },
-  { id: 'sl-commands',      label: 'Commands Reference' },
-  { id: 'sl-examples',      label: 'Examples' },
-  { id: 'sl-errors',        label: 'Errors & Tips' },
+  { id: 'sl-introduction', label: 'Introduction' },
+  { id: 'sl-declaration', label: 'Declaring a Singly List' },
+  { id: 'sl-commands', label: 'Commands Reference' },
+  { id: 'sl-examples', label: 'Examples' },
+  { id: 'sl-errors', label: 'Errors & Tips' },
 ];
 
 const TOC_ITEMS_DOUBLY = [
-  { id: 'dl-introduction',  label: 'Introduction' },
-  { id: 'dl-declaration',   label: 'Declaring a Doubly List' },
-  { id: 'dl-commands',      label: 'Commands Reference' },
-  { id: 'dl-examples',      label: 'Examples' },
-  { id: 'dl-errors',        label: 'Errors & Tips' },
+  { id: 'dl-introduction', label: 'Introduction' },
+  { id: 'dl-declaration', label: 'Declaring a Doubly List' },
+  { id: 'dl-commands', label: 'Commands Reference' },
+  { id: 'dl-examples', label: 'Examples' },
+  { id: 'dl-errors', label: 'Errors & Tips' },
 ];
 
 const TOC_ITEMS_CIRCULAR = [
-  { id: 'cl-introduction',  label: 'Introduction' },
-  { id: 'cl-declaration',   label: 'Declaring a Circular List' },
-  { id: 'cl-commands',      label: 'Commands Reference' },
-  { id: 'cl-examples',      label: 'Examples' },
-  { id: 'cl-errors',        label: 'Errors & Tips' },
+  { id: 'cl-introduction', label: 'Introduction' },
+  { id: 'cl-declaration', label: 'Declaring a Circular List' },
+  { id: 'cl-commands', label: 'Commands Reference' },
+  { id: 'cl-examples', label: 'Examples' },
+  { id: 'cl-errors', label: 'Errors & Tips' },
+];
+
+const TOC_ITEMS_TREES = [
+  { id: 'tr-introduction', label: 'Introduction' },
+  { id: 'tr-overview-general', label: 'General Tree' },
+  { id: 'tr-overview-binary', label: 'Binary Tree' },
+];
+
+const TOC_ITEMS_GENERAL_TREE = [
+  { id: 'gt-introduction', label: 'Introduction' },
+  { id: 'gt-declaration', label: 'Declaring a General Tree' },
+  { id: 'gt-commands', label: 'Commands Reference' },
+  { id: 'gt-examples', label: 'Examples' },
+  { id: 'gt-errors', label: 'Errors & Tips' },
+];
+
+const TOC_ITEMS_BINARY_TREE = [
+  { id: 'bt-introduction', label: 'Introduction' },
+  { id: 'bt-declaration', label: 'Declaring a Binary Tree' },
+  { id: 'bt-commands', label: 'Commands Reference' },
+  { id: 'bt-examples', label: 'Examples' },
+  { id: 'bt-errors', label: 'Errors & Tips' },
 ];
 
 // ─── Main Docs page ───────────────────────────────────────
 export default function Docs() {
-  const [activePage, setActivePage] = useState<'arrays'|'linked-lists'|'singly-linked-list'|'doubly-linked-list'|'circular-linked-list'>('arrays');
-  const [theme, setTheme]           = useState<'light'|'dark'>('dark');
-  const [activeId, setActiveId]     = useState('introduction');
-  const [scrollPct, setScrollPct]   = useState(0);
-  const observerRef                 = useRef<IntersectionObserver | null>(null);
+  const [activePage, setActivePage] = useState<'arrays' | 'linked-lists' | 'singly-linked-list' | 'doubly-linked-list' | 'circular-linked-list' | 'trees' | 'general-tree' | 'binary-tree'>('arrays');
+  const [theme, setTheme] = useState<'light' | 'dark'>('dark');
+  const [activeId, setActiveId] = useState('introduction');
+  const [scrollPct, setScrollPct] = useState(0);
+  const observerRef = useRef<IntersectionObserver | null>(null);
 
   const TOC_ITEMS =
-    activePage === 'arrays'               ? TOC_ITEMS_ARRAYS :
-    activePage === 'linked-lists'         ? TOC_ITEMS_LINKED_LISTS :
-    activePage === 'singly-linked-list'   ? TOC_ITEMS_SINGLY :
-    activePage === 'doubly-linked-list'   ? TOC_ITEMS_DOUBLY :
-                                           TOC_ITEMS_CIRCULAR;
+    activePage === 'arrays' ? TOC_ITEMS_ARRAYS :
+      activePage === 'linked-lists' ? TOC_ITEMS_LINKED_LISTS :
+        activePage === 'singly-linked-list' ? TOC_ITEMS_SINGLY :
+          activePage === 'doubly-linked-list' ? TOC_ITEMS_DOUBLY :
+            activePage === 'circular-linked-list' ? TOC_ITEMS_CIRCULAR :
+              activePage === 'trees' ? TOC_ITEMS_TREES :
+                activePage === 'binary-tree' ? TOC_ITEMS_BINARY_TREE :
+                  TOC_ITEMS_GENERAL_TREE;
 
   // Restore theme
   useEffect(() => {
-    const saved = (localStorage.getItem('aqvl-docs-theme') ?? 'dark') as 'light'|'dark';
+    const saved = (localStorage.getItem('aqvl-docs-theme') ?? 'dark') as 'light' | 'dark';
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setTheme(saved);
     document.documentElement.setAttribute('data-theme', saved);
@@ -290,7 +323,7 @@ export default function Docs() {
             <a href="#/" className="docs-brand">
               <div className="docs-brand-logo">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
+                  <polyline points="16 18 22 12 16 6" /><polyline points="8 6 2 12 8 18" />
                 </svg>
               </div>
               <span className="docs-brand-name">AQVL</span>
@@ -316,7 +349,7 @@ export default function Docs() {
 
             <div className="docs-nav-group">
               <div className="docs-nav-group-label">Data Structures</div>
-              <button 
+              <button
                 className={`docs-nav-item ${activePage === 'arrays' ? 'is-active' : ''}`}
                 onClick={() => { setActivePage('arrays'); setActiveId('introduction'); }}
               >
@@ -324,7 +357,7 @@ export default function Docs() {
               </button>
 
               {/* ── Linked Lists parent + nested children ─ */}
-              <button 
+              <button
                 className={`docs-nav-item ${activePage === 'linked-lists' ? 'is-active' : (activePage === 'singly-linked-list' || activePage === 'doubly-linked-list' || activePage === 'circular-linked-list') ? 'is-parent-active' : ''}`}
                 onClick={() => { setActivePage('linked-lists'); setActiveId('ll-introduction'); }}
               >
@@ -355,10 +388,36 @@ export default function Docs() {
                 </div>
               )}
 
-              <a href="#" className="docs-nav-item is-disabled">
+              {/* ── Trees parent + nested children ─ */}
+              <button
+                className={`docs-nav-item ${activePage === 'trees' ? 'is-active' : (activePage === 'general-tree' || activePage === 'binary-tree') ? 'is-parent-active' : ''}`}
+                onClick={() => { setActivePage('trees'); setActiveId('tr-introduction'); }}
+              >
                 Trees
-                <span className="docs-nav-badge">Soon</span>
-              </a>
+              </button>
+
+              {/* Children — shown whenever any tree page is active */}
+              {(activePage === 'trees' || activePage === 'general-tree' || activePage === 'binary-tree') && (
+                <div className="docs-nav-children">
+                  <button
+                    className={`docs-nav-item docs-nav-child ${activePage === 'general-tree' ? 'is-active' : ''}`}
+                    onClick={() => { setActivePage('general-tree'); setActiveId('gt-introduction'); }}
+                  >
+                    General Tree
+                  </button>
+                  <button
+                    className={`docs-nav-item docs-nav-child ${activePage === 'binary-tree' ? 'is-active' : ''}`}
+                    onClick={() => { setActivePage('binary-tree'); setActiveId('bt-introduction'); }}
+                  >
+                    Binary Tree
+                  </button>
+                  <a href="#" className="docs-nav-item docs-nav-child is-disabled">
+                    BST
+                    <span className="docs-nav-badge">Soon</span>
+                  </a>
+                </div>
+              )}
+
               <a href="#" className="docs-nav-item is-disabled">
                 Graphs
                 <span className="docs-nav-badge">Soon</span>
@@ -393,9 +452,9 @@ export default function Docs() {
                 <header className="docs-page-hero">
                   <div className="docs-page-tag">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-                      <line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/>
-                      <line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/>
+                      <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                      <line x1="3" y1="9" x2="21" y2="9" /><line x1="3" y1="15" x2="21" y2="15" />
+                      <line x1="9" y1="3" x2="9" y2="21" /><line x1="15" y1="3" x2="15" y2="21" />
                     </svg>
                     Data Structures
                   </div>
@@ -414,13 +473,13 @@ export default function Docs() {
                     data right away, before a single instruction runs.
                   </p>
                   <p className="docs-p">
-                    Arrays are the first data structure in AQVL and are paired with a set of high-level commands — 
-                    <C>HIGHLIGHT</C>, <C>COMPARE</C>, <C>SWAP</C>, <C>UPDATE</C>, <C>INSERT</C>, and <C>DELETE</C> — that 
-                    produce smooth, step-by-step animations. Combine them with <C>LOOP</C> and <C>IF</C> control flow to 
+                    Arrays are the first data structure in AQVL and are paired with a set of high-level commands —
+                    <C>HIGHLIGHT</C>, <C>COMPARE</C>, <C>SWAP</C>, <C>UPDATE</C>, <C>INSERT</C>, and <C>DELETE</C> — that
+                    produce smooth, step-by-step animations. Combine them with <C>LOOP</C> and <C>IF</C> control flow to
                     express any sorting or searching algorithm in just a few readable lines.
                   </p>
                   <Alert kind="note" title="Note">
-                    AQVL programs consist of three top-level blocks: <C>DECLARE</C> (define data), <C>SEQUENCE</C> (define 
+                    AQVL programs consist of three top-level blocks: <C>DECLARE</C> (define data), <C>SEQUENCE</C> (define
                     steps), and the wrapping <C>SCENE</C> / <C>END</C> pair. All three must be present for a valid program.
                   </Alert>
                 </section>
@@ -588,7 +647,7 @@ export default function Docs() {
                   </Alert>
 
                   <Alert kind="tip" title="Tip: use LENGTH() for dynamic arrays">
-                    If your program uses <C>INSERT</C> or <C>DELETE</C>, the array length changes at runtime. 
+                    If your program uses <C>INSERT</C> or <C>DELETE</C>, the array length changes at runtime.
                     Always reference <C>LENGTH(arr)</C> instead of a hardcoded number in your loop bounds.
                   </Alert>
 
@@ -606,9 +665,9 @@ export default function Docs() {
                 <header className="docs-page-hero">
                   <div className="docs-page-tag">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-                      <line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/>
-                      <line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/>
+                      <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                      <line x1="3" y1="9" x2="21" y2="9" /><line x1="3" y1="15" x2="21" y2="15" />
+                      <line x1="9" y1="3" x2="9" y2="21" /><line x1="15" y1="3" x2="15" y2="21" />
                     </svg>
                     Data Structures
                   </div>
@@ -684,8 +743,8 @@ export default function Docs() {
                 <header className="docs-page-hero">
                   <div className="docs-page-tag">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/>
-                      <line x1="7" y1="12" x2="10" y2="12"/><line x1="14" y1="12" x2="17" y2="12"/>
+                      <circle cx="5" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="19" cy="12" r="2" />
+                      <line x1="7" y1="12" x2="10" y2="12" /><line x1="14" y1="12" x2="17" y2="12" />
                     </svg>
                     Linked Lists
                   </div>
@@ -802,8 +861,8 @@ export default function Docs() {
                 <header className="docs-page-hero">
                   <div className="docs-page-tag">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/>
-                      <line x1="7" y1="12" x2="10" y2="12"/><line x1="14" y1="12" x2="17" y2="12"/>
+                      <circle cx="5" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="19" cy="12" r="2" />
+                      <line x1="7" y1="12" x2="10" y2="12" /><line x1="14" y1="12" x2="17" y2="12" />
                     </svg>
                     Linked Lists
                   </div>
@@ -909,8 +968,8 @@ export default function Docs() {
                 <header className="docs-page-hero">
                   <div className="docs-page-tag">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M21.5 12a9.5 9.5 0 1 1-9.5-9.5"/>
-                      <polyline points="21.5 3 21.5 7 17.5 7"/>
+                      <path d="M21.5 12a9.5 9.5 0 1 1-9.5-9.5" />
+                      <polyline points="21.5 3 21.5 7 17.5 7" />
                     </svg>
                     Linked Lists
                   </div>
@@ -1016,6 +1075,338 @@ export default function Docs() {
                   </Alert>
                   <Alert kind="note" title="Works with DOUBLY too">
                     A future AQVL version will support <C>CIRCULAR DOUBLY LINKEDLIST</C> — a doubly linked ring. Watch the changelog!
+                  </Alert>
+                </section>
+              </>
+            )}
+            {/* ══════════════════════════════════════════════
+                TREES PAGE
+            ══════════════════════════════════════════════ */}
+            {activePage === 'trees' && (
+              <>
+                <header className="docs-page-hero">
+                  <div className="docs-page-tag">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <polygon points="12 2 2 22 22 22" />
+                    </svg>
+                    Data Structures
+                  </div>
+                  <h1 className="docs-page-title">Trees</h1>
+                  <p className="docs-page-lead">
+                    AQVL supports General Trees with intuitive hierarchical visualization and step-by-step traversal animations.
+                  </p>
+                </header>
+
+                <section id="tr-introduction" className="docs-section">
+                  <h2 className="docs-h2">Introduction</h2>
+                  <p className="docs-p">
+                    In AQVL, a Tree is a hierarchical data structure composed of nodes. Trees visually arrange themselves from the root down, automatically maintaining a clean layout as nodes are added or removed.
+                  </p>
+                </section>
+
+                <section id="tr-overview-general" className="docs-section">
+                  <h2 className="docs-h2">General Tree</h2>
+                  <p className="docs-p">
+                    A general tree where each node can have an arbitrary number of children. It supports operations like assigning roots, adding children, and various traversal algorithms like BFS and DFS.
+                  </p>
+                  <CodeBlock label="Syntax" code={`TREE <name>`} />
+                  <button
+                    className="docs-nav-item docs-overview-link"
+                    onClick={() => { setActivePage('general-tree'); setActiveId('gt-introduction'); }}
+                  >
+                    → Open full General Tree documentation
+                  </button>
+                </section>
+
+                <section id="tr-overview-binary" className="docs-section">
+                  <h2 className="docs-h2">Binary Tree</h2>
+                  <p className="docs-p">
+                    A hierarchical structure where each node has at most two children (left and right). Supports specific binary-tree traversals and navigation like sibling and ancestors.
+                  </p>
+                  <CodeBlock label="Syntax" code={`BINARY_TREE <name>`} />
+                  <button
+                    className="docs-nav-item docs-overview-link"
+                    onClick={() => { setActivePage('binary-tree'); setActiveId('bt-introduction'); }}
+                  >
+                    → Open full Binary Tree documentation
+                  </button>
+                </section>
+              </>
+            )}
+
+            {/* ══════════════════════════════════════════════
+                GENERAL TREE PAGE
+            ══════════════════════════════════════════════ */}
+            {activePage === 'general-tree' && (
+              <>
+                <header className="docs-page-hero">
+                  <div className="docs-page-tag">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <polygon points="12 2 2 22 22 22" />
+                    </svg>
+                    Trees
+                  </div>
+                  <h1 className="docs-page-title">General Tree</h1>
+                  <p className="docs-page-lead">
+                    A hierarchical structure where nodes can have multiple children. Build the tree, modify it, and visualize traversals and searches.
+                  </p>
+                </header>
+
+                <section id="gt-introduction" className="docs-section">
+                  <h2 className="docs-h2">Introduction</h2>
+                  <p className="docs-p">
+                    A General Tree implies a hierarchical structure. In AQVL, you can directly build and interact with trees in the <C>SEQUENCE</C> block by designating a <C>ROOT</C> and adding nodes as a <C>CHILD</C>.
+                  </p>
+                  <p className="docs-p">
+                    AQVL handles the complex 3D layout of the tree automatically, ensuring that parent-child relationships are clearly visible as expanding branches.
+                  </p>
+                </section>
+
+                <section id="gt-declaration" className="docs-section">
+                  <h2 className="docs-h2">Building a General Tree</h2>
+                  <p className="docs-p">
+                    General tree operations can be invoked directly in the sequence. You start by setting a <C>ROOT</C> node and then defining relationships using <C>CHILD</C>.
+                  </p>
+                  <CodeBlock label="Syntax" code={`ROOT <value>\nCHILD <parentValue> <childValue>`} />
+                  <p className="docs-p">A complete minimal program:</p>
+                  <CodeBlock code={`SCENE MyTree\n\nSEQUENCE\n  ROOT A\n  CHILD A B\n  CHILD A C\nEND`} />
+                </section>
+
+                <section id="gt-commands" className="docs-section">
+                  <h2 className="docs-h2">Commands Reference</h2>
+                  <p className="docs-p">
+                    Tree commands inside the <C>SEQUENCE</C> block allow you to manipulate structure, traverse, and query relationships.
+                  </p>
+                  <table className="docs-cmd-table">
+                    <thead>
+                      <tr><th>Command</th><th>Description</th></tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td><span className="tok-keyword">ROOT</span> <span className="tok-param">value</span></td>
+                        <td>Initializes the tree with a root node of <C>value</C>.</td>
+                      </tr>
+                      <tr>
+                        <td><span className="tok-keyword">CHILD</span> <span className="tok-param">parentValue childValue</span></td>
+                        <td>Adds a new node <C>childValue</C> under the existing <C>parentValue</C>.</td>
+                      </tr>
+                      <tr>
+                        <td><span className="tok-keyword">INSERT</span> <span className="tok-param">childValue</span> <span className="tok-keyword">INTO</span> <span className="tok-param">parentValue</span></td>
+                        <td>Dynamically inserts a new child node to an existing parent, adjusting the layout.</td>
+                      </tr>
+                      <tr>
+                        <td><span className="tok-keyword">DELETE</span> <span className="tok-param">value</span></td>
+                        <td>Removes the node with the specified value and all its descendants.</td>
+                      </tr>
+                      <tr>
+                        <td><span className="tok-keyword">SEARCH</span> <span className="tok-param">targetValue</span></td>
+                        <td>Searches the tree for the target, highlighting nodes as they are visited.</td>
+                      </tr>
+                      <tr>
+                        <td><span className="tok-keyword">PREORDER</span> / <span className="tok-keyword">LEVELORDER</span> / <span className="tok-keyword">DFS</span> / <span className="tok-keyword">BFS</span></td>
+                        <td>Animates a specific tree traversal step-by-step.</td>
+                      </tr>
+                      <tr>
+                        <td><span className="tok-keyword">HEIGHT</span> / <span className="tok-keyword">SIZE</span> / <span className="tok-keyword">LEAVES</span></td>
+                        <td>Tree queries that compute properties of the tree.</td>
+                      </tr>
+                      <tr>
+                        <td><span className="tok-keyword">ANCESTORS</span> <span className="tok-param">value</span> / <span className="tok-keyword">PATH</span> <span className="tok-param">val1 val2</span></td>
+                        <td>Relationship queries that trace and highlight connections in the tree.</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </section>
+
+                <section id="gt-examples" className="docs-section">
+                  <h2 className="docs-h2">Examples</h2>
+
+                  <h3 className="docs-h3">Example 1 — Comprehensive Tree Operations</h3>
+                  <p className="docs-p">
+                    Build a tree, traverse it, search for a node, perform queries, and modify it.
+                  </p>
+                  <CodeBlock code={`SCENE TreeOperations\n\nSEQUENCE\n    // 1. Create a tree and root node\n    ROOT A\n    \n    // 2. Add children\n    CHILD A B\n    CHILD A C\n    CHILD B D\n    CHILD B E\n    \n    // 3. Tree Traversals\n    PREORDER\n    LEVELORDER\n    DFS\n    BFS\n    \n    // 4. Searches\n    SEARCH E\n    \n    // 5. Tree Queries\n    HEIGHT\n    SIZE\n    LEAVES\n    \n    // 6. Modifications\n    INSERT F INTO B\n    DELETE D\n    \n    // 7. Relationships\n    ANCESTORS F\n    PATH A F\nEND`} />
+                </section>
+
+                <section id="gt-errors" className="docs-section">
+                  <h2 className="docs-h2">Errors &amp; Tips</h2>
+                  <Alert kind="warn" title="Unique Values">
+                    The value of each node is used to identify it. Adding a <C>CHILD</C> with a value that already exists will cause unexpected behavior or an error.
+                  </Alert>
+                  <Alert kind="tip" title="Use the Console">
+                    Traversals and searches output a detailed log in the Playground Output Console, allowing you to follow the algorithm's decisions textually while watching the animation.
+                  </Alert>
+                </section>
+              </>
+            )}
+
+            {/* ══════════════════════════════════════════════
+                BINARY TREE PAGE
+            ══════════════════════════════════════════════ */}
+            {activePage === 'binary-tree' && (
+              <>
+                <header className="docs-page-hero">
+                  <div className="docs-page-tag">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <polygon points="12 2 2 22 22 22" />
+                    </svg>
+                    Trees
+                  </div>
+                  <h1 className="docs-page-title">Binary Tree</h1>
+                  <p className="docs-page-lead">
+                    A hierarchical structure where nodes have at most two children. Build the tree using left and right child assignments and visualize traversals.
+                  </p>
+                </header>
+
+                <section id="bt-introduction" className="docs-section">
+                  <h2 className="docs-h2">Introduction</h2>
+                  <p className="docs-p">
+                    A Binary Tree is a tree data structure in which each node has at most two children, referred to as the left child and the right child. AQVL enables building binary trees directly in the <C>SEQUENCE</C> block by designating a <C>ROOT</C> and adding nodes with <C>LEFT_CHILD</C> and <C>RIGHT_CHILD</C>.
+                  </p>
+                  <p className="docs-p">
+                    AQVL handles the complex 3D layout of the tree automatically, ensuring that parent-child relationships and Left/Right distinctions are clearly visible.
+                  </p>
+                </section>
+
+                <section id="bt-declaration" className="docs-section">
+                  <h2 className="docs-h2">Declaring a Binary Tree</h2>
+                  <p className="docs-p">
+                    Place your binary tree declaration inside the <C>DECLARE</C> block. Once declared, you can build it up dynamically.
+                  </p>
+                  <CodeBlock label="Syntax" code={`BINARY_TREE <name>`} />
+                  <p className="docs-p">A complete minimal program:</p>
+                  <CodeBlock code={`SCENE MyBinaryTree\n\nDECLARE\n    BINARY_TREE myTree\nEND\n\nSEQUENCE\n    ROOT 10\n    LEFT_CHILD 10 5\n    RIGHT_CHILD 10 20\nEND`} />
+                </section>
+
+                <section id="bt-commands" className="docs-section">
+                  <h2 className="docs-h2">Commands Reference</h2>
+                  <p className="docs-p">
+                    Tree commands inside the <C>SEQUENCE</C> block allow you to manipulate structure, traverse, and query relationships.
+                  </p>
+                  <table className="docs-cmd-table">
+                    <thead>
+                      <tr><th>Command</th><th>Description</th></tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td><span className="tok-keyword">ROOT</span> <span className="tok-param">value</span></td>
+                        <td>Initializes the tree with a root node of <C>value</C>.</td>
+                      </tr>
+                      <tr>
+                        <td><span className="tok-keyword">LEFT_CHILD</span> <span className="tok-param">parentValue childValue</span></td>
+                        <td>Adds <C>childValue</C> as the left child of <C>parentValue</C>.</td>
+                      </tr>
+                      <tr>
+                        <td><span className="tok-keyword">RIGHT_CHILD</span> <span className="tok-param">parentValue childValue</span></td>
+                        <td>Adds <C>childValue</C> as the right child of <C>parentValue</C>.</td>
+                      </tr>
+                      <tr>
+                        <td><span className="tok-keyword">DELETE</span> <span className="tok-param">value</span></td>
+                        <td>Removes the node with the specified value and its edges.</td>
+                      </tr>
+                      <tr>
+                        <td><span className="tok-keyword">SEARCH</span> <span className="tok-param">targetValue</span></td>
+                        <td>Searches the tree for the target, highlighting nodes.</td>
+                      </tr>
+                      <tr>
+                        <td><span className="tok-keyword">PREORDER</span> / <span className="tok-keyword">INORDER</span> / <span className="tok-keyword">POSTORDER</span> / <span className="tok-keyword">LEVELORDER</span> / <span className="tok-keyword">REVERSELEVELORDER</span> / <span className="tok-keyword">ZIGZAG</span> / <span className="tok-keyword">DFS</span> / <span className="tok-keyword">BFS</span></td>
+                        <td>Animates a specific tree traversal step-by-step.</td>
+                      </tr>
+                      <tr>
+                        <td><span className="tok-keyword">HEIGHT</span> / <span className="tok-keyword">DEPTH</span> <span className="tok-param">value</span> / <span className="tok-keyword">LEVEL</span> <span className="tok-param">value</span> / <span className="tok-keyword">MAX_DEPTH</span> / <span className="tok-keyword">MIN_DEPTH</span></td>
+                        <td>Performs structural depth and height measurements. Highlights paths to demonstrate values.</td>
+                      </tr>
+                      <tr>
+                        <td><span className="tok-keyword">COUNT_NODES</span> / <span className="tok-keyword">COUNT_LEAVES</span> / <span className="tok-keyword">COUNT_INTERNAL</span> / <span className="tok-keyword">COUNT_LEFT_LEAVES</span> / <span className="tok-keyword">COUNT_RIGHT_LEAVES</span> / <span className="tok-keyword">COUNT_FULL</span> / <span className="tok-keyword">COUNT_HALF</span></td>
+                        <td>Counts specific topological structures in the tree and highlights the matching nodes.</td>
+                      </tr>
+                      <tr>
+                        <td><span className="tok-keyword">SIZE</span> / <span className="tok-keyword">LEAVES</span> / <span className="tok-keyword">INTERNAL</span> / <span className="tok-keyword">DEGREE</span> / <span className="tok-keyword">STATS</span></td>
+                        <td>Retrieves overarching statistics about the tree.</td>
+                      </tr>
+                      <tr>
+                        <td><span className="tok-keyword">SIBLING</span> <span className="tok-param">value</span></td>
+                        <td>Highlights the sibling of the specified node.</td>
+                      </tr>
+                      <tr>
+                        <td><span className="tok-keyword">ANCESTORS</span> <span className="tok-param">value</span> / <span className="tok-keyword">DESCENDANTS</span> <span className="tok-param">value</span></td>
+                        <td>Traces and highlights ancestors up to the root, or all descendants down to leaves.</td>
+                      </tr>
+                      <tr>
+                        <td><span className="tok-keyword">IS_FULL</span> / <span className="tok-keyword">IS_COMPLETE</span> / <span className="tok-keyword">IS_PERFECT</span> / <span className="tok-keyword">IS_BALANCED</span> / <span className="tok-keyword">IS_SYMMETRIC</span> ...</td>
+                        <td>Visually evaluates structural properties of the tree. Outputs pass/fail reasoning to the console.</td>
+                      </tr>
+                      <tr>
+                        <td><span className="tok-keyword">LCA</span> <span className="tok-param">v1 v2</span> / <span className="tok-keyword">DISTANCE</span> <span className="tok-param">v1 v2</span></td>
+                        <td>Finds the Lowest Common Ancestor or calculates distance between two nodes.</td>
+                      </tr>
+                      <tr>
+                        <td><span className="tok-keyword">GRANDPARENT</span> / <span className="tok-keyword">UNCLE</span> / <span className="tok-keyword">COUSINS</span> <span className="tok-param">value</span></td>
+                        <td>Resolves familial relationships by tracing lineage.</td>
+                      </tr>
+                      <tr>
+                        <td><span className="tok-keyword">ROOT_TO_NODE</span> <span className="tok-param">value</span> / <span className="tok-keyword">ROOT_TO_LEAVES</span> / <span className="tok-keyword">LONGEST_PATH</span> / <span className="tok-keyword">SHORTEST_PATH</span></td>
+                        <td>Discovers and traces specific structural paths visually.</td>
+                      </tr>
+                      <tr>
+                        <td><span className="tok-keyword">MIRROR</span> / <span className="tok-keyword">INVERT</span></td>
+                        <td>Inverts the binary tree, visually swapping left and right subtrees at each node.</td>
+                      </tr>
+                      <tr>
+                        <td><span className="tok-keyword">PRUNE</span> / <span className="tok-keyword">REMOVE_LEAVES</span></td>
+                        <td>Identifies all leaf nodes and smoothly removes them from the tree.</td>
+                      </tr>
+                      <tr>
+                        <td><span className="tok-keyword">LEFT_VIEW</span> / <span className="tok-keyword">RIGHT_VIEW</span> / <span className="tok-keyword">TOP_VIEW</span> / <span className="tok-keyword">BOTTOM_VIEW</span></td>
+                        <td>Calculates the respective 2D view of the tree and highlights the visible nodes.</td>
+                      </tr>
+                      <tr>
+                        <td><span className="tok-keyword">BOUNDARY</span> / <span className="tok-keyword">VERTICAL_ORDER</span> / <span className="tok-keyword">DIAGONAL</span></td>
+                        <td>Performs advanced traversals and highlights the resulting nodes in order.</td>
+                      </tr>
+                      <tr>
+                        <td><span className="tok-keyword">MAX_VALUE</span> / <span className="tok-keyword">MIN_VALUE</span> / <span className="tok-keyword">SUM</span> / <span className="tok-keyword">AVERAGE</span> / <span className="tok-keyword">MAX_LEVEL_SUM</span></td>
+                        <td>Performs aggregate mathematical operations on the node values and logs the results.</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </section>
+
+                <section id="bt-examples" className="docs-section">
+                  <h2 className="docs-h2">Examples</h2>
+
+                  <h3 className="docs-h3">Example 1 — Comprehensive Tree Operations</h3>
+                  <p className="docs-p">
+                    Build a tree, test navigations, update a node, and traverse the structure.
+                  </p>
+                  <CodeBlock code={`SCENE BinaryTreeTest\n\nDECLARE\n    BINARY_TREE myTree\nEND\n\nSEQUENCE\n    // 1. Build the Tree\n    ROOT 10\n    LEFT_CHILD 10 5\n    RIGHT_CHILD 10 20\n    LEFT_CHILD 5 2\n    RIGHT_CHILD 5 7\n    RIGHT_CHILD 20 35\n    WAIT\n    \n    // 2. Test Search & Update\n    SEARCH 7\n    WAIT\n    UPDATE 7 8\n    WAIT\n\n    // 3. Test Navigation Operations\n    SIBLING 5\n    WAIT\n    ANCESTORS 7\n    WAIT\n    DESCENDANTS 10\n    WAIT\n\n    // 4. Test Traversals\n    LEVELORDER\n    WAIT\n    \n    // 5. Test Clear\n    CLEAR\n    IS_EMPTY\nEND`} />
+
+                  <h3 className="docs-h3">Example 2 — Traversals and Measurements</h3>
+                  <p className="docs-p">
+                    Build an array-based binary tree, traverse it using different patterns, and count its topological features.
+                  </p>
+                  <CodeBlock code={`SCENE BinaryTreeMetrics\n\nDECLARE\n    BINARY_TREE myTree = [10, 20, 30, 40, 50, 60, 70, 80, 90]\nEND\n\nSEQUENCE\n    // 1. Traversals\n    ZIGZAG\n    WAIT\n    REVERSELEVELORDER\n    WAIT\n    INORDER\n    WAIT\n\n    // 2. Structural Measurements\n    MAX_DEPTH\n    WAIT\n    LEVEL 40\n    WAIT\n\n    // 3. Counting Operations\n    COUNT_LEAVES\n    WAIT\n    COUNT_LEFT_LEAVES\n    WAIT\n    COUNT_FULL\nEND`} />
+
+                  <h3 className="docs-h3">Example 3 — Properties, Paths &amp; Relationships</h3>
+                  <p className="docs-p">
+                    Test structural properties of a tree, find paths, and resolve node relationships.
+                  </p>
+                  <CodeBlock code={`SCENE BinaryTreeAnalysis\n\nDECLARE\n    BINARY_TREE tree = [10, 20, 35, 40, 50, 60, 70]\nEND\n\nSEQUENCE\n    // 1. Structural Checks\n    IS_FULL\n    WAIT\n    IS_BALANCED\n    WAIT\n    IS_COMPLETE\n    WAIT\n\n    // 2. Finding Paths\n    ROOT_TO_NODE 50\n    WAIT\n    LONGEST_PATH\n    WAIT\n    \n    // 3. Finding Relatives\n    UNCLE 40\n    WAIT\n    COUSINS 40\n    WAIT\n    LCA 40 60\nEND`} />
+
+                  <h3 className="docs-h3">Example 4 — Advanced Visualizations</h3>
+                  <p className="docs-p">
+                    Test the new advanced tree visualizations including tree inversion, aggregate calculations, and dynamic tree views.
+                  </p>
+                  <CodeBlock code={`SCENE AdvancedTree\n\nDECLARE\n    BINARY_TREE tree = [10, 20, 30, 40, 50, 60, 70]\nEND\n\nSEQUENCE\n    // 1. Advanced Structural Modifiers\n    INVERT\n    WAIT\n    PRUNE\n    WAIT\n\n    // 2. Aggregate Algorithms\n    MAX_VALUE\n    WAIT\n    SUM\n    WAIT\n    MAX_LEVEL_SUM\n    WAIT\n\n    // 3. Tree Views\n    LEFT_VIEW\n    WAIT\n    VERTICAL_ORDER\n    WAIT\n    BOUNDARY\nEND`} />
+                </section>
+
+                <section id="bt-errors" className="docs-section">
+                  <h2 className="docs-h2">Errors &amp; Tips</h2>
+                  <Alert kind="warn" title="Unique Values">
+                    The value of each node is used to identify it. Adding a node with a value that already exists will cause unexpected behavior or an error.
+                  </Alert>
+                  <Alert kind="tip" title="Use the Console">
+                    Traversals and searches output a detailed log in the Playground Output Console, allowing you to follow the algorithm's decisions textually while watching the animation.
                   </Alert>
                 </section>
               </>

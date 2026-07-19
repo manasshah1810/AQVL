@@ -22,6 +22,18 @@ SEQUENCE
 
   // 6. Delete
   DELETE arr[3]
+
+  // 7. Push
+  PUSH arr 50
+
+  // 8. Pop
+  POP arr
+
+  // 9. Peek
+  PEEK arr
+
+  // 10. Search
+  SEARCH arr 25
 END
 `,
 

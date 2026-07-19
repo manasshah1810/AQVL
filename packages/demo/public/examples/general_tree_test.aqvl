@@ -1,0 +1,19 @@
+DECLARE
+  TREE t
+  TREE_NODE r = ["Root"] { parent: t }
+  TREE_NODE c1 = ["A"] { parent: t }
+  TREE_NODE c2 = ["B"] { parent: t }
+  TREE_NODE c3 = ["C"] { parent: t }
+  TREE_NODE c11 = ["A1"] { parent: t }
+  TREE_NODE c12 = ["A2"] { parent: t }
+
+SEQUENCE
+  LINK r TO c1
+  WAIT
+  LINK r TO c2
+  WAIT
+  LINK r TO c3
+  WAIT
+  LINK c1 TO c11
+  WAIT
+  LINK c1 TO c12
