@@ -318,7 +318,7 @@ export class AnimationController {
               defaultColor: this.defaultColor
             };
             handler.execute(context, gen);
-            this.activeTreeName = context.activeTreeName; // Sync back in case it changed
+            this.activeTreeName = context.activeTreeName ?? null; // Sync back in case it changed
             break;
           }
           

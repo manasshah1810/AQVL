@@ -11,7 +11,7 @@ export interface AlgorithmContext {
   eventDispatcher: EventDispatcher;
   
   // Expose the current tree being operated on
-  activeTreeName?: string;
+  activeTreeName?: string | null;
   defaultColor: string;
 }
 
