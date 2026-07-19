@@ -1,9 +1,11 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Lexer, Parser, SemanticValidator, Optimizer, AQIRGenerator } from '@aqvl/compiler';
 import { ExecutionEngine } from '@aqvl/runtime';
 import { AQVECanvas } from '@aqvl/renderer';
 
 import { IDEEditor } from '../components/IDEEditor';
+import { ExampleExplorer } from '../components/ExampleExplorer';
+import { EXAMPLES } from '../examples/registry';
 import { SortingScripts } from '../examples/SortingLibrary';
 import { PlaygroundOutputConsole } from '../components/PlaygroundOutputConsole';
 import type { RuntimeLogEntry } from '../components/RuntimeOutputPanel';
@@ -67,6 +69,12 @@ const IconBook = () => (
   </svg>
 );
 
+const IconFlask = () => (
+  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M9 3h6M9 3v7l-6 11h18L15 10V3"/>
+  </svg>
+);
+
 const IconEye = () => (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
@@ -116,6 +124,16 @@ const MoonIcon = () => (
 
 export default function Playground() {
   const [sourceCode, setSourceCode] = useState(initialScript);
+  const [showExplorer, setShowExplorer] = useState(() => {
+    return localStorage.getItem('aqvl-visited') !== 'true';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('aqvl-visited', 'true');
+  }, []);
+
+  // Compute active example for the info strip
+  const activeExample = useMemo(() => EXAMPLES.find(e => e.source === sourceCode), [sourceCode]);
 
   // Pipeline State
   const [isCompiling, setIsCompiling] = useState(false);
@@ -355,11 +373,35 @@ export default function Playground() {
             </div>
             <div className="pg-panel-pills">
               <span className="pg-lang-pill">AQVL</span>
+              <button
+                id="pg-examples-btn"
+                className={`pg-examples-btn${showExplorer ? ' open' : ''}`}
+                onClick={() => setShowExplorer(v => !v)}
+                title={showExplorer ? 'Hide examples' : 'Browse examples'}
+                aria-expanded={showExplorer}
+                aria-controls="pg-example-explorer"
+              >
+                <IconFlask />
+                Examples
+              </button>
             </div>
           </div>
 
-          <div className="pg-editor-container">
-            <IDEEditor initialValue={sourceCode} onChange={setSourceCode} />
+          <div className="pg-editor-container" style={{ display: 'flex', flexDirection: 'column' }}>
+            {activeExample && (
+              <div className="pg-active-example-strip">
+                <div className="pg-aes-header">
+                  <span className="pg-aes-title">{activeExample.title}</span>
+                  <span className={`ex-info-diff diff-${activeExample.difficulty.toLowerCase()}`}>
+                    {activeExample.difficulty}
+                  </span>
+                </div>
+                <div className="pg-aes-desc">{activeExample.description}</div>
+              </div>
+            )}
+            <div style={{ flex: 1, position: 'relative', display: 'flex', minHeight: 0 }}>
+              <IDEEditor initialValue={sourceCode} onChange={setSourceCode} />
+            </div>
           </div>
         </aside>
 
@@ -526,6 +568,15 @@ export default function Playground() {
 
         </section>
       </div>
+
+      {/* ── Example Explorer Modal ────────────────────────────────────────── */}
+      {showExplorer && (
+        <ExampleExplorer
+          activeSource={sourceCode}
+          onSelect={(code) => { setSourceCode(code); setShowExplorer(false); }}
+          onClose={() => setShowExplorer(false)}
+        />
+      )}
     </div>
   );
 }
