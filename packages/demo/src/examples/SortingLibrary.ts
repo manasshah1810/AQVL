@@ -1,42 +1,4 @@
 export const SortingScripts = {
-  ArrayTest: `SCENE ArrayFoundationTest
-
-DECLARE
-  ARRAY arr = [10, 20, 30, 40]
-
-SEQUENCE
-  // 1. Highlight
-  HIGHLIGHT arr[0]
-
-  // 2. Compare
-  COMPARE arr[0] arr[1]
-
-  // 3. Swap / Move
-  SWAP arr[0] arr[1]
-
-  // 4. Update Value
-  UPDATE arr[1] 99
-
-  // 5. Insert (Dynamic Resize, Relayout, No Overlap)
-  INSERT arr[2] 25
-
-  // 6. Delete
-  DELETE arr[3]
-
-  // 7. Push
-  PUSH arr 50
-
-  // 8. Pop
-  POP arr
-
-  // 9. Peek
-  PEEK arr
-
-  // 10. Search
-  SEARCH arr 25
-END
-`,
-
   BubbleSort: `SCENE BubbleSort
 
 DECLARE
@@ -123,5 +85,49 @@ SEQUENCE
   
   // (Process continues)
 END
+`,
+
+  MergeSort: `SCENE MergeSort
+
+DECLARE
+  ARRAY arr = [38, 27, 43, 3, 9, 82, 10]
+
+SEQUENCE
+  // 1. Compare and divide left sub-array
+  COMPARE arr[0] arr[1]
+  IF arr[0] > arr[1]
+    SWAP arr[0] arr[1]
+  END
+  COMPARE arr[1] arr[2]
+  IF arr[1] > arr[2]
+    SWAP arr[1] arr[2]
+  END
+  COMPARE arr[0] arr[1]
+  IF arr[0] > arr[1]
+    SWAP arr[0] arr[1]
+  END
+
+  // 2. Compare right sub-array
+  COMPARE arr[3] arr[4]
+  COMPARE arr[5] arr[6]
+  IF arr[5] > arr[6]
+    SWAP arr[5] arr[6]
+  END
+
+  // 3. Final merge comparison across halves
+  COMPARE arr[0] arr[3]
+  COMPARE arr[1] arr[3]
+  COMPARE arr[2] arr[3]
+
+  // 4. Sorted confirmation
+  HIGHLIGHT arr[0]
+  HIGHLIGHT arr[1]
+  HIGHLIGHT arr[2]
+  HIGHLIGHT arr[3]
+  HIGHLIGHT arr[4]
+  HIGHLIGHT arr[5]
+  HIGHLIGHT arr[6]
+END
 `
 };
+

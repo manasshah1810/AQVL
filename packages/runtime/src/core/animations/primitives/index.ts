@@ -6,3 +6,5 @@ export * from './RotateAnimation';
 export * from './GlowAnimation';
 export * from './LiftAnimation';
 export * from './DropAnimation';
+export * from './AnticipationAnimation';
+

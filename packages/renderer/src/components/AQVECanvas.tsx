@@ -23,7 +23,16 @@ const CameraRig = ({ sceneState, autoFollow }: { sceneState: SceneState | null; 
     // Calculate center of elements that are active (raised y > 0.1)
     let totalX = 0;
     let count = 0;
+    let hasTree = false;
+    let maxTreeY = 0;
+
     sceneState.elements.forEach((el) => {
+      if (el.originalType === 'TREE_NODE' || el.originalType === 'HEAP_NODE' || el.originalType === 'TRIE_NODE') {
+        hasTree = true;
+        if (el.position && el.position.y > maxTreeY) {
+          maxTreeY = el.position.y;
+        }
+      }
       if (el.position && el.position.y > 0.1) {
         totalX += el.position.x;
         count++;
@@ -35,6 +44,13 @@ const CameraRig = ({ sceneState, autoFollow }: { sceneState: SceneState | null; 
       const target = (controls as any).target as THREE.Vector3;
       // Soft lerp camera target towards center X
       target.x = THREE.MathUtils.lerp(target.x, centerX, 0.03);
+      
+      if (hasTree && maxTreeY > 0) {
+        // Adjust camera target Y based on tree height to prevent top node from being cut off
+        target.y = THREE.MathUtils.lerp(target.y, maxTreeY / 2, 0.03);
+      } else {
+        target.y = THREE.MathUtils.lerp(target.y, 0, 0.03);
+      }
     }
   });
   return null;

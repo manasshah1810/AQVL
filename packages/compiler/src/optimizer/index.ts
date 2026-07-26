@@ -155,7 +155,7 @@ export class Optimizer {
             type: 'HighlightNode',
             pos: action.pos,
             target: this.resolveToConcreteExpression(action.args[0]),
-            color: action.args[1] ? { type: 'LiteralNode', dataType: 'color', value: (action.args[1] as LiteralNode).value as string, pos: action.pos } : { type: 'LiteralNode', dataType: 'color', value: 'red', pos: action.pos }
+            color: action.args[1] ? { type: 'LiteralNode', dataType: 'color', value: (action.args[1] as LiteralNode).value as string, pos: action.pos } : { type: 'LiteralNode', dataType: 'color', value: 'EVALUATING', pos: action.pos }
           } as HighlightNode);
         } else {
           out.push({

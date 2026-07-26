@@ -1,4 +1,5 @@
 import type { AQIRObject } from '@aqvl/shared';
+import { getSemanticColorToken } from '@aqvl/shared';
 import { SceneElement, BoxElement } from '../models/SceneElement';
 import { EventDispatcher } from './EventDispatcher';
 
@@ -11,6 +12,8 @@ export class SceneManager {
   public loadScene(objects: AQIRObject[]): void {
     this.elements.clear();
     this.sceneGraph = [];
+
+    const neutralToken = getSemanticColorToken('NEUTRAL');
 
     // Bootstrap visual elements strictly from the compiler's Object payload
     objects.forEach((obj) => {
@@ -29,9 +32,10 @@ export class SceneManager {
           label: obj.label || (obj.logicalParent ? `${obj.logicalParent}[${obj.logicalIndex || 0}]` : obj.id),
           position: { x: 0, y: 0, z: 0 }, // LayoutManager handles this
           scale: { x: 1, y: 1, z: 1 },
-          color: obj.color || '#4facfe',
-          emissiveIntensity: 0,
-          emissiveColor: '#000000',
+          state: 'NEUTRAL',
+          color: obj.color || neutralToken.color,
+          emissiveIntensity: neutralToken.emissiveIntensity,
+          emissiveColor: neutralToken.emissiveColor,
           lifecycleState: 'ACTIVE',
           visible: true,
           opacity: 1,
@@ -53,9 +57,10 @@ export class SceneManager {
           originalType: obj.type,
           position: { x: 0, y: 0, z: 0 },
           scale: { x: 1, y: 1, z: 1 },
-          color: '#888888',
-          emissiveIntensity: 0,
-          emissiveColor: '#000000',
+          state: 'NEUTRAL',
+          color: neutralToken.color,
+          emissiveIntensity: neutralToken.emissiveIntensity,
+          emissiveColor: neutralToken.emissiveColor,
           lifecycleState: 'ACTIVE',
           visible: true,
           opacity: 1,

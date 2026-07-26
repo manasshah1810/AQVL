@@ -48,6 +48,160 @@ const TipIcon = () => (
   </svg>
 );
 
+// ─── Nav Icons ────────────────────────────────────────────
+const IconDoc = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+    <polyline points="14 2 14 8 20 8" />
+  </svg>
+);
+
+const IconArray = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3" y="3" width="18" height="18" rx="2" />
+    <line x1="3" y1="9" x2="21" y2="9" />
+    <line x1="9" y1="3" x2="9" y2="21" />
+  </svg>
+);
+
+const IconCode = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="16 18 22 12 16 6" />
+    <polyline points="8 6 2 12 8 18" />
+  </svg>
+);
+
+const IconWarn = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+    <line x1="12" y1="9" x2="12" y2="13" />
+    <line x1="12" y1="17" x2="12.01" y2="17" />
+  </svg>
+);
+
+const IconLink = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="5" cy="12" r="2" />
+    <circle cx="12" cy="12" r="2" />
+    <circle cx="19" cy="12" r="2" />
+    <line x1="7" y1="12" x2="10" y2="12" />
+    <line x1="14" y1="12" x2="17" y2="12" />
+  </svg>
+);
+
+const IconTree = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+    <polyline points="17 11 21 7 17 3" />
+    <line x1="21" y1="7" x2="9" y2="7" />
+  </svg>
+);
+
+const IconGraph = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="2" y="3" width="4" height="4" rx="1" />
+    <rect x="10" y="10" width="4" height="4" rx="1" />
+    <rect x="18" y="17" width="4" height="4" rx="1" />
+    <line x1="6" y1="5" x2="10" y2="12" />
+    <line x1="14" y1="12" x2="18" y2="19" />
+  </svg>
+);
+
+const IconStack = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="2" y="16" width="20" height="5" rx="1" />
+    <rect x="2" y="9" width="20" height="5" rx="1" />
+    <rect x="2" y="3" width="20" height="4" rx="1" />
+  </svg>
+);
+
+const IconSort = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="3" y1="6" x2="21" y2="6" />
+    <line x1="8" y1="12" x2="21" y2="12" />
+    <line x1="13" y1="18" x2="21" y2="18" />
+    <polyline points="3 12 6 9 3 6" />
+  </svg>
+);
+
+const IconSearch = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="11" cy="11" r="8" />
+    <line x1="21" y1="21" x2="16.65" y2="16.65" />
+  </svg>
+);
+
+// ─── Robot Mascot ─────────────────────────────────────────
+const RobotMascot = () => (
+  <svg width="44" height="44" viewBox="0 0 44 44" fill="none">
+    {/* Body */}
+    <rect x="8" y="18" width="28" height="22" rx="4" fill="#f472b6" stroke="#1a1916" strokeWidth="1.5"/>
+    {/* Head */}
+    <rect x="11" y="6" width="22" height="14" rx="3" fill="#f9a8d4" stroke="#1a1916" strokeWidth="1.5"/>
+    {/* Antenna */}
+    <line x1="22" y1="6" x2="22" y2="2" stroke="#1a1916" strokeWidth="1.5" strokeLinecap="round"/>
+    <circle cx="22" cy="1.5" r="1.5" fill="#f5c800"/>
+    {/* Eyes */}
+    <rect x="14" y="9" width="6" height="5" rx="1.5" fill="#1a1916"/>
+    <rect x="24" y="9" width="6" height="5" rx="1.5" fill="#1a1916"/>
+    <circle cx="17" cy="11.5" r="1.5" fill="#60a5fa"/>
+    <circle cx="27" cy="11.5" r="1.5" fill="#60a5fa"/>
+    {/* Mouth */}
+    <path d="M16 18 Q22 21 28 18" stroke="#1a1916" strokeWidth="1.5" strokeLinecap="round" fill="none"/>
+    {/* Legs */}
+    <rect x="13" y="38" width="7" height="5" rx="2" fill="#ec4899" stroke="#1a1916" strokeWidth="1.5"/>
+    <rect x="24" y="38" width="7" height="5" rx="2" fill="#ec4899" stroke="#1a1916" strokeWidth="1.5"/>
+    {/* Arms */}
+    <rect x="2" y="20" width="7" height="4" rx="2" fill="#f9a8d4" stroke="#1a1916" strokeWidth="1.5"/>
+    <rect x="35" y="20" width="7" height="4" rx="2" fill="#f9a8d4" stroke="#1a1916" strokeWidth="1.5"/>
+    {/* Chest panel */}
+    <rect x="15" y="24" width="14" height="10" rx="2" fill="rgba(0,0,0,0.15)"/>
+    <line x1="18" y1="27" x2="26" y2="27" stroke="#f5c800" strokeWidth="1" strokeLinecap="round"/>
+    <line x1="18" y1="30" x2="24" y2="30" stroke="#f5c800" strokeWidth="1" strokeLinecap="round"/>
+  </svg>
+);
+
+// ─── TOC Icons ────────────────────────────────────────────
+const TocIconDoc = () => (
+  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+    <polyline points="14 2 14 8 20 8" />
+  </svg>
+);
+
+const TocIconBracket = () => (
+  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="16 18 22 12 16 6" />
+    <polyline points="8 6 2 12 8 18" />
+  </svg>
+);
+
+const TocIconTerm = () => (
+  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="4 17 10 11 4 5" />
+    <line x1="12" y1="19" x2="20" y2="19" />
+  </svg>
+);
+
+const TocIconWarn = () => (
+  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+    <line x1="12" y1="9" x2="12" y2="13" />
+    <line x1="12" y1="17" x2="12.01" y2="17" />
+  </svg>
+);
+
+const TocIconList = () => (
+  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="8" y1="6" x2="21" y2="6" />
+    <line x1="8" y1="12" x2="21" y2="12" />
+    <line x1="8" y1="18" x2="21" y2="18" />
+    <line x1="3" y1="6" x2="3.01" y2="6" />
+    <line x1="3" y1="12" x2="3.01" y2="12" />
+    <line x1="3" y1="18" x2="3.01" y2="18" />
+  </svg>
+);
+
 // ─── Syntax Highlighter ───────────────────────────────────
 const KEYWORDS = new Set([
   'SCENE', 'DECLARE', 'SEQUENCE', 'END', 'ARRAY', 'LINKEDLIST',
@@ -322,7 +476,7 @@ export default function Docs() {
           <div className="docs-sidebar-topbar">
             <a href="#/" className="docs-brand">
               <div className="docs-brand-logo">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#111111" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <polyline points="16 18 22 12 16 6" /><polyline points="8 6 2 12 8 18" />
                 </svg>
               </div>
@@ -336,15 +490,25 @@ export default function Docs() {
           <nav className="docs-sidebar-nav" aria-label="Sidebar navigation">
             <div className="docs-nav-group">
               <div className="docs-nav-group-label">Getting Started</div>
-              {TOC_ITEMS.map(({ id, label }) => (
-                <button
-                  key={id}
-                  className={`docs-nav-item${activeId === id ? ' is-active' : ''}`}
-                  onClick={() => scrollTo(id)}
-                >
-                  {label}
-                </button>
-              ))}
+              {TOC_ITEMS.map(({ id, label }) => {
+                const navIcon = id.includes('introduction') || id.includes('ll-introduction') || id.includes('sl-introduction') || id.includes('dl-introduction') || id.includes('cl-introduction') || id.includes('tr-introduction') || id.includes('gt-introduction') || id.includes('bt-introduction')
+                  ? <IconDoc />
+                  : id.includes('declaration') || id.includes('commands')
+                  ? <IconCode />
+                  : id.includes('examples')
+                  ? <IconArray />
+                  : <IconWarn />;
+                return (
+                  <button
+                    key={id}
+                    className={`docs-nav-item${activeId === id ? ' is-active' : ''}`}
+                    onClick={() => scrollTo(id)}
+                  >
+                    <span className="docs-nav-icon">{navIcon}</span>
+                    {label}
+                  </button>
+                );
+              })}
             </div>
 
             <div className="docs-nav-group">
@@ -353,6 +517,7 @@ export default function Docs() {
                 className={`docs-nav-item ${activePage === 'arrays' ? 'is-active' : ''}`}
                 onClick={() => { setActivePage('arrays'); setActiveId('introduction'); }}
               >
+                <span className="docs-nav-icon"><IconArray /></span>
                 Arrays
               </button>
 
@@ -361,6 +526,7 @@ export default function Docs() {
                 className={`docs-nav-item ${activePage === 'linked-lists' ? 'is-active' : (activePage === 'singly-linked-list' || activePage === 'doubly-linked-list' || activePage === 'circular-linked-list') ? 'is-parent-active' : ''}`}
                 onClick={() => { setActivePage('linked-lists'); setActiveId('ll-introduction'); }}
               >
+                <span className="docs-nav-icon"><IconLink /></span>
                 Linked Lists
               </button>
 
@@ -393,6 +559,7 @@ export default function Docs() {
                 className={`docs-nav-item ${activePage === 'trees' ? 'is-active' : (activePage === 'general-tree' || activePage === 'binary-tree') ? 'is-parent-active' : ''}`}
                 onClick={() => { setActivePage('trees'); setActiveId('tr-introduction'); }}
               >
+                <span className="docs-nav-icon"><IconTree /></span>
                 Trees
               </button>
 
@@ -419,10 +586,12 @@ export default function Docs() {
               )}
 
               <a href="#" className="docs-nav-item is-disabled">
+                <span className="docs-nav-icon"><IconGraph /></span>
                 Graphs
                 <span className="docs-nav-badge">Soon</span>
               </a>
               <a href="#" className="docs-nav-item is-disabled">
+                <span className="docs-nav-icon"><IconStack /></span>
                 Stacks &amp; Queues
                 <span className="docs-nav-badge">Soon</span>
               </a>
@@ -431,16 +600,43 @@ export default function Docs() {
             <div className="docs-nav-group">
               <div className="docs-nav-group-label">Algorithms</div>
               <a href="#" className="docs-nav-item is-disabled">
+                <span className="docs-nav-icon"><IconSort /></span>
                 Sorting
                 <span className="docs-nav-badge">Soon</span>
               </a>
               <a href="#" className="docs-nav-item is-disabled">
+                <span className="docs-nav-icon"><IconSearch /></span>
                 Searching
                 <span className="docs-nav-badge">Soon</span>
               </a>
             </div>
           </nav>
+
+          {/* ── Robot Mascot ─────────────────────────────── */}
+          <div className="docs-mascot">
+            <div className="docs-mascot-body">
+              <RobotMascot />
+            </div>
+            <div className="docs-mascot-bubble">
+              Build.<br />Visualize.<br />Understand.
+            </div>
+          </div>
         </aside>
+
+        {/* ── Top-right action buttons ─────────────────── */}
+        <div className="docs-topbar-actions">
+          <button className="docs-action-btn docs-action-btn-code" aria-label="View source">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="16 18 22 12 16 6" /><polyline points="8 6 2 12 8 18" />
+            </svg>
+          </button>
+          <button className="docs-action-btn docs-action-btn-fav" aria-label="Home" onClick={() => window.location.hash = '#/'}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+              <polyline points="9 22 9 12 15 12 15 22" />
+            </svg>
+          </button>
+        </div>
 
         {/* ── Main content ─────────────────────────────── */}
         <div className="docs-main-wrap">
@@ -450,15 +646,24 @@ export default function Docs() {
               <>
                 {/* Page hero */}
                 <header className="docs-page-hero">
-                  <div className="docs-page-tag">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-                      <line x1="3" y1="9" x2="21" y2="9" /><line x1="3" y1="15" x2="21" y2="15" />
-                      <line x1="9" y1="3" x2="9" y2="21" /><line x1="15" y1="3" x2="15" y2="21" />
+                  <div className="docs-page-tag">Data Structures</div>
+                  <div className="docs-page-title-row">
+                    <div className="docs-page-title-icon">
+                      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <rect x="3" y="3" width="18" height="18" rx="2" />
+                        <line x1="3" y1="9" x2="21" y2="9" />
+                        <line x1="9" y1="3" x2="9" y2="21" />
+                      </svg>
+                    </div>
+                    <h1 className="docs-page-title">Arrays</h1>
+                    {/* Neobrutalism decorative sparkle */}
+                    <svg style={{marginLeft:'auto',flexShrink:0,opacity:0.6}} width="32" height="32" viewBox="0 0 24 24" fill="#f472b6" stroke="#111" strokeWidth="1.5">
+                      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
                     </svg>
-                    Data Structures
+                    <svg style={{flexShrink:0,opacity:0.5}} width="20" height="20" viewBox="0 0 24 24" fill="#fde047" stroke="#111" strokeWidth="1.5">
+                      <rect x="3" y="3" width="18" height="18" rx="2" />
+                    </svg>
                   </div>
-                  <h1 className="docs-page-title">Arrays</h1>
                   <p className="docs-page-lead">
                     Learn how to declare, manipulate, and animate arrays in AQVL — the language built for visualizing algorithms.
                   </p>
@@ -522,68 +727,72 @@ export default function Docs() {
                     step the runtime plays back.
                   </p>
 
-                  <table className="docs-cmd-table">
-                    <thead>
-                      <tr>
-                        <th>Command</th>
-                        <th>Description</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr>
-                        <td><span className="tok-keyword">HIGHLIGHT</span> <span className="tok-param">name[i]</span></td>
-                        <td>Pulses the element at index <C>i</C> with a bright accent color. Use it to mark the current element of interest — e.g., the minimum candidate in Selection Sort.</td>
-                      </tr>
-                      <tr>
-                        <td><span className="tok-keyword">COMPARE</span> <span className="tok-param">name[i] name[j]</span></td>
-                        <td>Simultaneously highlights two elements to show they are being evaluated against each other. Neither is modified.</td>
-                      </tr>
-                      <tr>
-                        <td><span className="tok-keyword">SWAP</span> <span className="tok-param">name[i] name[j]</span></td>
-                        <td>Animates an arc-swap of the values at indices <C>i</C> and <C>j</C>. Both the visual position and the internal value are exchanged.</td>
-                      </tr>
-                      <tr>
-                        <td><span className="tok-keyword">UPDATE</span> <span className="tok-param">name[i] value</span></td>
-                        <td>Sets the element at index <C>i</C> to <C>value</C>, animating the number changing inside the box.</td>
-                      </tr>
-                      <tr>
-                        <td><span className="tok-keyword">INSERT</span> <span className="tok-param">name[i] value</span></td>
-                        <td>Inserts a new box containing <C>value</C> at position <C>i</C>. All subsequent elements shift right with a slide animation. The array grows by one.</td>
-                      </tr>
-                      <tr>
-                        <td><span className="tok-keyword">DELETE</span> <span className="tok-param">name[i]</span></td>
-                        <td>Removes the element at index <C>i</C>. All subsequent elements shift left to close the gap. The array shrinks by one.</td>
-                      </tr>
-                    </tbody>
-                  </table>
+                  <div className="docs-cmd-table-wrap">
+                    <table className="docs-cmd-table">
+                      <thead>
+                        <tr>
+                          <th>Command</th>
+                          <th>Description</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr>
+                          <td><span className="tok-keyword">HIGHLIGHT</span><br/><span className="tok-param">name[i]</span></td>
+                          <td>Pulses the element at index <C>i</C> with a bright accent color. Use it to mark the current element of interest — e.g., the minimum candidate in Selection Sort.</td>
+                        </tr>
+                        <tr>
+                          <td><span className="tok-keyword">COMPARE</span><br/><span className="tok-param">name[i]</span><br/><span className="tok-param">name[j]</span></td>
+                          <td>Simultaneously highlights two elements to show they are being evaluated against each other. Neither is modified.</td>
+                        </tr>
+                        <tr>
+                          <td><span className="tok-keyword">SWAP</span> <span className="tok-param">name[i]</span><br/><span className="tok-param">name[j]</span></td>
+                          <td>Animates an arc-swap of the values at indices <C>i</C> and <C>j</C>. Both the visual position and the internal value are exchanged.</td>
+                        </tr>
+                        <tr>
+                          <td><span className="tok-keyword">UPDATE</span> <span className="tok-param">name[i]</span><br/><span className="tok-param">value</span></td>
+                          <td>Sets the element at index <C>i</C> to <C>value</C>, animating the number changing inside the box.</td>
+                        </tr>
+                        <tr>
+                          <td><span className="tok-keyword">INSERT</span> <span className="tok-param">name[i]</span><br/><span className="tok-param">value</span></td>
+                          <td>Inserts a new box containing <C>value</C> at position <C>i</C>. All subsequent elements shift right with a slide animation. The array grows by one.</td>
+                        </tr>
+                        <tr>
+                          <td><span className="tok-keyword">DELETE</span> <span className="tok-param">name[i]</span></td>
+                          <td>Removes the element at index <C>i</C>. All subsequent elements shift left to close the gap. The array shrinks by one.</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
 
                   <h3 className="docs-h3">Control Flow</h3>
                   <p className="docs-p">
                     You can use <C>LOOP</C> and <C>IF</C> to build algorithm logic around the array commands above.
                   </p>
 
-                  <table className="docs-cmd-table">
-                    <thead>
-                      <tr>
-                        <th>Construct</th>
-                        <th>Description</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr>
-                        <td><span className="tok-keyword">LOOP</span> <span className="tok-param">var</span> <span className="tok-keyword">FROM</span> <span className="tok-param">start</span> <span className="tok-keyword">TO</span> <span className="tok-param">end</span></td>
-                        <td>Iterates <C>var</C> from <C>start</C> to <C>end</C> (inclusive). Close with <C>END</C>.</td>
-                      </tr>
-                      <tr>
-                        <td><span className="tok-keyword">IF</span> <span className="tok-param">expr</span></td>
-                        <td>Conditionally executes its body if <C>expr</C> is truthy. Supports <C>&gt;</C>, <C>&lt;</C>, <C>=</C>. Close with <C>END</C>.</td>
-                      </tr>
-                      <tr>
-                        <td><span className="tok-builtin">LENGTH</span>(<span className="tok-param">name</span>)</td>
-                        <td>Returns the current length of the named array. Useful as the upper bound of a loop.</td>
-                      </tr>
-                    </tbody>
-                  </table>
+                  <div className="docs-cmd-table-wrap">
+                    <table className="docs-cmd-table">
+                      <thead>
+                        <tr>
+                          <th>Construct</th>
+                          <th>Description</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr>
+                          <td><span className="tok-keyword">LOOP</span> <span className="tok-param">var</span><br/><span className="tok-keyword">FROM</span> <span className="tok-param">start</span> <span className="tok-keyword">TO</span> <span className="tok-param">end</span></td>
+                          <td>Iterates <C>var</C> from <C>start</C> to <C>end</C> (inclusive). Close with <C>END</C>.</td>
+                        </tr>
+                        <tr>
+                          <td><span className="tok-keyword">IF</span> <span className="tok-param">expr</span></td>
+                          <td>Conditionally executes its body if <C>expr</C> is truthy. Supports <C>&gt;</C>, <C>&lt;</C>, <C>=</C>. Close with <C>END</C>.</td>
+                        </tr>
+                        <tr>
+                          <td><span className="tok-builtin">LENGTH</span>(<span className="tok-param">name</span>)</td>
+                          <td>Returns the current length of the named array. Useful as the upper bound of a loop.</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
                 </section>
 
                 {/* ── § Examples ─────────────────────────── */}
@@ -663,15 +872,16 @@ export default function Docs() {
               <>
                 {/* Page hero */}
                 <header className="docs-page-hero">
-                  <div className="docs-page-tag">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-                      <line x1="3" y1="9" x2="21" y2="9" /><line x1="3" y1="15" x2="21" y2="15" />
-                      <line x1="9" y1="3" x2="9" y2="21" /><line x1="15" y1="3" x2="15" y2="21" />
-                    </svg>
-                    Data Structures
+                  <div className="docs-page-tag">Data Structures</div>
+                  <div className="docs-page-title-row">
+                    <div className="docs-page-title-icon">
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <circle cx="5" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="19" cy="12" r="2" />
+                        <line x1="7" y1="12" x2="10" y2="12" /><line x1="14" y1="12" x2="17" y2="12" />
+                      </svg>
+                    </div>
+                    <h1 className="docs-page-title">Linked Lists</h1>
                   </div>
-                  <h1 className="docs-page-title">Linked Lists</h1>
                   <p className="docs-page-lead">
                     AQVL supports three flavors of linked list: Singly, Doubly, and Circular. Each one is a separate page — select one in the sidebar to dive deep.
                   </p>
@@ -788,6 +998,7 @@ export default function Docs() {
                   <p className="docs-p">
                     All linked-list commands go inside the <C>SEQUENCE</C> block.
                   </p>
+                  <div className="docs-cmd-table-wrap">
                   <table className="docs-cmd-table">
                     <thead>
                       <tr><th>Command</th><th>Description</th></tr>
@@ -819,6 +1030,7 @@ export default function Docs() {
                       </tr>
                     </tbody>
                   </table>
+                  </div>
                 </section>
 
                 <section id="sl-examples" className="docs-section">
@@ -903,6 +1115,7 @@ export default function Docs() {
                   <p className="docs-p">
                     The same commands used for singly lists work on doubly lists. The runtime automatically manages both the <em>next</em> and <em>prev</em> pointers.
                   </p>
+                  <div className="docs-cmd-table-wrap">
                   <table className="docs-cmd-table">
                     <thead>
                       <tr><th>Command</th><th>Description</th></tr>
@@ -930,6 +1143,7 @@ export default function Docs() {
                       </tr>
                     </tbody>
                   </table>
+                  </div>
                 </section>
 
                 <section id="dl-examples" className="docs-section">
@@ -1013,6 +1227,7 @@ export default function Docs() {
                   <p className="docs-p">
                     Circular lists support the same structural commands. After every insert or delete, the runtime automatically re-attaches the circular back-edge to the new extremity.
                   </p>
+                  <div className="docs-cmd-table-wrap">
                   <table className="docs-cmd-table">
                     <thead>
                       <tr><th>Command</th><th>Description</th></tr>
@@ -1044,6 +1259,7 @@ export default function Docs() {
                       </tr>
                     </tbody>
                   </table>
+                  </div>
                 </section>
 
                 <section id="cl-examples" className="docs-section">
@@ -1177,6 +1393,7 @@ export default function Docs() {
                   <p className="docs-p">
                     Tree commands inside the <C>SEQUENCE</C> block allow you to manipulate structure, traverse, and query relationships.
                   </p>
+                  <div className="docs-cmd-table-wrap">
                   <table className="docs-cmd-table">
                     <thead>
                       <tr><th>Command</th><th>Description</th></tr>
@@ -1216,6 +1433,7 @@ export default function Docs() {
                       </tr>
                     </tbody>
                   </table>
+                  </div>
                 </section>
 
                 <section id="gt-examples" className="docs-section">
@@ -1283,6 +1501,7 @@ export default function Docs() {
                   <p className="docs-p">
                     Tree commands inside the <C>SEQUENCE</C> block allow you to manipulate structure, traverse, and query relationships.
                   </p>
+                  <div className="docs-cmd-table-wrap">
                   <table className="docs-cmd-table">
                     <thead>
                       <tr><th>Command</th><th>Description</th></tr>
@@ -1370,6 +1589,7 @@ export default function Docs() {
                       </tr>
                     </tbody>
                   </table>
+                  </div>
                 </section>
 
                 <section id="bt-examples" className="docs-section">
@@ -1418,18 +1638,30 @@ export default function Docs() {
         {/* ── Right TOC ──────────────────────────────── */}
         <aside className="docs-toc-panel" aria-label="On this page">
           <div className="docs-toc-inner">
-            <div className="docs-toc-label">On this page</div>
+            <div className="docs-toc-label">ON THIS PAGE</div>
             <ul className="docs-toc-list" role="list">
-              {TOC_ITEMS.map(({ id, label }) => (
-                <li key={id} className="docs-toc-item">
-                  <button
-                    className={`docs-toc-btn${activeId === id ? ' is-active' : ''}`}
-                    onClick={() => scrollTo(id)}
-                  >
-                    {label}
-                  </button>
-                </li>
-              ))}
+              {TOC_ITEMS.map(({ id, label }) => {
+                const tocIcon = id.includes('introduction') || id.includes('ll-introduction') || id.includes('sl-introduction') || id.includes('dl-introduction') || id.includes('cl-introduction') || id.includes('tr-introduction') || id.includes('gt-introduction') || id.includes('bt-introduction')
+                  ? <TocIconDoc />
+                  : id.includes('declaration')
+                  ? <TocIconBracket />
+                  : id.includes('commands')
+                  ? <TocIconTerm />
+                  : id.includes('examples')
+                  ? <TocIconList />
+                  : <TocIconWarn />;
+                return (
+                  <li key={id} className="docs-toc-item">
+                    <button
+                      className={`docs-toc-btn${activeId === id ? ' is-active' : ''}`}
+                      onClick={() => scrollTo(id)}
+                    >
+                      <span className="docs-toc-icon">{tocIcon}</span>
+                      {label}
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
           </div>
         </aside>

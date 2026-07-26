@@ -49,31 +49,23 @@ export function IDEEditor({ initialValue, onChange, readOnly = false }: IDEEdito
     return html;
   };
 
-  const handleScroll = () => {
-    const textarea = textareaRef.current;
-    const overlay = textarea?.nextElementSibling as HTMLElement;
-    if (textarea && overlay) {
-      overlay.scrollTop = textarea.scrollTop;
-      overlay.scrollLeft = textarea.scrollLeft;
-    }
-  };
-
   return (
     <div className="aqvl-editor-container">
-      <textarea
-        ref={textareaRef}
-        className="aqvl-editor-textarea"
-        value={value}
-        onChange={handleChange}
-        onScroll={handleScroll}
-        readOnly={readOnly}
-        spellCheck="false"
-      />
-      <div 
-        className="aqvl-editor-overlay" 
-        dangerouslySetInnerHTML={{ __html: highlightCode(value) + '<br/>' }} 
-        aria-hidden="true"
-      />
+      <div className="aqvl-editor-scroller">
+        <textarea
+          ref={textareaRef}
+          className="aqvl-editor-textarea"
+          value={value}
+          onChange={handleChange}
+          readOnly={readOnly}
+          spellCheck="false"
+        />
+        <div 
+          className="aqvl-editor-overlay" 
+          dangerouslySetInnerHTML={{ __html: highlightCode(value) + '<br/>' }} 
+          aria-hidden="true"
+        />
+      </div>
     </div>
   );
 }

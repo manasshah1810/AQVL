@@ -6,13 +6,13 @@ import { AQVECanvas } from '@aqvl/renderer';
 import { IDEEditor } from '../components/IDEEditor';
 import { ExampleExplorer } from '../components/ExampleExplorer';
 import { EXAMPLES } from '../examples/registry';
-import { SortingScripts } from '../examples/SortingLibrary';
+import { ArrayScripts } from '../examples/ArrayLibrary';
 import { PlaygroundOutputConsole } from '../components/PlaygroundOutputConsole';
 import type { RuntimeLogEntry } from '../components/RuntimeOutputPanel';
 
 import './playground.css';
 
-const initialScript = SortingScripts.ArrayTest;
+const initialScript = ArrayScripts.ArrayFoundation;
 
 // ── SVG Icon Components ────────────────────────────────────────────────────────
 const IconCode = () => (
@@ -154,6 +154,15 @@ export default function Playground() {
   // Speed
   const [speed, setSpeed] = useState<'0.5x' | '1x' | '2x' | '4x'>('1x');
 
+  // Apply speed to engine whenever it changes
+  const speedMultiplier = { '0.5x': 0.5, '1x': 1, '2x': 2, '4x': 4 } as const;
+  useEffect(() => {
+    if (engineRef.current) {
+      engineRef.current.setPlaybackRate(speedMultiplier[speed]);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [speed]);
+
   // Theme State
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
     return (localStorage.getItem('aqvl-docs-theme') as 'dark' | 'light') || 'dark';
@@ -236,6 +245,8 @@ export default function Playground() {
       engine.loadProgram(generatedAqir);
 
       engineRef.current = engine;
+      // Apply current speed immediately to the fresh engine
+      engine.setPlaybackRate(speedMultiplier[speed]);
       setIsCompiling(false);
 
       setTimeout(() => { handlePlay(); }, 100);
@@ -324,6 +335,17 @@ export default function Playground() {
         {/* Right Actions */}
         <div className="pg-topbar-actions">
           <button
+            className={`pg-examples-top-btn${showExplorer ? ' open' : ''}`}
+            onClick={() => setShowExplorer(v => !v)}
+            title={showExplorer ? 'Hide examples' : 'Browse examples'}
+            aria-expanded={showExplorer}
+            aria-controls="pg-example-explorer"
+          >
+            <IconFlask />
+            Examples
+          </button>
+
+          <button
             className="pg-docs-link"
             onClick={() => window.location.hash = '#/docs'}
           >
@@ -373,17 +395,6 @@ export default function Playground() {
             </div>
             <div className="pg-panel-pills">
               <span className="pg-lang-pill">AQVL</span>
-              <button
-                id="pg-examples-btn"
-                className={`pg-examples-btn${showExplorer ? ' open' : ''}`}
-                onClick={() => setShowExplorer(v => !v)}
-                title={showExplorer ? 'Hide examples' : 'Browse examples'}
-                aria-expanded={showExplorer}
-                aria-controls="pg-example-explorer"
-              >
-                <IconFlask />
-                Examples
-              </button>
             </div>
           </div>
 

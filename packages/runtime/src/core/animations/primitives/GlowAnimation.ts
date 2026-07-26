@@ -1,8 +1,9 @@
 import { PrimitiveAnimation, PrimitiveAnimationConfig } from './PrimitiveAnimation';
+import { getSemanticColorToken } from '@aqvl/shared';
 
 export interface GlowConfig extends PrimitiveAnimationConfig {
   targetIds: string[];
-  color?: string; // e.g., '#ffeb3b' for compare, '#4caf50' for success
+  color?: string; // e.g., semantic state or color string
   intensity?: number; // How bright it gets (e.g., 0.5)
   pulse?: boolean; // If true, glows and then fades back to normal
 }
@@ -21,9 +22,14 @@ export class GlowAnimation extends PrimitiveAnimation<GlowConfig> {
 
     if (elements.length === 0) return;
 
-    const intensity = config.intensity ?? 0.6;
+    const activeToken = getSemanticColorToken('ACTIVE');
+    const neutralToken = getSemanticColorToken('NEUTRAL');
+
+    const intensity = config.intensity ?? activeToken.emissiveIntensity;
     const isPulse = config.pulse ?? true;
-    const glowColor = config.color ?? '#ffeb3b'; // Default highlight yellow
+    const glowToken = config.color ? getSemanticColorToken(config.color) : activeToken;
+    const glowColor = config.color ? (glowToken.color) : activeToken.emissiveColor;
+
 
     elements.forEach(el => {
       // Capture the baseline state to ensure non-destructive emphasis

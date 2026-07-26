@@ -328,24 +328,11 @@ export default function App() {
               Visualization
             </div>
             {sceneState && (
-              <div style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '5px',
-                padding: '2px 9px',
-                background: isPlaying ? 'var(--success-soft)' : 'rgba(99,102,241,0.1)',
-                border: `1px solid ${isPlaying ? 'rgba(34,197,94,.25)' : 'rgba(99,102,241,.25)'}`,
-                borderRadius: '20px',
-                fontSize: '10px',
-                fontWeight: 600,
-                color: isPlaying ? 'var(--success)' : '#a5b4fc',
-                letterSpacing: '0.03em',
-              }}>
-                <div style={{
-                  width: '5px', height: '5px', borderRadius: '50%',
-                  background: 'currentColor',
-                  animation: isPlaying ? 'pulseGreen 1.5s ease-in-out infinite' : 'none',
-                }} />
+              <div className={`ide-status-chip ${isPlaying ? 'running' : 'ready'}`}>
+                <div
+                  className="ide-status-chip-dot"
+                  style={{ animation: isPlaying ? 'nbPulse 1.5s ease-in-out infinite' : 'none' }}
+                />
                 {isPlaying ? 'Animating' : 'Scene Ready'}
               </div>
             )}
@@ -372,35 +359,27 @@ export default function App() {
                 alignItems: 'center',
                 justifyContent: 'center',
                 height: '100%',
-                gap: '14px',
-                color: 'var(--text-subtle)',
+                gap: '16px',
               }}>
-                {/* Subtle grid bg */}
                 <div style={{
-                  position: 'absolute', inset: 0,
-                  backgroundImage: 'linear-gradient(rgba(99,102,241,.04) 1px, transparent 1px), linear-gradient(90deg, rgba(99,102,241,.04) 1px, transparent 1px)',
-                  backgroundSize: '32px 32px',
-                  pointerEvents: 'none',
-                }} />
-                <div style={{
-                  width: '52px', height: '52px',
-                  borderRadius: '50%',
-                  background: 'var(--bg-elevated)',
-                  border: '1px solid var(--border-color)',
+                  width: '56px', height: '56px',
+                  background: 'var(--bg-surface)',
+                  border: 'var(--border-w) solid var(--border-color)',
+                  borderRadius: 'var(--radius-md)',
+                  boxShadow: 'var(--shadow-sm)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  color: 'var(--text-subtle)',
-                  position: 'relative', zIndex: 1,
+                  color: 'var(--text-muted)',
                 }}>
                   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <polygon points="23 7 16 12 23 17 23 7" />
                     <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
                   </svg>
                 </div>
-                <div style={{ textAlign: 'center', position: 'relative', zIndex: 1 }}>
-                  <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '4px' }}>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontFamily: 'var(--font-ui)', fontSize: '14px', fontWeight: 800, color: 'var(--text-secondary)', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                     {pipelineState.runtime === 'error' ? 'Compilation Failed' : 'Scene not loaded'}
                   </div>
-                  <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                  <div style={{ fontFamily: 'var(--font-ui)', fontSize: '12px', color: 'var(--text-muted)', fontWeight: 500 }}>
                     {pipelineState.runtime === 'error' ? 'Fix errors and recompile.' : 'Press Compile to build the scene.'}
                   </div>
                 </div>

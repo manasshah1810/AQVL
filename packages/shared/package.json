@@ -5,5 +5,12 @@
   "types": "src/index.ts",
   "exports": {
     ".": "./src/index.ts"
+  },
+  "peerDependencies": {
+    "three": "^0.185.1"
+  },
+  "devDependencies": {
+    "@types/three": "^0.185.1",
+    "three": "^0.185.1"
   }
 }

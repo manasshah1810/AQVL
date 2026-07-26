@@ -46,6 +46,8 @@ export class ExecutionEngine {
     this.eventDispatcher.on('SCENE_LOADED', () => {
       const layoutMap = this.layoutManager.updateLayout();
       this.layoutManager.applyLayoutInstantly(layoutMap);
+      // State index 0 = initial state, maps to instruction index -1 (before any instruction)
+      this.stateInstructionMap[0] = -1;
       this.stateManager.saveState(this.sceneManager.getSceneGraph(), 'Initial State');
     });
   }
@@ -56,10 +58,15 @@ export class ExecutionEngine {
     this.sceneManager.loadScene(program.objects);
     this.relationshipManager.loadFromScene(this.sceneManager.getSceneGraph());
     this.currentInstructionIndex = 0;
+    this.stateInstructionMap = [];
   }
   
   private isPlaying: boolean = false;
   private currentInstructionIndex: number = 0;
+
+  // Maps each StateManager snapshot index to the program instruction index that produced it.
+  // Used to restore currentInstructionIndex when stepping through states.
+  private stateInstructionMap: number[] = [];
 
   public async execute() {
     console.log('[ExecutionEngine] execute() started');
@@ -75,6 +82,20 @@ export class ExecutionEngine {
       await this.animationController.executeInstruction(instruction);
       
       console.log(`[ExecutionEngine] Instruction ${this.currentInstructionIndex} complete`);
+
+      // Save a canonical state snapshot after every instruction so ALL operations
+      // (traversals, property checks, highlights, etc.) are captured in the
+      // step timeline — not just operations that happen to call saveState internally.
+      const stateDesc = `[${this.currentInstructionIndex + 1}] ${instruction.action}`;
+      const nextStateIdx = this.stateManager.getTimelineLength();
+      this.stateManager.saveState(
+        this.sceneManager.getSceneGraph(),
+        stateDesc,
+        this.animationScheduler.getCurrentTime()
+      );
+      // Record which instruction produced this state entry
+      this.stateInstructionMap[nextStateIdx] = this.currentInstructionIndex;
+
       this.currentInstructionIndex++;
       this.eventDispatcher.dispatch('INSTRUCTION_COMPLETE', this.currentInstructionIndex);
       
@@ -127,15 +148,19 @@ export class ExecutionEngine {
   public stepForward() {
     console.log('[ExecutionEngine] stepForward() called');
     this.isPlaying = false;
-    // Execute exactly one instruction manually
-    if (this.currentInstructionIndex < this.program!.instructions.length) {
-      const instruction = this.program!.instructions[this.currentInstructionIndex];
-      this.eventDispatcher.dispatch('INSTRUCTION_START', this.currentInstructionIndex);
-      
-      this.animationController.executeInstruction(instruction).then(() => {
-        this.currentInstructionIndex++;
-        this.eventDispatcher.dispatch('INSTRUCTION_COMPLETE', this.currentInstructionIndex);
-      });
+    // Navigate to the next saved state snapshot
+    const nextState = this.stateManager.stepForward();
+    if (nextState) {
+      this.syncToState(nextState);
+      // Restore instruction index from the map so progress bar stays accurate
+      const stateIdx = this.stateManager.getCurrentIndex();
+      const instrIdx = this.stateInstructionMap[stateIdx];
+      if (instrIdx !== undefined && instrIdx >= 0) {
+        this.currentInstructionIndex = instrIdx;
+        this.eventDispatcher.dispatch('INSTRUCTION_START', this.currentInstructionIndex);
+      }
+    } else {
+      console.log('[ExecutionEngine] No next state to step forward to');
     }
   }
 
@@ -145,8 +170,11 @@ export class ExecutionEngine {
     const prevState = this.stateManager.stepBackward();
     if (prevState) {
       this.syncToState(prevState);
-      if (this.currentInstructionIndex > 0) {
-        this.currentInstructionIndex--;
+      // Restore instruction index from the map so progress bar stays accurate
+      const stateIdx = this.stateManager.getCurrentIndex();
+      const instrIdx = this.stateInstructionMap[stateIdx];
+      if (instrIdx !== undefined) {
+        this.currentInstructionIndex = instrIdx >= 0 ? instrIdx : 0;
         this.eventDispatcher.dispatch('INSTRUCTION_START', this.currentInstructionIndex);
       }
     } else {
@@ -158,6 +186,11 @@ export class ExecutionEngine {
     console.log('[ExecutionEngine] restart() called');
     this.isPlaying = false;
     this.currentInstructionIndex = 0;
+    // Jump to the very first saved state (index 0)
+    const initialState = this.stateManager.jumpTo(0);
+    if (initialState) {
+      this.syncToState(initialState);
+    }
     this.eventDispatcher.dispatch('INSTRUCTION_START', 0);
   }
 
@@ -167,31 +200,33 @@ export class ExecutionEngine {
   }
 
   private syncToState(currentState: any) {
-    console.log(`[ExecutionEngine] syncToState() - State Title: ${currentState.title}`);
+    console.log(`[ExecutionEngine] syncToState() - State Title: ${currentState.description}`);
     // Sync SceneGraph to State
     const currentGraph = this.sceneManager.getSceneGraph();
     const currentIds = new Set(currentGraph.map(el => el.id));
     
-    // 1. Update existing and add missing
+    // 1. Update existing and add missing elements from the snapshot
     currentState.elements.forEach((snapshotEl: any, id: string) => {
-        if (currentIds.has(id)) {
-          const graphEl = this.sceneManager.getElement(id);
-          if (graphEl) Object.assign(graphEl, JSON.parse(JSON.stringify(snapshotEl)));
-        } else {
-          // It was destroyed, need to add it back
-          this.sceneManager.addElement(JSON.parse(JSON.stringify(snapshotEl)));
-        }
-      });
-      
-      // 2. Remove extra elements that were spawned after state 0
-      currentGraph.forEach(graphEl => {
-        if (!currentState.elements.has(graphEl.id)) {
-          this.sceneManager.removeElement(graphEl.id);
-        }
-      });
-      
-      // 3. Sync relationship manager
-      this.relationshipManager.loadFromScene(this.sceneManager.getSceneGraph());
-      this.eventDispatcher.dispatch('STATE_UPDATED', currentState);
+      if (currentIds.has(id)) {
+        const graphEl = this.sceneManager.getElement(id);
+        if (graphEl) Object.assign(graphEl, JSON.parse(JSON.stringify(snapshotEl)));
+      } else {
+        // Element was destroyed after this snapshot — restore it
+        this.sceneManager.addElement(JSON.parse(JSON.stringify(snapshotEl)));
+      }
+    });
+
+    // 2. Remove elements that were spawned AFTER this snapshot
+    // Re-query the scene graph after additions so we don't miss newly added elements
+    const freshGraph = this.sceneManager.getSceneGraph();
+    freshGraph.forEach(graphEl => {
+      if (!currentState.elements.has(graphEl.id)) {
+        this.sceneManager.removeElement(graphEl.id);
+      }
+    });
+
+    // 3. Sync relationship manager and notify renderer
+    this.relationshipManager.loadFromScene(this.sceneManager.getSceneGraph());
+    this.eventDispatcher.dispatch('STATE_UPDATED', this.stateManager.getCurrentState());
   }
 }

@@ -12,8 +12,10 @@
   "license": "ISC",
   "packageManager": "pnpm@10.18.2",
   "devDependencies": {
+    "@types/three": "^0.185.1",
     "eslint": "^10.7.0",
     "husky": "^9.1.7",
-    "prettier": "^3.9.5"
+    "prettier": "^3.9.5",
+    "three": "^0.185.1"
   }
 }

@@ -19,6 +19,28 @@ interface CategoryMeta {
 }
 
 const CATEGORY_META: Record<ExampleCategory, CategoryMeta> = {
+  'Arrays': {
+    color: '#0ea5e9',
+    accent: 'rgba(14,165,233,0.15)',
+    glow: 'rgba(14,165,233,0.35)',
+    description: 'Contiguous blocks of memory',
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="3" y="9" width="18" height="6" rx="1"/>
+        <line x1="9" y1="9" x2="9" y2="15"/>
+        <line x1="15" y1="9" x2="15" y2="15"/>
+      </svg>
+    ),
+    pattern: (
+      <svg width="120" height="80" viewBox="0 0 120 80" fill="none">
+        <rect x="20" y="30" width="80" height="20" rx="2" fill="none" stroke="rgba(14,165,233,0.3)" strokeWidth="1"/>
+        <line x1="40" y1="30" x2="40" y2="50" stroke="rgba(14,165,233,0.3)" strokeWidth="1"/>
+        <line x1="60" y1="30" x2="60" y2="50" stroke="rgba(14,165,233,0.3)" strokeWidth="1"/>
+        <line x1="80" y1="30" x2="80" y2="50" stroke="rgba(14,165,233,0.3)" strokeWidth="1"/>
+        <rect x="40" y="30" width="20" height="20" fill="rgba(14,165,233,0.2)"/>
+      </svg>
+    ),
+  },
   'Sorting': {
     color: '#6366f1',
     accent: 'rgba(99,102,241,0.15)',
@@ -319,9 +341,40 @@ export function ExampleExplorer({ activeSource, onSelect, onClose }: ExampleExpl
         className={`lp-shell${isExiting ? ' exiting' : ''}`}
         onClick={e => e.stopPropagation()}
       >
+        {/* ── Top Command Bar ── */}
+        <header className="lp-cmd-header">
+          <div className="lp-cmd-search-wrap">
+            <span className="lp-cmd-search-icon"><IconSearch /></span>
+            <input
+              ref={searchInputRef}
+              className="lp-cmd-search-input"
+              type="text"
+              placeholder="Search for an algorithm, structure, or lesson…"
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              spellCheck={false}
+              autoComplete="off"
+              aria-label="Search examples"
+              autoFocus
+            />
+            {query && (
+              <button
+                className="lp-cmd-search-clear"
+                onClick={() => { setQuery(''); searchInputRef.current?.focus(); }}
+                aria-label="Clear search"
+              >
+                <IconClose />
+              </button>
+            )}
+          </div>
+          <button className="lp-cmd-close-btn" onClick={handleClose} aria-label="Close">
+            <kbd className="lp-cmd-esc">ESC</kbd>
+          </button>
+        </header>
 
-        {/* ── Left Sidebar ── */}
-        <aside className="lp-sidebar">
+        <div className="lp-modal-body">
+          {/* ── Left Sidebar ── */}
+          <aside className="lp-sidebar">
 
           {/* Wordmark */}
           <div className="lp-sidebar-brand">
@@ -371,14 +424,7 @@ export function ExampleExplorer({ activeSource, onSelect, onClose }: ExampleExpl
             })}
           </nav>
 
-          {/* Sidebar Footer */}
-          <div className="lp-sidebar-footer">
-            <div className="lp-footer-hint">
-              <kbd className="lp-kbd">Esc</kbd>
-              <span>to close</span>
-            </div>
-          </div>
-        </aside>
+          </aside>
 
         {/* ── Main Content ── */}
         <main className="lp-main">
@@ -398,38 +444,6 @@ export function ExampleExplorer({ activeSource, onSelect, onClose }: ExampleExpl
                   <span className="lp-header-sub">{totalCount} lessons available</span>
                 </>
               )}
-            </div>
-
-            <div className="lp-header-right">
-              {/* Search */}
-              <div className="lp-search-wrap">
-                <span className="lp-search-icon"><IconSearch /></span>
-                <input
-                  ref={searchInputRef}
-                  className="lp-search-input"
-                  type="text"
-                  placeholder="Search…"
-                  value={query}
-                  onChange={e => setQuery(e.target.value)}
-                  spellCheck={false}
-                  autoComplete="off"
-                  aria-label="Search examples"
-                />
-                {query && (
-                  <button
-                    className="lp-search-clear"
-                    onClick={() => { setQuery(''); searchInputRef.current?.focus(); }}
-                    aria-label="Clear search"
-                  >
-                    <IconClose />
-                  </button>
-                )}
-              </div>
-
-              {/* Close */}
-              <button className="lp-close-btn" onClick={handleClose} aria-label="Close lesson picker">
-                <IconClose />
-              </button>
             </div>
           </div>
 
@@ -464,19 +478,6 @@ export function ExampleExplorer({ activeSource, onSelect, onClose }: ExampleExpl
                       onClick={() => handleSelect(example)}
                       aria-pressed={isActive}
                     >
-                      {/* Visual preview area */}
-                      <div className="lp-card-preview" style={{ background: `radial-gradient(ellipse at 60% 40%, ${meta.accent}, transparent 70%)` }}>
-                        <div className="lp-card-preview-art">
-                          {meta.pattern}
-                        </div>
-                        {isActive && (
-                          <div className="lp-card-active-badge">
-                            <IconCheck />
-                            <span>Current</span>
-                          </div>
-                        )}
-                      </div>
-
                       {/* Card body */}
                       <div className="lp-card-body">
                         <div className="lp-card-meta">
@@ -484,6 +485,12 @@ export function ExampleExplorer({ activeSource, onSelect, onClose }: ExampleExpl
                             {diff.label}
                           </span>
                           <span className="lp-card-category">{example.category}</span>
+                          {isActive && (
+                            <div className="lp-card-active-badge" style={{ marginLeft: 'auto' }}>
+                              <IconCheck />
+                              <span>Current</span>
+                            </div>
+                          )}
                         </div>
                         <div className="lp-card-title">{renderTitle(example.title)}</div>
                         <div className="lp-card-desc">{example.description}</div>
@@ -513,6 +520,7 @@ export function ExampleExplorer({ activeSource, onSelect, onClose }: ExampleExpl
             )}
           </div>
         </main>
+        </div>
       </div>
     </div>
   );

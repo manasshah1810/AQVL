@@ -31,6 +31,7 @@ import type {
   GenericActionInstruction,
   SetStateInstruction,
 } from '@aqvl/shared';
+import { getSemanticColorToken } from '@aqvl/shared';
 
 export class AQIRGenerator {
   private objectIdCounter = 0;
@@ -111,6 +112,7 @@ export class AQIRGenerator {
         
         const headId = this.generateId();
         const nullId = this.generateId();
+        const boundaryToken = getSemanticColorToken('AUXILIARY');
         
         this.generatedObjects.push({
           id: headId,
@@ -119,7 +121,7 @@ export class AQIRGenerator {
           logicalParent: list.name.name,
           value: 'HEAD',
           label: 'HEAD',
-          color: '#ff6b6b' // Distinct red color for boundary
+          color: boundaryToken.color
         });
 
         const nodeIds: string[] = [];
@@ -150,7 +152,7 @@ export class AQIRGenerator {
             logicalParent: list.name.name,
             value: 'NULL',
             label: 'NULL',
-            color: '#ff6b6b' // Distinct red color for boundary
+            color: boundaryToken.color
           });
         }
 

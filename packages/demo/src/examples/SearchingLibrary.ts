@@ -14,7 +14,7 @@ SEQUENCE
   
   // Found 22 at index 4
   COMPARE arr[4] arr[4]
-  HIGHLIGHT arr[4]
+  HIGHLIGHT arr[4] 'SUCCESS'
 END
 `,
 
@@ -36,32 +36,46 @@ SEQUENCE
   COMPARE arr[5] arr[5]
   
   // Found at index 5!
-  HIGHLIGHT arr[5]
+  HIGHLIGHT arr[5] 'SUCCESS'
 END
 `,
 
-  DFS: `SCENE DFS
-
-DECLARE
-  TREE myTree = [50, 30, 70, 20, 40, 60, 80]
+  DFS: `SCENE DFSTraversal
 
 SEQUENCE
-  // Deep traversal (Root -> Left -> Left ...)
-  VISIT myTree 0
-  VISIT myTree 1
-  VISIT myTree 3
+  ROOT 50
+  CHILD 50 30
+  CHILD 50 70
+  CHILD 30 20
+  CHILD 30 40
+  CHILD 70 60
+  CHILD 70 80
+
+  // Deep traversal (Pre-order DFS style)
+  HIGHLIGHT 50
+  WAIT
   
-  // Backtrack to 1, then right
-  VISIT myTree 4
+  HIGHLIGHT 30
+  WAIT
   
-  // Backtrack to root, then right
-  VISIT myTree 2
-  VISIT myTree 5
-  VISIT myTree 6
+  HIGHLIGHT 20
+  WAIT
+  
+  HIGHLIGHT 40
+  WAIT
+  
+  HIGHLIGHT 70
+  WAIT
+  
+  HIGHLIGHT 60
+  WAIT
+  
+  HIGHLIGHT 80
+  WAIT
 END
 `,
 
-  BFS: `SCENE BFS
+  BFS: `SCENE BFSTraversal
 
 DECLARE
   GRAPH myGraph = [
@@ -74,21 +88,19 @@ DECLARE
 
 SEQUENCE
   // Level 0
-  VISIT myGraph "A"
+  HIGHLIGHT myGraph["A"]
+  WAIT
   
   // Level 1
-  TRAVERSE myGraph "A"
-  VISIT myGraph "B"
-  TRAVERSE myGraph "A"
-  VISIT myGraph "C"
+  HIGHLIGHT myGraph["B"]
+  HIGHLIGHT myGraph["C"]
+  WAIT
   
   // Level 2
-  TRAVERSE myGraph "B"
-  VISIT myGraph "D"
-  TRAVERSE myGraph "B"
-  VISIT myGraph "E"
-  TRAVERSE myGraph "C"
-  VISIT myGraph "F"
+  HIGHLIGHT myGraph["D"]
+  HIGHLIGHT myGraph["E"]
+  HIGHLIGHT myGraph["F"]
+  WAIT
 END
 `
 };

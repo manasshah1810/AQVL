@@ -129,34 +129,38 @@ export function IDECompilerPanel({ tokens, ast, aqir, pipelineState }: IDECompil
           </svg>
           Compiler Pipeline
         </div>
-        {/* Mini progress indicator */}
+        {/* Mini status badge — brutalist */}
         <div style={{
-          display: 'flex',
+          display: 'inline-flex',
           alignItems: 'center',
           gap: '5px',
-          fontSize: '10px',
-          fontFamily: 'var(--font-mono)',
+          padding: '2px 8px',
+          background: hasError ? 'var(--error-soft)' : completed === totalStages ? 'var(--success-soft)' : 'var(--bg-hover)',
+          border: `2px solid ${hasError ? 'var(--error)' : completed === totalStages ? 'var(--success)' : 'var(--border-color)'}`,
+          borderRadius: '20px',
+          fontSize: '9px',
+          fontFamily: 'var(--font-ui)',
+          fontWeight: 800,
           color: hasError ? 'var(--error)' : completed === totalStages ? 'var(--success)' : 'var(--text-muted)',
-          fontWeight: 600,
+          letterSpacing: '0.08em',
+          textTransform: 'uppercase' as const,
         }}>
           {hasError ? '✗ Error' : `${completed}/${totalStages}`}
         </div>
       </div>
 
-      {/* Progress bar */}
+      {/* Progress bar — solid flat brutalist */}
       <div style={{
-        height: '2px',
-        background: 'var(--border-color)',
+        height: '3px',
+        background: 'var(--bg-elevated)',
+        borderBottom: '2px solid var(--border-color)',
         flexShrink: 0,
       }}>
         <div style={{
           height: '100%',
           width: `${(completed / totalStages) * 100}%`,
-          background: hasError
-            ? 'var(--error)'
-            : 'linear-gradient(90deg, #6366f1, #22c55e)',
-          transition: 'width 0.4s cubic-bezier(0.4,0,0.2,1)',
-          boxShadow: hasError ? '0 0 6px var(--error)' : '0 0 8px rgba(99,102,241,.5)',
+          background: hasError ? 'var(--error)' : 'var(--success)',
+          transition: 'width 0.4s ease',
         }} />
       </div>
 

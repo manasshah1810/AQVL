@@ -1,4 +1,5 @@
 import type { AQIRInstruction, SwapObjectsInstruction, CompareObjectsInstruction, HighlightObjectInstruction, LinkObjectsInstruction, GenericActionInstruction, SetStateInstruction } from '@aqvl/shared';
+import { getSemanticColorToken, normalizeSemanticState } from '@aqvl/shared';
 import { AnimationScheduler } from './AnimationScheduler';
 import { SceneManager } from './SceneManager';
 import { LayoutManager } from './LayoutManager';
@@ -15,11 +16,13 @@ AlgorithmRegistry.register([
   'LEFT_VIEW', 'RIGHT_VIEW', 'TOP_VIEW', 'BOTTOM_VIEW', 'BOUNDARY', 'VERTICAL_ORDER', 'DIAGONAL',
   'MAX_VALUE', 'MIN_VALUE', 'SUM', 'AVERAGE', 'MAX_LEVEL_SUM'
 ], new BinaryTreeAlgorithms());
-import { AnimationContext, MoveAnimation } from './animations';
+import { AnimationContext, MoveAnimation, AnticipationAnimation } from './animations';
+
 
 export class AnimationController {
-  private defaultColor = '#4facfe';
+  private defaultColor = getSemanticColorToken('NEUTRAL').color;
   private activeTreeName: string | null = null;
+
 
   constructor(
     private animationScheduler: AnimationScheduler,
@@ -31,8 +34,28 @@ export class AnimationController {
     private relationshipManager: RelationshipManager
   ) {}
 
+  private clearTransientActiveStates(): void {
+    const neutralToken = getSemanticColorToken('NEUTRAL');
+    for (const el of this.sceneManager.getSceneGraph()) {
+      el.isHighlighted = false;
+      el.highlightType = undefined;
+      if (
+        el.state === 'EVALUATING' ||
+        el.state === 'MODIFYING' ||
+        el.state === 'TRAVERSING' ||
+        el.state === 'ACTIVE'
+      ) {
+        el.state = 'NEUTRAL';
+        el.color = neutralToken.color;
+        el.emissiveColor = neutralToken.emissiveColor;
+        el.emissiveIntensity = neutralToken.emissiveIntensity;
+      }
+    }
+  }
+
   public async executeInstruction(instruction: AQIRInstruction): Promise<void> {
     return new Promise((resolve) => {
+      this.clearTransientActiveStates();
       this.animationScheduler.init(resolve);
       
       const animCtx: AnimationContext = {
@@ -48,17 +71,27 @@ export class AnimationController {
           const hl = instruction as HighlightObjectInstruction;
           const targetEl = this.sceneManager.getElement(hl.targetId);
           if (targetEl) {
+            AnticipationAnimation.applyAnticipation(this.animationScheduler, [targetEl], 'SELECTION');
+
+            const activeToken = getSemanticColorToken(hl.color || 'SUCCESS');
+            targetEl.isHighlighted = true;
+            targetEl.highlightType = hl.color || 'SUCCESS';
+            targetEl.state = activeToken.name;
+            targetEl.color = activeToken.color;
+            targetEl.emissiveColor = activeToken.emissiveColor;
+            targetEl.emissiveIntensity = activeToken.emissiveIntensity;
+
             this.animationScheduler.enqueue({
               targets: targetEl,
-              color: hl.color,
-              emissiveColor: hl.color,
-              emissiveIntensity: 0.5,
+              color: activeToken.color,
+              emissiveColor: activeToken.emissiveColor,
+              emissiveIntensity: activeToken.emissiveIntensity,
               duration: 400,
               easing: 'easeOutExpo'
             });
             this.animationScheduler.enqueue({
               targets: targetEl.scale,
-              x: 1.1, y: 1.1, z: 1.1,
+              x: 1.15, y: 1.15, z: 1.15,
               duration: 400,
               easing: 'easeOutExpo'
             });
@@ -67,16 +100,9 @@ export class AnimationController {
             this.animationScheduler.advanceCursor(200);
 
             this.animationScheduler.enqueue({
-              targets: targetEl,
-              color: this.defaultColor,
-              emissiveIntensity: 0,
-              duration: 400,
-              easing: 'easeInOutQuad'
-            });
-            this.animationScheduler.enqueue({
               targets: targetEl.scale,
               x: 1, y: 1, z: 1,
-              duration: 400,
+              duration: 300,
               easing: 'easeInOutQuad'
             });
             this.animationScheduler.commitGroup(true);
@@ -108,6 +134,22 @@ export class AnimationController {
           const rightEl = this.sceneManager.getElement(swp.rightId) as any;
           
           if (leftEl && rightEl) {
+            AnticipationAnimation.applyAnticipation(this.animationScheduler, [leftEl, rightEl], 'SWAP');
+
+            const activeToken = getSemanticColorToken('MODIFYING');
+            leftEl.isHighlighted = true;
+            leftEl.highlightType = 'MODIFYING';
+            rightEl.isHighlighted = true;
+            rightEl.highlightType = 'MODIFYING';
+            leftEl.state = 'MODIFYING';
+            rightEl.state = 'MODIFYING';
+            leftEl.color = activeToken.color;
+            leftEl.emissiveColor = activeToken.emissiveColor;
+            leftEl.emissiveIntensity = activeToken.emissiveIntensity;
+            rightEl.color = activeToken.color;
+            rightEl.emissiveColor = activeToken.emissiveColor;
+            rightEl.emissiveIntensity = activeToken.emissiveIntensity;
+
             const leftIndex = leftEl.logicalIndex;
             const rightIndex = rightEl.logicalIndex;
 
@@ -118,9 +160,9 @@ export class AnimationController {
 
             this.animationScheduler.enqueue({
               targets: [leftEl, rightEl],
-              color: '#4caf50',
-              emissiveColor: '#4caf50',
-              emissiveIntensity: 0.8,
+              color: activeToken.color,
+              emissiveColor: activeToken.emissiveColor,
+              emissiveIntensity: activeToken.emissiveIntensity,
               duration: 300,
               easing: 'easeOutExpo'
             });
@@ -181,13 +223,6 @@ export class AnimationController {
             this.animationScheduler.commitGroup(true);
 
             this.animationScheduler.enqueue({
-              targets: [leftEl, rightEl],
-              color: this.defaultColor,
-              emissiveIntensity: 0,
-              duration: 300,
-              easing: 'easeInOutQuad'
-            });
-            this.animationScheduler.enqueue({
               targets: [leftEl.scale, rightEl.scale],
               x: 1, y: 1, z: 1,
               duration: 300,
@@ -226,11 +261,27 @@ export class AnimationController {
           const rightEl = this.sceneManager.getElement(cmp.rightId) as any;
           
           if (leftEl && rightEl) {
+            AnticipationAnimation.applyAnticipation(this.animationScheduler, [leftEl, rightEl], 'COMPARISON');
+
+            const activeToken = getSemanticColorToken('EVALUATING');
+            leftEl.isHighlighted = true;
+            leftEl.highlightType = 'EVALUATING';
+            rightEl.isHighlighted = true;
+            rightEl.highlightType = 'EVALUATING';
+            leftEl.state = 'EVALUATING';
+            rightEl.state = 'EVALUATING';
+            leftEl.color = activeToken.color;
+            leftEl.emissiveColor = activeToken.emissiveColor;
+            leftEl.emissiveIntensity = activeToken.emissiveIntensity;
+            rightEl.color = activeToken.color;
+            rightEl.emissiveColor = activeToken.emissiveColor;
+            rightEl.emissiveIntensity = activeToken.emissiveIntensity;
+
             this.animationScheduler.enqueue({
               targets: [leftEl, rightEl],
-              color: '#ffeb3b',
-              emissiveColor: '#ffeb3b',
-              emissiveIntensity: 0.5,
+              color: activeToken.color,
+              emissiveColor: activeToken.emissiveColor,
+              emissiveIntensity: activeToken.emissiveIntensity,
               duration: 400,
               easing: 'easeOutExpo'
             });
@@ -251,14 +302,6 @@ export class AnimationController {
             this.animationScheduler.commitGroup(true);
 
             this.animationScheduler.advanceCursor(300);
-
-            this.animationScheduler.enqueue({
-              targets: [leftEl, rightEl],
-              color: this.defaultColor,
-              emissiveIntensity: 0,
-              duration: 300,
-              easing: 'easeInOutQuad'
-            });
 
             this.animationScheduler.enqueue({
               targets: [leftEl.scale, rightEl.scale],
@@ -329,11 +372,14 @@ export class AnimationController {
 
             if (logicalParent !== undefined && insertIndex !== undefined) {
               const allArrayEls = this.sceneManager.getSceneGraph().filter((el: any) => el.logicalParent === logicalParent);
+              AnticipationAnimation.applyAnticipation(this.animationScheduler, allArrayEls, 'INSERTION');
+
               const elsToShift = allArrayEls.filter((el: any) => el.logicalIndex >= insertIndex);
               
               // Synchronous update
               elsToShift.forEach((el: any) => el.logicalIndex += 1);
               
+              const modifyingToken = getSemanticColorToken('MODIFYING');
               const newEl: any = {
                 id: `obj_dyn_${Date.now()}_${insertIndex}`,
                 type: 'box',
@@ -345,9 +391,10 @@ export class AnimationController {
                 label: `${logicalParent}[${insertIndex}]`,
                 position: { x: 0, y: -5, z: 0 },
                 scale: { x: 0, y: 0, z: 0 },
-                color: '#4facfe',
-                emissiveIntensity: 0,
-                emissiveColor: '#000000',
+                color: modifyingToken.color,
+                emissiveIntensity: modifyingToken.emissiveIntensity,
+                emissiveColor: modifyingToken.emissiveColor,
+                state: 'MODIFYING',
                 lifecycleState: 'ACTIVE',
                 visible: true,
                 opacity: 1
@@ -421,9 +468,14 @@ export class AnimationController {
             }
             
             if (logicalParent !== undefined && deleteIndex !== undefined && targetEl) {
+              AnticipationAnimation.applyAnticipation(this.animationScheduler, [targetEl], 'DELETION');
+
               const allArrayEls = this.sceneManager.getSceneGraph().filter((el: any) => el.logicalParent === logicalParent);
-              const elsToShift = allArrayEls.filter((el: any) => el.logicalIndex > deleteIndex);
+              const elsToShift = allArrayEls.filter((el: any) => el.logicalIndex > deleteIndex && el.id !== targetEl.id);
               
+              // Set the target element to the animation layer so it's ignored by the layout engine
+              targetEl.animationLayer = true;
+
               // Synchronous layout update
               elsToShift.forEach((el: any) => el.logicalIndex -= 1);
               this.layoutManager.updateLayout(this.sceneManager.getSceneGraph());
@@ -509,15 +561,18 @@ export class AnimationController {
             const valueToInsert = gen.args?.[gen.args.length - 1];
             if (logicalParent !== undefined && valueToInsert !== undefined) {
               const allEls = this.sceneManager.getSceneGraph().filter((el: any) => el.logicalParent === logicalParent);
+              AnticipationAnimation.applyAnticipation(this.animationScheduler, allEls.filter((el: any) => el.type !== 'edge'), 'INSERTION');
+
               const edges = allEls.filter((el: any) => el.type === 'edge');
               const headNode = allEls.find((el: any) => el.originalType === 'HEAD');
               const nullNode = allEls.find((el: any) => el.originalType === 'NULL');
               
-              const circularEdge = edges.find((e: any) => e.properties?.circular);
+              const circularEdge = edges.find((e: any) => e.properties?.circular || e.circular);
               const isCircular = !!circularEdge;
 
               if (headNode && (nullNode || isCircular)) {
                 const newId = `obj_dyn_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+                const modifyingToken = getSemanticColorToken('MODIFYING');
                 const newEl: any = {
                   id: newId,
                   type: 'sphere',
@@ -527,9 +582,10 @@ export class AnimationController {
                   label: String(valueToInsert),
                   position: { x: 0, y: -5, z: 0 },
                   scale: { x: 0, y: 0, z: 0 },
-                  color: '#4facfe',
-                  emissiveIntensity: 0,
-                  emissiveColor: '#000000',
+                  color: modifyingToken.color,
+                  emissiveIntensity: modifyingToken.emissiveIntensity,
+                  emissiveColor: modifyingToken.emissiveColor,
+                  state: 'MODIFYING',
                   lifecycleState: 'ACTIVE',
                   visible: true,
                   opacity: 1
@@ -591,7 +647,8 @@ export class AnimationController {
                   this.sceneManager.addElement({
                     id: edge2Id, type: 'edge', position: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 }, color: '#888888',
                     sourceId: newId, targetId: nextNodeId, directed: true, logicalParent, originalType: 'EDGE',
-                    properties: isEdge2Circular ? { circular: true } : undefined
+                    properties: isEdge2Circular ? { circular: true } : undefined,
+                    circular: isEdge2Circular ? true : undefined
                   } as any);
                   
                   this.relationshipManager.addRelationship({ id: edge1Id, sourceId: prevNodeId, targetId: newId, type: 'edge', directed: true });
@@ -712,7 +769,7 @@ export class AnimationController {
               const headNode = allEls.find((el: any) => el.originalType === 'HEAD');
               const nullNode = allEls.find((el: any) => el.originalType === 'NULL');
               
-              const circularEdge = edges.find((e: any) => e.properties?.circular);
+              const circularEdge = edges.find((e: any) => e.properties?.circular || e.circular);
               const isCircular = !!circularEdge;
 
               if (headNode && (nullNode || isCircular)) {
@@ -739,6 +796,11 @@ export class AnimationController {
                 }
                 
                 if (nodeToDeleteId) {
+                  const targetDelEl = this.sceneManager.getElement(nodeToDeleteId);
+                  if (targetDelEl) {
+                    AnticipationAnimation.applyAnticipation(this.animationScheduler, [targetDelEl], 'DELETION');
+                  }
+
                   this.animationScheduler.enqueue({
                     targets: {}, duration: 1, complete: () => {
                       this.eventDispatcher.dispatch('RUNTIME_LOG', {
@@ -751,8 +813,8 @@ export class AnimationController {
                   });
                   this.animationScheduler.commitSequential();
 
-                  const edgeToDel = edges.find((e: any) => e.targetId === nodeToDeleteId && !(e.backward || e.properties?.backward) && !e.properties?.circular);
-                  let edgeFromDel = edges.find((e: any) => e.sourceId === nodeToDeleteId && !(e.backward || e.properties?.backward) && !e.properties?.circular);
+                  const edgeToDel = edges.find((e: any) => e.targetId === nodeToDeleteId && !(e.backward || e.properties?.backward) && !(e.circular || e.properties?.circular));
+                  let edgeFromDel = edges.find((e: any) => e.sourceId === nodeToDeleteId && !(e.backward || e.properties?.backward) && !(e.circular || e.properties?.circular));
                   
                   if (isCircular && actionName === 'DELETE_TAIL') {
                     edgeFromDel = circularEdge;
@@ -777,7 +839,8 @@ export class AnimationController {
                   this.sceneManager.addElement({
                     id: newEdgeId, type: 'edge', position: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 }, color: '#888888',
                     sourceId: prevNodeId, targetId: nextNodeId, directed: true, logicalParent, originalType: 'EDGE',
-                    properties: isNewEdgeCircular ? { circular: true } : undefined
+                    properties: isNewEdgeCircular ? { circular: true } : undefined,
+                    circular: isNewEdgeCircular ? true : undefined
                   } as any);
                   this.relationshipManager.addRelationship({ id: newEdgeId, sourceId: prevNodeId, targetId: nextNodeId, type: 'edge', directed: true });
                   
@@ -855,6 +918,122 @@ export class AnimationController {
                     }
                   });
                   this.animationScheduler.commitSequential();
+                  this.animationScheduler.commitSequential();
+                }
+              }
+            }
+          } else if (actionName === 'REVERSE') {
+            const logicalParent = (gen as any).payload?.logicalParent;
+            if (logicalParent) {
+              const allEls = this.sceneManager.getSceneGraph().filter((el: any) => el.logicalParent === logicalParent);
+              const edges = allEls.filter((el: any) => el.type === 'edge');
+              const headNode = allEls.find((el: any) => el.originalType === 'HEAD');
+              const nullNode = allEls.find((el: any) => el.originalType === 'NULL');
+              
+              const circularEdge = edges.find((e: any) => e.properties?.circular || e.circular);
+              const isCircular = !!circularEdge;
+              const isDoubly = edges.some((e: any) => e.backward === true || e.properties?.backward === true);
+
+              if (headNode) {
+                const orderedDataNodes: any[] = [];
+                const forwardEdges = edges.filter((e: any) => 
+                  !(e.backward || e.properties?.backward) && 
+                  !(e.circular || e.properties?.circular) &&
+                  e.sourceId !== headNode.id &&
+                  e.targetId !== nullNode?.id
+                );
+
+                const headEdge = edges.find((e: any) => e.sourceId === headNode.id && !(e.backward || e.properties?.backward));
+                let currentNodeId = headEdge ? (headEdge as any).targetId : null;
+                
+                while (currentNodeId && currentNodeId !== nullNode?.id) {
+                  const node = allEls.find((el: any) => el.id === currentNodeId);
+                  if (node && node.originalType !== 'HEAD' && node.originalType !== 'NULL') {
+                    orderedDataNodes.push(node);
+                  } else {
+                    break;
+                  }
+                  const nextEdge = forwardEdges.find((e: any) => e.sourceId === currentNodeId);
+                  currentNodeId = nextEdge ? (nextEdge as any).targetId : null;
+                }
+
+                if (orderedDataNodes.length >= 2) {
+                  AnticipationAnimation.applyAnticipation(this.animationScheduler, allEls.filter((el: any) => el.type !== 'edge'), 'UPDATE');
+
+                  this.animationScheduler.enqueue({
+                    targets: {}, duration: 1, complete: () => {
+                      this.eventDispatcher.dispatch('RUNTIME_LOG', {
+                        keyword: 'OPERATION',
+                        message: 'Reversing Linked List connections...',
+                        kind: 'operation',
+                        timestamp: Date.now(),
+                      });
+                    }
+                  });
+                  this.animationScheduler.commitSequential();
+
+                  forwardEdges.forEach((e: any) => {
+                    const temp = e.sourceId;
+                    e.sourceId = e.targetId;
+                    e.targetId = temp;
+                  });
+
+                  if (isDoubly) {
+                    const backwardEdges = edges.filter((e: any) => (e.backward || e.properties?.backward) && e.sourceId !== nullNode?.id && e.targetId !== headNode.id);
+                    backwardEdges.forEach((e: any) => {
+                      const temp = e.sourceId;
+                      e.sourceId = e.targetId;
+                      e.targetId = temp;
+                    });
+                  }
+
+                  if (headEdge) {
+                    (headEdge as any).targetId = orderedDataNodes[orderedDataNodes.length - 1].id;
+                  }
+                  
+                  if (!isCircular) {
+                    const nullEdge = edges.find((e: any) => e.targetId === nullNode?.id && !(e.backward || e.properties?.backward));
+                    if (nullEdge) {
+                      (nullEdge as any).sourceId = orderedDataNodes[0].id;
+                    }
+                    if (isDoubly) {
+                       const nullBackEdge = edges.find((e: any) => (e.backward || e.properties?.backward) && e.sourceId === nullNode?.id);
+                       if (nullBackEdge) (nullBackEdge as any).targetId = orderedDataNodes[0].id;
+                    }
+                  } else if (circularEdge) {
+                    (circularEdge as any).sourceId = orderedDataNodes[0].id;
+                    (circularEdge as any).targetId = orderedDataNodes[orderedDataNodes.length - 1].id;
+                  }
+
+                  this.layoutManager.updateLayout(this.sceneManager.getSceneGraph());
+
+                  allEls.forEach((el: any) => {
+                    if (el.type !== 'edge' && el.worldTarget) {
+                      this.animationScheduler.enqueue({
+                        targets: el.position,
+                        x: el.worldTarget.x,
+                        y: el.worldTarget.y,
+                        z: el.worldTarget.z,
+                        duration: 800,
+                        easing: 'easeInOutCubic'
+                      });
+                    }
+                  });
+                  this.animationScheduler.commitGroup(true);
+
+                  this.animationScheduler.enqueue({
+                    targets: {}, duration: 1, complete: () => {
+                      this.stateManager.saveState(this.sceneManager.getSceneGraph(), 'REVERSE', this.animationScheduler.getCurrentTime());
+                      this.eventDispatcher.dispatch('STATE_UPDATED', this.stateManager.getCurrentState());
+                      this.eventDispatcher.dispatch('RUNTIME_LOG', {
+                        keyword: 'RESULT',
+                        message: 'Linked List Reversed Successfully.',
+                        kind: 'result',
+                        timestamp: Date.now(),
+                      });
+                    }
+                  });
+                  this.animationScheduler.commitSequential();
                 }
               }
             }
@@ -864,12 +1043,19 @@ export class AnimationController {
               targetEl = this.sceneManager.getElement(String(gen.args[0])) as any;
             }
             if (targetEl) {
+              AnticipationAnimation.applyAnticipation(this.animationScheduler, [targetEl], 'UPDATE');
               const newValue = gen.args?.[gen.args.length - 1];
+              const modifyingToken = getSemanticColorToken('MODIFYING');
+              targetEl.state = 'MODIFYING';
+              targetEl.color = modifyingToken.color;
+              targetEl.emissiveColor = modifyingToken.emissiveColor;
+              targetEl.emissiveIntensity = modifyingToken.emissiveIntensity;
+
               this.animationScheduler.enqueue({
                 targets: targetEl,
-                color: '#ff9800',
-                emissiveColor: '#ff9800',
-                emissiveIntensity: 0.8,
+                color: modifyingToken.color,
+                emissiveColor: modifyingToken.emissiveColor,
+                emissiveIntensity: modifyingToken.emissiveIntensity,
                 duration: 300,
                 easing: 'easeOutExpo'
               });
@@ -882,32 +1068,23 @@ export class AnimationController {
               this.animationScheduler.commitGroup(true);
               
               this.animationScheduler.enqueue({
-                targets: {},
-                duration: 1,
+                targets: targetEl.scale,
+                x: 1, y: 1, z: 1,
+                duration: 300,
+                easing: 'easeInOutQuad',
                 complete: () => {
                   targetEl.value = newValue;
+                  this.stateManager.saveState(this.sceneManager.getSceneGraph(), `Updated value to ${newValue}`, this.animationScheduler.getCurrentTime());
+                  this.eventDispatcher.dispatch('STATE_UPDATED', this.stateManager.getCurrentState());
+                  this.eventDispatcher.dispatch('RUNTIME_LOG', {
+                    keyword: 'UPDATE',
+                    message: `Updated value of element to ${newValue}.`,
+                    kind: 'operation',
+                    timestamp: Date.now(),
+                  });
                 }
               });
               this.animationScheduler.commitSequential();
-              
-              this.animationScheduler.enqueue({
-                targets: targetEl,
-                color: this.defaultColor,
-                emissiveIntensity: 0,
-                duration: 400,
-                easing: 'easeOutQuad'
-              });
-              this.animationScheduler.enqueue({
-                targets: targetEl.scale,
-                x: 1, y: 1, z: 1,
-                duration: 400,
-                easing: 'easeOutQuad',
-                complete: () => {
-                  this.stateManager.saveState(this.sceneManager.getSceneGraph(), `Updated value to ${newValue}`, this.animationScheduler.getCurrentTime());
-                  this.eventDispatcher.dispatch('STATE_UPDATED', this.stateManager.getCurrentState());
-                }
-              });
-              this.animationScheduler.commitGroup(true);
             }
           } else if (actionName === 'DISCONNECT') {
             const sourceId = gen.args[0];
@@ -974,6 +1151,10 @@ export class AnimationController {
             }
 
             if (childId && activeTree) {
+              const ptrChild = this.sceneManager.getElement(childId);
+              const ptrParent = parentId ? this.sceneManager.getElement(parentId) : null;
+              AnticipationAnimation.applyAnticipation(this.animationScheduler, [ptrChild, ptrParent].filter(Boolean), 'POINTER');
+
               // Ensure child node exists
               let childEl = this.sceneManager.getElement(childId);
               if (!childEl) {
@@ -1218,12 +1399,24 @@ export class AnimationController {
             if (root) dfsSearch(root);
             
             const visitedSoFar: string[] = [];
+            const traversingToken = getSemanticColorToken('TRAVERSING');
+            const successToken = getSemanticColorToken('SUCCESS');
+
             order.forEach((nodeId, idx) => {
                const realEl = this.sceneManager.getElement(nodeId) as any;
                const isTarget = idx === order.length - 1 && found;
                if (realEl) {
+                  AnticipationAnimation.applyAnticipation(this.animationScheduler, [realEl], 'TRAVERSAL');
+
+                  const targetToken = isTarget ? successToken : traversingToken;
+                  realEl.state = targetToken.name;
                   this.animationScheduler.enqueue({
-                    targets: realEl, color: '#f6e05e', emissiveColor: '#f6e05e', emissiveIntensity: 0.8, duration: 300, easing: 'easeOutExpo',
+                    targets: realEl, 
+                    color: targetToken.color, 
+                    emissiveColor: targetToken.emissiveColor, 
+                    emissiveIntensity: targetToken.emissiveIntensity, 
+                    duration: 300, 
+                    easing: 'easeOutExpo',
                     complete: () => {
                       visitedSoFar.push(realEl.label || realEl.id);
                       this.eventDispatcher.dispatch('RUNTIME_LOG', {
@@ -1245,7 +1438,7 @@ export class AnimationController {
                   this.animationScheduler.advanceCursor(400);
                   
                   if (!isTarget) {
-                     this.animationScheduler.enqueue({ targets: realEl, color: this.defaultColor, emissiveIntensity: 0, duration: 300 });
+                     this.animationScheduler.enqueue({ targets: realEl, color: this.defaultColor, emissiveIntensity: 0.1, duration: 300 });
                      this.animationScheduler.enqueue({ targets: realEl.scale, x: 1, y: 1, z: 1, duration: 300 });
                      this.animationScheduler.commitGroup(true);
                   }
@@ -1394,17 +1587,20 @@ export class AnimationController {
               // Animate each node glowing in traversal order, sequentially
               // Also emit per-node step logs synchronized with each highlight
               const GLOW_DURATION = 700;
-              const GLOW_COLOR = '#63b3ed';
+              const traversingToken = getSemanticColorToken('TRAVERSING');
+              const GLOW_COLOR = traversingToken.color;
               const visitedSoFar: string[] = [];
               order.forEach((nodeId: string, nodeIdx: number) => {
                 const realEl = this.sceneManager.getElement(nodeId) as any;
                 const nodeLabel = labelMap.get(nodeId) || nodeId;
                 if (realEl) {
-                  const origColor = realEl.color || '#4facfe';
+                  AnticipationAnimation.applyAnticipation(this.animationScheduler, [realEl], 'TRAVERSAL');
+                  const origColor = realEl.color || this.defaultColor;
+                  realEl.state = 'TRAVERSING';
                   this.animationScheduler.enqueue({
                     targets: realEl,
                     color: GLOW_COLOR,
-                    emissiveColor: GLOW_COLOR,
+                    emissiveColor: traversingToken.emissiveColor,
                     emissiveIntensity: 0.9,
                     duration: 200,
                     easing: 'easeOutExpo',
@@ -4157,31 +4353,19 @@ export class AnimationController {
           
           const targetEl = this.sceneManager.getElement(setStateIns.targetId) as any;
           if (targetEl) {
-            // Update semantic state
-            targetEl.state = setStateIns.stateName;
+            const canonicalState = normalizeSemanticState(setStateIns.stateName);
+            targetEl.state = canonicalState;
 
             const vEl = virtualGraph.find((e: any) => e.id === setStateIns.targetId);
             if (vEl) {
-              vEl.state = setStateIns.stateName;
+              vEl.state = canonicalState;
             }
 
-            // Decouple appearance updates based on states
-            const s = setStateIns.stateName;
+            const token = getSemanticColorToken(canonicalState);
+            const s = setStateIns.stateName.toLowerCase();
             const updates: any = { targets: targetEl, duration: 400 };
 
-            if (s === 'active' || s === 'selected' || s === 'visited') {
-              updates.color = '#ff9800';
-              updates.emissiveColor = '#ff9800';
-              updates.emissiveIntensity = 0.5;
-            } else if (s === 'sorted' || s === 'processed') {
-              updates.color = '#4caf50'; // Green success
-              updates.emissiveColor = '#4caf50';
-              updates.emissiveIntensity = 0.3;
-            } else if (s === 'inactive' || s === 'discovered') {
-              updates.color = '#888888';
-              updates.emissiveColor = '#000000';
-              updates.emissiveIntensity = 0;
-            } else if (s === 'deleted') {
+            if (s === 'deleted') {
               this.lifecycleManager.remove(setStateIns.targetId);
               updates.scaleX = 0;
               updates.scaleY = 0;
@@ -4191,10 +4375,12 @@ export class AnimationController {
                 this.lifecycleManager.destroy(setStateIns.targetId);
               };
             } else {
-              // Default reset
-              updates.color = '#4facfe';
-              updates.emissiveColor = '#000000';
-              updates.emissiveIntensity = 0;
+              updates.color = token.color;
+              updates.emissiveColor = token.emissiveColor;
+              updates.emissiveIntensity = token.emissiveIntensity;
+              if (token.opacity !== undefined) {
+                updates.opacity = token.opacity;
+              }
             }
 
             updates.complete = () => {
@@ -4204,7 +4390,7 @@ export class AnimationController {
               const val = targetEl.value !== undefined ? targetEl.value : (targetEl.label || targetEl.id);
               this.eventDispatcher.dispatch('RUNTIME_LOG', {
                 keyword: 'STATE',
-                message: `Element "${val}" state changed to "${s}"`,
+                message: `Element "${val}" state changed to "${canonicalState}"`,
                 kind: 'info',
                 timestamp: Date.now(),
               });

@@ -1,3 +1,5 @@
+import { SemanticState } from '@aqvl/shared';
+
 export type LifecycleState = 'SPAWNING' | 'ACTIVE' | 'REMOVING' | 'DESTROYED';
 
 export interface SceneElement {
@@ -8,10 +10,13 @@ export interface SceneElement {
   color: string;
   emissiveIntensity: number;
   emissiveColor: string;
-  state?: string;
+  state?: SemanticState | string;
+  isHighlighted?: boolean;
+  highlightType?: string;
   logicalParent?: string;
   originalType?: string;
   lifecycleState?: LifecycleState;
+
   visible?: boolean;
   opacity?: number;
   layoutSlot?: number | string;

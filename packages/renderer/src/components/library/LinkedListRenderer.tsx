@@ -2,6 +2,7 @@ import React from 'react';
 import { SceneState } from '@aqvl/runtime';
 import { SceneElementRenderer } from '../SceneElementRenderer';
 import { Text } from '@react-three/drei';
+import { getSemanticColorToken } from '@aqvl/shared';
 
 export interface LinkedListRendererProps {
   parentName: string;
@@ -12,6 +13,7 @@ export interface LinkedListRendererProps {
 export const LinkedListRenderer: React.FC<LinkedListRendererProps> = ({ parentName, elements, sceneState }) => {
   const nodes = elements.filter(el => el.originalType === 'LINKEDLIST_NODE' || el.originalType === 'HEAD' || el.originalType === 'NULL');
   const edges = elements.filter(el => el.type === 'edge');
+  const auxToken = getSemanticColorToken('AUXILIARY');
 
   let minX = Infinity;
   let maxX = -Infinity;
@@ -39,7 +41,7 @@ export const LinkedListRenderer: React.FC<LinkedListRendererProps> = ({ parentNa
         <Text
           position={[(minX + maxX) / 2, y + 1.5, z]}
           fontSize={0.4}
-          color="#aaaaaa"
+          color={auxToken.color}
           anchorX="center"
           anchorY="bottom"
         >

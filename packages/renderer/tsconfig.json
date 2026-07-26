@@ -7,7 +7,7 @@
     "skipLibCheck": true,
     "declaration": true,
     "strict": true,
-    "lib": ["ES2015", "DOM"],
+    "lib": ["ES2020", "DOM"],
     "paths": {
       "@aqvl/shared": ["../shared/src/index.ts"],
       "@aqvl/runtime": ["../runtime/src/index.ts"]

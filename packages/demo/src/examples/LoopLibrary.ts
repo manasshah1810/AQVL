@@ -10,19 +10,6 @@ SEQUENCE
   END
 END
 `,
-  WhileLoopTest: `SCENE WhileLoopTest
-
-DECLARE
-  ARRAY arr = [10, 20, 30]
-  VARIABLE i = 0
-
-SEQUENCE
-  WHILE i < LENGTH(arr)
-    HIGHLIGHT arr[i]
-    UPDATE i (i + 1)
-  END
-END
-`,
   NestedLoopTest: `SCENE NestedLoopTest
 
 DECLARE

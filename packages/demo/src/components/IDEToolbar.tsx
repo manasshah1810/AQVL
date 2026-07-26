@@ -116,29 +116,11 @@ export function IDEToolbar({
       <div className="ide-toolbar-spacer" />
 
       {/* ── Status chip ───────────────────────────────────── */}
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: '6px',
-        padding: '4px 12px',
-        background: canRun ? 'var(--success-soft)' : 'var(--accent-soft)',
-        border: `1px solid ${canRun ? 'var(--success-border)' : 'var(--accent-border)'}`,
-        borderRadius: '20px',
-        fontSize: '11px',
-        fontWeight: 600,
-        color: canRun ? 'var(--success)' : 'var(--accent)',
-        letterSpacing: '0.03em',
-        fontFamily: 'var(--font-ui)',
-        transition: 'all 0.2s ease',
-      }}>
-        <div style={{
-          width: '6px',
-          height: '6px',
-          borderRadius: '50%',
-          background: 'currentColor',
-          flexShrink: 0,
-          animation: canRun && isPlaying ? 'pulseGreen 1.5s ease-in-out infinite' : 'none',
-        }} />
+      <div className={`ide-status-chip ${isPlaying ? 'running' : canRun ? 'ready' : 'idle'}`}>
+        <div
+          className="ide-status-chip-dot"
+          style={{ animation: canRun && isPlaying ? 'nbPulse 1.5s ease-in-out infinite' : 'none' }}
+        />
         {isPlaying ? 'Running' : canRun ? 'Ready' : 'Not Compiled'}
       </div>
 

@@ -1,6 +1,7 @@
 import { AlgorithmContext, AlgorithmHandler } from './AlgorithmContext';
 import { parseTreeData, logStep, TreeData } from './TreeUtils';
-import { GenericActionInstruction } from '@aqvl/shared';
+import { GenericActionInstruction, getSemanticColorToken } from '@aqvl/shared';
+import { AnticipationAnimation } from '../animations';
 
 export class BinaryTreeAlgorithms implements AlgorithmHandler {
   execute(context: AlgorithmContext, instruction: GenericActionInstruction): void {
@@ -45,6 +46,9 @@ export class BinaryTreeAlgorithms implements AlgorithmHandler {
     }
     logStep(context, actionName, `${actionName} Tree...`, 'operation');
 
+    const activeToken = getSemanticColorToken('ACTIVE');
+    const neutralToken = getSemanticColorToken('NEUTRAL');
+
     const invertNode = (nodeId: string) => {
       const lc = data.leftChild.get(nodeId);
       const rc = data.rightChild.get(nodeId);
@@ -56,7 +60,9 @@ export class BinaryTreeAlgorithms implements AlgorithmHandler {
       
       const realNode = context.sceneManager.getElement(nodeId) as any;
       if (realNode) {
-        context.scheduler.enqueue({ targets: realNode, color: '#f6e05e', emissiveColor: '#f6e05e', emissiveIntensity: 0.8, duration: 250 });
+        AnticipationAnimation.applyAnticipation(context.scheduler, [realNode], 'TREE_OP');
+        realNode.state = 'ACTIVE';
+        context.scheduler.enqueue({ targets: realNode, color: activeToken.color, emissiveColor: activeToken.emissiveColor, emissiveIntensity: activeToken.emissiveIntensity, duration: 250 });
         context.scheduler.commitGroup(true);
         context.scheduler.advanceCursor(100);
       }
@@ -79,7 +85,8 @@ export class BinaryTreeAlgorithms implements AlgorithmHandler {
       context.scheduler.advanceCursor(400);
 
       if (realNode) {
-        context.scheduler.enqueue({ targets: realNode, color: context.defaultColor, emissiveIntensity: 0, duration: 250 });
+        realNode.state = 'NEUTRAL';
+        context.scheduler.enqueue({ targets: realNode, color: neutralToken.color, emissiveColor: neutralToken.emissiveColor, emissiveIntensity: neutralToken.emissiveIntensity, duration: 250 });
         context.scheduler.commitGroup(true);
       }
 
@@ -100,6 +107,8 @@ export class BinaryTreeAlgorithms implements AlgorithmHandler {
     if (!data.root) return;
     logStep(context, actionName, `Removing leaves from tree...`, 'operation');
 
+    const discardedToken = getSemanticColorToken('DISCARDED');
+
     const leaves: string[] = [];
     const findLeaves = (nodeId: string) => {
       const ch = data.children.get(nodeId) || [];
@@ -117,7 +126,9 @@ export class BinaryTreeAlgorithms implements AlgorithmHandler {
       
       const realNode = context.sceneManager.getElement(leafId) as any;
       if (realNode) {
-        context.scheduler.enqueue({ targets: realNode, color: '#f56565', emissiveColor: '#f56565', emissiveIntensity: 0.9, duration: 200 });
+        AnticipationAnimation.applyAnticipation(context.scheduler, [realNode], 'DELETION');
+        realNode.state = 'DISCARDED';
+        context.scheduler.enqueue({ targets: realNode, color: discardedToken.color, emissiveColor: discardedToken.emissiveColor, emissiveIntensity: discardedToken.emissiveIntensity, duration: 200 });
         context.scheduler.enqueue({ targets: realNode.scale, x: 0.1, y: 0.1, z: 0.1, duration: 300 });
         context.scheduler.commitGroup(true);
         context.scheduler.advanceCursor(300);
@@ -380,10 +391,15 @@ export class BinaryTreeAlgorithms implements AlgorithmHandler {
     const readableNodes = nodes.map(id => data.labelMap.get(id) || id).join(', ');
     logStep(context, actionName, `Nodes in view: ${readableNodes}`, 'result');
 
+    const successToken = getSemanticColorToken('SUCCESS');
+    const neutralToken = getSemanticColorToken('NEUTRAL');
+
     nodes.forEach((nodeId, i) => {
       const el = context.sceneManager.getElement(nodeId) as any;
       if (el) {
-        context.scheduler.enqueue({ targets: el, color: '#f5a623', emissiveColor: '#f5a623', emissiveIntensity: 0.9, duration: 250 });
+        AnticipationAnimation.applyAnticipation(context.scheduler, [el], 'SELECTION');
+        el.state = 'SUCCESS';
+        context.scheduler.enqueue({ targets: el, color: successToken.color, emissiveColor: successToken.emissiveColor, emissiveIntensity: successToken.emissiveIntensity, duration: 250 });
         context.scheduler.enqueue({ targets: el.scale, x: 1.25, y: 1.25, z: 1.25, duration: 250 });
         context.scheduler.commitGroup(true);
         context.scheduler.advanceCursor(150); // Stagger animation
@@ -395,7 +411,8 @@ export class BinaryTreeAlgorithms implements AlgorithmHandler {
     nodes.forEach((nodeId) => {
       const el = context.sceneManager.getElement(nodeId) as any;
       if (el) {
-        context.scheduler.enqueue({ targets: el, color: context.defaultColor, emissiveIntensity: 0, duration: 300 });
+        el.state = 'NEUTRAL';
+        context.scheduler.enqueue({ targets: el, color: neutralToken.color, emissiveColor: neutralToken.emissiveColor, emissiveIntensity: neutralToken.emissiveIntensity, duration: 300 });
         context.scheduler.enqueue({ targets: el.scale, x: 1, y: 1, z: 1, duration: 300 });
       }
     });
@@ -403,3 +420,4 @@ export class BinaryTreeAlgorithms implements AlgorithmHandler {
     context.scheduler.advanceCursor(200);
   }
 }
+

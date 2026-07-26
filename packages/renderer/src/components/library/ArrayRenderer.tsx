@@ -1,42 +1,30 @@
 import React from 'react';
-import { SceneState } from '@aqvl/runtime';
+import { SceneElement, SceneState } from '@aqvl/runtime';
 import { SceneElementRenderer } from '../SceneElementRenderer';
 import { Text } from '@react-three/drei';
+import { getSemanticColorToken } from '@aqvl/shared';
 
 export interface ArrayRendererProps {
   parentName: string;
-  elements: any[];
+  elements: SceneElement[];
   sceneState: SceneState;
 }
 
 export const ArrayRenderer: React.FC<ArrayRendererProps> = ({ parentName, elements, sceneState }) => {
-  // Sort elements by logical index
-  const sortedElements = [...elements].sort((a, b) => (a.logicalIndex || 0) - (b.logicalIndex || 0));
+  if (!elements || elements.length === 0) return null;
 
-  // Determine bounds to render brackets or a bounding box
-  let minX = Infinity;
-  let maxX = -Infinity;
-  let y = 0;
-  let z = 0;
-
-  sortedElements.forEach(el => {
-    if (el.position) {
-      if (el.position.x < minX) minX = el.position.x;
-      if (el.position.x > maxX) maxX = el.position.x;
-      y = el.position.y; // Assume roughly same y
-      z = el.position.z; // Assume same z
-    }
+  // Sort array elements by logicalIndex
+  const sortedElements = [...elements].sort((a, b) => {
+    const idxA = (a as any).logicalIndex ?? 0;
+    const idxB = (b as any).logicalIndex ?? 0;
+    return idxA - idxB;
   });
 
-  if (minX === Infinity) {
-    minX = 0;
-    maxX = 0;
-  }
-
-  // Draw a subtle bracket around the array
-  const padding = 0.8;
-  const leftX = minX - padding;
-  const rightX = maxX + padding;
+  const auxToken = getSemanticColorToken('AUXILIARY');
+  const minX = sortedElements[0]?.position?.x ?? 0;
+  const maxX = sortedElements[sortedElements.length - 1]?.position?.x ?? 0;
+  const y = sortedElements[0]?.position?.y ?? 0;
+  const z = sortedElements[0]?.position?.z ?? 0;
 
   return (
     <group>
@@ -44,7 +32,7 @@ export const ArrayRenderer: React.FC<ArrayRendererProps> = ({ parentName, elemen
       <Text
         position={[(minX + maxX) / 2, y + 1.2, z]}
         fontSize={0.4}
-        color="#888888"
+        color={auxToken.color}
         anchorX="center"
         anchorY="bottom"
       >

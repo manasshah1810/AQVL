@@ -13,6 +13,7 @@
  */
 
 import { SortingScripts }    from './SortingLibrary';
+import { ArrayScripts }      from './ArrayLibrary';
 import { LinkedListScripts } from './LinkedListLibrary';
 import { SearchingScripts }  from './SearchingLibrary';
 import { TreeScripts }       from './TreeLibrary';
@@ -21,6 +22,7 @@ import { LoopScripts }       from './LoopLibrary';
 // ── Types ──────────────────────────────────────────────────────────────────────
 
 export type ExampleCategory =
+  | 'Arrays'
   | 'Sorting'
   | 'Linked Lists'
   | 'Trees'
@@ -45,15 +47,33 @@ export interface Example {
 // ── Registry ───────────────────────────────────────────────────────────────────
 
 export const EXAMPLES: Example[] = [
-  // ── Sorting ──────────────────────────────────────────────────────────────────
+  // ── Arrays ───────────────────────────────────────────────────────────────────
   {
-    id: 'sorting-array-foundation',
+    id: 'arrays-foundation',
     title: 'Array Foundation',
-    category: 'Sorting',
+    category: 'Arrays',
     description: 'Basic array operations including insertion, deletion, and searching to understand AQVL syntax.',
     difficulty: 'Easy',
-    source: SortingScripts.ArrayTest,
+    source: ArrayScripts.ArrayFoundation,
   },
+  {
+    id: 'arrays-reverse',
+    title: 'Reverse Array',
+    category: 'Arrays',
+    description: 'Reversing an array in-place using two pointers starting at opposite ends and swapping inwards.',
+    difficulty: 'Easy',
+    source: ArrayScripts.ArrayReverse,
+  },
+  {
+    id: 'arrays-sliding-window',
+    title: 'Sliding Window',
+    category: 'Arrays',
+    description: 'Using a sliding window of fixed size across an array to process contiguous subarrays efficiently.',
+    difficulty: 'Medium',
+    source: ArrayScripts.SlidingWindow,
+  },
+
+  // ── Sorting ──────────────────────────────────────────────────────────────────
   {
     id: 'sorting-bubble-sort',
     title: 'Bubble Sort',
@@ -86,6 +106,14 @@ export const EXAMPLES: Example[] = [
     difficulty: 'Hard',
     source: SortingScripts.QuickSort,
   },
+  {
+    id: 'sorting-merge-sort',
+    title: 'Merge Sort',
+    category: 'Sorting',
+    description: 'A classic divide-and-conquer algorithm that recursively divides an array into halves, sorts them, and merges them back together.',
+    difficulty: 'Medium',
+    source: SortingScripts.MergeSort,
+  },
 
   // ── Linked Lists ──────────────────────────────────────────────────────────────
   {
@@ -112,16 +140,81 @@ export const EXAMPLES: Example[] = [
     difficulty: 'Medium',
     source: LinkedListScripts.CircularLinkedList,
   },
+  {
+    id: 'linked-list-reverse',
+    title: 'Reverse Linked List',
+    category: 'Linked Lists',
+    description: 'An iterative algorithm to reverse a singly linked list in place using prev, curr, and next pointers.',
+    difficulty: 'Medium',
+    source: LinkedListScripts.ReverseLinkedList,
+  },
+  {
+    id: 'linked-list-reverse-singly-manual',
+    title: 'Reverse Singly (Manual)',
+    category: 'Linked Lists',
+    description: 'Reverses a singly linked list the long way by manually moving nodes one-by-one.',
+    difficulty: 'Medium',
+    source: LinkedListScripts.ReverseSinglyManual,
+  },
+  {
+    id: 'linked-list-reverse-doubly-manual',
+    title: 'Reverse Doubly (Manual)',
+    category: 'Linked Lists',
+    description: 'Reverses a doubly linked list the long way by manually moving nodes one-by-one.',
+    difficulty: 'Medium',
+    source: LinkedListScripts.ReverseDoublyManual,
+  },
+  {
+    id: 'linked-list-reverse-circular-manual',
+    title: 'Reverse Circular (Manual)',
+    category: 'Linked Lists',
+    description: 'Reverses a circular linked list the long way by manually moving nodes one-by-one.',
+    difficulty: 'Medium',
+    source: LinkedListScripts.ReverseCircularManual,
+  },
+  {
+    id: 'linked-list-middle',
+    title: 'Find Middle Node',
+    category: 'Linked Lists',
+    description: 'Finds the middle of a linked list in one pass using the fast and slow pointer (tortoise and hare) technique.',
+    difficulty: 'Easy',
+    source: LinkedListScripts.FindMiddleNode,
+  },
 
   // ── Trees ─────────────────────────────────────────────────────────────────────
   {
     id: 'tree-basic-operations',
-    title: 'Basic Tree Operations',
+    title: 'General Trees',
     category: 'Trees',
-    description: 'Core tree operations including node creation, children assignment, traversals, and querying.',
+    description: 'Core general tree operations including node creation, children assignment, traversals, and querying.',
     difficulty: 'Medium',
     source: TreeScripts.BasicTree,
   },
+  {
+    id: 'tree-binary-tree',
+    title: 'Binary Trees',
+    category: 'Trees',
+    description: 'A hierarchical binary tree structure supporting left/right child relationships and tree traversals.',
+    difficulty: 'Medium',
+    source: TreeScripts.BinaryTree,
+  },
+  {
+    id: 'tree-bst-insertion',
+    title: 'BST Insertion',
+    category: 'Trees',
+    description: 'Step-by-step insertion of nodes into a Binary Search Tree, maintaining the left-less, right-greater property.',
+    difficulty: 'Medium',
+    source: TreeScripts.BinarySearchTreeInsertion,
+  },
+  {
+    id: 'tree-lca',
+    title: 'Lowest Common Ancestor',
+    category: 'Trees',
+    description: 'Find the Lowest Common Ancestor (LCA) of two nodes in a Binary Search Tree by traversing downwards.',
+    difficulty: 'Hard',
+    source: TreeScripts.LowestCommonAncestor,
+  },
+
 
   // ── Searching ─────────────────────────────────────────────────────────────────
   {
@@ -165,14 +258,6 @@ export const EXAMPLES: Example[] = [
     description: 'A control flow statement for specifying iteration, which allows code to be executed repeatedly.',
     difficulty: 'Easy',
     source: LoopScripts.ForLoopTest,
-  },
-  {
-    id: 'loops-while',
-    title: 'While Loop',
-    category: 'Loops & Control',
-    description: 'A control flow statement that allows code to be executed repeatedly based on a given boolean condition.',
-    difficulty: 'Easy',
-    source: LoopScripts.WhileLoopTest,
   },
   {
     id: 'loops-nested',
