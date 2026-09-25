@@ -175,6 +175,8 @@ export interface SetVarInstruction extends Instruction {
   name: string;
   /** Expression tree (literal, variable name, or {op,left,right}), resolved via evaluateExpression at runtime. */
   value: AQIRValue;
+  /** The assignment as written (e.g. `curr = curr.next`), for console messages. */
+  sourceText?: string;
 }
 
 /** Union of the 7 new VM-mode instructions. */

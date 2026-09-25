@@ -267,7 +267,18 @@ export interface IfNode extends ASTNode {
 }
 
 // Expressions
-export type ExpressionNode = IdentifierNode | ArrayAccessNode | BinaryOpNode | LiteralNode | CallNode | TupleLiteralNode;
+export type ExpressionNode = IdentifierNode | ArrayAccessNode | BinaryOpNode | LiteralNode | CallNode | TupleLiteralNode | MemberAccessNode;
+
+/**
+ * `object.member` — a linked-list field (`curr.next`, `curr.prev`,
+ * `curr.val`) or list property (`list.head`, `list.tail`). Also the target
+ * of a pointer assignment such as `curr.next = prev`.
+ */
+export interface MemberAccessNode extends ASTNode {
+  type: 'MemberAccessNode';
+  object: ExpressionNode;
+  member: string;
+}
 
 export interface IdentifierNode extends ASTNode {
   type: 'IdentifierNode';
@@ -297,7 +308,14 @@ export interface BinaryOpNode extends ASTNode {
   right: ExpressionNode;
 }
 
-export type LiteralNode = NumberLiteralNode | StringLiteralNode | ColorLiteralNode;
+export type LiteralNode = NumberLiteralNode | StringLiteralNode | ColorLiteralNode | NullLiteralNode;
+
+/** The `NULL` pointer literal. */
+export interface NullLiteralNode extends ASTNode {
+  type: 'LiteralNode';
+  dataType: 'null';
+  value: null;
+}
 
 export interface NumberLiteralNode extends ASTNode {
   type: 'LiteralNode';

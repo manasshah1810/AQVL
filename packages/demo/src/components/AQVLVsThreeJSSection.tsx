@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import './AQVLVsThreeJSSection.css';
 
 const AQVL_CODE = `SCENE "Array Swap"
@@ -92,7 +92,7 @@ function animate(time) {
 animate();`;
 
 const highlightJS = (code: string) => {
-  let colored = code
+  const colored = code
     .replace(/(\/\/.*)/g, '<span class="js-comment">$1</span>')
     .replace(/\b(import|from|const|let|var|function|new|return|if|true|false)\b/g, '<span class="js-kw">$1</span>')
     .replace(/('[^']*')/g, '<span class="js-str">$1</span>')
@@ -143,15 +143,15 @@ const tokenizeAQVL = (line: string) => {
     return <span>{line}</span>;
 };
 
+const aqvlLinesArray = AQVL_CODE.split('\n');
+const threeLinesArray = THREE_CODE.split('\n');
+
 export function AQVLVsThreeJSSection() {
     const [aqvlLines, setAqvlLines] = useState<string[]>([]);
     const [threeLines, setThreeLines] = useState<string[]>([]);
     const [aqvlCurrent, setAqvlCurrent] = useState('');
     const [threeCurrent, setThreeCurrent] = useState('');
     const [showResult, setShowResult] = useState(false);
-    
-    const aqvlLinesArray = AQVL_CODE.split('\n');
-    const threeLinesArray = THREE_CODE.split('\n');
 
     const aqvlRef = useRef<HTMLDivElement>(null);
     const threeRef = useRef<HTMLDivElement>(null);
@@ -226,7 +226,7 @@ export function AQVLVsThreeJSSection() {
 
         runTyping();
         return () => { isCancelled = true; };
-    }, [aqvlLinesArray.length, threeLinesArray.length]);
+    }, []);
 
     return (
         <section className="vs-section" aria-label="Comparison with Three.js">

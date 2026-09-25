@@ -47,11 +47,37 @@ export function computeAutoFitTarget(sceneState: SceneState): { center: Vec3Like
   let count = 0;
   let hasTree = false;
   let maxTreeY = 0;
+  // Linked lists can span several rows (side-by-side lists, heap-memory
+  // rows), so frame their full vertical extent too.
+  let hasList = false;
+  let minListY = Infinity;
+  let maxListY = -Infinity;
+  // A pointer tree's name and call-stack panel extend left of its anchor.
+  let treeLabelX = Infinity;
 
   sceneState.elements.forEach((el) => {
     if (el.originalType === 'TREE_NODE' || el.originalType === 'HEAP_NODE' || el.originalType === 'TRIE_NODE') {
       hasTree = true;
       if (el.position && el.position.y > maxTreeY) maxTreeY = el.position.y;
+    }
+    if (
+      el.originalType === 'LINKEDLIST_NODE' ||
+      el.originalType === 'LINKEDLIST' ||
+      // Pointer trees and their queues / stacks: framed the same way (rows of
+      // tree levels, heap memory and containers).
+      el.originalType === 'BINARYTREE' ||
+      el.originalType === 'CONTAINER' ||
+      el.originalType === 'CONTAINER_ITEM' ||
+      (el.originalType === 'TREE_NODE' && /^bt:/.test(el.id))
+    ) {
+      hasList = true;
+      const y = ((el as any).worldTarget ?? el.position)?.y ?? 0;
+      minListY = Math.min(minListY, y);
+      maxListY = Math.max(maxListY, y);
+      if (el.originalType === 'BINARYTREE' || el.originalType === 'CONTAINER') {
+        const x = ((el as any).worldTarget ?? el.position)?.x ?? 0;
+        treeLabelX = Math.min(treeLabelX, x - (el.originalType === 'BINARYTREE' ? 3.6 : 2.4));
+      }
     }
     if (el.position) {
       totalX += el.position.x;
@@ -62,6 +88,20 @@ export function computeAutoFitTarget(sceneState: SceneState): { center: Vec3Like
   });
 
   if (count === 0) return null;
+
+  if (hasList) {
+    // Room above for HEAD / pointer tags; the span grows with the rows so everything fits.
+    const top = maxListY + 1.6;
+    const bottom = minListY - 1.2;
+    if (Number.isFinite(treeLabelX)) minX = Math.min(minX, treeLabelX);
+    return {
+      center: { x: (minX + maxX) / 2, y: (top + bottom) / 2, z: 0 },
+      // Scaled down: the shared distance curve is tuned for arrays of small
+      // boxes and leaves a list (spheres + arrows + tags) needlessly far away.
+      // A tree scene keeps a minimum span so a lone node isn't filling the view.
+      spanX: Math.max(maxX - minX + 2, (top - bottom) * 1.9, Number.isFinite(treeLabelX) ? 11 : 0) * 0.72,
+    };
+  }
 
   return {
     center: { x: totalX / count, y: hasTree && maxTreeY > 0 ? maxTreeY / 2 : 0, z: 0 },

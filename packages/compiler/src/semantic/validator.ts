@@ -24,6 +24,7 @@ import {
   LayoutStatementNode,
   CameraStatementNode,
   PositionStatementNode,
+  FunctionDeclNode,
 } from '../ast/types';
 import { SymbolTable, SemanticDiagnostic } from './types';
 import { suggestFor } from '@aqvl/shared';
@@ -87,6 +88,11 @@ export class SemanticValidator {
     }
     if (node.sequence) {
       this.visitSequenceBlock(node.sequence);
+    }
+    // Function bodies are checked last, so a global the SEQUENCE assigns
+    // (e.g. `target = 60`) counts as declared inside them.
+    for (const fn of node.declarations?.functions ?? []) {
+      this.visitFunction(fn);
     }
 
     // Exit scene scope
@@ -188,6 +194,9 @@ export class SemanticValidator {
       case 'PrintNode':
         for (const arg of node.args) this.visitExpression(arg);
         break;
+      case 'ReturnNode':
+        if (node.value) this.visitExpression(node.value);
+        break;
       case 'ExpressionStatementNode': {
         // `target = expr` (VM mode: SET_VAR) auto-declares `target` in the
         // current scope on first assignment, the same way a LOOP iterator or
@@ -258,6 +267,21 @@ export class SemanticValidator {
    * assigned inside one is not visible after it — mirror that here so the
    * mistake is reported at compile time instead of failing mid-animation.
    */
+  /** A function body: its parameters are local variables; locals it assigns stay inside it. */
+  private visitFunction(fn: FunctionDeclNode) {
+    const previousScope = this.currentSymbolTable;
+    this.currentSymbolTable = new SymbolTable(previousScope);
+    this.currentSymbolTable.define({ name: fn.name.name, type: 'SCALAR', declaredAt: fn.name.pos });
+    for (const param of fn.params) {
+      this.currentSymbolTable.define({ name: param.name, type: 'SCALAR', declaredAt: param.pos });
+    }
+    for (const stmt of fn.body.statements) {
+      if (stmt.type === 'FunctionDeclNode') this.visitFunction(stmt as FunctionDeclNode);
+      else this.visitStatement(stmt);
+    }
+    this.currentSymbolTable = previousScope;
+  }
+
   private visitScopedBlock(statements: StatementNode[]) {
     const previousScope = this.currentSymbolTable;
     this.currentSymbolTable = new SymbolTable(previousScope);
@@ -318,6 +342,14 @@ export class SemanticValidator {
         break;
       case 'LiteralNode':
         // No semantic checks needed for basic literals
+        break;
+      case 'MemberAccessNode':
+        // `curr.next` / `list.head`: the field itself is checked at run time
+        // (it depends on what `curr` points to); the base must be declared.
+        this.visitExpression(node.object);
+        break;
+      case 'CallNode':
+        for (const arg of node.args) this.visitExpression(arg);
         break;
     }
   }

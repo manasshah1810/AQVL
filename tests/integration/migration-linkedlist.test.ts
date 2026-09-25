@@ -58,7 +58,8 @@ END
     await engine.execute();
 
     const scene = engine.sceneManager.getSceneGraph() as any[];
-    const nodes = scene.filter((el) => el.logicalParent === 'list' && el.type !== 'edge');
+    // The list's anchor (`ll:list`, holding the head pointer) is data, not a drawn node.
+    const nodes = scene.filter((el) => el.logicalParent === 'list' && el.type !== 'edge' && el.originalType !== 'LINKEDLIST');
     const edges = scene.filter((el) => el.logicalParent === 'list' && el.type === 'edge');
 
     nodes.forEach((el) => expect(NODE_SHAPES.has(el.type)).toBe(true));

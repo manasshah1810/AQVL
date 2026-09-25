@@ -20,7 +20,6 @@ interface IDEToolbarProps {
   onCompile: () => void;
   onRun: () => void;
   onPause: () => void;
-  onResume: () => void;
   onStep: () => void;
   onReset: () => void;
   onStop: () => void;
@@ -34,7 +33,6 @@ export function IDEToolbar({
   onCompile,
   onRun,
   onPause,
-  onResume,
   onStep,
   onReset,
   onStop,

@@ -52,7 +52,7 @@ END
     await engine.execute();
 
     const scene = engine.sceneManager.getSceneGraph() as any[];
-    const queueEls = scene.filter((el) => el.logicalParent === 'q' && el.originalType === 'QUEUE_ELEMENT');
+    const queueEls = scene.filter((el) => el.logicalParent === 'q' && el.originalType === 'CONTAINER_ITEM');
 
     expect(queueEls).toHaveLength(3);
     queueEls.forEach((el) => expect(NODE_SHAPES.has(el.type)).toBe(true));
@@ -69,7 +69,7 @@ END
     const ys = new Set(queueEls.map((el) => Math.round(el.position.y * 100)));
     expect(ys.size).toBe(1);
 
-    const highlighted = queueEls.filter((el) => el.emissiveIntensity > 0.1);
+    const highlighted = queueEls.filter((el) => el.isHighlighted);
     expect(highlighted).toHaveLength(1);
   });
 });

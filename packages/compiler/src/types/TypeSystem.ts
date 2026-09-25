@@ -164,6 +164,7 @@ export class TypeChecker {
   }
 
   private literalType(node: LiteralNode): Type {
+    if (node.dataType === 'null') return Type.Any; // NULL pointer: comparable with any node reference
     return node.dataType === 'number' ? Type.Number : Type.String; // 'string' and 'color' literals are both textual
   }
 

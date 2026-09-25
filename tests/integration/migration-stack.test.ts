@@ -37,6 +37,9 @@ function makeInstantEngine(): ExecutionEngine {
 }
 
 describe('Migration: Stack -> GenericSceneRenderer', () => {
+  // Every STACK is a TreeEngine container (CONTAINER anchor + CONTAINER_ITEM
+  // boxes); PUSH / POP / PEEK are covered by stack-examples.test.ts. The old
+  // note below predates that:
   // PUSH/POP are exercised at the AnimationController level, not here — see
   // renderer-migration-log.md ("Stack" section) for the observed gap: those
   // generic actions enqueue their scene mutation inside an animation
@@ -61,7 +64,7 @@ END
     await engine.execute();
 
     const scene = engine.sceneManager.getSceneGraph() as any[];
-    const stackEls = scene.filter((el) => el.logicalParent === 's' && el.originalType === 'STACK_ELEMENT');
+    const stackEls = scene.filter((el) => el.logicalParent === 's' && el.originalType === 'CONTAINER_ITEM');
 
     expect(stackEls).toHaveLength(3);
     stackEls.forEach((el) => expect(NODE_SHAPES.has(el.type)).toBe(true));
@@ -76,7 +79,7 @@ END
     const ys = new Set(stackEls.map((el) => Math.round(el.position.y * 100)));
     expect(ys.size).toBe(stackEls.length);
 
-    const highlighted = stackEls.filter((el) => el.emissiveIntensity > 0.1);
+    const highlighted = stackEls.filter((el) => el.isHighlighted);
     expect(highlighted).toHaveLength(1);
   });
 });

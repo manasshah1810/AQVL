@@ -48,6 +48,9 @@ const DEBUG_ANIMATION: boolean =
 AlgorithmRegistry.register(['TRIE_INIT', 'TRIE_INSERT', 'TRIE_SEARCH', 'TRIE_STARTSWITH', 'TRIE_DELETE', 'TRIE_AUTOCOMPLETE'], new TrieVisualizer());
 
 import { AnimationContext, MoveAnimation, AnticipationAnimation } from './animations';
+import type { LinkedListContext } from './algorithms/LinkedListEngine';
+import { LinkedListEngine as LinkedListModel, LinkedListError } from './algorithms/LinkedListEngine';
+import { TreeEngine, TreeError, type TreeContext } from './algorithms/TreeEngine';
 import { AQVLVirtualMachine, type StepCallback } from '../VirtualMachine';
 import type { VMInstruction, FunctionTable, ExecutionResult } from '../types';
 
@@ -83,6 +86,8 @@ export class AnimationController {
   private queueEngine: QueueEngine = new QueueEngine();
   /** Handles INSERT_HEAD/INSERT_TAIL/DELETE_HEAD/DELETE_TAIL/REVERSE (see LinkedListEngine.ts) */
   private linkedListEngine: LinkedListEngine = new LinkedListEngine();
+  /** Pointer trees (BINARY_TREE / BST), their recursion and their queues / stacks (see TreeEngine.ts) */
+  private treeEngine: TreeEngine = new TreeEngine();
   /**
    * Live reference to the currently-executing VM, set in `createExecutionVM`
    * so that `resolveElementId` can call `vm.getVariable()` to read loop
@@ -266,10 +271,108 @@ export class AnimationController {
     // legacy handler), so it needs the current VM and live array values too.
     this.currentVM = vm;
     vm.setElementReader(
-      (arrayName, index) => this.readArrayValue(arrayName, index),
-      (arrayName) => this.getArrayElements(arrayName).length
+      (arrayName, index) =>
+        this.linkedListEngine.isList(this.llContext(), arrayName)
+          ? this.linkedListEngine.valueAt(this.llContext(), arrayName, index)
+          : this.readArrayValue(arrayName, index),
+      (arrayName) =>
+        this.linkedListEngine.isList(this.llContext(), arrayName)
+          ? this.linkedListEngine.length(this.llContext(), arrayName)
+          : this.treeEngine.isTree(this.treeContext(), arrayName)
+            ? this.treeEngine.size(this.treeContext(), arrayName)
+            : this.treeEngine.isContainer(this.treeContext(), arrayName)
+              ? this.treeEngine.containerLength(this.treeContext(), arrayName)
+              : this.getArrayElements(arrayName).length
     );
+    // Linked lists and trees: `curr.next` / `node.left` reads, and
+    // pointer-variable assignments (`curr = curr.next`) animated as steps
+    // of their own.
+    vm.setMemberReader((object, member, objectExpr) =>
+      this.pointerOwnerIsTree(object)
+        ? this.treeEngine.readMember(this.treeContext(), object, member, objectExpr)
+        : this.linkedListEngine.readMember(this.llContext(), object, member, objectExpr)
+    );
+    vm.setVariableObserver(
+      async (name, value, previous, instr) => {
+        // `n = NEW_NODE(...)` / `node = DEQUEUE(q)`: already shown by that step.
+        if (typeof instr.value === 'string' && (instr.value.startsWith('__new_') || instr.value.startsWith('__take_'))) return false;
+        const tree = this.treeEngine.isPointerAssignment(this.treeContext(), value, previous) &&
+          (TreeEngine.isNodeRef(value) || TreeEngine.isNodeRef(previous) || !this.linkedListEngine.hasAnyList(this.llContext()));
+        if (!tree && !this.linkedListEngine.isPointerAssignment(this.llContext(), value, previous)) return false;
+        this.currentVM = vm;
+        await this.executeInstruction({
+          action: tree ? 'TREE_POINTER_MOVE' : 'LL_POINTER_MOVE',
+          name, value, previous, sourceText: instr.sourceText, valueExpr: instr.value,
+        } as any);
+        return true;
+      },
+      () => {
+        this.linkedListEngine.onScopeExit(this.llContext());
+        this.treeEngine.onScopeExit(this.treeContext());
+      }
+    );
+    // Recursion over a tree: every call and return is a step (the node
+    // passed in lights up, the call-stack panel grows / shrinks).
+    vm.setCallObserver(async (event) => {
+      if (!this.treeEngine.hasAnyTree(this.treeContext())) return false;
+      this.currentVM = vm;
+      await this.executeInstruction({ action: 'TREE_CALL', event } as any);
+      return true;
+    });
     return vm;
+  }
+
+  /**
+   * Whether a pointer operand belongs to a tree rather than a linked list:
+   * a tree / tree node, or NULL in a program that has trees but no lists.
+   */
+  private pointerOwnerIsTree(value: unknown): boolean {
+    if (this.treeEngine.owns(this.treeContext(), value)) return true;
+    if (LinkedListModel.isNodeRef(value) || this.linkedListEngine.isList(this.llContext(), value)) return false;
+    return this.treeEngine.hasAnyTree(this.treeContext()) && !this.linkedListEngine.hasAnyList(this.llContext());
+  }
+
+  /** Context for TreeEngine: the usual handler context plus access to the running program's variables and call stack. */
+  private treeContext(): TreeContext {
+    return {
+      ...this.llContext(),
+      host: {
+        ...this.llContext().host,
+        callStack: () => (this.currentVM ? this.currentVM.getCallStack() : []),
+      },
+    };
+  }
+
+  /** Context for LinkedListEngine: the usual handler context plus access to the running program's variables. */
+  private llContext(): LinkedListContext {
+    return {
+      scheduler: this.animationScheduler,
+      sceneManager: this.sceneManager,
+      layoutManager: this.layoutManager,
+      eventDispatcher: this.eventDispatcher,
+      stateManager: this.stateManager,
+      relationshipManager: this.relationshipManager,
+      activeTreeName: this.activeTreeName,
+      defaultColor: this.defaultColor,
+      host: {
+        evaluate: (expr) => (this.currentVM ? this.currentVM.evaluateExpression(expr) : expr),
+        setVariable: (name, value) => this.currentVM?.setVariable(name, value),
+        visibleVariables: () => (this.currentVM ? this.currentVM.getVisibleVariables() : {}),
+      },
+    };
+  }
+
+  /** Called when a program's scene has just been loaded, before its initial layout. */
+  public onSceneLoaded(): void {
+    this.currentVM = null; // the previous program's variables must not tag the new scene's nodes
+    this.linkedListEngine.initialize(this.llContext());
+    this.treeEngine.initialize(this.treeContext());
+  }
+
+  /** Called after the scene is restored to an earlier step (step back / scrub). */
+  public onStateRestored(): void {
+    this.linkedListEngine.settleAfterRestore(this.llContext());
+    this.treeEngine.settleAfterRestore(this.treeContext());
   }
 
   /** Live elements of array `arrayName`, in index order (elements mid-deletion excluded). */
@@ -358,8 +461,21 @@ export class AnimationController {
    * returned as-is.
    */
   private resolveElementId(id: string): string {
+    if (typeof id === 'string' && id.startsWith('@expr:')) {
+      // `HIGHLIGHT curr.next` — evaluate to the node it currently refers to.
+      const value = this.currentVM ? this.currentVM.evaluateExpression(JSON.parse(id.slice('@expr:'.length))) : null;
+      return typeof value === 'string' ? value : String(value);
+    }
+    if (typeof id === 'string' && !id.includes('#') && !this.sceneManager.getElement(id) && this.currentVM) {
+      // A pointer variable (`HIGHLIGHT curr`) holding a node reference.
+      const value = this.currentVM.tryGetVariable(id);
+      if (LinkedListModel.isNodeRef(value) || TreeEngine.isNodeRef(value)) return value;
+    }
     const slot = this.resolveArraySlot(id);
     if (!slot) return id;
+    if (this.linkedListEngine.isList(this.llContext(), slot.arrayName)) {
+      return this.linkedListEngine.nodeAt(this.llContext(), slot.arrayName, slot.index);
+    }
     const els = this.getArrayElements(slot.arrayName);
     if (els.length === 0) return id; // not an ARRAY (e.g. another indexed structure) — leave unresolved
     const el = els.find((e: any) => e.logicalIndex === slot.index);
@@ -378,6 +494,13 @@ export class AnimationController {
     const args = gen.args ?? [];
     const slot = this.resolveArraySlot(args[0]);
     if (!slot) return gen;
+    if (this.linkedListEngine.isList(this.llContext(), slot.arrayName)) {
+      // Linked lists resolve `list[i]` themselves (by walking from the head).
+      return {
+        ...gen,
+        payload: { ...((gen as any).payload ?? {}), logicalParent: slot.arrayName, logicalIndex: slot.index },
+      } as GenericActionInstruction;
+    }
     const els = this.getArrayElements(slot.arrayName);
     if (els.length === 0 && slot.index !== 0) return gen; // not an ARRAY
 
@@ -402,6 +525,29 @@ export class AnimationController {
     } as GenericActionInstruction;
   }
 
+  /** Source-like text for a compiled operand, for console messages (`node.left`, `root`, `5`). */
+  private describeOperand(operand: unknown): string {
+    if (operand === null) return 'NULL';
+    if (typeof operand === 'object' && operand && 'member' in (operand as any)) {
+      return `${this.describeOperand((operand as any).object)}.${(operand as any).member}`;
+    }
+    // `arr[i]`, `LENGTH(arr)`, `a + b` — as written in the program.
+    if (typeof operand === 'object' && operand && 'elem' in (operand as any) && 'index' in (operand as any)) {
+      return `${(operand as any).elem}[${this.describeOperand((operand as any).index)}]`;
+    }
+    if (typeof operand === 'object' && operand && 'len' in (operand as any) && !('op' in (operand as any))) {
+      return `LENGTH(${(operand as any).len})`;
+    }
+    if (typeof operand === 'object' && operand && 'op' in (operand as any) && 'left' in (operand as any)) {
+      const { op, left, right } = operand as any;
+      return `${this.describeOperand(left)} ${op} ${this.describeOperand(right)}`;
+    }
+    if (typeof operand === 'object') return 'value';
+    // A string operand is a variable's name, or else a string literal ("(").
+    if (typeof operand === 'string' && this.currentVM && this.currentVM.tryGetVariable(operand) === undefined) return `"${operand}"`;
+    return String(operand);
+  }
+
   /** Runs `instructions` to completion through a fresh VM, returning the recorded execution timeline. */
   public async runProgram(
     instructions: VMInstruction[],
@@ -417,6 +563,8 @@ export class AnimationController {
   public async executeInstruction(instruction: AQIRInstruction): Promise<void> {
     return new Promise((resolve) => {
       this.clearTransientActiveStates();
+      this.linkedListEngine.restoreBaseColors(this.llContext());
+      this.treeEngine.restoreBaseColors(this.treeContext());
       this.animationScheduler.init(resolve);
 
       // Auto-configure tree context from scene objects (handles BST declared
@@ -440,10 +588,27 @@ export class AnimationController {
           const parts: unknown[] = (instruction as any).parts ?? [];
           const message = parts
             .map((part: any) => {
+              if (part !== null && typeof part === 'object' && 'text' in part) return String(part.text);
               if (part !== null && typeof part === 'object' && 'array' in part) {
                 return `[${this.getArrayElements(part.array).map((el: any) => formatPrintValue(el.value)).join(', ')}]`;
               }
-              return formatPrintValue(this.currentVM ? this.currentVM.evaluateExpression(part) : part);
+              if (part !== null && typeof part === 'object' && 'list' in part) {
+                return this.linkedListEngine.format(this.llContext(), part.list);
+              }
+              if (part !== null && typeof part === 'object' && 'tree' in part) {
+                return this.treeEngine.format(this.treeContext(), part.tree);
+              }
+              if (part !== null && typeof part === 'object' && 'container' in part) {
+                return this.treeEngine.isContainer(this.treeContext(), part.container)
+                  ? this.treeEngine.formatContainer(this.treeContext(), part.container)
+                  : String(part.container);
+              }
+              const value = this.currentVM ? this.currentVM.evaluateExpression(part) : part;
+              return (
+                this.treeEngine.formatValue(this.treeContext(), value) ??
+                this.linkedListEngine.formatValue(this.llContext(), value) ??
+                formatPrintValue(value)
+              );
             })
             .join(' ');
           this.eventDispatcher.dispatch('RUNTIME_LOG', {
@@ -452,6 +617,52 @@ export class AnimationController {
             kind: 'result',
             timestamp: Date.now(),
           });
+          break;
+        }
+
+        // Linked-list pointer code (see LinkedListEngine): a pointer variable
+        // moving, a field / pointer write, NEW_NODE and FREE.
+        case 'LL_POINTER_MOVE': {
+          const i = instruction as any;
+          this.linkedListEngine.animatePointerMove(this.llContext(), i.name, i.value, i.previous, i.sourceText, i.valueExpr);
+          break;
+        }
+        // The same pointer statements, compiled alike for lists and trees:
+        // routed by what the operand actually is when the step runs.
+        case 'LL_SET': {
+          const target = this.currentVM ? this.currentVM.evaluateExpression((instruction as any).target) : null;
+          if (this.pointerOwnerIsTree(target)) this.treeEngine.setField(this.treeContext(), instruction as any);
+          else this.linkedListEngine.setField(this.llContext(), instruction as any);
+          break;
+        }
+        case 'LL_NEW':
+          if (this.treeEngine.isTree(this.treeContext(), (instruction as any).list)) this.treeEngine.allocate(this.treeContext(), instruction as any);
+          else this.linkedListEngine.allocate(this.llContext(), instruction as any);
+          break;
+        case 'LL_FREE': {
+          const target = this.currentVM ? this.currentVM.evaluateExpression((instruction as any).target) : null;
+          if (this.pointerOwnerIsTree(target)) this.treeEngine.free(this.treeContext(), instruction as any);
+          else this.linkedListEngine.free(this.llContext(), instruction as any);
+          break;
+        }
+
+        // Trees (see TreeEngine): pointer moves, recursion, queues / stacks of pointers.
+        case 'TREE_POINTER_MOVE': {
+          const i = instruction as any;
+          this.treeEngine.animatePointerMove(this.treeContext(), i.name, i.value, i.previous, i.sourceText, i.valueExpr);
+          break;
+        }
+        case 'TREE_CALL':
+          this.treeEngine.onCall(this.treeContext(), (instruction as any).event);
+          break;
+        case 'CONTAINER_READ': {
+          const i = instruction as any;
+          if (!this.treeEngine.isContainer(this.treeContext(), i.container)) {
+            throw new TreeError(
+              `${i.op}(${i.container}): '${i.container}' is not a declared QUEUE or STACK.`
+            );
+          }
+          this.treeEngine.containerTake(this.treeContext(), i);
           break;
         }
 
@@ -503,9 +714,10 @@ export class AnimationController {
                 this.eventDispatcher.dispatch('STATE_UPDATED', this.stateManager.getCurrentState());
                 const idx = (targetEl as any).logicalIndex !== undefined ? `[${(targetEl as any).logicalIndex}]` : '';
                 const val = (targetEl as any).value !== undefined ? (targetEl as any).value : targetEl.id;
-                const name = `${(targetEl as any).logicalParent || ''}${idx}`;
+                const isListNode = targetEl.originalType === 'LINKEDLIST_NODE' || TreeEngine.isNodeRef(targetEl.id);
+                const name = isListNode ? `node ${val} of ${(targetEl as any).logicalParent}` : `${(targetEl as any).logicalParent || ''}${idx}`;
                 const colorName = String(hl.color || 'SUCCESS').toUpperCase();
-                let message = `Highlighted ${name} — value: ${val}`;
+                let message = isListNode ? `Visiting ${name}` : `Highlighted ${name} — value: ${val}`;
                 if (activeToken.name === 'NEUTRAL') message = `Cleared mark on ${name} (value: ${val})`;
                 else if (activeToken.name !== 'EVALUATING') message = `Marked ${name} = ${val} as ${colorName}`;
                 this.eventDispatcher.dispatch('RUNTIME_LOG', {
@@ -526,7 +738,42 @@ export class AnimationController {
           const leftEl = this.sceneManager.getElement(this.resolveElementId(swp.leftId)) as any;
           const rightEl = this.sceneManager.getElement(this.resolveElementId(swp.rightId)) as any;
           
-          if (leftEl && rightEl) {
+          if (leftEl && rightEl && TreeEngine.isNodeRef(leftEl.id) && TreeEngine.isNodeRef(rightEl.id)) {
+            // Tree nodes keep their places: SWAP exchanges their values.
+            this.treeEngine.swapValues(this.treeContext(), leftEl.id, rightEl.id);
+          } else if (leftEl && rightEl && leftEl.originalType === 'LINKEDLIST_NODE' && rightEl.originalType === 'LINKEDLIST_NODE') {
+            // Linked-list nodes have no slots to trade: SWAP exchanges their values.
+            const token = getSemanticColorToken('MODIFYING');
+            for (const el of [leftEl, rightEl]) {
+              el.isHighlighted = true;
+              el.state = 'MODIFYING';
+              el.color = token.color;
+              el.emissiveColor = token.emissiveColor;
+              el.emissiveIntensity = token.emissiveIntensity;
+            }
+            const [a, b] = [leftEl.value, rightEl.value];
+            leftEl.value = b;
+            rightEl.value = a;
+            this.animationScheduler.enqueue({ targets: [leftEl.position, rightEl.position], y: '+=0.6', duration: 300, easing: 'easeOutExpo' });
+            this.animationScheduler.commitGroup(true);
+            this.animationScheduler.enqueue({ targets: [leftEl.position, rightEl.position], y: '-=0.6', duration: 300, easing: 'easeInQuad' });
+            this.animationScheduler.commitGroup(true);
+            this.animationScheduler.enqueue({
+              targets: {},
+              duration: 1,
+              complete: () => {
+                this.stateManager.saveState(this.sceneManager.getSceneGraph(), `Swapped values ${a} and ${b}`, this.animationScheduler.getCurrentTime());
+                this.eventDispatcher.dispatch('STATE_UPDATED', this.stateManager.getCurrentState());
+                this.eventDispatcher.dispatch('RUNTIME_LOG', {
+                  keyword: 'SWAP',
+                  message: `Swapped node values ${a} ↔ ${b}`,
+                  kind: 'swap',
+                  timestamp: Date.now(),
+                });
+              },
+            });
+            this.animationScheduler.commitSequential();
+          } else if (leftEl && rightEl) {
             AnticipationAnimation.applyAnticipation(this.animationScheduler, [leftEl, rightEl], 'SWAP');
 
             const activeToken = getSemanticColorToken('MODIFYING');
@@ -715,19 +962,23 @@ export class AnimationController {
               targets: {},
               duration: 1,
               complete: () => {
-                leftEl.label = `${leftEl.logicalParent}[${leftEl.logicalIndex}]`;
-                rightEl.label = `${rightEl.logicalParent}[${rightEl.logicalIndex}]`;
+                // Only indexed elements carry an `arr[i]` label (a linked-list
+                // node has no index — relabelling it produced "list[undefined]").
+                if (leftEl.logicalIndex !== undefined) leftEl.label = `${leftEl.logicalParent}[${leftEl.logicalIndex}]`;
+                if (rightEl.logicalIndex !== undefined) rightEl.label = `${rightEl.logicalParent}[${rightEl.logicalIndex}]`;
                 const lVal = leftEl.value ?? leftEl.id;
                 const rVal = rightEl.value ?? rightEl.id;
-                const lIdx = leftEl.logicalIndex !== undefined ? leftEl.logicalIndex : leftEl.id;
-                const rIdx = rightEl.logicalIndex !== undefined ? rightEl.logicalIndex : rightEl.id;
+                const lIdx = leftEl.logicalIndex !== undefined ? leftEl.logicalIndex : `node ${lVal}`;
+                const rIdx = rightEl.logicalIndex !== undefined ? rightEl.logicalIndex : `node ${rVal}`;
                 const cmpSymbol = lVal < rVal ? '<' : lVal > rVal ? '>' : '=';
                 const cmpWord = lVal < rVal ? 'less than' : lVal > rVal ? 'greater than' : 'equal to';
                 this.stateManager.saveState(this.sceneManager.getSceneGraph(), `Compared ${cmp.leftId} and ${cmp.rightId}`, this.animationScheduler.getCurrentTime());
                 this.eventDispatcher.dispatch('STATE_UPDATED', this.stateManager.getCurrentState());
                 this.eventDispatcher.dispatch('RUNTIME_LOG', {
                   keyword: 'COMPARE',
-                  message: `Comparing [${lIdx}]=${lVal} vs [${rIdx}]=${rVal}\n${lVal} ${cmpSymbol} ${rVal}  (${lVal} is ${cmpWord} ${rVal})`,
+                  message: leftEl.logicalIndex === undefined || rightEl.logicalIndex === undefined
+                    ? `Comparing ${lIdx} vs ${rIdx}\n${lVal} ${cmpSymbol} ${rVal}  (${lVal} is ${cmpWord} ${rVal})`
+                    : `Comparing [${lIdx}]=${lVal} vs [${rIdx}]=${rVal}\n${lVal} ${cmpSymbol} ${rVal}  (${lVal} is ${cmpWord} ${rVal})`,
                   kind: 'compare',
                   timestamp: Date.now(),
                 });
@@ -742,6 +993,47 @@ export class AnimationController {
           const gen = instruction as GenericActionInstruction;
           const actionName = gen.actionName.toUpperCase();
           if (DEBUG_ANIMATION) console.log(`[AnimationController] Executing GENERIC_ACTION ${actionName} with targetId ${gen.targetId}`, gen);
+
+          // A queue / stack (holds values, or node pointers in a tree program).
+          if (['ENQUEUE', 'PUSH', 'DEQUEUE', 'POP', 'FRONT', 'PEEK', 'REAR'].includes(actionName) &&
+              this.treeEngine.isContainer(this.treeContext(), gen.args?.[0])) {
+            const name = String(gen.args[0]);
+            if (actionName === 'ENQUEUE' || actionName === 'PUSH') {
+              if (gen.args.length < 2) throw new TreeError(`${actionName} needs a value, e.g. ${actionName} ${name} node.left`);
+              this.treeEngine.containerAdd(this.treeContext(), name, actionName, gen.args[1], `${actionName} ${name} ${this.describeOperand(gen.args[1])}`);
+            } else {
+              this.treeEngine.containerTake(this.treeContext(), { op: actionName, container: name });
+            }
+            break;
+          }
+          if (['SIZE', 'IS_EMPTY', 'CLEAR'].includes(actionName) && this.treeEngine.isContainer(this.treeContext(), gen.args?.[0])) {
+            const name = String(gen.args[0]);
+            if (actionName === 'CLEAR') this.treeEngine.containerClear(this.treeContext(), name);
+            else this.treeEngine.containerReport(this.treeContext(), actionName as 'SIZE' | 'IS_EMPTY', name);
+            break;
+          }
+          const treeTarget = this.treeEngine.resolveBuiltin(this.treeContext(), gen);
+          if (treeTarget) {
+            this.treeEngine.execute(this.treeContext(), gen, treeTarget.tree, treeTarget.args);
+            break;
+          }
+          const namedTree = (gen as any).payload?.logicalParent;
+          if (namedTree && this.treeEngine.isTree(this.treeContext(), namedTree)) {
+            throw new TreeError(
+              `${actionName} is not a built-in for the tree '${namedTree}'. Trees support INSERT, SEARCH, DELETE, INORDER, PREORDER, POSTORDER, LEVELORDER, HEIGHT, SIZE, LEAVES, MIN, MAX, MIRROR, ROTATE, CLEAR — anything else can be written as pointer code (see the Trees examples).`
+            );
+          }
+
+          const listName = (gen as any).payload?.logicalParent;
+          if (listName && this.linkedListEngine.isList(this.llContext(), listName)) {
+            const handled = this.linkedListEngine.execute(this.llContext(), gen, listName, (gen as any).payload?.logicalIndex);
+            if (!handled) {
+              throw new LinkedListError(
+                `${actionName} is not a linked-list operation. Linked lists support INSERT_HEAD, INSERT_TAIL, DELETE_HEAD, DELETE_TAIL, REVERSE, SEARCH, INSERT/DELETE/UPDATE ${listName}[i], and pointer code (curr = curr.next, prev.next = ..., NEW_NODE, FREE).`
+              );
+            }
+            break;
+          }
           
           const handler = AlgorithmRegistry.getHandler(actionName);
           if (handler) {
@@ -851,42 +1143,6 @@ export class AnimationController {
               }});
               this.animationScheduler.commitSequential();
             }
-          } else if (actionName === 'INSERT_HEAD' || actionName === 'INSERT_TAIL') {
-            const llContext: AlgorithmContext = {
-              scheduler: this.animationScheduler,
-              sceneManager: this.sceneManager,
-              layoutManager: this.layoutManager,
-              eventDispatcher: this.eventDispatcher,
-              stateManager: this.stateManager,
-              relationshipManager: this.relationshipManager,
-              activeTreeName: this.activeTreeName,
-              defaultColor: this.defaultColor
-            };
-            this.linkedListEngine.insert(llContext, gen, actionName);
-          } else if (actionName === 'DELETE_HEAD' || actionName === 'DELETE_TAIL') {
-            const llContext: AlgorithmContext = {
-              scheduler: this.animationScheduler,
-              sceneManager: this.sceneManager,
-              layoutManager: this.layoutManager,
-              eventDispatcher: this.eventDispatcher,
-              stateManager: this.stateManager,
-              relationshipManager: this.relationshipManager,
-              activeTreeName: this.activeTreeName,
-              defaultColor: this.defaultColor
-            };
-            this.linkedListEngine.remove(llContext, gen, actionName);
-          } else if (actionName === 'REVERSE') {
-            const llContext: AlgorithmContext = {
-              scheduler: this.animationScheduler,
-              sceneManager: this.sceneManager,
-              layoutManager: this.layoutManager,
-              eventDispatcher: this.eventDispatcher,
-              stateManager: this.stateManager,
-              relationshipManager: this.relationshipManager,
-              activeTreeName: this.activeTreeName,
-              defaultColor: this.defaultColor
-            };
-            this.linkedListEngine.reverse(llContext, gen);
           } else if (actionName === 'UPDATE') {
             let targetEl = gen.targetId ? this.sceneManager.getElement(gen.targetId) as any : null;
             if (!targetEl && gen.args && gen.args.length > 0) {

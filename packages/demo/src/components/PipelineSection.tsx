@@ -75,11 +75,12 @@ const STAGES = [
   { id: 'viz',       label: 'Interactive 3D',  desc: 'Final scene',        color: 'green',  icon: <VizIcon />,       term: '[Scene] Mounted & live' },
 ];
 
+type Stage = (typeof STAGES)[number];
+
 /* ── Helper Component for a Stage Card ───────────────────────────────── */
-function StageCard({ stage, index, activeStage }: { stage: any, index: number, activeStage: number }) {
+function StageCard({ stage, index, activeStage }: { stage: Stage, index: number, activeStage: number }) {
   const isActive = activeStage === index;
   const isCompleted = activeStage > index;
-  const isPending = activeStage < index;
   
   const statusClass = isActive ? 'active' : isCompleted ? 'completed' : 'pending';
   const colorClass = `color-${stage.color}`;

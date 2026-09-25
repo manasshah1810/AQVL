@@ -162,96 +162,95 @@ export function CodeToVizSection() {
   /* ── Main animation loop ─────────────────────────────────── */
   const runLoop = useCallback(async () => {
     cancelRef.current = false;
+    // Replays until the section unmounts (cancelRef).
+    while (!cancelRef.current) {
+      // Reset
+      setVisibleLines([]);
+      setCurrentLineIdx(-1);
+      setCurrentLineTyped('');
+      setActiveLine(-1);
+      setRevealedNodes(new Set());
+      setHighlightedNodes(new Set());
+      setSearchNodes(new Set());
+      setPhase('build');
 
-    // Reset
-    setVisibleLines([]);
-    setCurrentLineIdx(-1);
-    setCurrentLineTyped('');
-    setActiveLine(-1);
-    setRevealedNodes(new Set());
-    setHighlightedNodes(new Set());
-    setSearchNodes(new Set());
-    setPhase('build');
-
-    await delay(600);
-    if (cancelRef.current) return;
-
-    // Type each line
-    for (let li = 0; li < AQVL_LINES.length; li++) {
+      await delay(600);
       if (cancelRef.current) return;
-      const { text, color } = AQVL_LINES[li];
-      setCurrentLineIdx(li);
-      setActiveLine(li);
 
-      // Type characters one by one
-      for (let ci = 0; ci <= text.length; ci++) {
+      // Type each line
+      for (let li = 0; li < AQVL_LINES.length; li++) {
         if (cancelRef.current) return;
-        setCurrentLineTyped(text.slice(0, ci));
-        if (ci < text.length) await delay(CHAR_DELAY);
+        const { text, color } = AQVL_LINES[li];
+        setCurrentLineIdx(li);
+        setActiveLine(li);
+
+        // Type characters one by one
+        for (let ci = 0; ci <= text.length; ci++) {
+          if (cancelRef.current) return;
+          setCurrentLineTyped(text.slice(0, ci));
+          if (ci < text.length) await delay(CHAR_DELAY);
+        }
+
+        // Commit line
+        setVisibleLines(prev => [...prev, { text, colorKey: color }]);
+        setCurrentLineTyped('');
+        setCurrentLineIdx(-1);
+        setActiveLine(li);
+
+        // Trigger node reveal if applicable
+        if (LINE_TO_NODE[li]) {
+          const nodeId = LINE_TO_NODE[li][0];
+          await delay(PHASE_PAUSE * 0.5);
+          setRevealedNodes(prev => {
+            const next = new Set(prev);
+            next.add(nodeId);
+            return next;
+          });
+        }
+
+        await delay(LINE_GAP);
       }
 
-      // Commit line
-      setVisibleLines(prev => [...prev, { text, colorKey: color }]);
-      setCurrentLineTyped('');
-      setCurrentLineIdx(-1);
-      setActiveLine(li);
+      // ── INORDER traversal highlight ────────────────────────
+      if (cancelRef.current) return;
+      setPhase('inorder');
+      setActiveLine(16); // INORDER line
+      for (const nodeId of INORDER_ORDER) {
+        if (cancelRef.current) return;
+        setHighlightedNodes(new Set([nodeId]));
+        await delay(NODE_STAGGER * 1.6);
+      }
+      setHighlightedNodes(new Set(INORDER_ORDER)); // all lit up
+      await delay(600);
 
-      // Trigger node reveal if applicable
-      if (LINE_TO_NODE[li]) {
-        const nodeId = LINE_TO_NODE[li][0];
-        await delay(PHASE_PAUSE * 0.5);
-        setRevealedNodes(prev => {
+      // ── SEARCH highlight ────────────────────────────────────
+      if (cancelRef.current) return;
+      setPhase('search');
+      setHighlightedNodes(new Set());
+      setActiveLine(17); // SEARCH line
+      for (const nodeId of SEARCH_PATH) {
+        if (cancelRef.current) return;
+        setSearchNodes(prev => {
           const next = new Set(prev);
           next.add(nodeId);
           return next;
         });
+        await delay(NODE_STAGGER * 2);
       }
 
-      await delay(LINE_GAP);
+      setPhase('done');
+      await delay(LOOP_RESTART);
     }
-
-    // ── INORDER traversal highlight ────────────────────────
-    if (cancelRef.current) return;
-    setPhase('inorder');
-    setActiveLine(16); // INORDER line
-    for (const nodeId of INORDER_ORDER) {
-      if (cancelRef.current) return;
-      setHighlightedNodes(new Set([nodeId]));
-      await delay(NODE_STAGGER * 1.6);
-    }
-    setHighlightedNodes(new Set(INORDER_ORDER)); // all lit up
-    await delay(600);
-
-    // ── SEARCH highlight ────────────────────────────────────
-    if (cancelRef.current) return;
-    setPhase('search');
-    setHighlightedNodes(new Set());
-    setActiveLine(17); // SEARCH line
-    for (const nodeId of SEARCH_PATH) {
-      if (cancelRef.current) return;
-      setSearchNodes(prev => {
-        const next = new Set(prev);
-        next.add(nodeId);
-        return next;
-      });
-      await delay(NODE_STAGGER * 2);
-    }
-
-    setPhase('done');
-    await delay(LOOP_RESTART);
-
-    // Loop
-    if (!cancelRef.current) runLoop();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
-    setMounted(true);
+    const fadeIn = requestAnimationFrame(() => setMounted(true));
     const id = setTimeout(() => runLoop(), 400);
     return () => {
       cancelRef.current = true;
       clearTimer();
       clearTimeout(id);
+      cancelAnimationFrame(fadeIn);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

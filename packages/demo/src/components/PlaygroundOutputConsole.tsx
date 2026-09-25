@@ -1,4 +1,3 @@
-/// <reference types="react" />
 import React, { useEffect, useRef, useState } from 'react';
 import type { RuntimeLogEntry } from './RuntimeOutputPanel';
 

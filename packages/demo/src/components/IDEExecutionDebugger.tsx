@@ -1,10 +1,11 @@
 import React from 'react';
+import { instructionViews, type AQIRProgram, type PipelineState } from '../types/pipeline';
 
 export interface IDEExecutionDebuggerProps {
-  aqir: any;
+  aqir: AQIRProgram | null;
   currentInstructionIndex: number;
   isPlaying: boolean;
-  pipelineState: any;
+  pipelineState: PipelineState;
 }
 
 export const IDEExecutionDebugger: React.FC<IDEExecutionDebuggerProps> = ({
@@ -13,7 +14,7 @@ export const IDEExecutionDebugger: React.FC<IDEExecutionDebuggerProps> = ({
   isPlaying,
   pipelineState
 }) => {
-  const instructions = aqir?.instructions || [];
+  const instructions = instructionViews(aqir);
   const totalInstructions = instructions.length;
   const isRuntimeReady = pipelineState.runtime === 'success';
 
@@ -77,7 +78,7 @@ export const IDEExecutionDebugger: React.FC<IDEExecutionDebuggerProps> = ({
 
       {/* Instruction list */}
       <div className="exec-debugger-instructions">
-        {instructions.map((inst: any, idx: number) => {
+        {instructions.map((inst, idx) => {
           const isActive = idx === currentInstructionIndex;
           const isPast   = idx < currentInstructionIndex;
 

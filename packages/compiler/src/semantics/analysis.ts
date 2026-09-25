@@ -13,6 +13,7 @@ import {
   UndeclaredFunctionError,
   DuplicateDeclarationError,
   WrongArgumentCountError,
+  ReturnOutsideFunctionError,
   suggestFor,
   type CompileError,
 } from '@aqvl/shared';
@@ -78,7 +79,7 @@ function analyzeScene(scene: SceneNode, ctx: ValidationContext, source: string |
     analyzeBlock(fn.body, signatures, ctx, source);
   }
   for (const stmt of scene.sequence.statements) {
-    analyzeStatement(stmt, signatures, ctx, source);
+    analyzeStatement(stmt, signatures, ctx, source, false);
   }
 }
 
@@ -97,25 +98,27 @@ function analyzeStatement(
   stmt: StatementNode,
   signatures: Map<string, FunctionSignature>,
   ctx: ValidationContext,
-  source: string | undefined
+  source: string | undefined,
+  inFunction = true
 ): void {
   switch (stmt.type) {
     case 'ReturnNode':
+      if (!inFunction) ctx.addError(new ReturnOutsideFunctionError(posOptions(stmt.pos, source)));
       if (stmt.value) analyzeExpression(stmt.value, signatures, ctx, source);
       return;
     case 'IfNode':
       analyzeExpression(stmt.condition, signatures, ctx, source);
-      stmt.body.forEach((s) => analyzeStatement(s, signatures, ctx, source));
-      stmt.elseBody?.forEach((s) => analyzeStatement(s, signatures, ctx, source));
+      stmt.body.forEach((s) => analyzeStatement(s, signatures, ctx, source, inFunction));
+      stmt.elseBody?.forEach((s) => analyzeStatement(s, signatures, ctx, source, inFunction));
       return;
     case 'LoopNode':
       analyzeExpression(stmt.start, signatures, ctx, source);
       analyzeExpression(stmt.end, signatures, ctx, source);
-      stmt.body.forEach((s) => analyzeStatement(s, signatures, ctx, source));
+      stmt.body.forEach((s) => analyzeStatement(s, signatures, ctx, source, inFunction));
       return;
     case 'WhileNode':
       analyzeExpression(stmt.condition, signatures, ctx, source);
-      stmt.body.forEach((s) => analyzeStatement(s, signatures, ctx, source));
+      stmt.body.forEach((s) => analyzeStatement(s, signatures, ctx, source, inFunction));
       return;
     case 'PrintNode':
       stmt.args.forEach((a) => analyzeExpression(a, signatures, ctx, source));
@@ -154,6 +157,25 @@ function analyzeStatement(
   }
 }
 
+/**
+ * Built-in functions (not user-declared) and their argument counts:
+ * `NEW_NODE(list_or_tree, value)` allocates a node; `MAX` / `MIN` / `ABS`
+ * are arithmetic; `DEQUEUE(q)`, `POP(s)`, `PEEK(s)`, `FRONT(q)`, `REAR(q)` and
+ * `IS_EMPTY(x)` read a queue / stack inside an expression.
+ */
+const BUILTIN_FUNCTIONS: Record<string, number> = {
+  NEW_NODE: 2,
+  MAX: 2,
+  MIN: 2,
+  ABS: 1,
+  DEQUEUE: 1,
+  POP: 1,
+  PEEK: 1,
+  FRONT: 1,
+  REAR: 1,
+  IS_EMPTY: 1,
+};
+
 function analyzeExpression(
   expr: ExpressionNode,
   signatures: Map<string, FunctionSignature>,
@@ -166,7 +188,12 @@ function analyzeExpression(
     case 'CallNode': {
       const name = expr.callee.name;
       const signature = signatures.get(name);
-      if (!signature) {
+      const builtinArity = BUILTIN_FUNCTIONS[name.toUpperCase()];
+      if (!signature && builtinArity !== undefined) {
+        if (builtinArity !== expr.args.length) {
+          ctx.addError(new WrongArgumentCountError(name, builtinArity, expr.args.length, posOptions(expr.pos, source)));
+        }
+      } else if (!signature) {
         ctx.addError(
           new UndeclaredFunctionError(name, posOptions(expr.callee.pos, source, suggestFor(name, signatures.keys())))
         );
@@ -185,6 +212,9 @@ function analyzeExpression(
     case 'BinaryOpNode':
       analyzeExpression(expr.left, signatures, ctx, source);
       analyzeExpression(expr.right, signatures, ctx, source);
+      return;
+    case 'MemberAccessNode':
+      analyzeExpression(expr.object, signatures, ctx, source);
       return;
     case 'IdentifierNode':
     case 'LiteralNode':

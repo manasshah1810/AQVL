@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Lexer, Parser, SemanticValidator, Optimizer, AQIRGenerator } from '@aqvl/compiler';
-import { ExecutionEngine } from '@aqvl/runtime';
+import { Lexer, Parser, SemanticValidator, Optimizer, AQIRGenerator, analyzeFunctions } from '@aqvl/compiler';
+import { ExecutionEngine, type SceneState } from '@aqvl/runtime';
 import { AQVECanvas } from '@aqvl/renderer';
 
 import { IDEEditor, type EditorErrorMarker } from '../components/IDEEditor';
@@ -46,13 +46,6 @@ const IconSkipForward = () => (
   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <polygon points="5,4 15,12 5,20"/>
     <line x1="19" y1="4" x2="19" y2="20"/>
-  </svg>
-);
-
-const IconRefresh = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <polyline points="1 4 1 10 7 10"/>
-    <path d="M3.51 15a9 9 0 1 0 .49-3.18"/>
   </svg>
 );
 
@@ -143,7 +136,7 @@ export default function Playground() {
 
   // Runtime State
   const engineRef = useRef<ExecutionEngine | null>(null);
-  const [sceneState, setSceneState] = useState<any>(null);
+  const [sceneState, setSceneState] = useState<SceneState | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [animatedStepCurrent, setAnimatedStepCurrent] = useState(0);
   const [animatedStepTotal, setAnimatedStepTotal] = useState(0);
@@ -152,6 +145,9 @@ export default function Playground() {
   // Runtime Output Logs
   const [runtimeLogs, setRuntimeLogs] = useState<RuntimeLogEntry[]>([]);
   const runtimeLogIdRef = useRef(0);
+  // Incremented on every compile. A superseded engine may still be finishing
+  // its current animation after pause(); its events must not reach the UI.
+  const runIdRef = useRef(0);
 
   // Speed
   const [speed, setSpeed] = useState<'0.5x' | '1x' | '2x' | '4x'>('1x');
@@ -201,6 +197,7 @@ export default function Playground() {
     setCompileError(null);
     setRuntimeError(null);
     setErrorMarkers([]);
+    runIdRef.current++; // silence the previous engine from here on
     setSceneState(null);
     setAnimatedStepCurrent(0);
     setAnimatedStepTotal(0);
@@ -228,20 +225,37 @@ export default function Playground() {
         throw new Error(`Semantic Validation Failed:\n${errors}`);
       }
 
+      // Calls to undeclared functions, wrong argument counts, RETURN outside a function.
+      const functionErrors = analyzeFunctions(generatedAst, sourceCode).getErrors();
+      if (functionErrors.length > 0) {
+        setErrorMarkers(functionErrors.map((e) => ({ line: e.lineNumber ?? 1, column: e.column ?? 1, message: e.message })));
+        throw functionErrors[0];
+      }
+
       const optimizer = new Optimizer();
       const optimizedAst = optimizer.optimize(generatedAst, {});
 
       const generator = new AQIRGenerator();
       const generatedAqir = generator.generate(optimizedAst);
+      // User FUNCTIONs: the VM resolves CALLs through this table.
+      generatedAqir.functionTable = {};
+      for (const fn of generator.getFunctionTable().all()) {
+        generatedAqir.functionTable[fn.name] = { name: fn.name, params: fn.params, entryAddress: fn.startPC };
+      }
 
       const engine = new ExecutionEngine();
+      const runId = runIdRef.current;
+      const isCurrentRun = () => runIdRef.current === runId;
       engine.eventDispatcher.on('SCENE_LOADED', () => {
+        if (!isCurrentRun()) return;
         setSceneState({ ...engine.stateManager.getCurrentState() });
       });
       engine.eventDispatcher.on('STATE_UPDATED', (newState) => {
+        if (!isCurrentRun()) return;
         setSceneState({ ...newState });
       });
       engine.eventDispatcher.on('RUNTIME_LOG', (entry: RuntimeLogEntry) => {
+        if (!isCurrentRun()) return;
         // Tag each line with the step that produced it (the step being
         // executed = the one after the step currently shown), so stepping
         // back can drop the lines of the steps that were undone.
@@ -250,6 +264,7 @@ export default function Playground() {
       });
       let shownStep = 0;
       engine.eventDispatcher.on('ANIMATED_STEP', (payload: { current: number; total: number }) => {
+        if (!isCurrentRun()) return;
         if (payload.current < shownStep) {
           setRuntimeLogs(prev => prev.filter(log => (log.step ?? 0) <= payload.current));
         }
@@ -258,9 +273,11 @@ export default function Playground() {
         setAnimatedStepTotal(payload.total);
       });
       engine.eventDispatcher.on('EXECUTION_FINISHED', () => {
+        if (!isCurrentRun()) return;
         setIsPlaying(false);
       });
       engine.eventDispatcher.on('EXECUTION_ERROR', (payload: { error: unknown; message: string }) => {
+        if (!isCurrentRun()) return;
         setIsPlaying(false);
         setRuntimeError(payload.message);
       });
@@ -276,19 +293,24 @@ export default function Playground() {
 
       setTimeout(() => { handlePlay(); }, 100);
 
-    } catch (e: any) {
-      setCompileError(e.message || String(e));
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      setCompileError(message);
       // Lexer/Parser errors are AQVLError instances carrying a source line/column
       // (see @aqvl/shared). SemanticValidator diagnostics already set markers above.
-      if (typeof e?.lineNumber === 'number') {
-        setErrorMarkers([{ line: e.lineNumber, column: e.column, message: e.message }]);
+      const at = e as { lineNumber?: unknown; column?: number };
+      if (typeof at.lineNumber === 'number') {
+        setErrorMarkers([{ line: at.lineNumber, column: at.column, message }]);
       }
       setIsCompiling(false);
     }
   };
 
   useEffect(() => {
-    handleCompileAndRun();
+    // Compile the starting example on the first frame after mount. Cancelled on
+    // unmount, so StrictMode's mount -> unmount -> mount compiles only once.
+    const frame = requestAnimationFrame(() => handleCompileAndRun());
+    return () => cancelAnimationFrame(frame);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

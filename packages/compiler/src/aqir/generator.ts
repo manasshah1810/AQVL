@@ -3,6 +3,7 @@ import {
   SceneNode,
   StatementNode,
   ExpressionNode,
+  BinaryOpNode,
   DeclareBlockNode,
   SequenceBlockNode,
   VariableDeclNode,
@@ -11,6 +12,8 @@ import {
   StackDeclNode,
   QueueDeclNode,
   TreeDeclNode,
+  BinaryTreeDeclNode,
+  BSTDeclNode,
   HeapDeclNode,
   HashMapDeclNode,
   TrieDeclNode,
@@ -96,6 +99,26 @@ export class AQIRGenerator {
   private arrayNames = new Set<string>();
   // Arrays some INSERT grows: a literal index past the declared length may be valid by then.
   private growableArrays = new Set<string>();
+  // Names declared with `[SINGLY|DOUBLY|CIRCULAR] LINKEDLIST`. Like arrays,
+  // `list[i]` is resolved at run time (by walking i nodes from the head),
+  // since the list's shape changes as the program relinks pointers.
+  private linkedListNames = new Set<string>();
+  // Names declared with `BINARY_TREE` / `BST`: pointer-based trees (see the
+  // runtime's TreeEngine) whose shape the program changes by relinking
+  // `left` / `right` pointers.
+  private treeNames = new Set<string>();
+  // Names declared with `QUEUE` / `STACK` — their length is read at run time.
+  private containerNames = new Set<string>();
+  // Every user FUNCTION name (a user function shadows a built-in of the same name).
+  private userFunctionNames = new Set<string>();
+
+  /** Built-in functions usable in expressions (see Parser.BUILTIN_EXPRESSION_FUNCTIONS). */
+  private static readonly CONTAINER_READS = new Set(['DEQUEUE', 'POP', 'PEEK', 'FRONT', 'REAR']);
+
+  /** True when `name(...)` is the built-in `builtin` rather than a user function. */
+  private isBuiltinCall(node: CallNode, builtin: string): boolean {
+    return node.callee.name.toUpperCase() === builtin && !this.userFunctionNames.has(node.callee.name);
+  }
 
   /** The function table populated by the most recent `generate()` call. */
   public getFunctionTable(): FunctionTable {
@@ -223,9 +246,20 @@ export class AQIRGenerator {
     this.layoutTracker.reset();
     this.arrayNames.clear();
     this.growableArrays.clear();
+    this.linkedListNames.clear();
+    this.treeNames.clear();
+    this.containerNames.clear();
+    this.userFunctionNames.clear();
 
     // Since v1 assumes one scene per program, we extract the first one
     const scene = program.scenes[0];
+    const collectFunctionNames = (fns: FunctionDeclNode[]) => {
+      for (const fn of fns) {
+        this.userFunctionNames.add(fn.name.name);
+        collectFunctionNames(fn.body.statements.filter((st): st is FunctionDeclNode => st.type === 'FunctionDeclNode'));
+      }
+    };
+    collectFunctionNames(scene?.declarations?.functions ?? []);
     this.generateSceneInstructions(scene, userInputs);
 
     if (this.pendingJumps.length > 0) {
@@ -254,6 +288,7 @@ export class AQIRGenerator {
 
     if (scene.declarations) {
       this.processDeclarations(scene.declarations, userInputs);
+      this.declarePointerContainers(scene.declarations);
     }
 
     // Function bodies are emitted up front (so CALL sites anywhere in the
@@ -334,7 +369,9 @@ export class AQIRGenerator {
         return;
       }
       default:
-        throw new Error(`Unsupported statement in function body: ${(stmt as any).type}`);
+        // WHILE, LOOP, PRINT, HIGHLIGHT, COMPARE, pointer writes, FREE, ...:
+        // a function body accepts every SEQUENCE statement.
+        this.generateInstruction(stmt);
     }
   }
 
@@ -379,11 +416,64 @@ export class AQIRGenerator {
    */
   private tryGenerateAssignment(expr: ExpressionNode): boolean {
     if (expr.type === 'BinaryOpNode' && expr.operator === '=' && expr.left.type === 'IdentifierNode') {
-      const value = this.compileValue(expr.right);
-      this.emitSetVar(expr.left.name, value, expr.pos);
+      const right = expr.right;
+      const value =
+        right.type === 'CallNode' && this.isBuiltinCall(right, 'NEW_NODE')
+          ? this.generateNewNode(right, expr.left.name)
+          : right.type === 'CallNode' && AQIRGenerator.CONTAINER_READS.has(right.callee.name.toUpperCase()) && !this.userFunctionNames.has(right.callee.name)
+            ? this.generateContainerRead(right, expr.left.name)
+            : this.compileValue(right);
+      this.emit({
+        opcode: AQIROpcode.SET_VAR,
+        name: expr.left.name,
+        value,
+        // Shown in the output console when the assignment moves a pointer
+        // variable (e.g. `curr = curr.next`), see AnimationController.
+        sourceText: `${expr.left.name} = ${this.exprToString(expr.right)}`,
+        lineNumber: expr.pos.line,
+        sourceLocation: this.toSourceLocation(expr.pos),
+      } as SetVarInstruction);
+      return true;
+    }
+    if (expr.type === 'BinaryOpNode' && expr.operator === '=' && expr.left.type === 'MemberAccessNode') {
+      // `curr.next = prev`, `list.head = node`, `node.left = n`, `node.val = 5`:
+      // a pointer / field write, animated by the runtime's LinkedListEngine
+      // or TreeEngine (whichever owns the target).
+      this.emit({
+        action: 'LL_SET',
+        target: this.compileValue(expr.left.object),
+        field: expr.left.member,
+        value: this.compileValue(expr.right),
+        sourceText: `${this.exprToString(expr.left)} = ${this.exprToString(expr.right)}`,
+        lineNumber: expr.pos.line,
+      } as any);
       return true;
     }
     return false;
+  }
+
+  /** Renders an expression back to AQVL source form, for console messages. */
+  private exprToString(expr: ExpressionNode): string {
+    switch (expr.type) {
+      case 'IdentifierNode':
+        return expr.name;
+      case 'LiteralNode':
+        if (expr.value === null) return 'NULL';
+        return expr.dataType === 'string' ? `"${expr.value}"` : String(expr.value);
+      case 'MemberAccessNode':
+        return `${this.exprToString(expr.object)}.${expr.member}`;
+      case 'ArrayAccessNode':
+        return `${expr.array.name}[${this.exprToString(expr.index)}]`;
+      case 'BinaryOpNode':
+        return `${this.exprToString(expr.left)} ${expr.operator} ${this.exprToString(expr.right)}`;
+      case 'CallNode':
+        return `${expr.callee.name}(${expr.args.map((a) => this.exprToString(a)).join(', ')})`;
+      default:
+        if ((expr as any).type === 'GenericActionNode' && (expr as any).actionName === 'LENGTH') {
+          return `LENGTH(${(expr as any).args[0].name})`;
+        }
+        return '?';
+    }
   }
 
   /** Name of the function currently being compiled, for call-graph tracking; undefined at the top level. */
@@ -398,20 +488,41 @@ export class AQIRGenerator {
    */
   private compileValue(expr: ExpressionNode): AQIRValue {
     switch (expr.type) {
-      case 'CallNode':
-        return this.generateFunctionCall(expr as CallNode);
+      case 'CallNode': {
+        const call = expr as CallNode;
+        if (this.isBuiltinCall(call, 'NEW_NODE')) return this.generateNewNode(call);
+        if (this.isBuiltinCall(call, 'MAX') || this.isBuiltinCall(call, 'MIN')) {
+          return { op: call.callee.name.toUpperCase(), left: this.compileValue(call.args[0]), right: this.compileValue(call.args[1]) } as unknown as AQIRValue;
+        }
+        if (this.isBuiltinCall(call, 'ABS')) {
+          return { op: 'ABS', left: this.compileValue(call.args[0]), right: 0 } as unknown as AQIRValue;
+        }
+        if (this.isBuiltinCall(call, 'IS_EMPTY')) {
+          return { op: '==', left: { len: this.containerArgName(call) }, right: 0 } as unknown as AQIRValue;
+        }
+        if (AQIRGenerator.CONTAINER_READS.has(call.callee.name.toUpperCase()) && !this.userFunctionNames.has(call.callee.name)) {
+          return this.generateContainerRead(call);
+        }
+        return this.generateFunctionCall(call);
+      }
+      case 'MemberAccessNode':
+        // Read at run time: `{ member, object }` (see VM evaluateExpression).
+        return { member: expr.member, object: this.compileValue(expr.object) } as unknown as AQIRValue;
       case 'IdentifierNode':
         return expr.name;
       case 'LiteralNode':
         return expr.value;
       case 'BinaryOpNode':
+        if ((expr.operator === 'AND' || expr.operator === 'OR') && this.containsContainerRead(expr.right)) {
+          return this.compileShortCircuit(expr);
+        }
         return {
           op: expr.operator,
           left: this.compileValue(expr.left),
           right: this.compileValue(expr.right),
         };
       case 'ArrayAccessNode':
-        if (this.arrayNames.has(expr.array.name)) {
+        if (this.arrayNames.has(expr.array.name) || this.linkedListNames.has(expr.array.name)) {
           // Reads the element's current value at runtime (VM `{ elem, index }`
           // operand), so `IF arr[i] > arr[i+1]` or `total = total + arr[i]`
           // see live values — including after swaps, updates and inserts.
@@ -425,11 +536,258 @@ export class AQIRGenerator {
         if ((expr as any).type === 'GenericActionNode' && (expr as any).actionName === 'LENGTH') {
           const arrayName = ((expr as any).args[0] as any).name;
           // Arrays can grow/shrink (INSERT / DELETE), so read their live length.
-          if (this.arrayNames.has(arrayName)) return { len: arrayName } as unknown as AQIRValue;
+          if (
+            this.arrayNames.has(arrayName) ||
+            this.linkedListNames.has(arrayName) ||
+            this.treeNames.has(arrayName) ||
+            this.containerNames.has(arrayName)
+          ) {
+            return { len: arrayName } as unknown as AQIRValue;
+          }
           return this.resolveArrayLength(arrayName);
         }
         throw new Error(`Unsupported expression type: ${(expr as any).type}`);
     }
+  }
+
+  /**
+   * `BINARY_TREE t = [1, 2, 3, NULL, 5]` (level order, NULL = no child) or
+   * `BST t = [50, 30, 70]` (inserted in order, smaller keys to the left).
+   * Emits the tree fully built: an invisible anchor `bt:<tree>` holding the
+   * root pointer, one node `bt:<tree>:<n>` per value and one edge per
+   * non-NULL child pointer (`<node>>left` / `<node>>right`).
+   */
+  private declarePointerTree(decl: BinaryTreeDeclNode | BSTDeclNode, userInputs: Record<string, any>): void {
+    const treeName = decl.name.name;
+    const isBST = decl.type === 'BSTDeclNode';
+    let values: (number | null)[] = (decl.initialElements ?? []).map((e) => (e.value === null ? null : Number(e.value)));
+    if (Array.isArray(userInputs[treeName])) values = userInputs[treeName];
+    this.treeNames.add(treeName);
+
+    const nodeValues: number[] = [];
+    const left = new Map<number, number>();
+    const right = new Map<number, number>();
+
+    if (isBST) {
+      for (const raw of values) {
+        if (raw === null) throw new Error(`BST ${treeName} cannot contain NULL (line ${decl.pos.line}).`);
+        if (nodeValues.includes(raw)) {
+          throw new Error(`BST ${treeName} lists ${raw} twice — a binary search tree holds each key once (line ${decl.pos.line}).`);
+        }
+        const n = nodeValues.push(raw) - 1;
+        if (n === 0) continue;
+        let at = 0;
+        for (;;) {
+          const side = raw < nodeValues[at] ? left : right;
+          const child = side.get(at);
+          if (child === undefined) {
+            side.set(at, n);
+            break;
+          }
+          at = child;
+        }
+      }
+    } else if (values.length > 0) {
+      if (values[0] === null) throw new Error(`BINARY_TREE ${treeName}: the first value is the root and cannot be NULL (line ${decl.pos.line}).`);
+      nodeValues.push(values[0] as number);
+      const queue: number[] = [0];
+      let i = 1;
+      while (queue.length > 0 && i < values.length) {
+        const parent = queue.shift()!;
+        for (const side of [left, right]) {
+          if (i >= values.length) break;
+          const v = values[i++];
+          if (v === null) continue;
+          const n = nodeValues.push(v) - 1;
+          side.set(parent, n);
+          queue.push(n);
+        }
+      }
+      if (i < values.length) {
+        throw new Error(`BINARY_TREE ${treeName}: values after position ${i - 1} have no parent (every NULL has no children) (line ${decl.pos.line}).`);
+      }
+    }
+
+    const nodeId = (n: number) => `bt:${treeName}:${n}`;
+    this.generatedObjects.push({
+      id: `bt:${treeName}`,
+      type: 'BINARYTREE',
+      originalType: 'BINARYTREE',
+      logicalParent: treeName,
+      label: treeName,
+      properties: {
+        kind: isBST ? 'BST' : 'BINARY',
+        rootId: nodeValues.length > 0 ? nodeId(0) : null,
+        nextNodeNumber: nodeValues.length,
+      },
+    } as any);
+    nodeValues.forEach((value, n) => {
+      this.generatedObjects.push({
+        id: nodeId(n),
+        type: 'sphere',
+        originalType: 'TREE_NODE',
+        logicalParent: treeName,
+        value,
+        label: '',
+      } as any);
+    });
+    for (const [side, pointer, label] of [[left, 'left', 'L'], [right, 'right', 'R']] as const) {
+      side.forEach((child, parent) => {
+        this.generatedObjects.push({
+          id: `${nodeId(parent)}>${pointer}`,
+          type: 'EDGE',
+          logicalParent: treeName,
+          args: [nodeId(parent), nodeId(child)],
+          properties: { directed: true, pointer, label },
+        });
+      });
+    }
+  }
+
+  /**
+   * Every STACK and every QUEUE is emitted in the form the runtime's TreeEngine animates: an invisible
+   * anchor `ctr:<name>` (kind QUEUE / STACK) plus one item per initial value.
+   * It holds values or node pointers (`PUSH s t.root`) and can be read inside
+   * expressions (`x = POP(s)`, `PEEK(s)`, `IS_EMPTY(s)`, `LENGTH(s)`), so stack
+   * algorithms are written with real loops and IFs.
+   */
+  private declarePointerContainers(declareBlock: DeclareBlockNode): void {
+    for (const v of declareBlock.variables) {
+      if (v.type !== 'StackDeclNode' && v.type !== 'QueueDeclNode') continue;
+      const name = (v as QueueDeclNode | StackDeclNode).name.name;
+      const kind = v.type === 'QueueDeclNode' ? 'QUEUE' : 'STACK';
+      const elementType = kind === 'QUEUE' ? 'QUEUE_ELEMENT' : 'STACK_ELEMENT';
+      const values = this.generatedObjects
+        .filter((o) => o.type === elementType && o.logicalParent === name)
+        .map((o) => o.value);
+      this.generatedObjects = this.generatedObjects.filter((o) => !(o.type === elementType && o.logicalParent === name));
+      this.generatedObjects.push({
+        id: `ctr:${name}`,
+        type: 'CONTAINER',
+        logicalParent: name,
+        label: name,
+        properties: { kind, nextItemNumber: values.length },
+      } as any);
+      values.forEach((value, i) => {
+        // `HIGHLIGHT s[0]` names the initial item (0 = bottom of a stack, front of a queue).
+        this.symbolMap.set(`${name}[${i}]`, `ctr:${name}:${i}`);
+        this.generatedObjects.push({
+          id: `ctr:${name}:${i}`,
+          type: 'CONTAINER_ITEM',
+          logicalParent: name,
+          logicalIndex: i,
+          value,
+          label: '',
+          properties: { order: i },
+        } as any);
+      });
+    }
+  }
+
+  /**
+   * `NEW_NODE(list, value)` allocates an unlinked node belonging to `list`
+   * (shown in that list's heap-memory area until the program links it in).
+   * The new node's reference is stored into a per-call temp variable, which
+   * is what the expression evaluates to — like a function call's result.
+   */
+  private generateNewNode(node: CallNode, assignTo?: string): AQIRValue {
+    const [listArg, valueArg] = node.args;
+    if (!listArg || listArg.type !== 'IdentifierNode' || !(this.linkedListNames.has(listArg.name) || this.treeNames.has(listArg.name))) {
+      throw new Error(`NEW_NODE expects a linked list or tree as its first argument, e.g. NEW_NODE(list, 5) or NEW_NODE(tree, 5) (line ${node.pos.line}).`);
+    }
+    const resultVar = `__new_${this.tempCounter++}`;
+    this.emit({
+      action: 'LL_NEW',
+      list: listArg.name,
+      value: valueArg ? this.compileValue(valueArg) : 0,
+      resultVar,
+      // `newNode = NEW_NODE(...)`: the allocation step already shows the
+      // variable's tag, so the assignment that follows isn't a step of its own.
+      assignTo,
+      sourceText: assignTo ? `${assignTo} = ${this.exprToString(node)}` : this.exprToString(node),
+      lineNumber: node.pos.line,
+    } as any);
+    return resultVar;
+  }
+
+  /** Whether `expr` reads a queue / stack (`PEEK(s)`, `POP(s)`, ...) — a step with a visible effect. */
+  private containsContainerRead(expr: ExpressionNode | undefined): boolean {
+    if (!expr) return false;
+    switch (expr.type) {
+      case 'CallNode':
+        return (
+          (AQIRGenerator.CONTAINER_READS.has(expr.callee.name.toUpperCase()) && !this.userFunctionNames.has(expr.callee.name)) ||
+          expr.args.some((a) => this.containsContainerRead(a))
+        );
+      case 'BinaryOpNode':
+        return this.containsContainerRead(expr.left) || this.containsContainerRead(expr.right);
+      case 'ArrayAccessNode':
+        return this.containsContainerRead(expr.index);
+      case 'MemberAccessNode':
+        return this.containsContainerRead(expr.object);
+      default:
+        return false;
+    }
+  }
+
+  /**
+   * `a AND b` / `a OR b` whose right side reads a queue / stack, with C's
+   * short-circuit order: `LENGTH(s) > 0 AND PEEK(s) < x` must not PEEK an
+   * empty stack. The left side is stored in a temp; the right side's reads
+   * run only when its value is still needed.
+   */
+  private compileShortCircuit(expr: BinaryOpNode): AQIRValue {
+    const resultVar = `__cond_${this.tempCounter++}`;
+    const done = this.createLabel('sc_end');
+    const setResult = (value: AQIRValue) =>
+      this.emit({ opcode: AQIROpcode.SET_VAR, name: resultVar, value, lineNumber: expr.pos.line, sourceLocation: this.toSourceLocation(expr.pos) } as any);
+
+    // Stored as a real TRUE / FALSE, so the temp holds exactly the condition's value.
+    const asBoolean = (value: AQIRValue) => ({ op: 'AND', left: value, right: true }) as unknown as AQIRValue;
+    setResult(asBoolean(this.compileValue(expr.left)));
+    if (expr.operator === 'AND') {
+      this.emitJumpIfFalse(resultVar, done, expr.pos);
+    } else {
+      const evaluateRight = this.createLabel('sc_right');
+      this.emitJumpIfFalse(resultVar, evaluateRight, expr.pos);
+      this.emitJump(done, expr.pos);
+      this.labelCurrentPC(evaluateRight);
+      this.patchJump(evaluateRight);
+    }
+    setResult(asBoolean(this.compileValue(expr.right)));
+    this.labelCurrentPC(done);
+    this.patchJump(done);
+    return resultVar;
+  }
+
+  /** The queue / stack named by a built-in's single argument (`DEQUEUE(q)`). */
+  private containerArgName(node: CallNode): string {
+    const arg = node.args[0];
+    const name = node.callee.name.toUpperCase();
+    if (!arg || arg.type !== 'IdentifierNode' || !this.containerNames.has(arg.name)) {
+      throw new Error(`${name} expects a declared QUEUE or STACK, e.g. ${name}(q) (line ${node.pos.line}).`);
+    }
+    return arg.name;
+  }
+
+  /**
+   * `DEQUEUE(q)`, `POP(s)`, `PEEK(s)`, `FRONT(q)`, `REAR(q)` inside an expression: the
+   * runtime removes / reads the element (animated) and stores it into a
+   * per-call temp variable, which is what the expression evaluates to.
+   */
+  private generateContainerRead(node: CallNode, assignTo?: string): AQIRValue {
+    const container = this.containerArgName(node);
+    const resultVar = `__take_${this.tempCounter++}`;
+    this.emit({
+      action: 'CONTAINER_READ',
+      op: node.callee.name.toUpperCase(),
+      container,
+      resultVar,
+      assignTo,
+      sourceText: assignTo ? `${assignTo} = ${this.exprToString(node)}` : this.exprToString(node),
+      lineNumber: node.pos.line,
+    } as any);
+    return resultVar;
   }
 
   /** Counts the declared elements of `arrayName`, for compiling LENGTH(arr) to a literal. */
@@ -507,106 +865,67 @@ export class AQIRGenerator {
         }
       } else if (v.type === 'LinkedListDeclNode') {
         const list = v as LinkedListDeclNode;
+        const listName = list.name.name;
         let elements = list.initialElements ? list.initialElements.map(e => e.value) : [];
-        if (userInputs[list.name.name] && Array.isArray(userInputs[list.name.name])) {
-          elements = userInputs[list.name.name];
+        if (userInputs[listName] && Array.isArray(userInputs[listName])) {
+          elements = userInputs[listName];
         }
+        this.linkedListNames.add(listName);
 
-        const headId = this.generateId();
-        const nullId = this.generateId();
-        const boundaryToken = getSemanticColorToken('AUXILIARY');
+        // Node ids are `ll:<list>:<n>` so the runtime can recognise a
+        // pointer value (a node reference held in a variable) by its shape.
+        const nodeIds = elements.map((_, i) => `ll:${listName}:${i}`);
 
+        // The list itself: an invisible anchor holding the head pointer and
+        // the variant. There are no HEAD / NULL spheres — the renderer tags
+        // the first node HEAD and the last TAIL instead.
         this.generatedObjects.push({
-          id: headId,
-          type: 'sphere',
-          originalType: 'HEAD',
-          logicalParent: list.name.name,
-          value: 'HEAD',
-          label: 'HEAD',
-          color: boundaryToken.color
-        });
+          id: `ll:${listName}`,
+          type: 'LINKEDLIST',
+          originalType: 'LINKEDLIST',
+          logicalParent: listName,
+          label: listName,
+          properties: {
+            variant: list.variant || 'SINGLY',
+            headId: nodeIds.length > 0 ? nodeIds[0] : null,
+            nextNodeNumber: nodeIds.length,
+          },
+        } as any);
 
-        const nodeIds: string[] = [];
-        for (let i = 0; i < elements.length; i++) {
-          const id = this.generateId();
-          nodeIds.push(id);
-          this.symbolMap.set(`${list.name.name}[${i}]`, id);
-
+        nodeIds.forEach((id, i) => {
+          this.symbolMap.set(`${listName}[${i}]`, id);
           this.generatedObjects.push({
             id,
             type: 'sphere',
             originalType: 'LINKEDLIST_NODE',
-            logicalParent: list.name.name,
+            logicalParent: listName,
             value: elements[i],
-            label: `${elements[i]}`
-          });
-        }
+            label: '',
+            properties: { slot: i },
+          } as any);
+        });
 
+        // next pointers (+ prev pointers for DOUBLY). A pointer to NULL is
+        // simply the absence of an edge.
         const isCircular = list.variant === 'CIRCULAR';
-        const isEmpty = nodeIds.length === 0;
-        const needsNull = !isCircular || isEmpty;
-
-        if (needsNull) {
-          this.generatedObjects.push({
-            id: nullId,
-            type: 'sphere',
-            originalType: 'NULL',
-            logicalParent: list.name.name,
-            value: 'NULL',
-            label: 'NULL',
-            color: boundaryToken.color
-          });
-        }
-
-        // Generate NEXT and PREV edges
-        let prevId = headId;
         for (let i = 0; i < nodeIds.length; i++) {
-          this.generatedObjects.push({
-            id: this.generateId(),
-            type: 'EDGE',
-            logicalParent: list.name.name,
-            args: [prevId, nodeIds[i]],
-            properties: { directed: true, forward: true }
-          });
-
-          if (list.variant === 'DOUBLY') {
+          const next = i + 1 < nodeIds.length ? nodeIds[i + 1] : (isCircular ? nodeIds[0] : null);
+          if (next) {
             this.generatedObjects.push({
-              id: this.generateId(),
+              id: `${nodeIds[i]}>next`,
               type: 'EDGE',
-              logicalParent: list.name.name,
-              args: [nodeIds[i], prevId],
-              properties: { directed: true, backward: true }
+              logicalParent: listName,
+              args: [nodeIds[i], next],
+              properties: { directed: true, pointer: 'next' },
             });
           }
-
-          prevId = nodeIds[i];
-        }
-
-        if (isCircular && !isEmpty) {
-          this.generatedObjects.push({
-            id: this.generateId(),
-            type: 'EDGE',
-            logicalParent: list.name.name,
-            args: [prevId, nodeIds[0]],
-            properties: { directed: true, forward: true, circular: true }
-          });
-        } else {
-          // Link last node to NULL
-          this.generatedObjects.push({
-            id: this.generateId(),
-            type: 'EDGE',
-            logicalParent: list.name.name,
-            args: [prevId, nullId],
-            properties: { directed: true, forward: true }
-          });
-
-          if (list.variant === 'DOUBLY') {
+          if (list.variant === 'DOUBLY' && i > 0) {
             this.generatedObjects.push({
-              id: this.generateId(),
+              id: `${nodeIds[i]}>prev`,
               type: 'EDGE',
-              logicalParent: list.name.name,
-              args: [nullId, prevId],
-              properties: { directed: true, backward: true }
+              logicalParent: listName,
+              args: [nodeIds[i], nodeIds[i - 1]],
+              properties: { directed: true, pointer: 'prev' },
             });
           }
         }
@@ -619,6 +938,7 @@ export class AQIRGenerator {
 
         // this.env.set(`LENGTH(${stack.name.name})`, elements.length);
 
+        this.containerNames.add(stack.name.name);
         for (let i = 0; i < elements.length; i++) {
           const id = this.generateId();
           this.symbolMap.set(`${stack.name.name}[${i}]`, id);
@@ -641,6 +961,7 @@ export class AQIRGenerator {
 
         // this.env.set(`LENGTH(${queue.name.name})`, elements.length);
 
+        this.containerNames.add(queue.name.name);
         for (let i = 0; i < elements.length; i++) {
           const id = this.generateId();
           this.symbolMap.set(`${queue.name.name}[${i}]`, id);
@@ -654,6 +975,8 @@ export class AQIRGenerator {
             label: `${queue.name.name}[${i}]`,
           });
         }
+      } else if (v.type === 'BinaryTreeDeclNode' || v.type === 'BSTDeclNode') {
+        this.declarePointerTree(v as BinaryTreeDeclNode | BSTDeclNode, userInputs);
       } else if (v.type === 'TreeDeclNode') {
         const tree = v as TreeDeclNode;
         // Generate a virtual tree object to hold a reference
@@ -665,48 +988,6 @@ export class AQIRGenerator {
           type: 'TREE',
           label: tree.name.name,
         });
-      } else if (v.type === 'BinaryTreeDeclNode') {
-        const tree = v as any;
-        const id = this.generateId();
-        this.symbolMap.set(tree.name.name, id);
-
-        this.generatedObjects.push({
-          id,
-          type: 'BINARY_TREE',
-          label: tree.name.name,
-        });
-      } else if (v.type === 'BSTDeclNode') {
-        const tree = v as any;
-        const id = this.generateId();
-        const bstName = tree.name.name as string;
-        this.symbolMap.set(bstName, id);
-
-        // Store the BST anchor object. logicalParent = bstName lets the runtime
-        // auto-detect which tree name to use as activeTreeName.
-        this.generatedObjects.push({
-          id,
-          type: 'BST',
-          label: bstName,
-          logicalParent: bstName,
-        } as any);
-
-        // Convert initialElements (e.g. BST t = [50, 30, 70]) into BST_INSERT
-        // instructions prepended before the user sequence so the tree is built
-        // via the proper BST insertion algorithm (maintains ordering + animations).
-        let elements: number[] = tree.initialElements
-          ? (tree.initialElements as any[]).map((e: any) => Number(e.value))
-          : [];
-        if (userInputs[bstName] && Array.isArray(userInputs[bstName])) {
-          elements = userInputs[bstName] as number[];
-        }
-        for (const val of elements) {
-          this.pendingInitInstructions.push({
-            action: 'GENERIC_ACTION',
-            actionName: 'BST_INSERT',
-            args: [val],
-            payload: { logicalParent: bstName },
-          } as any);
-        }
       } else if (v.type === 'HeapDeclNode') {
         const heap = v as HeapDeclNode;
         let elements = heap.initialElements ? heap.initialElements.map(e => e.value) : [];
@@ -1024,7 +1305,11 @@ export class AQIRGenerator {
     const params: SetCameraInstruction['params'] = {};
 
     if (node.mode === 'FOCUS' && node.target) {
-      params.targetId = this.resolveStaticObjectId(node.target);
+      // A tree is framed by its anchor (`bt:<tree>`), which the runtime keeps at the tree's top-left.
+      params.targetId =
+        node.target.type === 'IdentifierNode' && this.treeNames.has(node.target.name)
+          ? `bt:${node.target.name}`
+          : this.resolveStaticObjectId(node.target);
     } else if (node.mode === 'ORBIT' && node.args) {
       params.speed = this.evaluateExpressionNumber(node.args[0]);
     } else if (node.mode === 'POSITION' && node.args) {
@@ -1160,12 +1445,37 @@ export class AQIRGenerator {
       }
       case 'GenericActionNode': {
         const actionNode = stmt as any;
+        if (actionNode.actionName === 'FREE') {
+          // `FREE temp` releases a node's memory; the operand is evaluated at
+          // run time (a pointer variable or expression such as `curr.next`).
+          if (actionNode.args.length !== 1) {
+            throw new Error(`FREE takes exactly one node, e.g. FREE temp (line ${actionNode.pos.line}).`);
+          }
+          this.emit({
+            action: 'LL_FREE',
+            target: this.compileValue(actionNode.args[0]),
+            sourceText: this.exprToString(actionNode.args[0]),
+            lineNumber: actionNode.pos.line,
+          } as any);
+          break;
+        }
         const targetsArraySlot =
-          actionNode.args[0]?.type === 'ArrayAccessNode' && this.arrayNames.has(actionNode.args[0].array.name);
-        const takesValue = targetsArraySlot && (actionNode.actionName === 'UPDATE' || actionNode.actionName === 'INSERT');
+          actionNode.args[0]?.type === 'ArrayAccessNode' &&
+          (this.arrayNames.has(actionNode.args[0].array.name) || this.linkedListNames.has(actionNode.args[0].array.name));
+        const targetsList = actionNode.args[0]?.type === 'IdentifierNode' && this.linkedListNames.has(actionNode.args[0].name);
+        const targetsTree = actionNode.args[0]?.type === 'IdentifierNode' && this.treeNames.has(actionNode.args[0].name);
+        const targetsContainer = actionNode.args[0]?.type === 'IdentifierNode' && this.containerNames.has(actionNode.args[0].name);
+        const takesValue =
+          (targetsArraySlot && (actionNode.actionName === 'UPDATE' || actionNode.actionName === 'INSERT')) ||
+          (targetsList && (actionNode.actionName === 'INSERT_HEAD' || actionNode.actionName === 'INSERT_TAIL')) ||
+          // `INSERT t 65`, `SEARCH t key`, `DELETE t 30`
+          targetsTree ||
+          // `ENQUEUE q node.left`, `PUSH s curr` — a value or a node pointer
+          (targetsContainer && (actionNode.actionName === 'ENQUEUE' || actionNode.actionName === 'PUSH'));
         const resolvedArgs = actionNode.args.map((arg: any, argIndex: number) => {
-          // `UPDATE arr[i] total + arr[i-1]` — the value is an expression the
-          // runtime evaluates when the step executes, not an object reference.
+          // `UPDATE arr[i] total + arr[i-1]` / `INSERT_TAIL list a.val` — the
+          // value is an expression the runtime evaluates when the step
+          // executes, not an object reference.
           if (takesValue && argIndex > 0) return this.compileValue(arg);
           try {
             return this.resolveExpressionId(arg);
@@ -1211,6 +1521,10 @@ export class AQIRGenerator {
         } as SetStateInstruction);
         break;
       }
+      case 'ReturnNode':
+        // Inside a WHILE / LOOP / IF of a function body (checked by analyzeFunctions).
+        this.generateReturn(stmt as ReturnNode);
+        break;
       case 'LoopNode':
         this.generateLoop(stmt as LoopNode);
         break;
@@ -1227,7 +1541,16 @@ export class AQIRGenerator {
           parts: (stmt as PrintNode).args.map((arg) =>
             arg.type === 'IdentifierNode' && this.arrayNames.has(arg.name)
               ? ({ array: arg.name } as unknown as AQIRValue)
-              : this.compileValue(arg)
+              : arg.type === 'IdentifierNode' && this.linkedListNames.has(arg.name)
+                ? ({ list: arg.name } as unknown as AQIRValue)
+                : arg.type === 'IdentifierNode' && this.treeNames.has(arg.name)
+                  ? ({ tree: arg.name } as unknown as AQIRValue)
+                  : arg.type === 'IdentifierNode' && this.containerNames.has(arg.name)
+                    ? ({ container: arg.name } as unknown as AQIRValue)
+                    : arg.type === 'LiteralNode' && typeof arg.value === 'string'
+                      // Printed as written, even when a variable has the same name (`PRINT "top" top`).
+                      ? ({ text: arg.value } as unknown as AQIRValue)
+                      : this.compileValue(arg)
           ),
           lineNumber: stmt.pos.line,
         } as any);
@@ -1367,6 +1690,9 @@ export class AQIRGenerator {
       if (indexExpr.type === 'LiteralNode') {
         const idx = indexExpr.value;
         const logicalName = `${expr.array.name}[${idx}]`;
+        // A linked list's `list[i]` is whatever node is i hops from the head
+        // when the statement runs — resolved (and bounds-checked) at run time.
+        if (this.linkedListNames.has(expr.array.name)) return `${expr.array.name}#${idx}`;
         const id = this.symbolMap.get(logicalName);
         if (!id && this.growableArrays.has(expr.array.name) && typeof idx === 'number' && idx >= 0) {
           // May exist by the time this runs; the runtime reports it if not.
@@ -1374,7 +1700,7 @@ export class AQIRGenerator {
         }
         if (!id) {
           const declaredLength = this.resolveArrayLength(expr.array.name);
-          throw new OutOfBoundsError(idx, declaredLength, expr.array.name, {
+          throw new OutOfBoundsError(idx ?? 'NULL', declaredLength, expr.array.name, {
             line: expr.pos.line,
             column: expr.pos.column,
           });
@@ -1385,7 +1711,7 @@ export class AQIRGenerator {
         if (this.arrayNames.has(expr.array.name)) return `${expr.array.name}#${idx}`;
         return id;
       }
-      if (this.arrayNames.has(expr.array.name)) {
+      if (this.arrayNames.has(expr.array.name) || this.linkedListNames.has(expr.array.name)) {
         // Any index expression (e.g. `arr[hi - 1]`, `arr[(lo + hi) / 2]`) is
         // shipped as its compiled VM value, JSON-encoded when structured, so
         // the runtime evaluates it with the same evaluator as IF conditions.
@@ -1404,8 +1730,15 @@ export class AQIRGenerator {
       const logicalName = expr.name;
       const id = this.symbolMap.get(logicalName);
       // For dynamic tree nodes that are implicitly created (e.g. ROOT CEO), they won't be in the symbolMap yet.
-      // Fallback to their logicalName.
+      // Fallback to their logicalName (a pointer variable such as `curr` is
+      // likewise resolved to the node it holds at run time).
       return id || logicalName;
+    }
+
+    if (expr.type === 'MemberAccessNode') {
+      // `HIGHLIGHT curr.next`, `COMPARE slow fast.next`: which node this is
+      // is only known at run time — ship the compiled expression.
+      return `@expr:${JSON.stringify(this.compileValue(expr))}`;
     }
 
     throw new Error(`Invalid object reference in instruction`);
@@ -1421,6 +1754,9 @@ export class AQIRGenerator {
     if ((expr as any).type === 'GenericActionNode' && (expr as any).actionName === 'LENGTH') {
       const arrayName = ((expr as any).args[0] as any).name;
       return String(this.resolveArrayLength(arrayName));
+    }
+    if (expr.type === 'MemberAccessNode') {
+      return `${this.stringifyIndexExpr(expr.object)}.${expr.member}`;
     }
     throw new Error(`Cannot resolve array index expression at compile time: ${JSON.stringify(expr)}`);
   }

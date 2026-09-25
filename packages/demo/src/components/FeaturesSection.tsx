@@ -56,8 +56,10 @@ const TerminalIcon = () => (
 export function FeaturesSection() {
   const [mounted, setMounted] = useState(false);
 
+  // Fade in on the first frame after mount
   useEffect(() => {
-    setMounted(true);
+    const frame = requestAnimationFrame(() => setMounted(true));
+    return () => cancelAnimationFrame(frame);
   }, []);
 
   return (

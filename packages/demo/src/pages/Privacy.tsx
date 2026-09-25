@@ -4,14 +4,17 @@ import { Footer } from '../components/Footer';
 import './privacy.css';
 
 export default function Privacy() {
-  const [theme, setTheme] = useState<'light' | 'dark'>('dark');
+  const [theme, setTheme] = useState<'light' | 'dark'>(
+    () => (localStorage.getItem('aqvl-docs-theme') ?? 'dark') as 'light' | 'dark'
+  );
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    const saved = (localStorage.getItem('aqvl-docs-theme') ?? 'dark') as 'light' | 'dark';
-    setTheme(saved);
-    document.documentElement.setAttribute('data-theme', saved);
-    requestAnimationFrame(() => setMounted(true));
+    document.documentElement.setAttribute('data-theme', theme);
+    const frame = requestAnimationFrame(() => setMounted(true));
+    return () => cancelAnimationFrame(frame);
+    // Only the saved theme at mount; toggleTheme sets the attribute itself.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const toggleTheme = () => {

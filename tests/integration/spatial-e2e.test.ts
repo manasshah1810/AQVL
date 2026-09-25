@@ -174,7 +174,7 @@ END
 `;
       const aqir = compile(source);
       const camera = actionsOf(aqir.instructions, 'SET_CAMERA')[0];
-      const treeObject = aqir.objects.find((o: any) => o.type === 'BST');
+      const treeObject = aqir.objects.find((o: any) => o.type === 'BINARYTREE');
       expect(camera).toMatchObject({ mode: 'FOCUS' });
       expect(camera.params.targetId).toBe(treeObject!.id);
     });
@@ -294,11 +294,13 @@ END
 `;
       expect(() => compile(source)).not.toThrow();
       const aqir = compile(source);
-      // Initial elements [50, 30, 70] compile to 3 prepended BST_INSERT
-      // instructions (unchanged pre-existing behavior); the user-written
-      // sequence's own animation instructions follow, also unchanged.
+      // Initial elements [50, 30, 70] are built at compile time (the tree
+      // appears fully formed: 3 nodes, 2 child pointers); the user-written
+      // sequence's own animation instructions are unchanged.
       const genericActions = actionsOf(aqir.instructions, 'GENERIC_ACTION').map((i) => i.actionName);
-      expect(genericActions).toEqual(['BST_INSERT', 'BST_INSERT', 'BST_INSERT', 'INORDER', 'CLEAR']);
+      expect(genericActions).toEqual(['INORDER', 'CLEAR']);
+      expect(aqir.objects.filter((o: any) => o.originalType === 'TREE_NODE').map((o: any) => o.value)).toEqual([50, 30, 70]);
+      expect(aqir.objects.filter((o: any) => o.type === 'EDGE').map((o: any) => o.properties.label).sort()).toEqual(['L', 'R']);
       const layout = actionsOf(aqir.instructions, 'SET_LAYOUT_STRATEGY').find((i) => i.targetId === 'myTree');
       expect(layout).toMatchObject({ strategy: 'HIERARCHY' });
     });

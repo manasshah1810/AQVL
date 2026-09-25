@@ -2,6 +2,7 @@ import React, {
   useState,
   useRef,
   useEffect,
+  useLayoutEffect,
   useCallback,
   useMemo,
 } from 'react';
@@ -18,7 +19,7 @@ const AQVL_KEYWORDS = new Set([
   'GRAPH', 'VERTEX', 'GRAPH_EDGE', 'TREE', 'TREE_NODE', 'BINARY_TREE', 'BST',
   'LABEL', 'ANNOTATION', 'LINK', 'RELATION', 'DIRECTED', 'UNDIRECTED',
   'TO', 'FROM', 'PARENT', 'CHILD', 'LEFT_CHILD', 'RIGHT_CHILD', 'SIBLING',
-  'INSERT', 'DELETE', 'INSERT_HEAD', 'INSERT_TAIL', 'DELETE_HEAD', 'DELETE_TAIL',
+  'INSERT', 'DELETE', 'INSERT_HEAD', 'INSERT_TAIL', 'DELETE_HEAD', 'DELETE_TAIL', 'FREE', 'NEW_NODE',
   'MOVE', 'CONNECT', 'DISCONNECT', 'PUSH', 'POP', 'PEEK',
   'ENQUEUE', 'DEQUEUE', 'FRONT', 'REAR', 'VISIT', 'MARK', 'TRAVERSE',
   'ROTATE', 'SEARCH', 'HEAPIFY', 'HEAP_INSERT', 'HEAP_EXTRACT', 'HEAP_DECREASE', 'BUILD_HEAP',
@@ -285,10 +286,12 @@ export function IDEEditor({ initialValue, onChange, readOnly = false, errorMarke
     return measureEditorMetrics(ta, probe);
   }, []);
 
-  // Local value — uncontrolled to preserve cursor
+  // Local value — uncontrolled to preserve cursor. Event handlers read the
+  // latest text from valueRef; rendering reads `text`, the snapshot that
+  // rerender() copies from it.
   const valueRef = useRef<string>(initialValue);
-  const [, forceRender] = useState(0);
-  const rerender = useCallback(() => forceRender((n) => n + 1), []);
+  const [text, setText] = useState(initialValue);
+  const rerender = useCallback(() => setText(valueRef.current), []);
 
   // Track previous initialValue to detect *external* changes (example switch)
   const prevInitialRef = useRef<string>(initialValue);
@@ -306,7 +309,7 @@ export function IDEEditor({ initialValue, onChange, readOnly = false, errorMarke
   const acPrefixRef = useRef<string>('');
 
   // Highlighted HTML (memoized)
-  const highlightedHtml = useMemo(() => highlightCode(valueRef.current), [valueRef.current]); // eslint-disable-line
+  const highlightedHtml = useMemo(() => highlightCode(text), [text]);
 
   // ── Sync external initialValue changes (example switches) ──────────────────
   useEffect(() => {
@@ -521,7 +524,7 @@ export function IDEEditor({ initialValue, onChange, readOnly = false, errorMarke
         const adjustedSelEnd = (selEnd > selStart && value[selEnd - 1] === '\n') ? selEnd - 1 : selEnd;
         const lineEnd   = adjustedSelEnd;
         const selected  = value.slice(lineStart, lineEnd);
-        const dedented  = selected.replace(/^  /gm, '');
+        const dedented  = selected.replace(/^ {2}/gm, '');
         if (dedented !== selected) {
           const removed = selected.length - dedented.length;
           const newValue = value.slice(0, lineStart) + dedented + value.slice(lineEnd);
@@ -675,9 +678,7 @@ export function IDEEditor({ initialValue, onChange, readOnly = false, errorMarke
   }, [updateAutocomplete]);
 
   // ── Line count for gutter ────────────────────────────────────────────────
-  const lineCount = useMemo(() => {
-    return valueRef.current.split('\n').length;
-  }, [valueRef.current]); // eslint-disable-line
+  const lineCount = useMemo(() => text.split('\n').length, [text]);
 
   // ── Error markers (inline diagnostics from the compiler) ───────────────────
   // Map line -> messages, for gutter dots (a line can carry more than one diagnostic).
@@ -694,10 +695,12 @@ export function IDEEditor({ initialValue, onChange, readOnly = false, errorMarke
 
   // Squiggle geometry: one absolutely-positioned span per marker, sized to the
   // offending token (or a single-char fallback when no column is known).
+  // Kept in character units (line / column / length); the layout effect below
+  // measures the editor and turns them into pixels through CSS variables, so
+  // rendering never reads the DOM.
   const errorSquiggles = useMemo(() => {
     if (errorMarkers.length === 0) return [];
-    const lines = valueRef.current.split('\n');
-    const m = getMetrics();
+    const lines = text.split('\n');
     return errorMarkers
       .filter((e) => Number.isFinite(e.line) && e.line >= 1 && e.line <= lines.length)
       .map((e, idx) => {
@@ -711,14 +714,24 @@ export function IDEEditor({ initialValue, onChange, readOnly = false, errorMarke
         }
         return {
           key: `${e.line}:${e.column ?? 0}:${idx}`,
-          top: m.padTop + (e.line - 1) * m.lineHeight,
-          left: m.padLeft + startCol * m.charWidth,
-          width: length * m.charWidth,
+          lineIndex: e.line - 1,
+          startCol,
+          length,
           message: e.message,
         };
       });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [errorMarkers, valueRef.current, getMetrics]);
+  }, [errorMarkers, text]);
+
+  // Pixel metrics for the squiggles, measured off the live DOM after each layout.
+  useLayoutEffect(() => {
+    const layer = errorOverlayRef.current;
+    if (!layer) return;
+    const m = getMetrics();
+    layer.style.setProperty('--sq-line-height', `${m.lineHeight}px`);
+    layer.style.setProperty('--sq-char-width', `${m.charWidth}px`);
+    layer.style.setProperty('--sq-pad-top', `${m.padTop}px`);
+    layer.style.setProperty('--sq-pad-left', `${m.padLeft}px`);
+  }, [errorSquiggles, getMetrics]);
 
   const [currentLine, setCurrentLine] = useState(1);
 
@@ -775,7 +788,11 @@ export function IDEEditor({ initialValue, onChange, readOnly = false, errorMarke
               <span
                 key={sq.key}
                 className="aqvl-error-squiggle"
-                style={{ top: sq.top, left: sq.left, width: sq.width }}
+                style={{
+                  top: `calc(var(--sq-pad-top) + ${sq.lineIndex} * var(--sq-line-height))`,
+                  left: `calc(var(--sq-pad-left) + ${sq.startCol} * var(--sq-char-width))`,
+                  width: `calc(${sq.length} * var(--sq-char-width))`,
+                }}
                 title={sq.message}
               />
             ))}

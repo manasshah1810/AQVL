@@ -1,18 +1,11 @@
 import React, { useState } from 'react';
+import type { AQIRProgram, PipelineState, ProgramNode, Token } from '../types/pipeline';
 
 interface IDECompilerPanelProps {
-  tokens: any[];
-  ast: any;
-  aqir: any;
-  pipelineState: {
-    lexer: 'pending' | 'success' | 'error';
-    parser: 'pending' | 'success' | 'error';
-    semantic: 'pending' | 'success' | 'error';
-    optimizer: 'pending' | 'success' | 'error';
-    generator: 'pending' | 'success' | 'error';
-    runtime: 'pending' | 'success' | 'error';
-    expandedAst?: any;
-  };
+  tokens: Token[];
+  ast: ProgramNode | null;
+  aqir: AQIRProgram | null;
+  pipelineState: PipelineState;
 }
 
 const PIPELINE_STAGES = [

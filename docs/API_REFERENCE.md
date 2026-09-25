@@ -25,37 +25,38 @@ This document is based on verified source inspection of:
 
 ## 1. Binary Search Tree (BST)
 
-Declared with `BST name [= [n, ...]]`. Fully implemented in
-`BSTAlgorithms.ts` / `BSTEngine.ts`.
+Declared with `BST name` (empty) or `BST name = [50, 30, 70]` (keys inserted
+in that order at compile time — the tree appears fully built; duplicate keys
+are a compile error). A BST is a pointer tree: everything in §6 (pointer code,
+recursion, queues / stacks of pointers) works on it. Implemented in
+`packages/runtime/src/core/algorithms/TreeEngine.ts`.
+
+The built-ins below animate the same node-by-node walk and pointer relinking
+you would write by hand. The tree name may be omitted when the program has a
+single tree (`INSERT 50`).
 
 | Operation | Syntax | Description | Complexity |
 |---|---|---|---|
-| Insert | `INSERT value` | Insert a value, with animated traversal to its insertion point. | O(h); O(log n) balanced, O(n) worst case (degenerate tree) |
-| Delete | `DELETE value` | Remove a value. Handles leaf, one-child, and two-children (via inorder successor) cases. | O(h); O(log n) balanced, O(n) worst case |
-| Search | `SEARCH value` | Search for a value. | O(h); O(log n) balanced, O(n) worst case |
-| Clear | `CLEAR` | Remove all nodes. | O(n) |
-| Inorder traversal | `INORDER` | Visit nodes in sorted order (left, root, right). | O(n) |
-| Preorder traversal | `PREORDER` | Visit nodes root, left, right. | O(n) |
-| Postorder traversal | `POSTORDER` | Visit nodes left, right, root. | O(n) |
-| Level-order traversal | `LEVELORDER` | Visit nodes breadth-first by level. | O(n) |
-| Minimum | `MIN` / `MIN_VALUE` | Find the minimum value (leftmost node). | O(h) |
-| Maximum | `MAX` / `MAX_VALUE` | Find the maximum value (rightmost node). | O(h) |
-| Height | `HEIGHT` | Height of the tree. | O(n) |
-| Size | `SIZE` | Number of nodes. | O(n) or O(1) if tracked incrementally |
-| Root | `ROOT` | Return/highlight the root node. | O(1) |
-| Is empty | `IS_EMPTY` | Whether the tree has zero nodes. | O(1) |
+| Insert | `INSERT t value` | Walk down comparing, link a new node where the walk falls off. Existing keys are not inserted twice. | O(h) |
+| Delete | `DELETE t value` | Leaf: unlink. One child: parent adopts it. Two children: copy the inorder successor's key, unlink the successor. The removed node is freed. | O(h) |
+| Search | `SEARCH t value` | Follow one root-to-leaf path. | O(h) |
+| Min / Max | `MIN t` / `MAX t` | Follow left / right pointers to the end. | O(h) |
+| Traversals | `INORDER t`, `PREORDER t`, `POSTORDER t`, `LEVELORDER t` | Visit every node (inorder = sorted). | O(n) |
+| Height / Size / Leaves | `HEIGHT t`, `SIZE t`, `LEAVES t` | Measurements. | O(n) |
+| Rotate | `ROTATE t value "LEFT"` / `"RIGHT"` | Rotation at a node (3 pointer writes). | O(n) to find the parent |
+| Mirror | `MIRROR t` | Swap every left/right pair. | O(n) |
+| Clear | `CLEAR t` | Free every node in postorder. | O(n) |
+| Root / empty | `ROOT t`, `IS_EMPTY t` | Report the root / whether it is NULL. | O(1) |
 
 ```aqvl
 SCENE BSTOperations
 DECLARE
-  BST myTree
+  BST t = [50, 30, 70, 20, 40]
 SEQUENCE
-  INSERT 50
-  INSERT 30
-  INSERT 70
-  SEARCH 60
-  DELETE 20
-  CLEAR
+  INSERT t 60
+  SEARCH t 60
+  DELETE t 30
+  INORDER t
 END
 ```
 
@@ -92,29 +93,46 @@ END
 
 ## 3. Stacks
 
-Declared with `STACK name [= [n, ...]]`. Push/pop/peek are implemented in
-`packages/runtime/src/core/AnimationController.ts` (handlers for
-`PUSH`/`POP`/`PEEK` GENERIC_ACTION instructions).
+Declared with `STACK name [= [value, ...]]` (values listed bottom to top).
+Every stack is compiled to a container (`ctr:<name>` anchor plus one
+`CONTAINER_ITEM` per element) that the runtime's `TreeEngine` animates
+(`containerAdd` / `containerTake` / `containerClear` in
+`packages/runtime/src/core/algorithms/TreeEngine.ts`). Without a tree in the
+program it is drawn as a vertical column (bottom → top, the top tagged `TOP`);
+in a tree program it is a row under the trees and can hold node pointers.
 
 | Operation | Syntax | Description | Complexity |
 |---|---|---|---|
-| Push | `PUSH stack value` | Push a value onto the top of the stack. | O(1) |
-| Pop | `POP stack` | Remove and return the top value. Throws `StackUnderflowError` on an empty stack. | O(1) |
-| Peek | `PEEK stack` | Look at the top value without removing it. | O(1) |
-| Compare | `COMPARE a b` | Compare two elements. | O(1) |
-| Swap | `SWAP a b` | Swap two elements. | O(1) |
-| Highlight | `HIGHLIGHT target` | Highlight an element (e.g. top of stack). | O(1) |
+| Push | `PUSH s value` | Put a value on top. `value` is any expression: `5`, `"("`, `arr[i]`, `total + 1`, a node pointer. | O(1) |
+| Pop | `x = POP(s)` / `POP s` | Remove the top value (and return it, in an expression). Empty stack → stack-underflow error. | O(1) |
+| Peek | `x = PEEK(s)` / `PEEK s` | Read the top value without removing it. Empty stack → stack-underflow error. | O(1) |
+| Is empty | `IS_EMPTY(s)` / `IS_EMPTY s` | True when the stack holds nothing (the statement form logs the answer). | O(1) |
+| Length | `LENGTH(s)` / `SIZE s` | Number of elements (the statement form logs it). | O(1) |
+| Clear | `CLEAR s` | Remove every element. | O(n) |
+| Print | `PRINT s` | Prints the stack bottom → top, e.g. `[1, 2, "("]`. | O(n) |
+| Highlight | `HIGHLIGHT s[i]` | Highlight one of the initially declared elements (0 = bottom). | O(1) |
+
+`AND` / `OR` short-circuit when the right side reads a stack, so
+`WHILE LENGTH(s) > 0 AND PEEK(s) < x` never peeks at an empty stack.
 
 ```aqvl
 SCENE StackDemo
 DECLARE
-  STACK s = [1, 2, 3]
+  STACK s = []
+  ARRAY arr = [1, 2, 3]
 SEQUENCE
-  PUSH s 4
-  PEEK s
-  POP s
+  LOOP i FROM 0 TO LENGTH(arr) - 1
+    PUSH s arr[i]
+  END
+  WHILE LENGTH(s) > 0
+    x = POP(s)
+    PRINT "Popped" x
+  END
 END
 ```
+
+See the Playground's Stacks examples (`packages/demo/src/examples/StackLibrary.ts`)
+for complete algorithms.
 
 ---
 
@@ -147,26 +165,74 @@ END
 ## 5. Linked Lists
 
 Declared with `LINKEDLIST` (default: singly-linked), `SINGLY LINKEDLIST`,
-`DOUBLY LINKEDLIST`, or `CIRCULAR LINKEDLIST`. All three variants share the
-same operation set.
+`DOUBLY LINKEDLIST`, or `CIRCULAR LINKEDLIST`; `= []` declares an empty list.
+Implemented in `packages/runtime/src/core/algorithms/LinkedListEngine.ts`.
+
+Algorithms are written as pointer code, the way they are in C. A node
+reference is an ordinary value held in a variable; `NULL` is the null
+pointer.
+
+| Expression / statement | Meaning |
+|---|---|
+| `list.head` | First node, or `NULL` for an empty list. Assignable: `list.head = n`. |
+| `list.tail` | Last node (found by following `next` from the head). Read-only. |
+| `p.val` | The node's value (`p.value` / `p.data` also work). Assignable. |
+| `p.next` | Next node or `NULL`. Assignable: `prev.next = curr.next`. |
+| `p.prev` | Previous node or `NULL` — `DOUBLY` lists only. Assignable. |
+| `n = NEW_NODE(list, value)` | Allocate an unlinked node (it appears in the list's heap-memory area). |
+| `FREE p` | Release a node's memory (`FREE NULL` does nothing). |
+| `list[i]`, `LENGTH(list)` | The node `i` hops from the head (read as its value inside expressions); node count. |
+| `PRINT list` | Prints e.g. `10 -> 20 -> NULL` (or `... -> back to 10` for a cycle). |
+| `HIGHLIGHT p` / `COMPARE a b` | Accept pointer variables and pointer expressions (`HIGHLIGHT curr.next`). |
+| `SWAP a b` | On two list nodes, exchanges their values. |
+
+`AND` / `OR` short-circuit, so `WHILE fast != NULL AND fast.next != NULL`
+never dereferences `NULL`.
+
+**Visualization.** Each pointer move (`curr = curr.next`) and each pointer
+write is its own animated step, with the arrow followed/changed highlighted
+and a console line explaining it. The first node is tagged `HEAD` and the
+last `TAIL`; pointer variables appear as tags on the node they point to.
+A node not reachable from the head — freshly allocated, or unlinked by a
+pointer write that skips over it — moves to the list's heap-memory row
+below the list until `FREE`; one that nothing points to any more is flagged
+`LEAKED`. Several lists are laid out side by side.
+
+**Run-time errors:** NULL pointer dereference, use after free, double free,
+`p.prev` on a non-doubly list, `list[i]` out of range, assigning a
+non-node to a pointer field.
+
+Built-in shortcuts — each animates the same pointer walk and relinking
+you would write by hand (there is no tail pointer, so reaching the tail
+walks the list):
 
 | Operation | Syntax | Description | Complexity |
 |---|---|---|---|
-| Insert at head | `INSERT_HEAD list value` | Insert a new node at the head. | O(1) |
-| Insert at tail | `INSERT_TAIL list value` | Insert a new node at the tail. | O(1) with tail pointer, O(n) otherwise |
-| Delete head | `DELETE_HEAD list` | Remove the head node. | O(1) |
-| Delete tail | `DELETE_TAIL list` | Remove the tail node. | O(1) doubly-linked with tail pointer, O(n) singly-linked |
-| Reverse | `REVERSE list` | Reverse the list in place. | O(n) |
+| Insert at head | `INSERT_HEAD list value` | New node → old head, then head → new node. | O(1); O(n) circular (tail must be re-pointed) |
+| Insert at tail | `INSERT_TAIL list value` | Walk to the last node, link the new node after it. | O(n) |
+| Delete head | `DELETE_HEAD list` | Head → second node, then free the old head. | O(1); O(n) circular |
+| Delete tail | `DELETE_TAIL list` | Walk to the second-to-last node, unlink and free the tail. | O(n) |
+| Insert at position | `INSERT list[i] value` | Walk to `i - 1`, link a new node after it. | O(i) |
+| Delete at position | `DELETE list[i]` | Walk to `i - 1`, unlink and free the next node. | O(i) |
+| Update at position | `UPDATE list[i] value` | Walk to `i`, change its value. | O(i) |
+| Search | `SEARCH list value` | Compare values from the head until found or the end. | O(n) |
+| Reverse | `REVERSE list` | In-place prev / curr / next reversal (circular lists stay circular). | O(n) |
 
 ```aqvl
-SCENE LinkedListDemo
+SCENE ReverseList
 DECLARE
-  DOUBLY LINKEDLIST list = [1, 2, 3]
+  LINKEDLIST list = [1, 2, 3, 4, 5]
 SEQUENCE
-  INSERT_HEAD list 0
-  INSERT_TAIL list 4
-  DELETE_HEAD list
-  REVERSE list
+  prev = NULL
+  curr = list.head
+  WHILE curr != NULL
+    next = curr.next
+    curr.next = prev
+    prev = curr
+    curr = next
+  END
+  list.head = prev
+  PRINT "Reversed:" list
 END
 ```
 
@@ -174,8 +240,57 @@ END
 
 ## 6. General / Binary Trees
 
-Declared with `TREE` / `BINARY_TREE`, or built ad hoc via `ROOT`/`CHILD`
-actions. Implemented in
+### Binary trees (pointer model)
+
+Declared with `BINARY_TREE t = [1, 2, 3, NULL, 5]` — level order, left to
+right, `NULL` for a missing child — or `BINARY_TREE t = []`. Implemented in
+`packages/runtime/src/core/algorithms/TreeEngine.ts`.
+
+| Expression / statement | Meaning |
+|---|---|
+| `t.root` | The top node or `NULL`. Assignable. |
+| `node.val` / `node.left` / `node.right` | Value and child pointers. Assignable (`parent.left = n`). |
+| `n = NEW_NODE(t, value)` | Allocate a node (children NULL); it waits in heap memory until linked. |
+| `FREE n` | Release a node. |
+| `LENGTH(t)` | Nodes reachable from the root. |
+| `PRINT t` | `Level 0: 1 \| Level 1: 2 3 \| ...` |
+| `QUEUE q = []`, `STACK s = []` | In a program with a tree they hold values or node pointers (a `STACK` does in every program): `ENQUEUE q x`, `PUSH s x`, and in expressions `DEQUEUE(q)`, `POP(s)`, `FRONT(q)`, `PEEK(s)`, `IS_EMPTY(q)`, `LENGTH(q)`. |
+| `MAX(a, b)`, `MIN(a, b)`, `ABS(x)` | Arithmetic built-ins. |
+
+Recursive `FUNCTION`s (see LANGUAGE_SPEC §7) are the natural way to write
+tree algorithms. **Visualization:** every pointer move, pointer write, call
+and return is its own step with a console line; pointer variables are tags on
+their node, the root is tagged `ROOT`, nodes waiting on the call stack are
+tinted, and a call-stack panel is drawn beside the tree. A node cut out of the
+tree moves to its heap-memory row until `FREE`; one nothing points to is
+flagged `LEAKED`.
+
+**Run-time errors:** NULL pointer dereference, use after free, double free,
+`node.parent` (nodes have no parent pointer), a node made its own child,
+`DEQUEUE` / `POP` on an empty container.
+
+The built-ins of §1 (except `DELETE`, which needs BST order) also work on a
+binary tree; `INSERT t v` fills the first free child slot in level order, and
+`SEARCH` / `MIN` / `MAX` check every node.
+
+```aqvl
+SCENE Height
+DECLARE
+  BINARY_TREE t = [1, 2, 3, 4]
+  FUNCTION height(node)
+    IF node == NULL
+      RETURN 0
+    END
+    RETURN 1 + MAX(height(node.left), height(node.right))
+  END
+SEQUENCE
+  PRINT "height" height(t.root)
+END
+```
+
+### General trees
+
+Built ad hoc with `ROOT`/`CHILD` actions (no declaration). Implemented in
 `packages/runtime/src/core/algorithms/BinaryTreeAlgorithms.ts`.
 
 | Operation | Syntax | Description | Complexity |
@@ -183,20 +298,10 @@ actions. Implemented in
 | Root | `ROOT value` | Create/set the root node. | O(1) |
 | Add child | `CHILD parent child` | Attach a child node to a parent. | O(1) |
 | Mirror/invert | `MIRROR` / `INVERT` | Recursively swap left/right children of every node. | O(n) |
-| Clone/copy | `CLONE` / `COPY` | **Caveat:** source comments this as "not fully implemented yet" — it currently only logs a warning and does not actually clone the tree. Do not rely on it. | N/A (not functional) |
 | Remove leaves | `REMOVE_LEAVES` / `PRUNE` | Remove all current leaf nodes. | O(n) |
-| Left view | `LEFT_VIEW` | Leftmost node visible at each level. | O(n) |
-| Right view | `RIGHT_VIEW` | Rightmost node visible at each level. | O(n) |
-| Top view | `TOP_VIEW` | Nodes visible from directly above. | O(n log n) typical (sorting by horizontal distance) |
-| Bottom view | `BOTTOM_VIEW` | Nodes visible from directly below. | O(n log n) typical |
-| Boundary traversal | `BOUNDARY` | Traverse the boundary (left edge, leaves, right edge). | O(n) |
-| Vertical order | `VERTICAL_ORDER` | Group nodes by horizontal distance from root. | O(n log n) typical |
-| Diagonal traversal | `DIAGONAL` | Traverse nodes along diagonals. | O(n) |
-| Max value | `MAX_VALUE` | Maximum value in the tree. | O(n) |
-| Min value | `MIN_VALUE` | Minimum value in the tree. | O(n) |
-| Sum | `SUM` | Sum of all node values. | O(n) |
-| Average | `AVERAGE` | Average of all node values. | O(n) |
-| Max level sum | `MAX_LEVEL_SUM` | Level with the maximum sum of values. | O(n) |
+| Views | `LEFT_VIEW`, `RIGHT_VIEW`, `TOP_VIEW`, `BOTTOM_VIEW` | Nodes visible from a side. | O(n) – O(n log n) |
+| Boundary / vertical / diagonal | `BOUNDARY`, `VERTICAL_ORDER`, `DIAGONAL` | Special traversals. | O(n) – O(n log n) |
+| Aggregates | `MAX_VALUE`, `MIN_VALUE`, `SUM`, `AVERAGE`, `MAX_LEVEL_SUM` | Over all node values. | O(n) |
 
 ```aqvl
 SCENE TreeOperations
@@ -206,16 +311,8 @@ SEQUENCE
     CHILD A C
     MIRROR
     LEFT_VIEW
-    RIGHT_VIEW
 END
 ```
-
-> **Important:** traversal/search/delete keywords such as `PREORDER`,
-> `LEVELORDER`, `SEARCH`, `DELETE` are confirmed to work in the `ROOT`/`CHILD`
-> style. `HEIGHT`, `SIZE`, `ROOT` (as a query), `IS_EMPTY`, `MIN`, `MAX` are
-> confirmed **only for `BST`** (§1), not for general/binary trees. See §11 for
-> the large set of tree-query keywords (`LEAVES`, `IS_BALANCED`, `LCA`, `DEPTH`,
-> etc.) that parse but have no confirmed runtime handler for any tree type.
 
 ---
 

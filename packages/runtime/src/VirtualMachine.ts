@@ -34,6 +34,7 @@ import {
   type ExecutionFrame,
   type ExecutionResult,
   type ResolvedPosition,
+  type SetVarInstruction,
 } from './types';
 import { LayoutEngine, type LayoutElementInput, type LayoutEdgeInput } from './layout/LayoutEngine';
 import type {
@@ -105,6 +106,38 @@ interface InternalFrame extends FrameInfo {
 /** Called once per executed instruction. Return `false` to stop `run()` early (e.g. for pause). */
 export type StepCallback = (frame: ExecutionFrame) => Promise<void | boolean> | void | boolean;
 
+/**
+ * Called after a SET_VAR stores `value` into user variable `name` (compiler
+ * temporaries starting with `__` are skipped). Resolves to true when it
+ * animated something — e.g. a pointer variable moving to another node —
+ * which makes the step visible.
+ */
+export type VariableObserver = (
+  name: string,
+  value: unknown,
+  previous: unknown,
+  instruction: SetVarInstruction
+) => Promise<boolean> | boolean;
+
+/**
+ * A user-function call entered (`kind: 'call'`, after its arguments are bound
+ * and its frame pushed) or returned (`kind: 'return'`, after its frame is
+ * popped). `depth` is the number of active frames including the callee's.
+ * Resolves to true when it animated something, which makes the step visible.
+ */
+export type CallObserver = (event: {
+  kind: 'call' | 'return';
+  functionName: string;
+  /** Parameter name -> bound value (for a return: the call's arguments). */
+  args?: Record<string, unknown>;
+  /** The returned value (return only; undefined for a bare RETURN). */
+  value?: unknown;
+  depth: number;
+}) => Promise<boolean> | boolean;
+
+/** Reads `object.member` (e.g. `curr.next`, `list.head`) for `{ member, object }` operands. */
+export type MemberReader = (object: unknown, member: string, objectExpr: unknown) => unknown;
+
 /** Called for every non-control-flow (legacy, action-based) instruction. */
 export type LegacyInstructionHandler = (instruction: AQIRInstruction, state: VMState) => Promise<void> | void;
 
@@ -129,6 +162,10 @@ export class AQVLVirtualMachine {
 
   private stepCounter = 0;
   private lastReturnValue: unknown;
+  /** Function the most recent RET returned from (for the call observer). */
+  private lastReturnFrom?: string;
+  /** Parameter values of the call the most recent RET returned from. */
+  private lastReturnArgs: Record<string, unknown> = {};
 
   // --- Geometry state (SET_LAYOUT_STRATEGY / COMPUTE_LAYOUT / SET_POSITION / SET_CAMERA) ---
   private readonly layoutEngine = new LayoutEngine();
@@ -169,6 +206,8 @@ export class AQVLVirtualMachine {
         }
         continue;
       }
+      // A queue / stack's anchor is its name label, not one of its slots.
+      if (obj.type === 'CONTAINER') continue;
       if (!grouped.has(obj.logicalParent)) grouped.set(obj.logicalParent, []);
       grouped.get(obj.logicalParent)!.push(obj);
     }
@@ -253,6 +292,10 @@ export class AQVLVirtualMachine {
     // Evaluated eagerly (both sides), which is safe: AQVL expressions have no side effects.
     'AND': (l, r) => Boolean(l) && Boolean(r),
     'OR': (l, r) => Boolean(l) || Boolean(r),
+    // Built-in functions `MAX(a, b)`, `MIN(a, b)`, `ABS(x)` (compiled to these operators).
+    'MAX': (l, r) => Math.max(l, r),
+    'MIN': (l, r) => Math.min(l, r),
+    'ABS': (l) => Math.abs(l),
   };
 
   /**
@@ -264,6 +307,47 @@ export class AQVLVirtualMachine {
   private elementReader?: (arrayName: string, index: number) => unknown;
   /** Current length of an array, for `{ len }` operands (`LENGTH(arr)` of a resizable array). */
   private lengthReader?: (arrayName: string) => number;
+
+  private memberReader?: MemberReader;
+  private variableObserver?: VariableObserver;
+  private scopeObserver?: () => void;
+  private callObserver?: CallObserver;
+
+  /** Observes user-function calls and returns (see `CallObserver`), e.g. to animate recursion. */
+  public setCallObserver(observer: CallObserver): void {
+    this.callObserver = observer;
+  }
+
+  /** Name of the function executing now, from the outermost frame inwards (the call stack). */
+  public getCallStack(): { functionName: string; locals: Record<string, unknown> }[] {
+    return this.frames.map((f) => ({ functionName: f.functionName, locals: { ...f.locals } }));
+  }
+
+  /** Supplies `object.member` reads (linked-list fields), see `MemberReader`. */
+  public setMemberReader(reader: MemberReader): void {
+    this.memberReader = reader;
+  }
+
+  /** Observes user-variable assignments (see `VariableObserver`) and scope exits (variables going out of scope). */
+  public setVariableObserver(observer: VariableObserver, onScopeExit?: () => void): void {
+    this.variableObserver = observer;
+    this.scopeObserver = onScopeExit;
+  }
+
+  /** The variable's current value, or `undefined` when no such variable is in scope. */
+  public tryGetVariable(name: string): unknown {
+    return this.hasVariable(name) ? this.getVariable(name) : undefined;
+  }
+
+  /** Every user variable visible from the current scope, innermost binding winning. */
+  public getVisibleVariables(): Record<string, unknown> {
+    const out: Record<string, unknown> = {};
+    for (const scope of this.globalScopes) Object.assign(out, scope);
+    const frame = this.frames[this.frames.length - 1];
+    if (frame) for (const scope of frame.scopes) Object.assign(out, scope);
+    for (const key of Object.keys(out)) if (key.startsWith('__')) delete out[key];
+    return out;
+  }
 
   public setElementReader(
     reader: (arrayName: string, index: number) => unknown,
@@ -299,8 +383,19 @@ export class AQVLVirtualMachine {
       }
       return this.elementReader(elem, idx);
     }
+    if (expr !== null && typeof expr === 'object' && 'member' in (expr as any) && 'object' in (expr as any)) {
+      const { member, object } = expr as { member: string; object: unknown };
+      if (!this.memberReader) {
+        throw new Error(`Cannot read ".${member}": no linked-list data is attached to this program.`);
+      }
+      return this.memberReader(this.evaluateExpression(object), member, object);
+    }
     if (expr !== null && typeof expr === 'object' && 'op' in (expr as any) && 'left' in (expr as any) && 'right' in (expr as any)) {
       const { op, left, right } = expr as { op: string; left: unknown; right: unknown };
+      // Short-circuit, as in C: `fast != NULL AND fast.next != NULL` must
+      // not evaluate `fast.next` when `fast` is NULL.
+      if (op === 'AND') return Boolean(this.evaluateExpression(left)) && Boolean(this.evaluateExpression(right));
+      if (op === 'OR') return Boolean(this.evaluateExpression(left)) || Boolean(this.evaluateExpression(right));
       const apply = AQVLVirtualMachine.BINARY_OPS[op];
       if (!apply) {
         throw new Error(`Unsupported binary operator "${op}" in expression.`);
@@ -552,6 +647,10 @@ export class AQVLVirtualMachine {
         const frame = this.frames.pop()!;
         this.pc = frame.returnAddress;
         this.lastReturnValue = returnValue;
+        this.lastReturnFrom = frame.functionName;
+        const params = this.functionTable[frame.functionName]?.params ?? [];
+        this.lastReturnArgs = {};
+        for (const p of params) this.lastReturnArgs[p] = frame.locals[p];
         // Store into the call site's temp variable, now that the callee's
         // frame is gone and the top of the stack is the caller's own frame
         // (or the global scope, for a call made outside any function).
@@ -616,9 +715,34 @@ export class AQVLVirtualMachine {
     // handler can't feed mutations back into frames/globals/positions/camera,
     // so once captured, only `pc` (advanced right after) can still differ.
     let stateBody: Omit<VMState, 'pc'> | undefined;
+    let animated = false;
 
     if (isControlFlowInstruction(instr)) {
+      const setVar = instr.opcode === AQIROpcode.SET_VAR && this.variableObserver && !instr.name.startsWith('__') ? instr : null;
+      const previous = setVar ? this.tryGetVariable(setVar.name) : undefined;
       this.executeControlFlow(instr);
+      if (setVar) {
+        animated = (await this.variableObserver!(setVar.name, this.getVariable(setVar.name), previous, setVar)) === true;
+      } else if (instr.opcode === AQIROpcode.CALL && this.callObserver) {
+        const frame = this.frames[this.frames.length - 1];
+        animated = (await this.callObserver({
+          kind: 'call',
+          functionName: frame.functionName,
+          args: { ...frame.locals },
+          depth: this.frames.length,
+        })) === true;
+      } else if (instr.opcode === AQIROpcode.RET && this.callObserver) {
+        animated = (await this.callObserver({
+          kind: 'return',
+          functionName: this.lastReturnFrom ?? '',
+          args: this.lastReturnArgs,
+          value: this.lastReturnValue,
+          depth: this.frames.length + 1,
+        })) === true;
+        if (!animated) this.scopeObserver?.();
+      } else if (instr.opcode === AQIROpcode.POP_SCOPE || instr.opcode === AQIROpcode.RET) {
+        this.scopeObserver?.();
+      }
     } else if (GEOMETRY_ACTIONS.has((instr as AQIRInstruction).action)) {
       this.executeGeometryInstruction(instr as AQIRInstruction);
       this.pc++;
@@ -632,6 +756,7 @@ export class AQVLVirtualMachine {
 
     const finalState: VMState = stateBody ? { pc: this.pc, ...stateBody } : this.getState();
     const frame = this.emitExecutionFrame(instr, finalState);
+    if (animated) frame.animated = true;
     const done = this.pc >= this.instructions.length;
     return { done, frame };
   }

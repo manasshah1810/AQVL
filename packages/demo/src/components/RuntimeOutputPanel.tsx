@@ -1,4 +1,3 @@
-/// <reference types="react" />
 import React, { useEffect, useRef } from 'react';
 
 export interface RuntimeLogEntry {

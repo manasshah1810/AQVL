@@ -82,9 +82,9 @@ program (though not mixed within the same block):
 1. **Animation/scripting grammar** — used inside `SEQUENCE`, and inside
    `LOOP ... END` / `IF ... END` blocks. This is the grammar used to script and
    animate operations on data structures.
-2. **Function-body / VM grammar** — brace-delimited, C-style, used only inside
-   `FUNCTION name(params) { ... }` bodies declared in a `DECLARE` block. This
-   grammar supports full `IF { } ELSE { }` / `ELSE IF { }` chains and `RETURN`.
+2. **Function bodies** — `FUNCTION name(params) ... END` (or `{ ... }`)
+   declared in a `DECLARE` block. A body accepts every animation statement
+   plus `RETURN`; `IF cond { } ELSE { }` brace chains are also accepted.
 
 The two grammars differ specifically in how `IF` works (see §5) and in block
 delimiters (`END` vs `{ }`).
@@ -109,7 +109,7 @@ delimiters (`END` vs `{ }`).
 ### 4.2 Symbols
 
 ```
-= [ ] + , { } : - < > ( ) * / ; <- -> <-> <= >= == !=
+= [ ] + , { } : - < > ( ) * / ; . <- -> <-> <= >= == !=
 ```
 
 ### 4.3 Operators
@@ -135,7 +135,8 @@ END
 ### 4.5 Expression AST node kinds
 
 `IdentifierNode`, `ArrayAccessNode` (`arr[expr]`), `BinaryOpNode`, `LiteralNode`
-(number / string / color), `CallNode` (`name(args...)`).
+(number / string / color / `NULL`), `CallNode` (`name(args...)`),
+`MemberAccessNode` (`expr.member`).
 
 ---
 
@@ -172,7 +173,14 @@ array name prints the whole array (`PRINT "Result:" arr`).
 ### 5.1b Expressions
 
 Precedence, loosest first: `OR`, `AND`, comparisons (`< > <= >= == !=`),
-`+ -`, `* / %`; parentheses group. `arr[i]` inside an expression reads the
+`+ -`, `* / %`; parentheses group. `AND` / `OR` short-circuit.
+
+Linked-list pointer expressions: `NULL` is the null pointer; `x.member`
+reads a field — `list.head`, `list.tail`, `node.val`, `node.next`,
+`node.prev` — and may be chained (`fast.next.next`). A field is also an
+assignment target (`prev.next = curr.next`, `list.head = n`).
+`NEW_NODE(list, value)` allocates a node and `FREE p` releases one. See
+`docs/API_REFERENCE.md` §5. `arr[i]` inside an expression reads the
 element's *current* value, and `LENGTH(arr)` its current length. Array
 targets (`SWAP arr[i] arr[j]`, `UPDATE arr[i] expr`, `INSERT arr[i] expr`,
 `DELETE arr[i]`) are resolved at run time by current index; an index out
@@ -229,28 +237,52 @@ END
 
 ## 7. Functions, recursion, and scoping
 
-Functions are declared inside a scene's `DECLARE` block using the VM grammar and
-may be recursive. Function bodies may contain nested `FUNCTION` declarations,
-`RETURN [expr]`, `IF`/`ELSE IF`/`ELSE` (VM form), and assignment/call expression
-statements.
+Functions are declared inside a scene's `DECLARE` block and may be recursive.
+Two body forms are accepted:
+
+- `FUNCTION name(params) ... END` — the body accepts **every** SEQUENCE
+  statement (`WHILE`, `LOOP`, `IF ... END`, `PRINT`, `HIGHLIGHT`, pointer
+  writes, `FREE`, ...) plus `RETURN [expr]`, which may appear inside loops and
+  IFs;
+- `FUNCTION name(params) { ... }` — the same statements, brace-delimited; `IF
+  cond { ... } ELSE { ... }` is accepted anywhere.
+
+`RETURN` outside a function is a syntax error. Parameters and variables first
+assigned inside a function are local to that call; assigning a parameter
+(e.g. `remaining = remaining - node.val`) changes only that call's copy.
 
 ```bnf
-function_decl ::= "FUNCTION" identifier "(" param_list? ")" "{" vm_statement* "}"
+function_decl ::= "FUNCTION" name "(" param_list? ")" ( statement* "END" | "{" statement* "}" )
 ```
 
 ```aqvl
 SCENE Fibonacci
 DECLARE
-  FUNCTION fib(n) {
-    IF n <= 1 {
+  FUNCTION fib(n)
+    IF n <= 1
       RETURN n
-    }
+    END
     RETURN fib(n - 1) + fib(n - 2)
-  }
+  END
 SEQUENCE
   result = fib(5)
 END
 ```
+
+Names: only the structural words (`SCENE`, `DECLARE`, `SEQUENCE`, `END`, `IF`,
+`ELSE`, `WHILE`, `LOOP`, `FUNCTION`, `RETURN`, `AND`, `OR`, `NULL`, `TO`,
+`FROM`, `INTO`, `PRINT`, `LENGTH`, `SET`, `STATE`, `COMPARE`, `SWAP`, `WAIT`,
+`HIGHLIGHT`, `LINK`, `FREE`, `LAYOUT`, `CAMERA`, `POSITION` and the structure
+declaration keywords) are reserved. Command words such as `node`, `root`,
+`height`, `size`, `level`, `sum`, `min`, `max`, `search`, `insert` are commands
+only at the start of a statement and can otherwise be used as variable and
+function names (`FUNCTION height(node)`).
+
+Built-in expression functions: `MAX(a, b)`, `MIN(a, b)`, `ABS(x)`,
+`NEW_NODE(structure, value)`, and — for every stack, and the queues of a tree program —
+`DEQUEUE(q)`, `POP(s)`, `FRONT(q)`, `PEEK(s)`, `IS_EMPTY(x)`. `AND` / `OR`
+short-circuit when their right side reads a queue / stack
+(`LENGTH(s) > 0 AND PEEK(s) < x` never peeks at an empty stack).
 
 Scoping is lexical, implemented via chained symbol tables: global → scene →
 loop (see §8). `analyzeFunctions` (semantics/analysis.ts) validates function
@@ -305,8 +337,8 @@ contents (`= [...]` / `= {...}`) are optional unless noted.
 
 | Declaration | Notes |
 |---|---|
-| `ARRAY name = [n, n, ...]` | Numeric literals only. |
-| `STACK name [= [n, ...]]` | Init optional. |
+| `ARRAY name = [v, v, ...]` | Number or string literals (`["(", "[", ")"]`). |
+| `STACK name [= [v, ...]]` | Init optional; numbers or strings, listed bottom to top. |
 | `QUEUE name [= [n, ...]]` | Init optional. |
 | `LINKEDLIST name [= [n,...]]` | Defaults to singly-linked. |
 | `SINGLY LINKEDLIST name [= [n,...]]` | Explicit singly-linked (default). |
@@ -405,8 +437,8 @@ at runtime**, even though the compiler will accept them:
 ```
 PARENT, LEFT_CHILD, RIGHT_CHILD, SIBLING, GRANDPARENT, UNCLE, COUSINS,
 PARENTOF, CHILDRENOF, ANCESTORS, DESCENDANTS, SIBLINGS, PATH, LCA, DISTANCE,
-DEPTH, LEVEL, MAX_DEPTH, MIN_DEPTH, LEAVES (generic, non-BST), INTERNAL,
-DEGREE, STATS, COUNT_NODES, COUNT_LEAVES, COUNT_INTERNAL, COUNT_LEFT_LEAVES,
+DEPTH, LEVEL, MIN_DEPTH, INTERNAL,
+DEGREE, STATS, COUNT_INTERNAL, COUNT_LEFT_LEAVES,
 COUNT_RIGHT_LEAVES, COUNT_FULL, COUNT_HALF, IS_FULL, IS_COMPLETE, IS_PERFECT,
 IS_BALANCED, IS_DEGENERATE, IS_LEFT_SKEWED, IS_RIGHT_SKEWED, IS_SYMMETRIC,
 REVERSE, ZIGZAG, REVERSELEVELORDER, ROOT_TO_NODE, ROOT_TO_LEAVES,

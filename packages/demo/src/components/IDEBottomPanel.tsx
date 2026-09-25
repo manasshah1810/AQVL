@@ -1,4 +1,5 @@
 import React from 'react';
+import { instructionViews, type AQIRProgram } from '../types/pipeline';
 
 interface ConsoleMessage {
   type: 'log' | 'error' | 'success';
@@ -6,7 +7,7 @@ interface ConsoleMessage {
 }
 
 interface IDEBottomPanelProps {
-  aqir: any;
+  aqir: AQIRProgram | null;
   currentInstructionIndex: number;
   runtimeStatus: {
     scene: string;
@@ -74,7 +75,7 @@ export function IDEBottomPanel({
   consoleLogs
 }: IDEBottomPanelProps) {
 
-  const instructions = aqir?.instructions || [];
+  const instructions = instructionViews(aqir);
   const isRunning = runtimeStatus.timelineState === 'Running';
 
   return (
@@ -89,7 +90,7 @@ export function IDEBottomPanel({
               No instructions
             </div>
           )}
-          {instructions.map((inst: any, idx: number) => {
+          {instructions.map((inst, idx) => {
             const isCompleted = idx < currentInstructionIndex;
             const isActive    = idx === currentInstructionIndex;
             return (

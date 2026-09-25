@@ -46,6 +46,42 @@ export class Parser {
   private tokens: Token[];
   private current: number = 0;
   private source?: string;
+  /** Names of the FUNCTIONs declared so far (DECLARE precedes SEQUENCE), so `height(node)` is a call, not the HEIGHT command. */
+  private functionNames = new Set<string>();
+  /** How many FUNCTION bodies enclose the statement being parsed (RETURN is only valid inside one). */
+  private functionDepth = 0;
+
+  /**
+   * Words that are never a variable or function name. Every other keyword
+   * (NODE, ROOT, HEIGHT, SIZE, LEVEL, MIN, MAX, PARENT, PATH, ...) is only a
+   * keyword where a command is expected, so tree code can use the natural
+   * names: `FUNCTION height(node)`, `root = t.root`, `size = size + 1`.
+   */
+  private static readonly RESERVED_WORDS = new Set([
+    'SCENE', 'DECLARE', 'SEQUENCE', 'END', 'IF', 'ELSE', 'WHILE', 'LOOP', 'FUNCTION', 'RETURN',
+    'AND', 'OR', 'NULL', 'TO', 'FROM', 'INTO', 'PRINT', 'LENGTH', 'SET', 'STATE', 'COMPARE', 'SWAP',
+    'WAIT', 'HIGHLIGHT', 'LINK', 'FREE', 'LAYOUT', 'CAMERA', 'POSITION',
+    'ARRAY', 'STACK', 'QUEUE', 'LINKEDLIST', 'SINGLY', 'DOUBLY', 'CIRCULAR', 'TREE', 'BINARY_TREE', 'BST',
+    'HEAP', 'GRAPH', 'TRIE', 'HASH_MAP',
+  ]);
+
+  /** Built-in functions usable inside expressions: `MAX(a, b)`, `node = DEQUEUE(q)`, `IS_EMPTY(s)`. */
+  private static readonly BUILTIN_EXPRESSION_FUNCTIONS = new Set(['MAX', 'MIN', 'ABS', 'DEQUEUE', 'POP', 'PEEK', 'FRONT', 'REAR', 'IS_EMPTY', 'NEW_NODE']);
+
+  /** A keyword token that may be used as a name here (see RESERVED_WORDS). */
+  private isNameKeyword(t: Token | undefined): boolean {
+    return !!t && t.type === TokenType.Keyword && !Parser.RESERVED_WORDS.has(t.value.toUpperCase());
+  }
+
+  /** Consumes a name: an identifier, or a keyword that isn't reserved (e.g. `node`, `height`). */
+  private consumeName(message: string): Token {
+    if (this.check(TokenType.Identifier) || this.isNameKeyword(this.peek())) {
+      const t = this.advance();
+      return { ...t, type: TokenType.Identifier };
+    }
+    this.rejectKeywordAsVariable();
+    throw new ParseError(`${message} Got "${this.peek().value}".`, this.errorOptions());
+  }
 
   constructor(tokens: Token[], source?: string) {
     this.tokens = tokens;
@@ -76,7 +112,7 @@ export class Parser {
   }
 
   private parseScene(): SceneNode {
-    const nameToken = this.consume(TokenType.Identifier, 'Expected scene name.');
+    const nameToken = this.consumeName('Expected scene name.');
     const name: IdentifierNode = {
       type: 'IdentifierNode',
       name: nameToken.value,
@@ -160,22 +196,41 @@ export class Parser {
 
   // --- User-defined functions (VM mode) ---
 
-  /** FUNCTION name(params) { ... } — FUNCTION keyword already consumed. */
+  /**
+   * `FUNCTION name(params) ... END` or `FUNCTION name(params) { ... }` —
+   * FUNCTION keyword already consumed. The body accepts every statement a
+   * SEQUENCE does (WHILE, LOOP, IF, PRINT, HIGHLIGHT, pointer writes, ...)
+   * plus RETURN, so recursive algorithms can be written in full.
+   */
   private parseFunctionDeclaration(): FunctionDeclNode {
     const pos = this.previous().pos;
-    const nameToken = this.consume(TokenType.Identifier, 'Expected function name after FUNCTION.');
+    const nameToken = this.consumeName('Expected function name after FUNCTION.');
+    this.functionNames.add(nameToken.value);
 
     this.consumeSymbol('(', `Expected "(" after function name "${nameToken.value}".`);
     const params: IdentifierNode[] = [];
     if (!this.checkSymbol(')')) {
       do {
-        const paramToken = this.consume(TokenType.Identifier, `Expected parameter name in function "${nameToken.value}".`);
+        const paramToken = this.consumeName(`Expected parameter name in function "${nameToken.value}".`);
         params.push({ type: 'IdentifierNode', name: paramToken.value, pos: paramToken.pos });
       } while (this.matchSymbol(','));
     }
     this.consumeSymbol(')', `Expected ")" after parameters of function "${nameToken.value}".`);
 
-    const body = this.parseBlock();
+    let body: BlockNode;
+    this.functionDepth++;
+    try {
+      if (this.checkSymbol('{')) {
+        body = this.parseBlock();
+      } else {
+        const bodyPos = this.peek().pos;
+        const statements = this.parseStatementsUntil('FUNCTION', ['END']);
+        this.consumeKeyword('END', `Expected END to close FUNCTION ${nameToken.value}.`);
+        body = { type: 'BlockNode', statements, pos: bodyPos };
+      }
+    } finally {
+      this.functionDepth--;
+    }
 
     return {
       type: 'FunctionDeclNode',
@@ -206,38 +261,35 @@ export class Parser {
    * END-delimited for backward compatibility.
    */
   private parseStatement(): StatementNode {
-    if (this.matchKeyword('RETURN')) {
-      return this.parseReturnStatement();
-    }
-    if (this.matchKeyword('IF')) {
-      return this.parseFunctionIf();
-    }
     if (this.matchKeyword('FUNCTION')) {
       return this.parseFunctionDeclaration();
     }
-
-    const pos = this.peek().pos;
-    const expression = this.parseExpression();
-    return { type: 'ExpressionStatementNode', expression, pos };
+    return this.parseBlockStatement('FUNCTION');
   }
 
-  /** RETURN [expr] — RETURN keyword already consumed. */
+  /** RETURN [expr] — RETURN keyword already consumed. The value must be on the RETURN line. */
   private parseReturnStatement(): ReturnNode {
-    const pos = this.previous().pos;
-    const value = this.checkSymbol('}') ? undefined : this.parseExpression();
+    const returnToken = this.previous();
+    const pos = returnToken.pos;
+    const hasValue =
+      !this.isAtEnd() &&
+      !this.checkSymbol('}') &&
+      !this.checkKeyword('END') &&
+      !this.checkKeyword('ELSE') &&
+      this.peek().pos.line === returnToken.pos.line;
+    const value = hasValue ? this.parseExpression() : undefined;
     return { type: 'ReturnNode', value, pos };
   }
 
-  /** IF cond { ... } [ELSE { ... } | ELSE IF ...] — IF keyword already consumed. */
-  private parseFunctionIf(): IfNode {
-    const pos = this.previous().pos;
-    const condition = this.parseExpression();
+  /** IF cond { ... } [ELSE { ... } | ELSE IF ...] — IF keyword and condition already consumed. */
+  private parseBraceIf(pos: IfNode['pos'], condition: ExpressionNode): IfNode {
     const thenBlock = this.parseBlock();
 
     let elseBody: StatementNode[] | undefined;
     if (this.matchKeyword('ELSE')) {
       if (this.matchKeyword('IF')) {
-        elseBody = [this.parseFunctionIf()];
+        const elseIfPos = this.previous().pos;
+        elseBody = [this.parseBraceIf(elseIfPos, this.parseExpression())];
       } else {
         elseBody = this.parseBlock().statements;
       }
@@ -255,7 +307,13 @@ export class Parser {
     const initialElements: LiteralNode[] = [];
     if (!this.checkSymbol(']')) {
       do {
-        const numToken = this.consume(TokenType.Number, 'Expected number in array.');
+        // Numbers, or strings such as the characters of an expression: ["(", "[", ")"].
+        if (this.check(TokenType.String)) {
+          const strToken = this.advance();
+          initialElements.push({ type: 'LiteralNode', dataType: 'string', value: strToken.value, pos: strToken.pos });
+          continue;
+        }
+        const numToken = this.consume(TokenType.Number, 'Expected a number or a "string" in array.');
         initialElements.push({
           type: 'LiteralNode',
           dataType: 'number',
@@ -403,7 +461,12 @@ export class Parser {
       initialElements = [];
       if (!this.checkSymbol(']')) {
         do {
-          const numToken = this.consume(TokenType.Number, 'Expected number in stack.');
+          if (this.check(TokenType.String)) {
+            const strToken = this.advance();
+            initialElements.push({ type: 'LiteralNode', dataType: 'string', value: strToken.value, pos: strToken.pos });
+            continue;
+          }
+          const numToken = this.consume(TokenType.Number, 'Expected a number or a "string" in stack.');
           initialElements.push({
             type: 'LiteralNode',
             dataType: 'number',
@@ -466,7 +529,12 @@ export class Parser {
       initialElements = [];
       if (!this.checkSymbol(']')) {
         do {
-          const numToken = this.consume(TokenType.Number, 'Expected number in queue.');
+          if (this.check(TokenType.String)) {
+            const strToken = this.advance();
+            initialElements.push({ type: 'LiteralNode', dataType: 'string', value: strToken.value, pos: strToken.pos });
+            continue;
+          }
+          const numToken = this.consume(TokenType.Number, 'Expected a number or a "string" in queue.');
           initialElements.push({
             type: 'LiteralNode',
             dataType: 'number',
@@ -528,7 +596,12 @@ export class Parser {
       initialElements = [];
       if (!this.checkSymbol(']')) {
         do {
-          const numToken = this.consume(TokenType.Number, 'Expected number in binary tree array.');
+          // Level order, left to right; NULL marks a missing child.
+          if (this.matchKeyword('NULL')) {
+            initialElements.push({ type: 'LiteralNode', dataType: 'null', value: null, pos: this.previous().pos });
+            continue;
+          }
+          const numToken = this.consume(TokenType.Number, 'Expected a number or NULL in binary tree array.');
           initialElements.push({
             type: 'LiteralNode',
             dataType: 'number',
@@ -657,7 +730,7 @@ export class Parser {
   }
 
   /** Keywords that start a generic data-structure action statement (parsed by parseGenericAction). */
-  private static readonly GENERIC_ACTION_KEYWORDS = new Set(['TREE', 'ROOT', 'REMOVE', 'COPY', 'FIND', 'SELECT', 'PREORDER', 'INORDER', 'POSTORDER', 'LEVELORDER', 'REVERSELEVELORDER', 'REVERSE', 'ZIGZAG', 'DFS', 'BFS', 'DIJKSTRA', 'BELLMAN_FORD', 'ASTAR', 'PRIM', 'KRUSKAL', 'TOPO_SORT', 'HEIGHT', 'DEPTH', 'LEVEL', 'MAX_DEPTH', 'MIN_DEPTH', 'SIZE', 'LEAVES', 'INTERNAL', 'DEGREE', 'STATS', 'PARENTOF', 'CHILDRENOF', 'ANCESTORS', 'DESCENDANTS', 'SIBLINGS', 'PATH', 'HIGHLIGHT', 'INSERT', 'DELETE', 'INSERT_HEAD', 'INSERT_TAIL', 'DELETE_HEAD', 'DELETE_TAIL', 'UPDATE', 'MOVE', 'CONNECT', 'DISCONNECT', 'PUSH', 'POP', 'PEEK', 'ENQUEUE', 'DEQUEUE', 'FRONT', 'REAR', 'VISIT', 'MARK', 'TRAVERSE', 'ROTATE', 'SEARCH', 'HEAPIFY', 'HEAP_INSERT', 'HEAP_EXTRACT', 'HEAP_DECREASE', 'BUILD_HEAP', 'HASHMAP_INSERT', 'HASHMAP_LOOKUP', 'HASHMAP_DELETE', 'TRIE_INSERT', 'TRIE_SEARCH', 'TRIE_DELETE', 'TRIE_AUTOCOMPLETE', 'TRIE_STARTSWITH', 'CHILD', 'PARENT', 'LEFT_CHILD', 'RIGHT_CHILD', 'SIBLING', 'CLEAR', 'IS_EMPTY', 'COUNT_NODES', 'COUNT_LEAVES', 'COUNT_INTERNAL', 'COUNT_LEFT_LEAVES', 'COUNT_RIGHT_LEAVES', 'COUNT_FULL', 'COUNT_HALF', 'IS_FULL', 'IS_COMPLETE', 'IS_PERFECT', 'IS_BALANCED', 'IS_DEGENERATE', 'IS_LEFT_SKEWED', 'IS_RIGHT_SKEWED', 'IS_SYMMETRIC', 'LCA', 'DISTANCE', 'GRANDPARENT', 'UNCLE', 'COUSINS', 'ROOT_TO_NODE', 'ROOT_TO_LEAVES', 'LONGEST_PATH', 'SHORTEST_PATH', 'MIRROR', 'INVERT', 'CLONE', 'REMOVE_LEAVES', 'PRUNE', 'LEFT_VIEW', 'RIGHT_VIEW', 'TOP_VIEW', 'BOTTOM_VIEW', 'BOUNDARY', 'VERTICAL_ORDER', 'DIAGONAL', 'MAX_VALUE', 'MIN_VALUE', 'MIN', 'MAX', 'SUM', 'AVERAGE', 'MAX_LEVEL_SUM', 'BUBBLE_SORT', 'SELECTION_SORT', 'INSERTION_SORT', 'MERGE_SORT', 'QUICK_SORT']);
+  private static readonly GENERIC_ACTION_KEYWORDS = new Set(['TREE', 'ROOT', 'REMOVE', 'COPY', 'FIND', 'SELECT', 'PREORDER', 'INORDER', 'POSTORDER', 'LEVELORDER', 'REVERSELEVELORDER', 'REVERSE', 'ZIGZAG', 'DFS', 'BFS', 'DIJKSTRA', 'BELLMAN_FORD', 'ASTAR', 'PRIM', 'KRUSKAL', 'TOPO_SORT', 'HEIGHT', 'DEPTH', 'LEVEL', 'MAX_DEPTH', 'MIN_DEPTH', 'SIZE', 'LEAVES', 'INTERNAL', 'DEGREE', 'STATS', 'PARENTOF', 'CHILDRENOF', 'ANCESTORS', 'DESCENDANTS', 'SIBLINGS', 'PATH', 'HIGHLIGHT', 'INSERT', 'DELETE', 'INSERT_HEAD', 'INSERT_TAIL', 'DELETE_HEAD', 'DELETE_TAIL', 'FREE', 'UPDATE', 'MOVE', 'CONNECT', 'DISCONNECT', 'PUSH', 'POP', 'PEEK', 'ENQUEUE', 'DEQUEUE', 'FRONT', 'REAR', 'VISIT', 'MARK', 'TRAVERSE', 'ROTATE', 'SEARCH', 'HEAPIFY', 'HEAP_INSERT', 'HEAP_EXTRACT', 'HEAP_DECREASE', 'BUILD_HEAP', 'HASHMAP_INSERT', 'HASHMAP_LOOKUP', 'HASHMAP_DELETE', 'TRIE_INSERT', 'TRIE_SEARCH', 'TRIE_DELETE', 'TRIE_AUTOCOMPLETE', 'TRIE_STARTSWITH', 'CHILD', 'PARENT', 'LEFT_CHILD', 'RIGHT_CHILD', 'SIBLING', 'CLEAR', 'IS_EMPTY', 'COUNT_NODES', 'COUNT_LEAVES', 'COUNT_INTERNAL', 'COUNT_LEFT_LEAVES', 'COUNT_RIGHT_LEAVES', 'COUNT_FULL', 'COUNT_HALF', 'IS_FULL', 'IS_COMPLETE', 'IS_PERFECT', 'IS_BALANCED', 'IS_DEGENERATE', 'IS_LEFT_SKEWED', 'IS_RIGHT_SKEWED', 'IS_SYMMETRIC', 'LCA', 'DISTANCE', 'GRANDPARENT', 'UNCLE', 'COUSINS', 'ROOT_TO_NODE', 'ROOT_TO_LEAVES', 'LONGEST_PATH', 'SHORTEST_PATH', 'MIRROR', 'INVERT', 'CLONE', 'REMOVE_LEAVES', 'PRUNE', 'LEFT_VIEW', 'RIGHT_VIEW', 'TOP_VIEW', 'BOTTOM_VIEW', 'BOUNDARY', 'VERTICAL_ORDER', 'DIAGONAL', 'MAX_VALUE', 'MIN_VALUE', 'MIN', 'MAX', 'SUM', 'AVERAGE', 'MAX_LEVEL_SUM', 'BUBBLE_SORT', 'SELECTION_SORT', 'INSERTION_SORT', 'MERGE_SORT', 'QUICK_SORT']);
 
   private parseSequenceBlock(): SequenceBlockNode {
     const pos = this.previous().pos;
@@ -680,6 +753,22 @@ export class Parser {
    * same statements. `blockName` only appears in the error message.
    */
   private parseBlockStatement(blockName: string): StatementNode {
+    // `node = node.left`, `root.left = n`, `size = size + 1`, `height(t.root)`:
+    // a non-reserved keyword used as a variable / user function, not a command.
+    if (this.isNameKeyword(this.peek())) {
+      const next = this.tokens[this.current + 1];
+      const usedAsName =
+        next?.type === TokenType.Symbol &&
+        (next.value === '=' || next.value === '.' || (next.value === '(' && this.functionNames.has(this.peek().value)));
+      if (usedAsName) return this.parseExpressionOrRelationship();
+    }
+    if (this.checkKeyword('RETURN')) {
+      if (this.functionDepth === 0) {
+        throw new AQVLSyntaxError('RETURN can only be used inside a FUNCTION.', this.errorOptions());
+      }
+      this.advance();
+      return this.parseReturnStatement();
+    }
     if (this.matchKeyword('COMPARE')) return this.parseCompare();
     if (this.matchKeyword('SWAP')) return this.parseSwap();
     if (this.matchKeyword('WAIT')) return this.parseWait();
@@ -696,9 +785,13 @@ export class Parser {
     }
     if (this.matchKeyword('SET')) return this.parseSetState();
     if (this.check(TokenType.Identifier)) return this.parseExpressionOrRelationship();
+    if (this.checkSymbol('}')) {
+      throw new AQVLSyntaxError(`Unexpected "}" in ${blockName} block (blocks here end with END).`, this.errorOptions());
+    }
     if (this.checkKeyword('ELSE')) {
       throw new AQVLSyntaxError(`ELSE without a matching IF.`, this.errorOptions());
     }
+    this.rejectKeywordAsVariable();
     throw new AQVLSyntaxError(`Unexpected token "${this.peek().value}" in ${blockName} block.`, this.errorOptions());
   }
 
@@ -770,6 +863,7 @@ export class Parser {
   private parseIf(): IfNode {
     const pos = this.previous().pos;
     const condition = this.parseExpression();
+    if (this.checkSymbol('{')) return this.parseBraceIf(pos, condition);
     const body = this.parseStatementsUntil('IF', ['END', 'ELSE']);
 
     let elseBody: StatementNode[] | undefined;
@@ -807,7 +901,8 @@ export class Parser {
   private startsExpression(): boolean {
     const t = this.peek();
     if (t.type === TokenType.Identifier || t.type === TokenType.Number || t.type === TokenType.String) return true;
-    if (t.type === TokenType.Keyword && t.value.toUpperCase() === 'LENGTH') return true;
+    if (t.type === TokenType.Keyword && ['LENGTH', 'NULL'].includes(t.value.toUpperCase())) return true;
+    if (this.isNameKeyword(t)) return true;
     return t.type === TokenType.Symbol && t.value === '(';
   }
 
@@ -1060,7 +1155,27 @@ export class Parser {
     return op === 'AND' || op === 'OR' ? this.checkKeyword(op) : this.checkSymbol(op);
   }
 
+  /**
+   * A primary expression followed by any number of `.member` accesses, e.g.
+   * `curr.next.val` or `list.head`. Member names may be keywords (`head`).
+   */
   private parsePrimaryExpression(): ExpressionNode {
+    let expr = this.parseAtom();
+    while (this.matchSymbol('.')) {
+      const memberToken = this.advance();
+      if (memberToken.type !== TokenType.Identifier && memberToken.type !== TokenType.Keyword) {
+        throw new ParseError(`Expected a field name after "." (e.g. next, prev, val, head). Got "${memberToken.value}".`, this.errorOptions(memberToken));
+      }
+      expr = { type: 'MemberAccessNode', object: expr, member: memberToken.value.toLowerCase(), pos: memberToken.pos };
+    }
+    return expr;
+  }
+
+  private parseAtom(): ExpressionNode {
+    if (this.matchKeyword('NULL')) {
+      return { type: 'LiteralNode', dataType: 'null', value: null, pos: this.previous().pos };
+    }
+
     if (this.check(TokenType.Number)) {
       const token = this.advance();
       return { type: 'LiteralNode', dataType: 'number', value: parseFloat(token.value), pos: token.pos };
@@ -1097,7 +1212,9 @@ export class Parser {
       );
     }
 
-    const token = this.consume(TokenType.Identifier, 'Expected identifier expression.');
+    this.rejectKeywordAsVariable();
+    const wasKeyword = this.peek().type === TokenType.Keyword;
+    const token = this.consumeName('Expected identifier expression.');
     const pos = token.pos;
 
     if (this.matchSymbol('(')) {
@@ -1108,7 +1225,10 @@ export class Parser {
         } while (this.matchSymbol(','));
       }
       this.consumeSymbol(')', `Expected ")" after arguments to "${token.value}".`);
-      const callee: IdentifierNode = { type: 'IdentifierNode', name: token.value, pos };
+      // `MAX(a, b)`, `DEQUEUE(q)`: a built-in, unless the program declares a function of that name.
+      const upper = token.value.toUpperCase();
+      const isBuiltin = Parser.BUILTIN_EXPRESSION_FUNCTIONS.has(upper) && !this.functionNames.has(token.value);
+      const callee: IdentifierNode = { type: 'IdentifierNode', name: isBuiltin && wasKeyword ? upper : token.value, pos };
       return { type: 'CallNode', callee, args, pos };
     }
 
@@ -1125,6 +1245,24 @@ export class Parser {
     }
 
     return { type: 'IdentifierNode', name: token.value, pos };
+  }
+
+  /**
+   * A reserved word used where a variable belongs (`node = NEW_NODE(list, 5)`,
+   * `x = node.val`) gets a clear error naming the problem, instead of a
+   * generic "unexpected token".
+   */
+  private rejectKeywordAsVariable(): void {
+    const t = this.peek();
+    if (t.type !== TokenType.Keyword || !Parser.RESERVED_WORDS.has(t.value.toUpperCase())) return;
+    const next = this.tokens[this.current + 1];
+    const usedAsVariable =
+      next?.type === TokenType.Symbol && ['=', '.', '==', '!=', '<', '>', '<=', '>=', '+', '-', '*', '/', ')', ']', ','].includes(next.value);
+    if (!usedAsVariable) return;
+    throw new AQVLSyntaxError(
+      `"${t.value}" is a reserved word in AQVL and can't be used as a variable name.`,
+      this.errorOptions(t, `Rename it, e.g. "${t.value.toLowerCase()}Ptr" or "n".`)
+    );
   }
 
   // --- Helpers ---

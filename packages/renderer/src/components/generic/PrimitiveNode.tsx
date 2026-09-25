@@ -25,9 +25,22 @@ export interface PrimitiveNodeProps {
   label?: string;
   value?: any;
   highlightState?: HighlightState;
+  /** Labels stacked above the node (HEAD, TAIL, pointer variable names, LEAKED). */
+  tags?: string[];
+  /** 'below' stacks the tags under the node (tree nodes, whose parent's arrow arrives from above). */
+  tagPlacement?: 'above' | 'below';
 }
 
 const DEG2RAD = Math.PI / 180;
+
+/** Tag text colors: list ends, memory warnings, and pointer variables. */
+function tagColor(tag: string): string {
+  if (tag === 'HEAD' || tag === 'ROOT') return '#34d399';
+  if (tag === 'FRONT' || tag === 'REAR' || tag === 'TOP') return '#fbbf24';
+  if (tag === 'TAIL') return '#fbbf24';
+  if (tag === 'LEAKED') return '#f87171';
+  return '#67e8f9';
+}
 
 export const PrimitiveNode: React.FC<PrimitiveNodeProps> = ({
   position,
@@ -41,6 +54,8 @@ export const PrimitiveNode: React.FC<PrimitiveNodeProps> = ({
   label,
   value,
   highlightState,
+  tags,
+  tagPlacement,
 }) => {
   const groupRef = useRef<THREE.Group>(null);
   const materialRef = useRef<THREE.MeshStandardMaterial>(null);
@@ -190,6 +205,21 @@ export const PrimitiveNode: React.FC<PrimitiveNodeProps> = ({
             {String(value)}
           </Text>
         )}
+
+        {tags?.map((tag, i) => (
+          <Text
+            key={`${tag}-${i}`}
+            position={tagPlacement === 'below' ? [0, -0.9 - i * 0.32, 0] : [0, 0.98 + i * 0.36, 0]}
+            fontSize={0.27}
+            color={tagColor(tag)}
+            outlineWidth={0.025}
+            outlineColor="#0b1120"
+            anchorX="center"
+            anchorY="middle"
+          >
+            {tag}
+          </Text>
+        ))}
 
         {label && (
           <Text

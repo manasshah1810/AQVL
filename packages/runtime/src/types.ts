@@ -81,6 +81,8 @@ export interface SetVarInstruction extends ControlFlowInstructionBase {
   name: string;
   /** Variable name, literal, or {op,left,right} tree, resolved via evaluateExpression. */
   value: unknown;
+  /** The assignment as written (e.g. `curr = curr.next`), for console messages. */
+  sourceText?: string;
 }
 
 export type ControlFlowInstruction =
@@ -158,6 +160,12 @@ export interface ExecutionFrame {
   index: number;
   instruction: VMInstruction;
   state: VMState;
+  /**
+   * True when a normally-invisible instruction produced an animation — a
+   * SET_VAR that moved a pointer variable (`curr = curr.next`) — so the
+   * execution engine counts it as a visible step.
+   */
+  animated?: boolean;
 }
 
 export interface ExecutionResult {

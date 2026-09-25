@@ -1,5 +1,3 @@
-/// <reference types="react" />
-/// <reference types="react-dom" />
 import React, { useState, useEffect, useRef } from 'react';
 import { Lexer, Parser, SemanticValidator, Optimizer, AQIRGenerator } from '@aqvl/compiler';
 import { ExecutionEngine } from '@aqvl/runtime';
@@ -12,37 +10,27 @@ import { IDEBottomPanel } from './components/IDEBottomPanel';
 import { IDEExecutionDebugger } from './components/IDEExecutionDebugger';
 import { RuntimeOutputPanel, RuntimeLogEntry } from './components/RuntimeOutputPanel';
 
-import { SortingScripts } from './examples/SortingLibrary';
-import { LinkedListScripts } from './examples/LinkedListLibrary';
 import { TreeScripts } from './examples/TreeLibrary';
-import { LoopScripts } from './examples/LoopLibrary';
+import type { SceneState } from '@aqvl/runtime';
+import type { AQIRProgram, PipelineStage, PipelineState, ProgramNode, Token } from './types/pipeline';
 
-const initialScript = TreeScripts.BasicTree;
-
-type PipelineStatus = 'pending' | 'success' | 'error';
+const initialScript = TreeScripts.BinaryTreeBasics;
 
 export default function App() {
   const [sourceCode, setSourceCode] = useState(initialScript);
   
   // Pipeline State
-  const [tokens, setTokens] = useState<any[]>([]);
-  const [ast, setAst] = useState<any>(null);
-  const [aqir, setAqir] = useState<any>(null);
-  const [pipelineState, setPipelineState] = useState<{
-    lexer: PipelineStatus;
-    parser: PipelineStatus;
-    semantic: PipelineStatus;
-    optimizer: PipelineStatus;
-    generator: PipelineStatus;
-    runtime: PipelineStatus;
-  }>({
+  const [tokens, setTokens] = useState<Token[]>([]);
+  const [ast, setAst] = useState<ProgramNode | null>(null);
+  const [aqir, setAqir] = useState<AQIRProgram | null>(null);
+  const [pipelineState, setPipelineState] = useState<PipelineState>({
     lexer: 'pending', parser: 'pending', semantic: 'pending', 
     optimizer: 'pending', generator: 'pending', runtime: 'pending'
   });
 
   // Runtime State
   const engineRef = useRef<ExecutionEngine | null>(null);
-  const [sceneState, setSceneState] = useState<any>(null);
+  const [sceneState, setSceneState] = useState<SceneState | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentInstructionIndex, setCurrentInstructionIndex] = useState(0);
   
@@ -50,7 +38,8 @@ export default function App() {
   const [consoleLogs, setConsoleLogs] = useState<{type: 'log'|'error'|'success', text: string}[]>([]);
   const [runtimeLogs, setRuntimeLogs] = useState<RuntimeLogEntry[]>([]);
   const runtimeLogIdRef = useRef(0);
-  const [userInputs, setUserInputs] = useState<Record<string, any>>({});
+  // Values typed into the input panel, by variable name (none are wired up yet).
+  const userInputs: Record<string, unknown> = {};
   const [stats, setStats] = useState({
     compileTime: 0,
     executionTime: 0,
@@ -76,20 +65,20 @@ export default function App() {
     setConsoleLogs(prev => [...prev, { text, type }]);
   };
 
-  const countAstNodes = (node: any): number => {
+  const countAstNodes = (node: unknown): number => {
     if (!node || typeof node !== 'object') return 0;
     let count = 1;
-    for (const key in node) {
-      if (Array.isArray(node[key])) {
-        node[key].forEach((child: any) => count += countAstNodes(child));
-      } else if (typeof node[key] === 'object') {
-        count += countAstNodes(node[key]);
+    for (const child of Object.values(node)) {
+      if (Array.isArray(child)) {
+        child.forEach((grandchild) => count += countAstNodes(grandchild));
+      } else if (typeof child === 'object') {
+        count += countAstNodes(child);
       }
     }
     return count;
   };
 
-  const handleCompile = (inputs: Record<string, any> = userInputs) => {
+  const handleCompile = (inputs: Record<string, unknown> = userInputs) => {
     setConsoleLogs([]);
     setRuntimeLogs([]);
     setPipelineState({
@@ -109,7 +98,7 @@ export default function App() {
     }
 
     const startTime = performance.now();
-    let currentStats = {
+    const currentStats = {
       characters: sourceCode.length,
       lines: sourceCode.split('\n').length,
       tokens: 0, astNodes: 0, compileTime: 0, executionTime: 0, framesRendered: 0
@@ -176,12 +165,12 @@ export default function App() {
       currentStats.compileTime = Math.round(performance.now() - startTime);
       setStats(currentStats);
 
-    } catch (e: any) {
-      addLog(e.message || String(e), 'error');
+    } catch (e) {
+      addLog(e instanceof Error ? e.message : String(e), 'error');
       // Set the first pending stage to error
       setPipelineState(p => {
         const newP = { ...p };
-        const stages: (keyof typeof p)[] = ['lexer', 'parser', 'semantic', 'optimizer', 'generator', 'runtime'];
+        const stages: PipelineStage[] = ['lexer', 'parser', 'semantic', 'optimizer', 'generator', 'runtime'];
         for (const stage of stages) {
           if (newP[stage] === 'pending') {
             newP[stage] = 'error';
@@ -194,20 +183,18 @@ export default function App() {
   };
 
   useEffect(() => {
-    // Initial compile
-    handleCompile();
+    // Initial compile, on the first frame after mount. Cancelled on unmount,
+    // so StrictMode's mount -> unmount -> mount compiles only once.
+    const frame = requestAnimationFrame(() => handleCompile());
+    return () => cancelAnimationFrame(frame);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   
   useEffect(() => {
     if (!engineRef.current) return;
     
-    const handleStart = (idx: any) => {
+    const handleStart = (idx: number) => {
       setCurrentInstructionIndex(idx);
-    };
-    
-    const handleComplete = (idx: any) => {
-      // Just visually track, the actual index increments
     };
     
     const handleFinished = () => {
@@ -220,7 +207,6 @@ export default function App() {
     };
 
     engineRef.current.eventDispatcher.on('INSTRUCTION_START', handleStart);
-    engineRef.current.eventDispatcher.on('INSTRUCTION_COMPLETE', handleComplete);
     engineRef.current.eventDispatcher.on('EXECUTION_FINISHED', handleFinished);
     engineRef.current.eventDispatcher.on('EXECUTION_ERROR', handleExecutionError);
 
@@ -244,14 +230,6 @@ export default function App() {
       engineRef.current.pause();
       setIsPlaying(false);
       addLog('Animation Paused');
-    }
-  };
-
-  const handleResume = () => {
-    if (engineRef.current) {
-      engineRef.current.play();
-      setIsPlaying(true);
-      addLog('Animation Resumed');
     }
   };
 
@@ -293,7 +271,6 @@ export default function App() {
         onCompile={handleCompile}
         onRun={handleRun}
         onPause={handlePause}
-        onResume={handleResume}
         onStep={handleStep}
         onReset={handleReset}
         onStop={handleStop}
@@ -399,7 +376,7 @@ export default function App() {
         aqir={aqir}
         currentInstructionIndex={currentInstructionIndex}
         runtimeStatus={{
-          scene: ast?.children?.[0]?.name || 'Unknown',
+          scene: ast?.scenes[0]?.name.name ?? 'Unknown',
           objectsCount: aqir?.objects?.length || 0,
           instructionsCount: aqir?.instructions?.length || 0,
           timelineState: isPlaying ? 'Running' : 'Stopped',

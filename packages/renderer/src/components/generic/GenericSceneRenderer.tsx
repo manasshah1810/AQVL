@@ -1,8 +1,9 @@
 import React from 'react';
+import { Line, Text } from '@react-three/drei';
 import type { SceneState, SceneElement, EdgeElement, PartitionBoundaryRegion, SortedRegion } from '@aqvl/runtime';
 import { PrimitiveNode } from './PrimitiveNode';
 import { PrimitiveEdge } from './PrimitiveEdge';
-import { PrimitiveShape, RenderableConnection, RenderableElement, Vec3 } from './types';
+import { EdgeRoute, PrimitiveShape, RenderableConnection, RenderableElement, Vec3 } from './types';
 import { CameraController, CameraControllerHandle } from '../camera/CameraController';
 import { PartitionBoundary } from '../array/PartitionBoundary';
 import { SortedRegionIndicator } from '../array/SortedRegionIndicator';
@@ -34,6 +35,8 @@ function toRenderableElement(el: SceneElement): RenderableElement | null {
     opacity: el.opacity,
     label: (el as any).label,
     value: (el as any).value,
+    tags: (el as any).tags,
+    tagPlacement: (el as any).tagPlacement,
     highlightState: {
       isHighlighted: el.isHighlighted,
       state: el.state,
@@ -62,6 +65,7 @@ function toRenderableConnection(
     style: edge.directed ? 'arrow' : 'solid',
     color: el.color,
     emissiveColor: el.emissiveColor,
+    pointer: (el as any).pointer,
     highlightState: {
       isHighlighted: el.isHighlighted,
       state: el.state,
@@ -69,6 +73,233 @@ function toRenderableConnection(
     },
   };
 }
+
+/** Where a node will settle (its layout target), falling back to where it is now. */
+function restingPosition(el: SceneElement): Vec3 {
+  return (el as any).worldTarget ?? el.position;
+}
+
+/**
+ * Chooses a path for every linked-list pointer (`next` / `prev` edge):
+ * - two opposite arrows between the same nodes (a doubly-linked pair, or a
+ *   half-reversed list) are drawn apart: rightward one above, leftward one below;
+ * - a pointer that skips over nodes on the same row (a circular list's
+ *   wrap-around, a cycle back into the list) bends around the row — leftward
+ *   ones below it, rightward ones above — instead of running through the nodes;
+ * - a node pointing at itself (one-node circular list) gets a small loop.
+ */
+function routePointerEdges(connections: RenderableConnection[], elements: Map<string, SceneElement>): void {
+  const pairs = new Set(connections.map((c) => `${c.fromId}|${c.toId}`));
+  for (const c of connections) {
+    if (!c.pointer) continue;
+    if (c.fromId === c.toId) {
+      c.route = { kind: 'loop' };
+      continue;
+    }
+    const from = elements.get(c.fromId);
+    const to = elements.get(c.toId);
+    if (!from || !to) continue;
+    const a = restingPosition(from);
+    const b = restingPosition(to);
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    let route: EdgeRoute | undefined;
+    if (Math.abs(dy) < 0.5 && Math.abs(dx) > 3.4) {
+      const bend = Math.min(2.1, 1.0 + 0.07 * Math.abs(dx));
+      route = { kind: 'arc', height: dx < 0 ? -bend : bend };
+    } else if (pairs.has(`${c.toId}|${c.fromId}`)) {
+      route = { kind: 'straight', offset: dx > 0 || (dx === 0 && dy > 0) ? 0.2 : -0.2 };
+    }
+    c.route = route;
+  }
+}
+
+/** Linked-list extras: each list's name, and the heap-memory box around its unlinked nodes. */
+const LinkedListDecorations: React.FC<{ elements: SceneElement[] }> = ({ elements }) => {
+  const anchors = elements.filter((el) => el.originalType === 'LINKEDLIST');
+  if (anchors.length === 0) return null;
+  return (
+    <>
+      {anchors.map((anchor) => {
+        const list = (anchor as any).logicalParent as string;
+        const at = restingPosition(anchor);
+        const isEmpty = !(anchor as any).headId;
+        const heapNodes = elements.filter(
+          (el) => el.originalType === 'LINKEDLIST_NODE' && (el as any).logicalParent === list && (el as any).inHeap
+        );
+        let box: { minX: number; maxX: number; y: number; z: number } | null = null;
+        if (heapNodes.length > 0) {
+          const xs = heapNodes.map((n) => restingPosition(n).x);
+          const p = restingPosition(heapNodes[0]);
+          box = { minX: Math.min(...xs), maxX: Math.max(...xs), y: p.y, z: p.z };
+        }
+        return (
+          <group key={`ll-deco-${anchor.id}`}>
+            <Text
+              position={[at.x + 0.9, at.y, at.z]}
+              fontSize={0.36}
+              color={isEmpty ? '#94a3b8' : '#e2e8f0'}
+              outlineWidth={0.02}
+              outlineColor="#0b1120"
+              anchorX="right"
+              anchorY="middle"
+            >
+              {isEmpty ? `${list}: head = NULL` : list}
+            </Text>
+            {box && (
+              <>
+                <Line
+                  points={[
+                    [box.minX - 1.1, box.y + 1.35, box.z],
+                    [box.maxX + 1.1, box.y + 1.35, box.z],
+                    [box.maxX + 1.1, box.y - 0.95, box.z],
+                    [box.minX - 1.1, box.y - 0.95, box.z],
+                    [box.minX - 1.1, box.y + 1.35, box.z],
+                  ]}
+                  color="#a78bfa"
+                  lineWidth={1.5}
+                  dashed
+                  dashSize={0.25}
+                  gapSize={0.15}
+                  transparent
+                  opacity={0.8}
+                />
+                <Text
+                  position={[box.minX - 1.0, box.y - 1.2, box.z]}
+                  fontSize={0.24}
+                  color="#c4b5fd"
+                  anchorX="left"
+                  anchorY="middle"
+                >
+                  {`Heap memory (${list}): nodes not in the list — FREE releases them`}
+                </Text>
+              </>
+            )}
+          </group>
+        );
+      })}
+    </>
+  );
+};
+
+/**
+ * Pointer-tree extras (BINARY_TREE / BST, see the runtime's TreeEngine): each
+ * tree's name, its call-stack panel while a recursive function runs, the
+ * heap-memory box around its unlinked nodes; and the name of each queue /
+ * stack row of a tree program.
+ */
+const TreeDecorations: React.FC<{ elements: SceneElement[] }> = ({ elements }) => {
+  const trees = elements.filter((el) => el.originalType === 'BINARYTREE');
+  const containers = elements.filter((el) => el.originalType === 'CONTAINER');
+  if (trees.length === 0 && containers.length === 0) return null;
+  return (
+    <>
+      {trees.map((anchor, treeIndex) => {
+        const tree = (anchor as any).logicalParent as string;
+        const at = restingPosition(anchor);
+        const isEmpty = !(anchor as any).rootId;
+        const heapNodes = elements.filter(
+          (el) => el.originalType === 'TREE_NODE' && (el as any).logicalParent === tree && (el as any).inHeap
+        );
+        let box: { minX: number; maxX: number; y: number; z: number } | null = null;
+        if (heapNodes.length > 0) {
+          const xs = heapNodes.map((n) => restingPosition(n).x);
+          const p = restingPosition(heapNodes[0]);
+          const minX = Math.min(...xs);
+          // Wide enough for its caption even around a single node.
+          box = { minX, maxX: Math.max(Math.max(...xs), minX + 5.6), y: p.y, z: p.z };
+        }
+        // One call-stack panel (the program's), under the first tree's name.
+        const stack: string[] = treeIndex === 0 ? ((anchor as any).callStack ?? []) : [];
+        const shown = [...stack].reverse().slice(0, 9);
+        return (
+          <group key={`tree-deco-${anchor.id}`}>
+            <Text
+              position={[at.x, at.y, at.z]}
+              fontSize={0.4}
+              color={isEmpty ? '#94a3b8' : '#e2e8f0'}
+              outlineWidth={0.02}
+              outlineColor="#0b1120"
+              anchorX="right"
+              anchorY="middle"
+            >
+              {isEmpty ? `${tree}: root = NULL` : tree}
+            </Text>
+            {stack.length > 0 && (
+              <group>
+                <Text position={[at.x, at.y - 0.75, at.z]} fontSize={0.24} color="#a5b4fc" anchorX="right" anchorY="middle">
+                  Call stack (top = running)
+                </Text>
+                {shown.map((call, i) => (
+                  <Text
+                    key={`${call}-${i}`}
+                    position={[at.x, at.y - 1.15 - i * 0.34, at.z]}
+                    fontSize={0.26}
+                    color={i === 0 ? '#67e8f9' : '#818cf8'}
+                    outlineWidth={0.015}
+                    outlineColor="#0b1120"
+                    anchorX="right"
+                    anchorY="middle"
+                  >
+                    {i === 0 ? `> ${call}` : call}
+                  </Text>
+                ))}
+                {stack.length > shown.length && (
+                  <Text position={[at.x, at.y - 1.15 - shown.length * 0.34, at.z]} fontSize={0.22} color="#818cf8" anchorX="right" anchorY="middle">
+                    {`... ${stack.length - shown.length} more`}
+                  </Text>
+                )}
+              </group>
+            )}
+            {box && (
+              <>
+                <Line
+                  points={[
+                    [box.minX - 1.0, box.y + 1.25, box.z],
+                    [box.maxX + 1.0, box.y + 1.25, box.z],
+                    [box.maxX + 1.0, box.y - 1.3, box.z],
+                    [box.minX - 1.0, box.y - 1.3, box.z],
+                    [box.minX - 1.0, box.y + 1.25, box.z],
+                  ]}
+                  color="#a78bfa"
+                  lineWidth={1.5}
+                  dashed
+                  dashSize={0.25}
+                  gapSize={0.15}
+                  transparent
+                  opacity={0.8}
+                />
+                <Text position={[box.minX - 0.9, box.y + 1.05, box.z]} fontSize={0.22} color="#c4b5fd" anchorX="left" anchorY="middle">
+                  {`Heap memory (${tree}): not in the tree — FREE releases them`}
+                </Text>
+              </>
+            )}
+          </group>
+        );
+      })}
+      {containers.map((anchor) => {
+        const name = (anchor as any).logicalParent as string;
+        const kind = (anchor as any).kind === 'STACK' ? 'stack' : 'queue';
+        const at = restingPosition(anchor);
+        const empty = !((anchor as any).itemCount > 0);
+        return (
+          <Text
+            key={`ctr-deco-${anchor.id}`}
+            position={[at.x, at.y, at.z]}
+            fontSize={0.3}
+            color="#fcd34d"
+            outlineWidth={0.02}
+            outlineColor="#0b1120"
+            anchorX="right"
+            anchorY="middle"
+          >
+            {`${name} (${kind})${empty ? ': empty' : ''}`}
+          </Text>
+        );
+      })}
+    </>
+  );
+};
 
 /** Resolves the live position of a structure's element at `index` — never a cached/fixed value, since layout can reposition elements between frames. */
 function findElementPosition(elements: SceneElement[], structureId: string, index: number): Vec3 | null {
@@ -102,6 +333,7 @@ export const GenericSceneRenderer: React.FC<GenericSceneRendererProps> = ({
   const connections = elements
     .map((el) => toRenderableConnection(el, sceneState.elements))
     .filter((c): c is RenderableConnection => c !== null);
+  routePointerEdges(connections, sceneState.elements);
 
   const partitionBoundaries = (sceneState.partitionBoundaries ?? [])
     .map((b: PartitionBoundaryRegion) => ({
@@ -158,8 +390,13 @@ export const GenericSceneRenderer: React.FC<GenericSceneRendererProps> = ({
           emissiveColor={c.emissiveColor}
           style={c.style}
           highlightState={c.highlightState}
+          route={c.route}
+          arrowScale={c.pointer ? 1.6 : 1}
+          minOpacity={c.pointer ? 0.85 : undefined}
         />
       ))}
+      <LinkedListDecorations elements={elements} />
+      <TreeDecorations elements={elements} />
       {nodes.map((n) => (
         <PrimitiveNode
           key={n.id}
@@ -174,6 +411,8 @@ export const GenericSceneRenderer: React.FC<GenericSceneRendererProps> = ({
           label={n.label}
           value={n.value}
           highlightState={n.highlightState}
+          tags={n.tags}
+          tagPlacement={n.tagPlacement}
         />
       ))}
     </>

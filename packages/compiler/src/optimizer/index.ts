@@ -17,7 +17,8 @@ import {
   ArrayAccessNode,
   IdentifierNode,
   BinaryOpNode,
-  ArrayDeclNode
+  ArrayDeclNode,
+  FunctionDeclNode,
 } from '../ast/types';
 import { AQIROpcode } from '../aqir/InstructionSet';
 import type { JumpInstruction, JumpIfFalseInstruction } from '../aqir/InstructionSet';
@@ -61,8 +62,14 @@ export class Optimizer {
         optimizedSequence = this.expandSequence(scene.sequence);
       }
 
+      // Function bodies get the same pass (e.g. HIGHLIGHT -> HighlightNode).
+      const declarations = scene.declarations && scene.declarations.functions
+        ? { ...scene.declarations, functions: scene.declarations.functions.map((fn) => this.expandFunction(fn)) }
+        : scene.declarations;
+
       optimizedScenes.push({
         ...scene,
+        declarations,
         sequence: optimizedSequence
       });
     }
@@ -84,6 +91,14 @@ export class Optimizer {
       if (Array.isArray(any.body)) Optimizer.collectResizedArrays(any.body, out);
       if (Array.isArray(any.elseBody)) Optimizer.collectResizedArrays(any.elseBody, out);
     }
+  }
+
+  private expandFunction(fn: FunctionDeclNode): FunctionDeclNode {
+    const statements: StatementNode[] = [];
+    for (const stmt of fn.body.statements) {
+      this.expandStatement(stmt, statements);
+    }
+    return { ...fn, body: { ...fn.body, statements } };
   }
 
   private expandSequence(sequence: SequenceBlockNode): SequenceBlockNode {
@@ -233,8 +248,12 @@ export class Optimizer {
         break;
       }
 
+      case 'FunctionDeclNode':
+        out.push(this.expandFunction(stmt as FunctionDeclNode));
+        break;
+
       default:
-        out.push(stmt); // WaitNode, etc.
+        out.push(stmt); // WaitNode, ReturnNode, etc.
         break;
     }
   }

@@ -162,7 +162,7 @@ END
 `;
       const aqir = compileAQVL(source);
       const instr = actionsOf(aqir.instructions, 'SET_CAMERA')[0];
-      const treeObject = aqir.objects.find((o: any) => o.type === 'BST');
+      const treeObject = aqir.objects.find((o: any) => o.type === 'BINARYTREE');
       expect(instr).toBeDefined();
       expect(instr.mode).toBe('FOCUS');
       expect(treeObject).toBeDefined();

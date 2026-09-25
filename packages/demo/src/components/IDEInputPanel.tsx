@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 
 interface IDEInputPanelProps {
   variables: string[]; // list of declared variable names (e.g., ['arr'])
-  onUpdateInput: (name: string, value: any) => void;
+  onUpdateInput: (name: string, value: unknown) => void;
 }
 
 export function IDEInputPanel({ variables, onUpdateInput }: IDEInputPanelProps) {
@@ -16,7 +16,7 @@ export function IDEInputPanel({ variables, onUpdateInput }: IDEInputPanelProps) 
     try {
       const parsed = JSON.parse(inputs[name]);
       onUpdateInput(name, parsed);
-    } catch (e) {
+    } catch {
       alert('Invalid JSON format. For arrays, use format: [1, 2, 3]');
     }
   };

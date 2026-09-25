@@ -68,6 +68,16 @@ export class StateManager {
   }
 
   /**
+   * A snapshot of `elements` that is not recorded on the timeline — for
+   * handlers that show several intermediate frames within one step (e.g. a
+   * linked-list walk): each frame is captured when computed and broadcast
+   * when its animation beat plays.
+   */
+  public captureSnapshot(elements: SceneElement[], description?: string, timeMs?: number): SceneState {
+    return this.createSnapshot(elements, description, timeMs);
+  }
+
+  /**
    * Deep clones the elements to create an immutable snapshot.
    */
   private createSnapshot(elements: SceneElement[], description?: string, timeMs?: number): SceneState {

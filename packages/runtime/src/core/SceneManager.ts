@@ -40,6 +40,88 @@ export class SceneManager {
           visible: true,
           opacity: 1,
         };
+        if (obj.originalType === 'LINKEDLIST_NODE') {
+          // Linked-list nodes: `slot` orders them along the list's row, `inList`
+          // is false while a node sits in the heap-memory area (see LinkedListEngine).
+          el.label = '';
+          el.slot = obj.properties?.slot ?? 0;
+          el.inList = true;
+          el.pointerVars = [];
+          el.tags = [];
+        }
+        if (obj.originalType === 'TREE_NODE' && /^bt:/.test(obj.id)) {
+          // Pointer-tree nodes (see TreeEngine): the value is drawn on the
+          // sphere; tags (ROOT, pointer variables) and layout come from the engine.
+          el.label = '';
+          el.inTree = true;
+          el.tags = [];
+        }
+        this.elements.set(el.id, el);
+        this.sceneGraph.push(el);
+      } else if (obj.type === 'BINARYTREE' || obj.type === 'CONTAINER') {
+        // A pointer tree's anchor (root pointer + kind) or a tree program's
+        // queue / stack anchor (kind): not drawn as a node.
+        const el: any = {
+          id: obj.id,
+          type: obj.type,
+          originalType: obj.type,
+          logicalParent: obj.logicalParent,
+          label: obj.label,
+          kind: obj.properties?.kind,
+          rootId: obj.properties?.rootId ?? null,
+          nextNodeNumber: obj.properties?.nextNodeNumber ?? 0,
+          nextItemNumber: obj.properties?.nextItemNumber ?? 0,
+          position: { x: 0, y: 0, z: 0 },
+          scale: { x: 1, y: 1, z: 1 },
+          color: '',
+          emissiveIntensity: 0,
+          emissiveColor: '',
+          visible: false,
+        };
+        this.elements.set(el.id, el);
+        this.sceneGraph.push(el);
+      } else if (obj.type === 'CONTAINER_ITEM') {
+        const token = getSemanticColorToken('STRUCTURAL');
+        const el: any = {
+          id: obj.id,
+          type: 'box',
+          originalType: 'CONTAINER_ITEM',
+          logicalParent: obj.logicalParent,
+          value: obj.value,
+          ref: null,
+          order: obj.properties?.order ?? 0,
+          label: '',
+          tags: [],
+          position: { x: 0, y: 0, z: 0 },
+          scale: { x: 1, y: 1, z: 1 },
+          state: 'NEUTRAL',
+          color: token.color,
+          emissiveIntensity: token.emissiveIntensity,
+          emissiveColor: token.emissiveColor,
+          lifecycleState: 'ACTIVE',
+          visible: true,
+          opacity: 1,
+        };
+        this.elements.set(el.id, el);
+        this.sceneGraph.push(el);
+      } else if (obj.type === 'LINKEDLIST') {
+        // A linked list's anchor: not drawn, holds the head pointer + variant.
+        const el: any = {
+          id: obj.id,
+          type: 'LINKEDLIST',
+          originalType: 'LINKEDLIST',
+          logicalParent: obj.logicalParent,
+          label: obj.label,
+          variant: obj.properties?.variant ?? 'SINGLY',
+          headId: obj.properties?.headId ?? null,
+          nextNodeNumber: obj.properties?.nextNodeNumber ?? 0,
+          position: { x: 0, y: 0, z: 0 },
+          scale: { x: 1, y: 1, z: 1 },
+          color: '',
+          emissiveIntensity: 0,
+          emissiveColor: '',
+          visible: false,
+        };
         this.elements.set(el.id, el);
         this.sceneGraph.push(el);
       } else if (obj.type === 'EDGE' || obj.type === 'GRAPH_EDGE') {
@@ -67,6 +149,9 @@ export class SceneManager {
           backward: obj.properties?.backward,
           circular: obj.properties?.circular,
           forward: obj.properties?.forward,
+          pointer: obj.properties?.pointer,
+          // e.g. a tree edge's { label: 'L' | 'R' }, read by the tree algorithms.
+          properties: obj.properties,
         };
         this.elements.set(el.id, el);
         this.sceneGraph.push(el);

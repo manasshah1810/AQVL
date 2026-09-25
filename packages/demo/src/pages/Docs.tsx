@@ -274,7 +274,7 @@ const KEYWORDS = new Set([
   'GRAPH', 'VERTEX', 'GRAPH_EDGE', 'TREE', 'TREE_NODE', 'BINARY_TREE', 'BST',
   'LABEL', 'ANNOTATION', 'LINK', 'RELATION', 'DIRECTED', 'UNDIRECTED',
   'TO', 'FROM', 'PARENT', 'CHILD', 'LEFT_CHILD', 'RIGHT_CHILD', 'SIBLING',
-  'INSERT', 'DELETE', 'INSERT_HEAD', 'INSERT_TAIL', 'DELETE_HEAD', 'DELETE_TAIL',
+  'INSERT', 'DELETE', 'INSERT_HEAD', 'INSERT_TAIL', 'DELETE_HEAD', 'DELETE_TAIL', 'FREE', 'NEW_NODE',
   'MOVE', 'CONNECT', 'DISCONNECT', 'PUSH', 'POP', 'PEEK',
   'ENQUEUE', 'DEQUEUE', 'FRONT', 'REAR', 'VISIT', 'MARK', 'TRAVERSE', 'ROTATE', 'SEARCH', 'HEAPIFY', 'UPDATE',
   'HEAP_INSERT', 'HEAP_EXTRACT', 'HEAP_DECREASE', 'BUILD_HEAP',
@@ -468,7 +468,7 @@ const TOC_ITEMS_GENERAL_TREE = [
 const TOC_ITEMS_BINARY_TREE = [
   { id: 'bt-introduction', label: 'Introduction' },
   { id: 'bt-declaration', label: 'Declaring a Binary Tree' },
-  { id: 'bt-commands', label: 'Commands Reference' },
+  { id: 'bt-commands', label: 'Pointer Code Reference' },
   { id: 'bt-examples', label: 'Examples' },
   { id: 'bt-errors', label: 'Errors & Tips' },
 ];
@@ -1168,10 +1168,10 @@ export default function Docs() {
                 <section id="ll-introduction" className="docs-section">
                   <h2 className="docs-h2">Introduction</h2>
                   <p className="docs-p">
-                    In AQVL, a Linked List is a dynamic sequence of nodes. Unlike Arrays, Linked Lists are not contiguous in memory and rely on explicit relationships (edges) to connect nodes. AQVL renders each node as a sphere and each pointer as an animated edge.
+                    In AQVL, a Linked List is a dynamic sequence of nodes connected by pointers. Each node is drawn as a sphere and each pointer as an arrow. You work with lists the way you would in C: pointer variables such as <C>curr</C> walk the list (<C>curr = curr.next</C>), pointer writes relink nodes (<C>prev.next = curr.next</C>), <C>NEW_NODE</C> allocates and <C>FREE</C> releases memory.
                   </p>
-                  <Alert kind="note" title="Dynamic Nature">
-                    Linked List nodes are rendered as spheres and edges represent pointers. The visualizer automatically re-layouts the structure as you insert or delete nodes.
+                  <Alert kind="note" title="What you see">
+                    The first node is tagged <C>HEAD</C> and the last <C>TAIL</C>; every pointer variable appears as a tag on the node it points to and moves with it. The arrow a pointer follows lights up. A node that is not part of the list — just allocated, or unlinked and waiting for <C>FREE</C> — sits in the list's <em>heap memory</em> box below it, and one that nothing points to any more is flagged <C>LEAKED</C>.
                   </Alert>
                 </section>
 
@@ -1179,7 +1179,7 @@ export default function Docs() {
                 <section id="ll-overview-singly" className="docs-section">
                   <h2 className="docs-h2">Singly Linked List</h2>
                   <p className="docs-p">
-                    The simplest form. Each node holds a value and a single <em>next</em> pointer. The chain terminates with a <C>NULL</C> sentinel.
+                    The simplest form. Each node holds a value and a single <em>next</em> pointer; the last node's <em>next</em> is <C>NULL</C>.
                   </p>
                   <CodeBlock label="Syntax" code={`LINKEDLIST <name> = [<value>, <value>, ...]`} />
                   <button
@@ -1237,43 +1237,84 @@ export default function Docs() {
                   </div>
                   <h1 className="docs-page-title">Singly Linked List</h1>
                   <p className="docs-page-lead">
-                    A linear chain of nodes where each node points to the next. The simplest dynamic data structure — no backward traversal, terminated by <code>NULL</code>.
+                    A linear chain of nodes where each node points to the next, ending in <code>NULL</code>. You walk it and relink it with real pointer code.
                   </p>
                 </header>
 
                 <section id="sl-introduction" className="docs-section">
                   <h2 className="docs-h2">Introduction</h2>
                   <p className="docs-p">
-                    A Singly Linked List is a linear sequence of nodes. Each node stores a value and a single <em>next</em> pointer to the following node. The first node is the <C>HEAD</C> and the last node's <em>next</em> pointer is set to <C>NULL</C>, marking the end of the list.
+                    A Singly Linked List is a sequence of nodes; each stores a value and a single <em>next</em> pointer. <C>list.head</C> is the first node and the last node's <em>next</em> is <C>NULL</C>.
                   </p>
                   <p className="docs-p">
-                    AQVL handles all pointer manipulation behind the scenes. You never write raw pointer code — you just issue high-level commands like <C>INSERT_HEAD</C> or <C>DELETE_TAIL</C> and watch the animation unfold.
+                    Write algorithms as you would in C — pointer variables, <C>WHILE</C> loops and <C>IF</C>s — and every pointer move and pointer write is animated as its own step and explained in the output console.
                   </p>
                   <Alert kind="note" title="Visualization">
-                    Singly list nodes render as spheres. One directed edge per node shows the <em>next</em> pointer. The <C>NULL</C> terminal is shown as a special sentinel node.
+                    Nodes are spheres and each <em>next</em> pointer is an arrow. The first node is tagged <C>HEAD</C>, the last <C>TAIL</C>, and pointer variables (<C>curr</C>, <C>prev</C>, ...) are tags that move with them. Unlinked nodes wait in the heap-memory box below the list until <C>FREE</C>.
                   </Alert>
                 </section>
 
                 <section id="sl-declaration" className="docs-section">
                   <h2 className="docs-h2">Declaring a Singly Linked List</h2>
                   <p className="docs-p">
-                    Place your declaration inside the <C>DECLARE</C> block. Provide a name and an initial list of integer values.
+                    Place your declaration inside the <C>DECLARE</C> block with a name and initial values (<C>LINKEDLIST</C> and <C>SINGLY LINKEDLIST</C> are the same).
                   </p>
                   <CodeBlock label="Syntax" code={`LINKEDLIST <name> = [<value>, <value>, ...]`} />
                   <p className="docs-p">A complete minimal program:</p>
-                  <CodeBlock code={`SCENE SinglyIntro\n\nDECLARE\n  LINKEDLIST list = [10, 20, 30]\n\nSEQUENCE\n  HIGHLIGHT list[0]\nEND`} />
+                  <CodeBlock code={`SCENE SinglyIntro\n\nDECLARE\n  LINKEDLIST list = [10, 20, 30]\n\nSEQUENCE\n  PRINT list\nEND`} />
                   <p className="docs-p">
-                    The visualizer renders <C>HEAD → 10 → 20 → 30 → NULL</C> immediately on load.
+                    This prints <C>10 -&gt; 20 -&gt; 30 -&gt; NULL</C>. An empty list (<C>LINKEDLIST list = []</C>) is valid too: its head is <C>NULL</C>.
                   </p>
-                  <Alert kind="warn" title="No empty lists">
-                    <C>LINKEDLIST list = []</C> is invalid. Provide at least one value; add more dynamically with <C>INSERT_HEAD</C> or <C>INSERT_TAIL</C>.
-                  </Alert>
                 </section>
 
                 <section id="sl-commands" className="docs-section">
                   <h2 className="docs-h2">Commands Reference</h2>
+                  <h3 className="docs-h3">Pointer code</h3>
+                  <div className="docs-cmd-table-wrap">
+                  <table className="docs-cmd-table">
+                    <thead>
+                      <tr><th>Command</th><th>Description</th></tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td><span className="tok-param">list</span>.head</td>
+                        <td>The first node (or <C>NULL</C> when the list is empty). Assignable: <C>list.head = newNode</C>.</td>
+                      </tr>
+                      <tr>
+                        <td><span className="tok-param">list</span>.tail</td>
+                        <td>The last node, found by following <em>next</em> from the head (read-only).</td>
+                      </tr>
+                      <tr>
+                        <td><span className="tok-param">p</span>.val</td>
+                        <td>The node's value. Assignable: <C>p.val = 25</C>.</td>
+                      </tr>
+                      <tr>
+                        <td><span className="tok-param">p</span>.next</td>
+                        <td>The next node, or <C>NULL</C>. Assign to relink: <C>prev.next = curr.next</C>.</td>
+                      </tr>
+                      <tr>
+                        <td><span className="tok-param">p</span> = <span className="tok-param">p</span>.next</td>
+                        <td>Moves a pointer variable; its tag moves on screen and the followed arrow lights up.</td>
+                      </tr>
+                      <tr>
+                        <td><span className="tok-keyword">NEW_NODE</span>(<span className="tok-param">list, value</span>)</td>
+                        <td>Allocates an unlinked node in the list’s heap memory and returns it.</td>
+                      </tr>
+                      <tr>
+                        <td><span className="tok-keyword">FREE</span> <span className="tok-param">p</span></td>
+                        <td>Releases the node’s memory. Unlink it first — freeing a linked node warns about dangling pointers.</td>
+                      </tr>
+                      <tr>
+                        <td><span className="tok-keyword">LENGTH</span>(<span className="tok-param">list</span>), <span className="tok-param">list</span>[i]</td>
+                        <td>Node count, and the node <C>i</C> hops from the head (found by walking the list).</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                  </div>
+
+                  <h3 className="docs-h3">Built-in operations</h3>
                   <p className="docs-p">
-                    All linked-list commands go inside the <C>SEQUENCE</C> block.
+                    One-line shortcuts. Each one still animates the real work — walking the list node by node and relinking pointers.
                   </p>
                   <div className="docs-cmd-table-wrap">
                   <table className="docs-cmd-table">
@@ -1282,28 +1323,44 @@ export default function Docs() {
                     </thead>
                     <tbody>
                       <tr>
-                        <td><span className="tok-keyword">HIGHLIGHT</span> <span className="tok-param">name[i]</span></td>
-                        <td>Pulses the node at logical index <C>i</C> with an accent color.</td>
+                        <td><span className="tok-keyword">INSERT_HEAD</span> <span className="tok-param">list value</span></td>
+                        <td>Allocates a node, points it at the old head, then moves <C>head</C> to it.</td>
                       </tr>
                       <tr>
-                        <td><span className="tok-keyword">INSERT_HEAD</span> <span className="tok-param">name value</span></td>
-                        <td>Creates a new node and inserts it at the front of the list, re-routing <C>HEAD</C>.</td>
+                        <td><span className="tok-keyword">INSERT_TAIL</span> <span className="tok-param">list value</span></td>
+                        <td>Walks to the last node (O(n) — there is no tail pointer), then links the new node after it.</td>
                       </tr>
                       <tr>
-                        <td><span className="tok-keyword">INSERT_TAIL</span> <span className="tok-param">name value</span></td>
-                        <td>Creates a new node and appends it to the end, pointing it to <C>NULL</C>.</td>
+                        <td><span className="tok-keyword">DELETE_HEAD</span> <span className="tok-param">list</span></td>
+                        <td>Moves <C>head</C> to the second node — the old head drops into heap memory — then frees it.</td>
                       </tr>
                       <tr>
-                        <td><span className="tok-keyword">DELETE_HEAD</span> <span className="tok-param">name</span></td>
-                        <td>Removes the first node and advances the <C>HEAD</C> pointer to the next node.</td>
+                        <td><span className="tok-keyword">DELETE_TAIL</span> <span className="tok-param">list</span></td>
+                        <td>Walks to the second-to-last node, sets its <em>next</em> to <C>NULL</C>, then frees the old tail.</td>
                       </tr>
                       <tr>
-                        <td><span className="tok-keyword">DELETE_TAIL</span> <span className="tok-param">name</span></td>
-                        <td>Removes the last node and updates the previous node's pointer to <C>NULL</C>.</td>
+                        <td><span className="tok-keyword">INSERT</span> <span className="tok-param">list[i] value</span></td>
+                        <td>Walks to position <C>i - 1</C> and links a new node after it.</td>
                       </tr>
                       <tr>
-                        <td><span className="tok-keyword">WAIT</span></td>
-                        <td>Pauses the animation for one step. Useful to let the audience observe the current state.</td>
+                        <td><span className="tok-keyword">DELETE</span> <span className="tok-param">list[i]</span></td>
+                        <td>Walks to position <C>i - 1</C>, unlinks the next node and frees it.</td>
+                      </tr>
+                      <tr>
+                        <td><span className="tok-keyword">UPDATE</span> <span className="tok-param">list[i] value</span></td>
+                        <td>Walks to position <C>i</C> and changes its value.</td>
+                      </tr>
+                      <tr>
+                        <td><span className="tok-keyword">SEARCH</span> <span className="tok-param">list value</span></td>
+                        <td>Follows <em>next</em> from the head comparing values until found or the end.</td>
+                      </tr>
+                      <tr>
+                        <td><span className="tok-keyword">REVERSE</span> <span className="tok-param">list</span></td>
+                        <td>In-place reversal with prev / curr / next pointers.</td>
+                      </tr>
+                      <tr>
+                        <td><span className="tok-keyword">HIGHLIGHT</span> <span className="tok-param">target</span></td>
+                        <td>Highlights a node: <C>list[i]</C>, a pointer variable such as <C>curr</C>, or an expression such as <C>curr.next</C>.</td>
                       </tr>
                     </tbody>
                   </table>
@@ -1312,31 +1369,36 @@ export default function Docs() {
 
                 <section id="sl-examples" className="docs-section">
                   <h2 className="docs-h2">Examples</h2>
-
-                  <h3 className="docs-h3">Example 1 — Insertions & Deletions</h3>
-                  <p className="docs-p">Exercises all four structural commands in sequence.</p>
-                  <CodeBlock code={`SCENE SinglyOps\n\nDECLARE\n  LINKEDLIST list = [10, 20, 30]\n\nSEQUENCE\n  // Add to front and back\n  INSERT_HEAD list 5\n  INSERT_TAIL list 40\n\n  // Remove from front and back\n  DELETE_HEAD list\n  DELETE_TAIL list\nEND`} />
+                  <h3 className="docs-h3">Example 1 — Traversal</h3>
+                  <CodeBlock code={`SCENE SinglyTraverse\n\nDECLARE\n  LINKEDLIST list = [10, 20, 30, 40]\n\nSEQUENCE\n  curr = list.head\n  WHILE curr != NULL\n    PRINT "Visit" curr.val\n    curr = curr.next\n  END\nEND`} />
+                  <h3 className="docs-h3">Example 2 — Delete a node by value</h3>
+                  <CodeBlock code={`SCENE SinglyDelete\n\nDECLARE\n  LINKEDLIST list = [10, 20, 30, 40]\n\nSEQUENCE\n  // Stop at the node BEFORE the one to delete\n  prev = list.head\n  WHILE prev.next != NULL AND prev.next.val != 30\n    prev = prev.next\n  END\n  IF prev.next != NULL\n    temp = prev.next\n    prev.next = temp.next   // 30 drops into heap memory\n    FREE temp               // and is released\n  END\n  PRINT "List:" list\nEND`} />
                   <p className="docs-p">
-                    <strong>Expected:</strong> After both inserts, list is <C>5 → 10 → 20 → 30 → 40</C>. After both deletes, <C>10 → 20 → 30</C>.
+                    <strong>Expected:</strong> <C>10 -&gt; 20 -&gt; 40 -&gt; NULL</C>. Node 30 moves to heap memory when it is unlinked and disappears on <C>FREE</C>.
                   </p>
-
-                  <h3 className="docs-h3">Example 2 — Linear Traversal</h3>
+                  <h3 className="docs-h3">Example 3 — Insert at the head</h3>
+                  <CodeBlock code={`SCENE SinglyInsertHead\n\nDECLARE\n  LINKEDLIST list = [10, 20, 30]\n\nSEQUENCE\n  newNode = NEW_NODE(list, 5)\n  newNode.next = list.head\n  list.head = newNode\n  PRINT "List:" list\nEND`} />
                   <p className="docs-p">
-                    Highlight every node in order to visualize a linear scan / search.
+                    More in the Playground: reversal, middle node, cycle detection, merging, removing the nth node from the end, palindromes and duplicates.
                   </p>
-                  <CodeBlock code={`SCENE SinglyTraversal\n\nDECLARE\n  LINKEDLIST list = [10, 20, 30, 40]\n\nSEQUENCE\n  LOOP i FROM 0 TO 3\n    HIGHLIGHT list[i]\n    WAIT\n  END\nEND`} />
                 </section>
 
                 <section id="sl-errors" className="docs-section">
                   <h2 className="docs-h2">Errors &amp; Tips</h2>
-                  <Alert kind="warn" title="Index out of bounds">
-                    <C>HIGHLIGHT list[5]</C> on a 3-node list is a runtime error. Keep indices within <C>0</C> to <C>LENGTH(list) - 1</C>.
+                  <Alert kind="warn" title="NULL pointer dereference">
+                    Reading <C>p.next</C> or <C>p.val</C> when <C>p</C> is <C>NULL</C> stops the program with a clear error. Guard loops with <C>WHILE p != NULL</C>; <C>AND</C> / <C>OR</C> short-circuit, so <C>p != NULL AND p.next != NULL</C> is safe.
                   </Alert>
-                  <Alert kind="tip" title="HEAD is automatic">
-                    <C>HEAD</C> is managed by the runtime. You cannot manually assign or read it — use commands instead.
+                  <Alert kind="warn" title="Use after free / double free">
+                    After <C>FREE p</C> the node is gone: reading through <C>p</C> again, or freeing it twice, is a runtime error. Set <C>p = NULL</C> when you are done with it.
                   </Alert>
-                  <Alert kind="note" title="Traversal order">
-                    Singly lists only support forward traversal. For backward traversal, use a Doubly Linked List.
+                  <Alert kind="tip" title="Variables inside loops are local">
+                    A variable first assigned inside a <C>WHILE</C> / <C>IF</C> body only exists inside it. Assign pointers you need afterwards (e.g. <C>tail = NULL</C>) before the loop.
+                  </Alert>
+                  <Alert kind="warn" title="Index out of range">
+                    <C>list[i]</C> must be between <C>0</C> and <C>LENGTH(list) - 1</C>; it is found by walking <C>i</C> nodes from the head.
+                  </Alert>
+                  <Alert kind="note" title="Forward only">
+                    Singly nodes have no <C>prev</C>; reading <C>p.prev</C> is an error. Use a Doubly Linked List for backward traversal.
                   </Alert>
                 </section>
               </>
@@ -1357,41 +1419,31 @@ export default function Docs() {
                   </div>
                   <h1 className="docs-page-title">Doubly Linked List</h1>
                   <p className="docs-page-lead">
-                    Each node carries both a <em>next</em> and a <em>prev</em> pointer, enabling rich bidirectional traversal and visually distinct two-headed edges.
+                    Each node carries both a <em>next</em> and a <em>prev</em> pointer, so the list can be walked in both directions.
                   </p>
                 </header>
 
                 <section id="dl-introduction" className="docs-section">
                   <h2 className="docs-h2">Introduction</h2>
                   <p className="docs-p">
-                    A Doubly Linked List extends the singly variant by adding a backward (<em>prev</em>) pointer to every node. This allows traversal in both directions — forward from <C>HEAD</C> to <C>NULL</C>, and backward from any node to <C>HEAD</C>.
-                  </p>
-                  <p className="docs-p">
-                    In the AQVL visualizer, doubly linked nodes render with two directed edges: a solid forward arrow and a dashed backward arrow, making the dual-pointer structure immediately clear.
+                    A Doubly Linked List adds a backward (<em>prev</em>) pointer to every node: forward from <C>list.head</C> following <C>next</C>, backward from the last node following <C>prev</C>. The head's <em>prev</em> and the tail's <em>next</em> are <C>NULL</C>.
                   </p>
                   <Alert kind="note" title="Visualization">
-                    Each node displays two edges: a solid <em>next</em> arrow pointing right and a dashed <em>prev</em> arrow pointing left. Both animate smoothly on insert / delete.
+                    Every pair of neighbours is joined by two separate arrows: the <em>next</em> arrow pointing right runs above the <em>prev</em> arrow pointing left.
                   </Alert>
                 </section>
 
                 <section id="dl-declaration" className="docs-section">
                   <h2 className="docs-h2">Declaring a Doubly Linked List</h2>
-                  <p className="docs-p">
-                    Prepend the <C>DOUBLY</C> keyword before <C>LINKEDLIST</C>. Everything else is identical to the singly syntax.
-                  </p>
                   <CodeBlock label="Syntax" code={`DOUBLY LINKEDLIST <name> = [<value>, <value>, ...]`} />
-                  <p className="docs-p">A complete minimal program:</p>
-                  <CodeBlock code={`SCENE DoublyIntro\n\nDECLARE\n  DOUBLY LINKEDLIST list = [10, 20, 30]\n\nSEQUENCE\n  HIGHLIGHT list[1]\nEND`} />
                   <p className="docs-p">
-                    The runtime automatically wires every node with both forward and backward edges.
+                    Every initial node is wired with both pointers. After that, <C>p.prev</C> is read and written just like <C>p.next</C> — keeping both directions consistent is part of the algorithm (see the examples).
                   </p>
                 </section>
 
                 <section id="dl-commands" className="docs-section">
                   <h2 className="docs-h2">Commands Reference</h2>
-                  <p className="docs-p">
-                    The same commands used for singly lists work on doubly lists. The runtime automatically manages both the <em>next</em> and <em>prev</em> pointers.
-                  </p>
+                  <h3 className="docs-h3">Pointer code</h3>
                   <div className="docs-cmd-table-wrap">
                   <table className="docs-cmd-table">
                     <thead>
@@ -1399,24 +1451,92 @@ export default function Docs() {
                     </thead>
                     <tbody>
                       <tr>
-                        <td><span className="tok-keyword">HIGHLIGHT</span> <span className="tok-param">name[i]</span></td>
-                        <td>Highlights the node at index <C>i</C>. Works the same as on a singly list.</td>
+                        <td><span className="tok-param">list</span>.head</td>
+                        <td>The first node (or <C>NULL</C> when the list is empty). Assignable: <C>list.head = newNode</C>.</td>
                       </tr>
                       <tr>
-                        <td><span className="tok-keyword">INSERT_HEAD</span> <span className="tok-param">name value</span></td>
-                        <td>Inserts a new node at the front, updating both the <em>next</em> link from new node and the <em>prev</em> link of the old head.</td>
+                        <td><span className="tok-param">list</span>.tail</td>
+                        <td>The last node, found by following <em>next</em> from the head (read-only).</td>
                       </tr>
                       <tr>
-                        <td><span className="tok-keyword">INSERT_TAIL</span> <span className="tok-param">name value</span></td>
-                        <td>Inserts a new node at the end, creating a mutual link between it and the previous tail.</td>
+                        <td><span className="tok-param">p</span>.val</td>
+                        <td>The node's value. Assignable: <C>p.val = 25</C>.</td>
                       </tr>
                       <tr>
-                        <td><span className="tok-keyword">DELETE_HEAD</span> <span className="tok-param">name</span></td>
-                        <td>Removes the head node and clears the <em>prev</em> pointer on the new head.</td>
+                        <td><span className="tok-param">p</span>.next</td>
+                        <td>The next node, or <C>NULL</C>. Assign to relink: <C>prev.next = curr.next</C>.</td>
                       </tr>
                       <tr>
-                        <td><span className="tok-keyword">DELETE_TAIL</span> <span className="tok-param">name</span></td>
-                        <td>Removes the tail node and clears the <em>next</em> pointer on the new tail.</td>
+                        <td><span className="tok-param">p</span>.prev</td>
+                        <td>The previous node, or <C>NULL</C> (doubly lists only). Assign to relink.</td>
+                      </tr>
+                      <tr>
+                        <td><span className="tok-param">p</span> = <span className="tok-param">p</span>.next</td>
+                        <td>Moves a pointer variable; its tag moves on screen and the followed arrow lights up.</td>
+                      </tr>
+                      <tr>
+                        <td><span className="tok-keyword">NEW_NODE</span>(<span className="tok-param">list, value</span>)</td>
+                        <td>Allocates an unlinked node in the list’s heap memory and returns it.</td>
+                      </tr>
+                      <tr>
+                        <td><span className="tok-keyword">FREE</span> <span className="tok-param">p</span></td>
+                        <td>Releases the node’s memory. Unlink it first — freeing a linked node warns about dangling pointers.</td>
+                      </tr>
+                      <tr>
+                        <td><span className="tok-keyword">LENGTH</span>(<span className="tok-param">list</span>), <span className="tok-param">list</span>[i]</td>
+                        <td>Node count, and the node <C>i</C> hops from the head (found by walking the list).</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                  </div>
+
+                  <h3 className="docs-h3">Built-in operations</h3>
+                  <p className="docs-p">The built-ins update both <em>next</em> and <em>prev</em> for you, animating every pointer they change.</p>
+                  <div className="docs-cmd-table-wrap">
+                  <table className="docs-cmd-table">
+                    <thead>
+                      <tr><th>Command</th><th>Description</th></tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td><span className="tok-keyword">INSERT_HEAD</span> <span className="tok-param">list value</span></td>
+                        <td>Same as singly, plus the old head’s <em>prev</em> is pointed back at the new node.</td>
+                      </tr>
+                      <tr>
+                        <td><span className="tok-keyword">INSERT_TAIL</span> <span className="tok-param">list value</span></td>
+                        <td>Walks to the last node, links the new node after it and points its <em>prev</em> back.</td>
+                      </tr>
+                      <tr>
+                        <td><span className="tok-keyword">DELETE_HEAD</span> <span className="tok-param">list</span></td>
+                        <td>As singly, and clears the new head’s <em>prev</em>.</td>
+                      </tr>
+                      <tr>
+                        <td><span className="tok-keyword">DELETE_TAIL</span> <span className="tok-param">list</span></td>
+                        <td>As singly (the new tail’s <em>next</em> becomes <C>NULL</C>).</td>
+                      </tr>
+                      <tr>
+                        <td><span className="tok-keyword">INSERT</span> <span className="tok-param">list[i] value</span></td>
+                        <td>Walks to position <C>i - 1</C> and links a new node after it.</td>
+                      </tr>
+                      <tr>
+                        <td><span className="tok-keyword">DELETE</span> <span className="tok-param">list[i]</span></td>
+                        <td>Walks to position <C>i - 1</C>, unlinks the next node and frees it.</td>
+                      </tr>
+                      <tr>
+                        <td><span className="tok-keyword">UPDATE</span> <span className="tok-param">list[i] value</span></td>
+                        <td>Walks to position <C>i</C> and changes its value.</td>
+                      </tr>
+                      <tr>
+                        <td><span className="tok-keyword">SEARCH</span> <span className="tok-param">list value</span></td>
+                        <td>Follows <em>next</em> from the head comparing values until found or the end.</td>
+                      </tr>
+                      <tr>
+                        <td><span className="tok-keyword">REVERSE</span> <span className="tok-param">list</span></td>
+                        <td>In-place reversal with prev / curr / next pointers (also swaps every <em>prev</em>).</td>
+                      </tr>
+                      <tr>
+                        <td><span className="tok-keyword">HIGHLIGHT</span> <span className="tok-param">target</span></td>
+                        <td>Highlights a node: <C>list[i]</C>, a pointer variable such as <C>curr</C>, or an expression such as <C>curr.next</C>.</td>
                       </tr>
                     </tbody>
                   </table>
@@ -1425,27 +1545,31 @@ export default function Docs() {
 
                 <section id="dl-examples" className="docs-section">
                   <h2 className="docs-h2">Examples</h2>
-
-                  <h3 className="docs-h3">Example 1 — Bidirectional Traversal</h3>
+                  <h3 className="docs-h3">Example 1 — Both directions</h3>
+                  <CodeBlock code={`SCENE DoublyBothWays\n\nDECLARE\n  DOUBLY LINKEDLIST list = [10, 20, 30]\n\nSEQUENCE\n  curr = list.head\n  tail = NULL\n  WHILE curr != NULL\n    PRINT "Forward:" curr.val\n    tail = curr\n    curr = curr.next\n  END\n  curr = tail\n  WHILE curr != NULL\n    PRINT "Backward:" curr.val\n    curr = curr.prev\n  END\nEND`} />
                   <p className="docs-p">
-                    This example first traverses forward, then manually walks backward — possible only because of the <em>prev</em> pointers.
+                    <strong>Expected:</strong> Forward 10, 20, 30 then Backward 30, 20, 10 — the backward pass follows (and lights up) the <em>prev</em> arrows.
                   </p>
-                  <CodeBlock code={`SCENE DoublyTraversal\n\nDECLARE\n  DOUBLY LINKEDLIST list = [10, 20, 30]\n\nSEQUENCE\n  // Forward pass\n  LOOP i FROM 0 TO 2\n    HIGHLIGHT list[i]\n    WAIT\n  END\n\n  // Backward pass\n  HIGHLIGHT list[2]\n  WAIT\n  HIGHLIGHT list[1]\n  WAIT\n  HIGHLIGHT list[0]\n  WAIT\nEND`} />
-                  <p className="docs-p">
-                    <strong>Expected:</strong> Nodes glow in order 10 → 20 → 30, then 30 → 20 → 10 — the backward arrows illuminate during the reverse pass.
-                  </p>
-
-                  <h3 className="docs-h3">Example 2 — Insert &amp; Delete</h3>
-                  <CodeBlock code={`SCENE DoublyOps\n\nDECLARE\n  DOUBLY LINKEDLIST list = [10, 20, 30]\n\nSEQUENCE\n  INSERT_HEAD list 5\n  WAIT\n  INSERT_TAIL list 40\n  WAIT\n  DELETE_HEAD list\n  WAIT\n  DELETE_TAIL list\n  WAIT\nEND`} />
+                  <h3 className="docs-h3">Example 2 — Unlink a node in both directions</h3>
+                  <CodeBlock code={`SCENE DoublyUnlink\n\nDECLARE\n  DOUBLY LINKEDLIST list = [10, 20, 30, 40]\n\nSEQUENCE\n  curr = list.head\n  WHILE curr != NULL AND curr.val != 30\n    curr = curr.next\n  END\n  curr.prev.next = curr.next\n  curr.next.prev = curr.prev\n  FREE curr\n  curr = NULL\n  PRINT "List:" list\nEND`} />
                 </section>
 
                 <section id="dl-errors" className="docs-section">
                   <h2 className="docs-h2">Errors &amp; Tips</h2>
-                  <Alert kind="warn" title="Index out of bounds">
-                    Same rule as singly lists: indices must be within <C>0</C> to <C>LENGTH(list) - 1</C>.
+                  <Alert kind="warn" title="NULL pointer dereference">
+                    Reading <C>p.next</C> or <C>p.val</C> when <C>p</C> is <C>NULL</C> stops the program with a clear error. Guard loops with <C>WHILE p != NULL</C>; <C>AND</C> / <C>OR</C> short-circuit, so <C>p != NULL AND p.next != NULL</C> is safe.
                   </Alert>
-                  <Alert kind="tip" title="Both pointers update automatically">
-                    You never manually set <em>prev</em> — every insert/delete command fixes both ends of the edge automatically.
+                  <Alert kind="warn" title="Use after free / double free">
+                    After <C>FREE p</C> the node is gone: reading through <C>p</C> again, or freeing it twice, is a runtime error. Set <C>p = NULL</C> when you are done with it.
+                  </Alert>
+                  <Alert kind="tip" title="Variables inside loops are local">
+                    A variable first assigned inside a <C>WHILE</C> / <C>IF</C> body only exists inside it. Assign pointers you need afterwards (e.g. <C>tail = NULL</C>) before the loop.
+                  </Alert>
+                  <Alert kind="warn" title="Index out of range">
+                    <C>list[i]</C> must be between <C>0</C> and <C>LENGTH(list) - 1</C>; it is found by walking <C>i</C> nodes from the head.
+                  </Alert>
+                  <Alert kind="tip" title="Four pointers per insertion">
+                    Inserting between two nodes changes four pointers: the new node's <C>prev</C> and <C>next</C>, the right neighbour's <C>prev</C> and the left neighbour's <C>next</C>. Update the neighbours last.
                   </Alert>
                 </section>
               </>
@@ -1466,44 +1590,31 @@ export default function Docs() {
                   </div>
                   <h1 className="docs-page-title">Circular Linked List</h1>
                   <p className="docs-page-lead">
-                    The last node wraps back to the first, creating a continuous loop with no <code>NULL</code> terminator. Declared with the <span className="tok-circular">CIRCULAR</span> keyword.
+                    The last node wraps back to the first, creating a loop with no <code>NULL</code> at the end. Declared with the <span className="tok-circular">CIRCULAR</span> keyword.
                   </p>
                 </header>
 
                 <section id="cl-introduction" className="docs-section">
                   <h2 className="docs-h2">Introduction</h2>
                   <p className="docs-p">
-                    A Circular Linked List is a singly linked list where the last node's <em>next</em> pointer does not point to <C>NULL</C> — it loops back to the <C>HEAD</C> node, forming a closed ring.
-                  </p>
-                  <p className="docs-p">
-                    This structure is well-suited for round-robin scheduling, buffering, and any algorithm that needs to wrap around endlessly.
+                    A Circular Linked List is a singly linked list whose last node's <em>next</em> points back to the head instead of <C>NULL</C>. It suits round-robin scheduling, buffers, and anything that wraps around.
                   </p>
                   <Alert kind="note" title="Visualization">
-                    The AQVL renderer draws the wrap-around edge as a curved arc that arcs back from the tail to the head, visually conveying the circular topology.
+                    The wrap-around pointer from the tail back to the head is drawn as a curved arrow beneath the row, so the circle is visible at a glance.
                   </Alert>
                 </section>
 
                 <section id="cl-declaration" className="docs-section">
                   <h2 className="docs-h2">Declaring a Circular Linked List</h2>
-                  <p className="docs-p">
-                    Prepend the <span className="tok-circular">CIRCULAR</span> keyword before <C>LINKEDLIST</C>. The runtime automatically manages the tail-to-head back-edge.
-                  </p>
                   <CodeBlock label="Syntax" code={`CIRCULAR LINKEDLIST <name> = [<value>, <value>, ...]`} />
-                  <p className="docs-p">A complete minimal program:</p>
-                  <CodeBlock code={`SCENE CircularIntro\n\nDECLARE\n  CIRCULAR LINKEDLIST clist = [1, 2, 3]\n\nSEQUENCE\n  // The circular back-edge is visible immediately\n  WAIT\nEND`} />
                   <p className="docs-p">
-                    Even before any commands run, the visualizer shows the curved arc from node <em>3</em> back to node <em>1</em>.
+                    The initial nodes are linked into a circle. From then on, keeping it closed is up to your code (or the built-ins): when you add or remove at either end, re-point the tail's <C>next</C> at the head.
                   </p>
-                  <Alert kind="warn" title="No NULL node">
-                    Unlike singly or doubly lists, a circular list has no <C>NULL</C> sentinel. The ring is truly endless — make sure your algorithm doesn't rely on finding a <C>NULL</C> terminator.
-                  </Alert>
                 </section>
 
                 <section id="cl-commands" className="docs-section">
                   <h2 className="docs-h2">Commands Reference</h2>
-                  <p className="docs-p">
-                    Circular lists support the same structural commands. After every insert or delete, the runtime automatically re-attaches the circular back-edge to the new extremity.
-                  </p>
+                  <h3 className="docs-h3">Pointer code</h3>
                   <div className="docs-cmd-table-wrap">
                   <table className="docs-cmd-table">
                     <thead>
@@ -1511,28 +1622,88 @@ export default function Docs() {
                     </thead>
                     <tbody>
                       <tr>
-                        <td><span className="tok-keyword">HIGHLIGHT</span> <span className="tok-param">name[i]</span></td>
-                        <td>Pulses the node at index <C>i</C>.</td>
+                        <td><span className="tok-param">list</span>.head</td>
+                        <td>The first node (or <C>NULL</C> when the list is empty). Assignable: <C>list.head = newNode</C>.</td>
                       </tr>
                       <tr>
-                        <td><span className="tok-keyword">INSERT_HEAD</span> <span className="tok-param">name value</span></td>
-                        <td>Inserts at the front. The tail's back-edge automatically re-points to the new head.</td>
+                        <td><span className="tok-param">list</span>.tail</td>
+                        <td>The last node, found by following <em>next</em> from the head (read-only).</td>
                       </tr>
                       <tr>
-                        <td><span className="tok-keyword">INSERT_TAIL</span> <span className="tok-param">name value</span></td>
-                        <td>Appends to the end. The new node's <em>next</em> wraps back to the head.</td>
+                        <td><span className="tok-param">p</span>.val</td>
+                        <td>The node's value. Assignable: <C>p.val = 25</C>.</td>
                       </tr>
                       <tr>
-                        <td><span className="tok-keyword">DELETE_HEAD</span> <span className="tok-param">name</span></td>
-                        <td>Removes the head and updates the tail's back-edge to point to the new head.</td>
+                        <td><span className="tok-param">p</span>.next</td>
+                        <td>The next node, or <C>NULL</C>. Assign to relink: <C>prev.next = curr.next</C>.</td>
                       </tr>
                       <tr>
-                        <td><span className="tok-keyword">DELETE_TAIL</span> <span className="tok-param">name</span></td>
-                        <td>Removes the tail. The new tail's <em>next</em> is re-routed to the head.</td>
+                        <td><span className="tok-param">p</span> = <span className="tok-param">p</span>.next</td>
+                        <td>Moves a pointer variable; its tag moves on screen and the followed arrow lights up.</td>
                       </tr>
                       <tr>
-                        <td><span className="tok-keyword">WAIT</span></td>
-                        <td>Pauses the animation so the viewer can see the current circular state.</td>
+                        <td><span className="tok-keyword">NEW_NODE</span>(<span className="tok-param">list, value</span>)</td>
+                        <td>Allocates an unlinked node in the list’s heap memory and returns it.</td>
+                      </tr>
+                      <tr>
+                        <td><span className="tok-keyword">FREE</span> <span className="tok-param">p</span></td>
+                        <td>Releases the node’s memory. Unlink it first — freeing a linked node warns about dangling pointers.</td>
+                      </tr>
+                      <tr>
+                        <td><span className="tok-keyword">LENGTH</span>(<span className="tok-param">list</span>), <span className="tok-param">list</span>[i]</td>
+                        <td>Node count, and the node <C>i</C> hops from the head (found by walking the list).</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                  </div>
+
+                  <h3 className="docs-h3">Built-in operations</h3>
+                  <p className="docs-p">The built-ins keep the circle closed, animating the walk to the tail when they need it.</p>
+                  <div className="docs-cmd-table-wrap">
+                  <table className="docs-cmd-table">
+                    <thead>
+                      <tr><th>Command</th><th>Description</th></tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td><span className="tok-keyword">INSERT_HEAD</span> <span className="tok-param">list value</span></td>
+                        <td>Same as singly, plus the tail is found and its <em>next</em> re-pointed at the new head.</td>
+                      </tr>
+                      <tr>
+                        <td><span className="tok-keyword">INSERT_TAIL</span> <span className="tok-param">list value</span></td>
+                        <td>Walks to the last node; the new node’s <em>next</em> wraps around to the head.</td>
+                      </tr>
+                      <tr>
+                        <td><span className="tok-keyword">DELETE_HEAD</span> <span className="tok-param">list</span></td>
+                        <td>Re-points the tail past the old head so the circle stays closed, then moves <C>head</C> and frees the old head.</td>
+                      </tr>
+                      <tr>
+                        <td><span className="tok-keyword">DELETE_TAIL</span> <span className="tok-param">list</span></td>
+                        <td>Walks to the second-to-last node and points it at the head, then frees the old tail.</td>
+                      </tr>
+                      <tr>
+                        <td><span className="tok-keyword">INSERT</span> <span className="tok-param">list[i] value</span></td>
+                        <td>Walks to position <C>i - 1</C> and links a new node after it.</td>
+                      </tr>
+                      <tr>
+                        <td><span className="tok-keyword">DELETE</span> <span className="tok-param">list[i]</span></td>
+                        <td>Walks to position <C>i - 1</C>, unlinks the next node and frees it.</td>
+                      </tr>
+                      <tr>
+                        <td><span className="tok-keyword">UPDATE</span> <span className="tok-param">list[i] value</span></td>
+                        <td>Walks to position <C>i</C> and changes its value.</td>
+                      </tr>
+                      <tr>
+                        <td><span className="tok-keyword">SEARCH</span> <span className="tok-param">list value</span></td>
+                        <td>Follows <em>next</em> from the head comparing values until found or the end.</td>
+                      </tr>
+                      <tr>
+                        <td><span className="tok-keyword">REVERSE</span> <span className="tok-param">list</span></td>
+                        <td>In-place reversal with prev / curr / next pointers (and re-closes the circle).</td>
+                      </tr>
+                      <tr>
+                        <td><span className="tok-keyword">HIGHLIGHT</span> <span className="tok-param">target</span></td>
+                        <td>Highlights a node: <C>list[i]</C>, a pointer variable such as <C>curr</C>, or an expression such as <C>curr.next</C>.</td>
                       </tr>
                     </tbody>
                   </table>
@@ -1541,33 +1712,31 @@ export default function Docs() {
 
                 <section id="cl-examples" className="docs-section">
                   <h2 className="docs-h2">Examples</h2>
-
-                  <h3 className="docs-h3">Example 1 — Circular Insertions</h3>
+                  <h3 className="docs-h3">Example 1 — One lap around the circle</h3>
+                  <CodeBlock code={`SCENE CircularLap\n\nDECLARE\n  CIRCULAR LINKEDLIST clist = [10, 20, 30]\n\nSEQUENCE\n  curr = clist.head\n  PRINT "Visit" curr.val\n  curr = curr.next\n  WHILE curr != clist.head\n    PRINT "Visit" curr.val\n    curr = curr.next\n  END\nEND`} />
                   <p className="docs-p">
-                    Observe how the back-edge dynamically re-attaches after each insertion.
+                    There is no <C>NULL</C> to stop at, so the loop ends when <C>curr</C> is back at the head.
                   </p>
-                  <CodeBlock code={`SCENE CircularOps\n\nDECLARE\n  CIRCULAR LINKEDLIST clist = [1, 2, 3]\n\nSEQUENCE\n  // Observe the initial circular arc\n  WAIT\n\n  // Tail insert — new node becomes tail, arc moves\n  INSERT_TAIL clist 4\n  WAIT\n\n  // Head insert — new node becomes head, arc re-anchors\n  INSERT_HEAD clist 0\n  WAIT\nEND`} />
-                  <p className="docs-p">
-                    <strong>Expected:</strong> The curved back-edge visibly shifts to point from the new tail (4) back to the new head (0).
-                  </p>
-
-                  <h3 className="docs-h3">Example 2 — Circular Traversal</h3>
-                  <p className="docs-p">
-                    Because the list is circular, you can represent infinite round-robin traversal. This example shows two full cycles.
-                  </p>
-                  <CodeBlock code={`SCENE CircularTraversal\n\nDECLARE\n  CIRCULAR LINKEDLIST clist = [10, 20, 30]\n\nSEQUENCE\n  // First cycle\n  LOOP i FROM 0 TO 2\n    HIGHLIGHT clist[i]\n    WAIT\n  END\n\n  // Second cycle\n  LOOP i FROM 0 TO 2\n    HIGHLIGHT clist[i]\n    WAIT\n  END\nEND`} />
+                  <h3 className="docs-h3">Example 2 — Append and keep the circle closed</h3>
+                  <CodeBlock code={`SCENE CircularAppend\n\nDECLARE\n  CIRCULAR LINKEDLIST clist = [1, 2, 3]\n\nSEQUENCE\n  tail = clist.head\n  WHILE tail.next != clist.head\n    tail = tail.next\n  END\n  newNode = NEW_NODE(clist, 4)\n  newNode.next = clist.head   // the new tail wraps around\n  tail.next = newNode\n  PRINT "List:" clist\nEND`} />
                 </section>
 
                 <section id="cl-errors" className="docs-section">
                   <h2 className="docs-h2">Errors &amp; Tips</h2>
                   <Alert kind="warn" title="Infinite loop risk">
-                    Because there is no <C>NULL</C> terminator, a naive traversal loop that keeps following <em>next</em> will loop forever. Always bound your <C>LOOP</C> with a known count.
+                    <C>WHILE curr != NULL</C> never ends on a circular list. Stop when you are back at the head (<C>WHILE curr != list.head</C>) instead.
                   </Alert>
-                  <Alert kind="tip" title="Back-edge is automatic">
-                    You never write code to maintain the circular back-edge. Every insert/delete command handles it for you.
+                  <Alert kind="warn" title="NULL pointer dereference">
+                    Reading <C>p.next</C> or <C>p.val</C> when <C>p</C> is <C>NULL</C> stops the program with a clear error. Guard loops with <C>WHILE p != NULL</C>; <C>AND</C> / <C>OR</C> short-circuit, so <C>p != NULL AND p.next != NULL</C> is safe.
                   </Alert>
-                  <Alert kind="note" title="Works with DOUBLY too">
-                    A future AQVL version will support <C>CIRCULAR DOUBLY LINKEDLIST</C> — a doubly linked ring. Watch the changelog!
+                  <Alert kind="warn" title="Use after free / double free">
+                    After <C>FREE p</C> the node is gone: reading through <C>p</C> again, or freeing it twice, is a runtime error. Set <C>p = NULL</C> when you are done with it.
+                  </Alert>
+                  <Alert kind="tip" title="Variables inside loops are local">
+                    A variable first assigned inside a <C>WHILE</C> / <C>IF</C> body only exists inside it. Assign pointers you need afterwards (e.g. <C>tail = NULL</C>) before the loop.
+                  </Alert>
+                  <Alert kind="warn" title="Index out of range">
+                    <C>list[i]</C> must be between <C>0</C> and <C>LENGTH(list) - 1</C>; it is found by walking <C>i</C> nodes from the head.
                   </Alert>
                 </section>
               </>
@@ -1586,66 +1755,39 @@ export default function Docs() {
                   </div>
                   <h1 className="docs-page-title">Trees</h1>
                   <p className="docs-page-lead">
-                    AQVL supports General Trees with intuitive hierarchical visualization and step-by-step traversal animations.
+                    Binary trees and binary search trees you program the way you would in C: node pointers, loops, recursion and explicit memory — every step animated and explained.
                   </p>
                 </header>
-
                 <section id="tr-introduction" className="docs-section">
                   <h2 className="docs-h2">Introduction</h2>
-                  <p className="docs-p">
-                    In AQVL, a Tree is a hierarchical data structure composed of nodes. Trees visually arrange themselves from the root down, automatically maintaining a clean layout as nodes are added or removed.
-                  </p>
+                  <p className="docs-p">A tree is made of nodes. In a binary tree each node holds a value (<C>val</C>) and two pointers, <C>left</C> and <C>right</C>; <C>NULL</C> means “no child”. The tree itself holds one pointer, <C>root</C>.</p>
+                  <p className="docs-p">You write tree algorithms with real code — <C>curr = curr.left</C>, <C>parent.right = n</C>, recursive <C>FUNCTION</C>s, a <C>QUEUE</C> or <C>STACK</C> of node pointers — and AQVL animates every pointer move, pointer change, call and return, with a console line for each. Pointer variables appear as tags on the node they point to, the node at the top is tagged <C>ROOT</C>, and the running recursion is shown as a call stack beside the tree.</p>
                 </section>
-
                 <section id="tr-overview-general" className="docs-section">
                   <h2 className="docs-h2">General Tree</h2>
-                  <p className="docs-p">
-                    A general tree where each node can have an arbitrary number of children. It supports operations like assigning roots, adding children, and various traversal algorithms like BFS and DFS.
-                  </p>
-                  <CodeBlock label="Syntax" code={`TREE <name>`} />
-                  <button
-                    className="docs-nav-item docs-overview-link"
-                    onClick={() => { setActivePage('general-tree'); setActiveId('gt-introduction'); }}
-                  >
+                  <p className="docs-p">A tree whose nodes can have any number of children, built with the <C>ROOT</C> and <C>CHILD</C> commands.</p>
+                  <button className="docs-nav-item docs-overview-link" onClick={() => { setActivePage('general-tree'); setActiveId('gt-introduction'); }}>
                     → Open full General Tree documentation
                   </button>
                 </section>
-
                 <section id="tr-overview-binary" className="docs-section">
                   <h2 className="docs-h2">Binary Tree</h2>
-                  <p className="docs-p">
-                    A hierarchical structure where each node has at most two children (left and right). Supports specific binary-tree traversals and navigation like sibling and ancestors.
-                  </p>
-                  <CodeBlock label="Syntax" code={`BINARY_TREE <name>`} />
-                  <button
-                    className="docs-nav-item docs-overview-link"
-                    onClick={() => goToPage('binary-tree')}
-                  >
+                  <CodeBlock label="Syntax" code={`BINARY_TREE t = [1, 2, 3, NULL, 5]`} />
+                  <p className="docs-p">Values are given in level order, left to right; <C>NULL</C> leaves a child empty. <C>BINARY_TREE t = []</C> starts empty.</p>
+                  <button className="docs-nav-item docs-overview-link" onClick={() => goToPage('binary-tree')}>
                     → Open full Binary Tree documentation
                   </button>
                 </section>
-
                 <section id="tr-overview-bst" className="docs-section">
                   <h2 className="docs-h2">Binary Search Tree</h2>
-                  <p className="docs-p">
-                    A binary tree that maintains the search-order invariant — everything in a node's left subtree is
-                    smaller, everything in its right subtree is larger. <C>INSERT</C>, <C>SEARCH</C>, and <C>DELETE</C>
-                    animate the root-to-target descent one comparison at a time.
-                  </p>
-                  <CodeBlock label="Syntax" code={`BST <name>`} />
-                  <button
-                    className="docs-nav-item docs-overview-link"
-                    onClick={() => goToPage('bst')}
-                  >
+                  <CodeBlock label="Syntax" code={`BST t = [50, 30, 70, 20, 40]`} />
+                  <p className="docs-p">The values are inserted in order: smaller keys go left, larger keys go right. Everything that works on a binary tree works on a BST.</p>
+                  <button className="docs-nav-item docs-overview-link" onClick={() => goToPage('bst')}>
                     → Open full Binary Search Tree documentation
                   </button>
                 </section>
               </>
             )}
-
-            {/* ══════════════════════════════════════════════
-                GENERAL TREE PAGE
-            ══════════════════════════════════════════════ */}
             {activePage === 'general-tree' && (
               <>
                 <header className="docs-page-hero">
@@ -1765,169 +1907,69 @@ export default function Docs() {
                   </div>
                   <h1 className="docs-page-title">Binary Tree</h1>
                   <p className="docs-page-lead">
-                    A hierarchical structure where nodes have at most two children. Build the tree using left and right child assignments and visualize traversals.
+                    Every node has a value and two pointers, left and right. Build, walk and change the tree with pointer code, loops and recursion.
                   </p>
                 </header>
-
                 <section id="bt-introduction" className="docs-section">
                   <h2 className="docs-h2">Introduction</h2>
-                  <p className="docs-p">
-                    A Binary Tree is a tree data structure in which each node has at most two children, referred to as the left child and the right child. AQVL enables building binary trees directly in the <C>SEQUENCE</C> block by designating a <C>ROOT</C> and adding nodes with <C>LEFT_CHILD</C> and <C>RIGHT_CHILD</C>.
-                  </p>
-                  <p className="docs-p">
-                    AQVL handles the complex 3D layout of the tree automatically, ensuring that parent-child relationships and Left/Right distinctions are clearly visible.
-                  </p>
+                  <p className="docs-p">A binary tree node has at most two children. AQVL lays the tree out automatically — one column per node in inorder position, one row per level, so subtrees never overlap — and keeps nodes still while your code is in the middle of restructuring the tree.</p>
+                  <p className="docs-p">Nodes that are not part of the tree — just created with <C>NEW_NODE</C>, or cut out by a pointer change — wait in the <b>heap memory</b> box below the tree until <C>FREE</C> releases them. A node that nothing points to any more is flagged <C>LEAKED</C>.</p>
                 </section>
-
                 <section id="bt-declaration" className="docs-section">
                   <h2 className="docs-h2">Declaring a Binary Tree</h2>
-                  <p className="docs-p">
-                    Place your binary tree declaration inside the <C>DECLARE</C> block. Once declared, you can build it up dynamically.
-                  </p>
-                  <CodeBlock label="Syntax" code={`BINARY_TREE <name>`} />
-                  <p className="docs-p">A complete minimal program:</p>
-                  <CodeBlock code={`SCENE MyBinaryTree\n\nDECLARE\n    BINARY_TREE myTree\n\nSEQUENCE\n    ROOT 10\n    LEFT_CHILD 10 5\n    RIGHT_CHILD 10 20\nEND`} />
+                  <CodeBlock label="Syntax" code={`BINARY_TREE <name> = [values in level order, NULL for an empty child]`} />
+                  <CodeBlock code={`SCENE BuildATree\nDECLARE\n  BINARY_TREE t = []\nSEQUENCE\n  root = NEW_NODE(t, 10)\n  t.root = root\n  root.left = NEW_NODE(t, 20)\n  root.right = NEW_NODE(t, 30)\n  PRINT t\nEND`} />
+                  <p className="docs-p"><C>BINARY_TREE t = [1, NULL, 2, 3]</C> gives 1 with no left child, 2 as its right child, and 3 as the left child of 2.</p>
                 </section>
-
                 <section id="bt-commands" className="docs-section">
-                  <h2 className="docs-h2">Commands Reference</h2>
-                  <p className="docs-p">
-                    Tree commands inside the <C>SEQUENCE</C> block allow you to manipulate structure, traverse, and query relationships.
-                  </p>
+                  <h2 className="docs-h2">Pointer Code Reference</h2>
                   <div className="docs-cmd-table-wrap">
                   <table className="docs-cmd-table">
-                    <thead>
-                      <tr><th>Command</th><th>Description</th></tr>
-                    </thead>
+                    <thead><tr><th>Code</th><th>Meaning</th></tr></thead>
                     <tbody>
-                      <tr>
-                        <td><span className="tok-keyword">ROOT</span> <span className="tok-param">value</span></td>
-                        <td>Initializes the tree with a root node of <C>value</C>.</td>
-                      </tr>
-                      <tr>
-                        <td><span className="tok-keyword">LEFT_CHILD</span> <span className="tok-param">parentValue childValue</span></td>
-                        <td>Adds <C>childValue</C> as the left child of <C>parentValue</C>.</td>
-                      </tr>
-                      <tr>
-                        <td><span className="tok-keyword">RIGHT_CHILD</span> <span className="tok-param">parentValue childValue</span></td>
-                        <td>Adds <C>childValue</C> as the right child of <C>parentValue</C>.</td>
-                      </tr>
-                      <tr>
-                        <td><span className="tok-keyword">DELETE</span> <span className="tok-param">value</span></td>
-                        <td>Removes the node with the specified value and its edges.</td>
-                      </tr>
-                      <tr>
-                        <td><span className="tok-keyword">SEARCH</span> <span className="tok-param">targetValue</span></td>
-                        <td>Searches the tree for the target, highlighting nodes.</td>
-                      </tr>
-                      <tr>
-                        <td><span className="tok-keyword">PREORDER</span> / <span className="tok-keyword">INORDER</span> / <span className="tok-keyword">POSTORDER</span> / <span className="tok-keyword">LEVELORDER</span> / <span className="tok-keyword">REVERSELEVELORDER</span> / <span className="tok-keyword">ZIGZAG</span> / <span className="tok-keyword">DFS</span> / <span className="tok-keyword">BFS</span></td>
-                        <td>Animates a specific tree traversal step-by-step.</td>
-                      </tr>
-                      <tr>
-                        <td><span className="tok-keyword">HEIGHT</span> / <span className="tok-keyword">DEPTH</span> <span className="tok-param">value</span> / <span className="tok-keyword">LEVEL</span> <span className="tok-param">value</span> / <span className="tok-keyword">MAX_DEPTH</span> / <span className="tok-keyword">MIN_DEPTH</span></td>
-                        <td>Performs structural depth and height measurements. Highlights paths to demonstrate values.</td>
-                      </tr>
-                      <tr>
-                        <td><span className="tok-keyword">COUNT_NODES</span> / <span className="tok-keyword">COUNT_LEAVES</span> / <span className="tok-keyword">COUNT_INTERNAL</span> / <span className="tok-keyword">COUNT_LEFT_LEAVES</span> / <span className="tok-keyword">COUNT_RIGHT_LEAVES</span> / <span className="tok-keyword">COUNT_FULL</span> / <span className="tok-keyword">COUNT_HALF</span></td>
-                        <td>Counts specific topological structures in the tree and highlights the matching nodes.</td>
-                      </tr>
-                      <tr>
-                        <td><span className="tok-keyword">SIZE</span> / <span className="tok-keyword">LEAVES</span> / <span className="tok-keyword">INTERNAL</span> / <span className="tok-keyword">DEGREE</span> / <span className="tok-keyword">STATS</span></td>
-                        <td>Retrieves overarching statistics about the tree.</td>
-                      </tr>
-                      <tr>
-                        <td><span className="tok-keyword">SIBLING</span> <span className="tok-param">value</span></td>
-                        <td>Highlights the sibling of the specified node.</td>
-                      </tr>
-                      <tr>
-                        <td><span className="tok-keyword">ANCESTORS</span> <span className="tok-param">value</span> / <span className="tok-keyword">DESCENDANTS</span> <span className="tok-param">value</span></td>
-                        <td>Traces and highlights ancestors up to the root, or all descendants down to leaves.</td>
-                      </tr>
-                      <tr>
-                        <td><span className="tok-keyword">IS_FULL</span> / <span className="tok-keyword">IS_COMPLETE</span> / <span className="tok-keyword">IS_PERFECT</span> / <span className="tok-keyword">IS_BALANCED</span> / <span className="tok-keyword">IS_SYMMETRIC</span> ...</td>
-                        <td>Visually evaluates structural properties of the tree. Outputs pass/fail reasoning to the console.</td>
-                      </tr>
-                      <tr>
-                        <td><span className="tok-keyword">LCA</span> <span className="tok-param">v1 v2</span> / <span className="tok-keyword">DISTANCE</span> <span className="tok-param">v1 v2</span></td>
-                        <td>Finds the Lowest Common Ancestor or calculates distance between two nodes.</td>
-                      </tr>
-                      <tr>
-                        <td><span className="tok-keyword">GRANDPARENT</span> / <span className="tok-keyword">UNCLE</span> / <span className="tok-keyword">COUSINS</span> <span className="tok-param">value</span></td>
-                        <td>Resolves familial relationships by tracing lineage.</td>
-                      </tr>
-                      <tr>
-                        <td><span className="tok-keyword">ROOT_TO_NODE</span> <span className="tok-param">value</span> / <span className="tok-keyword">ROOT_TO_LEAVES</span> / <span className="tok-keyword">LONGEST_PATH</span> / <span className="tok-keyword">SHORTEST_PATH</span></td>
-                        <td>Discovers and traces specific structural paths visually.</td>
-                      </tr>
-                      <tr>
-                        <td><span className="tok-keyword">MIRROR</span> / <span className="tok-keyword">INVERT</span></td>
-                        <td>Inverts the binary tree, visually swapping left and right subtrees at each node.</td>
-                      </tr>
-                      <tr>
-                        <td><span className="tok-keyword">PRUNE</span> / <span className="tok-keyword">REMOVE_LEAVES</span></td>
-                        <td>Identifies all leaf nodes and smoothly removes them from the tree.</td>
-                      </tr>
-                      <tr>
-                        <td><span className="tok-keyword">LEFT_VIEW</span> / <span className="tok-keyword">RIGHT_VIEW</span> / <span className="tok-keyword">TOP_VIEW</span> / <span className="tok-keyword">BOTTOM_VIEW</span></td>
-                        <td>Calculates the respective 2D view of the tree and highlights the visible nodes.</td>
-                      </tr>
-                      <tr>
-                        <td><span className="tok-keyword">BOUNDARY</span> / <span className="tok-keyword">VERTICAL_ORDER</span> / <span className="tok-keyword">DIAGONAL</span></td>
-                        <td>Performs advanced traversals and highlights the resulting nodes in order.</td>
-                      </tr>
-                      <tr>
-                        <td><span className="tok-keyword">MAX_VALUE</span> / <span className="tok-keyword">MIN_VALUE</span> / <span className="tok-keyword">SUM</span> / <span className="tok-keyword">AVERAGE</span> / <span className="tok-keyword">MAX_LEVEL_SUM</span></td>
-                        <td>Performs aggregate mathematical operations on the node values and logs the results.</td>
-                      </tr>
+                      <tr><td><C>t.root</C></td><td>The top node, or NULL for an empty tree. Assignable: <C>t.root = n</C>.</td></tr>
+                      <tr><td><C>node.val</C></td><td>The node's value (<C>node.value</C> also works). Assignable.</td></tr>
+                      <tr><td><C>node.left / node.right</C></td><td>The child pointers (NULL = no child). Assignable: <C>parent.left = n</C>.</td></tr>
+                      <tr><td><C>n = NEW_NODE(t, 42)</C></td><td>Allocate a new node (left and right NULL). It waits in heap memory until linked in.</td></tr>
+                      <tr><td><C>FREE n</C></td><td>Release a node's memory. Unlink it first; free children before their parent.</td></tr>
+                      <tr><td><C>FUNCTION f(node) ... END</C></td><td>A function; it may call itself. Its body accepts every statement plus <C>RETURN value</C>.</td></tr>
+                      <tr><td><C>QUEUE q = [] / STACK s = []</C></td><td>Hold values or node pointers: <C>ENQUEUE q node.left</C>, <C>node = DEQUEUE(q)</C>, <C>PUSH s curr</C>, <C>curr = POP(s)</C>, <C>FRONT(q)</C>, <C>PEEK(s)</C>, <C>LENGTH(q)</C>, <C>IS_EMPTY(s)</C>.</td></tr>
+                      <tr><td><C>MAX(a, b) / MIN(a, b) / ABS(x)</C></td><td>Arithmetic helpers, e.g. <C>RETURN 1 + MAX(lh, rh)</C>.</td></tr>
+                      <tr><td><C>PRINT t</C></td><td>Prints the tree level by level: <C>Level 0: 1 | Level 1: 2 3</C>.</td></tr>
+                      <tr><td><C>LENGTH(t)</C></td><td>Number of nodes reachable from the root.</td></tr>
+                      <tr><td><C>HIGHLIGHT node 'SUCCESS'</C></td><td>Mark a node (a lasting color) — e.g. the nodes on a found path.</td></tr>
                     </tbody>
                   </table>
                   </div>
+                  <p className="docs-p">Words such as <C>node</C>, <C>root</C>, <C>height</C>, <C>size</C>, <C>level</C>, <C>sum</C>, <C>min</C> and <C>max</C> can be used as variable and function names.</p>
+                  <p className="docs-p">One-line built-ins also exist and animate the same walk: <C>INORDER t</C>, <C>PREORDER t</C>, <C>POSTORDER t</C>, <C>LEVELORDER t</C>, <C>HEIGHT t</C>, <C>SIZE t</C>, <C>LEAVES t</C>, <C>MIN t</C>, <C>MAX t</C>, <C>MIRROR t</C>, <C>SEARCH t 42</C>, <C>INSERT t 42</C> (first free spot in level order), <C>CLEAR t</C>.</p>
                 </section>
-
                 <section id="bt-examples" className="docs-section">
                   <h2 className="docs-h2">Examples</h2>
-
-                  <h3 className="docs-h3">Example 1 — Comprehensive Tree Operations</h3>
-                  <p className="docs-p">
-                    Build a tree, test navigations, update a node, and traverse the structure.
-                  </p>
-                  <CodeBlock code={`SCENE BinaryTreeTest\n\nDECLARE\n    BINARY_TREE myTree\n\nSEQUENCE\n    // 1. Build the Tree\n    ROOT 10\n    LEFT_CHILD 10 5\n    RIGHT_CHILD 10 20\n    LEFT_CHILD 5 2\n    RIGHT_CHILD 5 7\n    RIGHT_CHILD 20 35\n    WAIT\n    \n    // 2. Test Search & Update\n    SEARCH 7\n    WAIT\n    UPDATE 7 8\n    WAIT\n\n    // 3. Test Navigation Operations\n    SIBLING 5\n    WAIT\n    ANCESTORS 7\n    WAIT\n    DESCENDANTS 10\n    WAIT\n\n    // 4. Test Traversals\n    LEVELORDER\n    WAIT\n    \n    // 5. Test Clear\n    CLEAR\n    IS_EMPTY\nEND`} />
-
-                  <h3 className="docs-h3">Example 2 — Traversals and Measurements</h3>
-                  <p className="docs-p">
-                    Build an array-based binary tree, traverse it using different patterns, and count its topological features.
-                  </p>
-                  <CodeBlock code={`SCENE BinaryTreeMetrics\n\nDECLARE\n    BINARY_TREE myTree = [10, 20, 30, 40, 50, 60, 70, 80, 90]\n\nSEQUENCE\n    // 1. Traversals\n    ZIGZAG\n    WAIT\n    REVERSELEVELORDER\n    WAIT\n    INORDER\n    WAIT\n\n    // 2. Structural Measurements\n    MAX_DEPTH\n    WAIT\n    LEVEL 40\n    WAIT\n\n    // 3. Counting Operations\n    COUNT_LEAVES\n    WAIT\n    COUNT_LEFT_LEAVES\n    WAIT\n    COUNT_FULL\nEND`} />
-
-                  <h3 className="docs-h3">Example 3 — Properties, Paths &amp; Relationships</h3>
-                  <p className="docs-p">
-                    Test structural properties of a tree, find paths, and resolve node relationships.
-                  </p>
-                  <CodeBlock code={`SCENE BinaryTreeAnalysis\n\nDECLARE\n    BINARY_TREE myTree = [10, 20, 35, 40, 50, 60, 70]\n\nSEQUENCE\n    // 1. Structural Checks\n    IS_FULL\n    WAIT\n    IS_BALANCED\n    WAIT\n    IS_COMPLETE\n    WAIT\n\n    // 2. Finding Paths\n    ROOT_TO_NODE 50\n    WAIT\n    LONGEST_PATH\n    WAIT\n    \n    // 3. Finding Relatives\n    UNCLE 40\n    WAIT\n    COUSINS 40\n    WAIT\n    LCA 40 60\nEND`} />
-
-                  <h3 className="docs-h3">Example 4 — Advanced Visualizations</h3>
-                  <p className="docs-p">
-                    Test the new advanced tree visualizations including tree inversion, aggregate calculations, and dynamic tree views.
-                  </p>
-                  <CodeBlock code={`SCENE AdvancedTree\n\nDECLARE\n    BINARY_TREE myTree = [10, 20, 30, 40, 50, 60, 70]\n\nSEQUENCE\n    // 1. Advanced Structural Modifiers\n    INVERT\n    WAIT\n    PRUNE\n    WAIT\n\n    // 2. Aggregate Algorithms\n    MAX_VALUE\n    WAIT\n    SUM\n    WAIT\n    MAX_LEVEL_SUM\n    WAIT\n\n    // 3. Tree Views\n    LEFT_VIEW\n    WAIT\n    VERTICAL_ORDER\n    WAIT\n    BOUNDARY\nEND`} />
+                  <p className="docs-p">Recursive inorder traversal — every call and return is a step, and the call stack is shown beside the tree:</p>
+                  <CodeBlock code={`SCENE Inorder\nDECLARE\n  BINARY_TREE t = [1, 2, 3, 4, 5]\n  FUNCTION inorder(node)\n    IF node == NULL\n      RETURN\n    END\n    inorder(node.left)\n    PRINT node.val\n    inorder(node.right)\n  END\nSEQUENCE\n  inorder(t.root)\nEND`} />
+                  <p className="docs-p">Level-order (breadth-first) traversal with a queue of node pointers:</p>
+                  <CodeBlock code={`SCENE LevelOrder\nDECLARE\n  BINARY_TREE t = [8, 3, 10, 1, 6]\n  QUEUE q = []\nSEQUENCE\n  ENQUEUE q t.root\n  WHILE LENGTH(q) > 0\n    node = DEQUEUE(q)\n    PRINT node.val\n    IF node.left != NULL\n      ENQUEUE q node.left\n    END\n    IF node.right != NULL\n      ENQUEUE q node.right\n    END\n  END\nEND`} />
+                  <p className="docs-p">The Playground has twelve complete tree programs: traversals, height and size, views, path sum, mirroring, BST search / insert / delete, validation and lowest common ancestor.</p>
                 </section>
-
                 <section id="bt-errors" className="docs-section">
-                  <h2 className="docs-h2">Errors &amp; Tips</h2>
-                  <Alert kind="warn" title="Unique Values">
-                    The value of each node is used to identify it. Adding a node with a value that already exists will cause unexpected behavior or an error.
-                  </Alert>
-                  <Alert kind="tip" title="Use the Console">
-                    Traversals and searches output a detailed log in the Playground Output Console, allowing you to follow the algorithm's decisions textually while watching the animation.
-                  </Alert>
+                  <h2 className="docs-h2">Errors & Tips</h2>
+                  <div className="docs-cmd-table-wrap">
+                  <table className="docs-cmd-table">
+                    <thead><tr><th>Message</th><th>What to do</th></tr></thead>
+                    <tbody>
+                      <tr><td><C>NULL pointer dereference</C></td><td>Reading <C>node.left</C> when <C>node</C> is NULL. Check <C>IF node == NULL</C> first — in recursion this is the base case.</td></tr>
+                      <tr><td><C>Use after free / Double free</C></td><td>The node's memory was already released.</td></tr>
+                      <tr><td><C>node.parent does not exist</C></td><td>Nodes have only left and right pointers. Keep the parent in a variable as you walk down.</td></tr>
+                      <tr><td><C>DEQUEUE / POP on an empty container</C></td><td>Loop with <C>WHILE LENGTH(q) &gt; 0</C>.</td></tr>
+                      <tr><td><C>RETURN can only be used inside a FUNCTION</C></td><td>The SEQUENCE block is not a function.</td></tr>
+                    </tbody>
+                  </table>
+                  </div>
+                  <p className="docs-p">Variables assigned inside a function are local to that call — return results with <C>RETURN</C>. Short-circuit <C>AND</C> / <C>OR</C> make <C>WHILE curr != NULL AND curr.val != key</C> safe.</p>
                 </section>
               </>
             )}
-
-            {/* ══════════════════════════════════════════════
-                STACKS PAGE
-            ══════════════════════════════════════════════ */}
             {activePage === 'stacks' && (
               <>
                 <header className="docs-page-hero">
@@ -1944,7 +1986,7 @@ export default function Docs() {
                   </div>
                   <p className="docs-page-lead">
                     A last-in, first-out pile of values. AQVL renders a stack as a vertical column of boxes that grows
-                    upward on <code>PUSH</code> and collapses on <code>POP</code>.
+                    upward on <code>PUSH</code> and shrinks on <code>POP</code>.
                   </p>
                 </header>
 
@@ -1961,8 +2003,9 @@ export default function Docs() {
                     animation readable: every frame shows one element entering or leaving at a single point.
                   </p>
                   <Alert kind="note" title="Visualization">
-                    Stack elements are laid out as a vertical column (bottom-up). A pushed element drops in from above
-                    and the popped element lifts out of the top, so the LIFO order is visible rather than implied.
+                    Stack elements are laid out as a vertical column (bottom-up), with the top element tagged <C>TOP</C>.
+                    A pushed element grows in on top and a popped element shrinks away, so the LIFO order is visible
+                    rather than implied. The console prints the whole stack (bottom → top) after every change.
                   </Alert>
                 </section>
 
@@ -2039,6 +2082,31 @@ END`} />
                       </tbody>
                     </table>
                   </div>
+
+                  <h3 className="docs-h3">Using a Stack Inside Expressions</h3>
+                  <p className="docs-p">
+                    Real stack algorithms need the value that comes off the stack. These forms work anywhere an
+                    expression is allowed — assignments, <C>IF</C> and <C>WHILE</C> conditions, array indexes,
+                    function arguments:
+                  </p>
+                  <div className="docs-cmd-table-wrap">
+                    <table className="docs-cmd-table">
+                      <thead>
+                        <tr><th>Expression</th><th>Value</th></tr>
+                      </thead>
+                      <tbody>
+                        <tr><td><C>x = POP(s)</C></td><td>Removes the top element and returns it.</td></tr>
+                        <tr><td><C>x = PEEK(s)</C></td><td>Returns the top element without removing it.</td></tr>
+                        <tr><td><C>IS_EMPTY(s)</C></td><td>True when the stack holds nothing.</td></tr>
+                        <tr><td><C>LENGTH(s)</C></td><td>The number of elements currently on the stack.</td></tr>
+                      </tbody>
+                    </table>
+                  </div>
+                  <p className="docs-p">
+                    A stack holds numbers or text (<C>PUSH s "("</C>, <C>PUSH s arr[i]</C>, <C>PUSH s total + 1</C>).
+                    <C>AND</C> / <C>OR</C> short-circuit, so the standard guard is safe:
+                    <C>WHILE LENGTH(s) &gt; 0 AND PEEK(s) &lt; x</C> never peeks at an empty stack.
+                  </p>
                 </section>
 
                 <section id="sk-examples" className="docs-section">
@@ -2076,8 +2144,8 @@ END`} />
 
                   <h3 className="docs-h3">Example 2 — Reversing an Array With a Stack</h3>
                   <p className="docs-p">
-                    The canonical use of LIFO order: push every element in order, then pop them back out to get the
-                    reverse.
+                    The canonical use of LIFO order: push every element in order, then pop them back into the array
+                    from index 0. The last element pushed is the first one popped, so the array ends up reversed.
                   </p>
                   <CodeBlock code={`SCENE ReverseWithStack
 
@@ -2090,47 +2158,58 @@ SEQUENCE
   LOOP i FROM 0 TO LENGTH(arr) - 1
     HIGHLIGHT arr[i]
     PUSH s arr[i]
-    WAIT
   END
 
-  // Pop back out — the reverse order
+  // Pop back into the array: the top (4) goes to index 0
   LOOP i FROM 0 TO LENGTH(arr) - 1
-    POP s
-    WAIT
+    value = POP(s)
+    UPDATE arr[i] value
   END
+  PRINT "Reversed:" arr
 END`} />
                   <p className="docs-p">
                     <strong>Expected behavior:</strong> the column fills bottom-up with 1, 2, 3, 4 and then unwinds
-                    4, 3, 2, 1 — the reversal is visible as the animation itself.
+                    4, 3, 2, 1 into the array; the console prints <C>Reversed: [4, 3, 2, 1]</C>.
                   </p>
 
-                  <h3 className="docs-h3">Example 3 — Two Stacks Side by Side</h3>
+                  <h3 className="docs-h3">Example 3 — Balanced Brackets</h3>
                   <p className="docs-p">
-                    Moving every element from one stack to another reverses it, the trick behind the classic
-                    two-stack queue.
+                    Every opening bracket is pushed; every closing bracket must match the top of the stack. At the
+                    end the stack must be empty.
                   </p>
-                  <CodeBlock code={`SCENE TwoStacks
+                  <CodeBlock code={`SCENE Brackets
 
 DECLARE
-  STACK inbox = [1, 2, 3]
-  STACK outbox
+  ARRAY expr = ["(", "[", "]", ")"]
+  STACK pending
 
 SEQUENCE
-  PEEK inbox
-  POP inbox
-  PUSH outbox 3
-  WAIT
+  isBalanced = 1
+  LOOP i FROM 0 TO LENGTH(expr) - 1
+    ch = expr[i]
+    IF ch == "(" OR ch == "["
+      PUSH pending ch
+    ELSE IF IS_EMPTY(pending)
+      isBalanced = 0
+    ELSE
+      last = POP(pending)
+      IF (ch == ")" AND last != "(") OR (ch == "]" AND last != "[")
+        isBalanced = 0
+      END
+    END
+  END
 
-  POP inbox
-  PUSH outbox 2
-  WAIT
-
-  POP inbox
-  PUSH outbox 1
-
-  IS_EMPTY inbox
-  SIZE outbox
+  IF isBalanced == 1 AND IS_EMPTY(pending)
+    PRINT "Balanced"
+  ELSE
+    PRINT "Not balanced"
+  END
 END`} />
+                  <p className="docs-p">
+                    The Playground's <strong>Stacks</strong> category has fifteen worked examples, including a stack built
+                    on an array with overflow checks, postfix evaluation, infix-to-postfix, next greater element,
+                    stock span, min stack, undo / redo and more.
+                  </p>
                 </section>
 
                 <section id="sk-errors" className="docs-section">
@@ -2138,6 +2217,7 @@ END`} />
 
                   <Alert kind="warn" title="Stack underflow">
                     <C>POP</C> or <C>PEEK</C> on an empty stack raises a stack-underflow error and halts the sequence.
+                    Check first: <C>IF IS_EMPTY(s)</C> … <C>ELSE x = POP(s)</C>, or loop with <C>WHILE LENGTH(s) &gt; 0</C>.
                     Guard long pop loops with <C>IS_EMPTY</C>, or bound the loop by the number of elements you pushed.
                   </Alert>
 
@@ -2699,296 +2779,64 @@ END`} />
                   </div>
                   <h1 className="docs-page-title">Binary Search Tree</h1>
                   <p className="docs-page-lead">
-                    A binary tree that keeps its values in order — smaller to the left, larger to the right — so every
-                    insert, search, and delete is an animated walk down a single path.
+                    A binary tree kept in order: every key in the left subtree is smaller, every key in the right subtree is larger — so search, insert and delete follow one path from the root.
                   </p>
                 </header>
-
                 <section id="bst-introduction" className="docs-section">
                   <h2 className="docs-h2">Introduction</h2>
-                  <p className="docs-p">
-                    A <C>BST</C> is a binary tree with an ordering invariant: every value in a node's left subtree is
-                    smaller than the node, and every value in its right subtree is larger. That single rule is what turns
-                    a search from a scan of the whole structure into one descent from the root.
-                  </p>
-                  <p className="docs-p">
-                    Unlike <C>BINARY_TREE</C>, where you place each child yourself with <C>LEFT_CHILD</C> and
-                    <C>RIGHT_CHILD</C>, a BST places nodes for you: <C>INSERT</C> compares against each node on the way
-                    down and descends left or right until it finds the empty slot the value belongs in.
-                  </p>
-                  <Alert kind="note" title="Visualization">
-                    Each comparison on the descent is highlighted in turn, so the path taken is visible rather than
-                    inferred. The tree re-balances its layout — not its shape — after every structural change.
-                  </Alert>
+                  <p className="docs-p">Because of the ordering rule, each comparison discards a whole subtree: compare the key with <C>curr.val</C>, then go left or right. An inorder traversal of a BST lists its keys in sorted order.</p>
+                  <p className="docs-p">A BST is a binary tree, so all of the pointer code, recursion, queues and stacks from the Binary Tree page work on it too.</p>
                 </section>
-
                 <section id="bst-declaration" className="docs-section">
                   <h2 className="docs-h2">Declaring a BST</h2>
-                  <p className="docs-p">
-                    Declare an empty BST and build it with <C>INSERT</C>, or give an initial value list — those values
-                    are inserted in order, exactly as if you had written one <C>INSERT</C> per value.
-                  </p>
-                  <CodeBlock label="Syntax" code={`BST <name>
-BST <name> = [<value>, <value>, ...]`} />
-
-                  <p className="docs-p">A full minimal program:</p>
-                  <CodeBlock code={`SCENE BSTIntro
-
-DECLARE
-  BST myTree
-
-SEQUENCE
-  INSERT 50
-  INSERT 30
-  INSERT 70
-  SEARCH 30
-END`} />
-                  <p className="docs-p">
-                    50 becomes the root; 30 is smaller so it goes left; 70 is larger so it goes right. The final
-                    <C>SEARCH</C> walks root → left and stops on the match.
-                  </p>
-                  <Alert kind="tip" title="BST commands take a value, not a name">
-                    Tree actions operate on the active tree, so it is <C>INSERT 50</C>, not <C>INSERT myTree 50</C>.
-                    Node values identify nodes throughout the tree vocabulary.
-                  </Alert>
-                  <Alert kind="warn" title="Do not name a structure after a keyword">
-                    <C>BST tree</C> fails to parse: keyword matching is case-insensitive and <C>TREE</C> is a keyword.
-                    Use <C>myTree</C>, <C>bst</C>, or any non-reserved name.
-                  </Alert>
+                  <CodeBlock label="Syntax" code={`BST <name> = [keys, inserted in this order]`} />
+                  <p className="docs-p"><C>BST t = [50, 30, 70]</C> builds 50 with 30 on its left and 70 on its right. Keys must be unique. <C>BST t</C> or <C>BST t = []</C> starts empty.</p>
                 </section>
-
                 <section id="bst-commands" className="docs-section">
                   <h2 className="docs-h2">Commands Reference</h2>
-
-                  <h3 className="docs-h3">Structural Operations</h3>
+                  <p className="docs-p">Write the operations as pointer code (see Examples), or use the one-line built-ins — they walk and relink the tree node by node exactly the same way:</p>
                   <div className="docs-cmd-table-wrap">
-                    <table className="docs-cmd-table">
-                      <thead>
-                        <tr><th>Command</th><th>Description</th></tr>
-                      </thead>
-                      <tbody>
-                        <tr>
-                          <td><span className="tok-keyword">INSERT</span> <span className="tok-param">value</span></td>
-                          <td>Descends from the root, comparing at each node, and attaches a new node at the empty slot where <C>value</C> belongs.</td>
-                        </tr>
-                        <tr>
-                          <td><span className="tok-keyword">DELETE</span> <span className="tok-param">value</span></td>
-                          <td>Finds the node and removes it, handling all three cases: a leaf is detached, a one-child node is replaced by its child, and a two-child node is replaced by its in-order successor.</td>
-                        </tr>
-                        <tr>
-                          <td><span className="tok-keyword">SEARCH</span> <span className="tok-param">value</span></td>
-                          <td>Animates the root-to-target descent, highlighting each comparison, and reports whether the value was found.</td>
-                        </tr>
-                        <tr>
-                          <td><span className="tok-keyword">CLEAR</span></td>
-                          <td>Removes every node, leaving an empty tree.</td>
-                        </tr>
-                      </tbody>
-                    </table>
+                  <table className="docs-cmd-table">
+                    <thead><tr><th>Command</th><th>What it does</th></tr></thead>
+                    <tbody>
+                      <tr><td><C>INSERT t 65</C></td><td>Walk down comparing, link a new node where the walk falls off the tree. A key already present is not inserted again.</td></tr>
+                      <tr><td><C>SEARCH t 65</C></td><td>Follow one path from the root until the key is found or a NULL is reached.</td></tr>
+                      <tr><td><C>DELETE t 30</C></td><td>The three cases: a leaf is unlinked; a node with one child is replaced by it; a node with two children takes its inorder successor's key, then the successor is removed. The removed node is freed.</td></tr>
+                      <tr><td><C>MIN t / MAX t</C></td><td>Keep going left / right until there is no child.</td></tr>
+                      <tr><td><C>INORDER t, PREORDER t, POSTORDER t, LEVELORDER t</C></td><td>Traversals (inorder gives sorted order).</td></tr>
+                      <tr><td><C>HEIGHT t, SIZE t, LEAVES t</C></td><td>Tree measurements.</td></tr>
+                      <tr><td><C>ROTATE t 30 "LEFT"</C></td><td>A left (or "RIGHT") rotation at node 30, as used by self-balancing trees.</td></tr>
+                      <tr><td><C>MIRROR t, CLEAR t</C></td><td>Swap every left/right pair; free every node in postorder.</td></tr>
+                    </tbody>
+                  </table>
                   </div>
-
-                  <h3 className="docs-h3">Traversals</h3>
-                  <div className="docs-cmd-table-wrap">
-                    <table className="docs-cmd-table">
-                      <thead>
-                        <tr><th>Command</th><th>Description</th></tr>
-                      </thead>
-                      <tbody>
-                        <tr>
-                          <td><span className="tok-keyword">INORDER</span></td>
-                          <td>Left, node, right — on a BST this visits the values in ascending sorted order, which is the invariant made visible.</td>
-                        </tr>
-                        <tr>
-                          <td><span className="tok-keyword">PREORDER</span></td>
-                          <td>Node, left, right — the order in which the tree would be rebuilt by re-inserting.</td>
-                        </tr>
-                        <tr>
-                          <td><span className="tok-keyword">POSTORDER</span></td>
-                          <td>Left, right, node — children always before their parent.</td>
-                        </tr>
-                        <tr>
-                          <td><span className="tok-keyword">LEVELORDER</span></td>
-                          <td>Breadth-first, one depth level at a time.</td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-
-                  <h3 className="docs-h3">Queries</h3>
-                  <div className="docs-cmd-table-wrap">
-                    <table className="docs-cmd-table">
-                      <thead>
-                        <tr><th>Command</th><th>Description</th></tr>
-                      </thead>
-                      <tbody>
-                        <tr>
-                          <td><span className="tok-keyword">MIN</span> / <span className="tok-keyword">MAX</span></td>
-                          <td>Walks all the way left (or all the way right) and highlights the smallest (or largest) value.</td>
-                        </tr>
-                        <tr>
-                          <td><span className="tok-keyword">HEIGHT</span></td>
-                          <td>Reports the number of levels — the worst-case cost of a search.</td>
-                        </tr>
-                        <tr>
-                          <td><span className="tok-keyword">SIZE</span></td>
-                          <td>Reports the total node count.</td>
-                        </tr>
-                        <tr>
-                          <td><span className="tok-keyword">ROOT</span></td>
-                          <td>Highlights the current root node.</td>
-                        </tr>
-                        <tr>
-                          <td><span className="tok-keyword">IS_EMPTY</span></td>
-                          <td>Reports whether the tree currently has any nodes.</td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
+                  <p className="docs-p">The tree name may be left out when the program has only one tree: <C>INSERT 65</C>.</p>
                 </section>
-
                 <section id="bst-examples" className="docs-section">
                   <h2 className="docs-h2">Examples</h2>
-
-                  <h3 className="docs-h3">Example 1 — Insert, Search, and All Three Delete Cases</h3>
-                  <p className="docs-p">
-                    Deletion is the only genuinely tricky BST operation, because the replacement rule depends on how many
-                    children the target has. This program walks through all three cases in order.
-                  </p>
-                  <CodeBlock code={`SCENE BSTOperations
-
-DECLARE
-  BST myTree
-
-SEQUENCE
-  INSERT 50
-  INSERT 30
-  INSERT 70
-  INSERT 20
-  INSERT 40
-  INSERT 60
-  INSERT 80
-
-  // Search for a value that exists
-  SEARCH 60
-
-  // Search for one that does not
-  SEARCH 90
-
-  // Case 1 — delete a leaf
-  DELETE 20
-
-  // Case 2 — delete a node with one child
-  INSERT 85
-  DELETE 80
-
-  // Case 3 — delete a node with two children
-  DELETE 50
-
-  CLEAR
-END`} />
-                  <p className="docs-p">
-                    <strong>Expected behavior:</strong> deleting the leaf 20 simply detaches it; deleting 80 (whose only
-                    child is 85) lifts 85 into its place; deleting the root 50 replaces it with its in-order successor,
-                    60, keeping the ordering invariant intact.
-                  </p>
-
-                  <h3 className="docs-h3">Example 2 — Traversals and Queries</h3>
-                  <p className="docs-p">
-                    <C>INORDER</C> on a BST is the sorted sequence — running it next to the other traversals is the
-                    clearest demonstration of what the ordering rule buys you.
-                  </p>
-                  <CodeBlock code={`SCENE BSTTraversalsAndQueries
-
-DECLARE
-  BST myTree
-
-SEQUENCE
-  INSERT 50
-  INSERT 30
-  INSERT 70
-  INSERT 20
-  INSERT 40
-  INSERT 60
-  INSERT 80
-
-  // Traversals
-  INORDER
-  PREORDER
-  POSTORDER
-  LEVELORDER
-
-  // Queries
-  MIN
-  MAX
-  HEIGHT
-  SIZE
-  ROOT
-  IS_EMPTY
-
-  CLEAR
-  IS_EMPTY
-END`} />
-
-                  <h3 className="docs-h3">Example 3 — Why Insert Order Matters</h3>
-                  <p className="docs-p">
-                    Inserting already-sorted values degenerates a BST into a linked list — every node has one child and
-                    the height equals the node count. The initializer list makes the contrast easy to build.
-                  </p>
-                  <CodeBlock code={`SCENE DegenerateBST
-
-DECLARE
-  BST sorted = [10, 20, 30, 40, 50]
-
-SEQUENCE
-  // Every node hangs off the right of the last
-  HEIGHT
-  SIZE
-  WAIT
-
-  // A search now costs a full walk of the tree
-  SEARCH 50
-END`} />
-                  <p className="docs-p">
-                    <strong>Expected behavior:</strong> the tree renders as a single right-leaning chain, and
-                    <C>HEIGHT</C> reports the same number as <C>SIZE</C> — the worst case a BST can reach.
-                  </p>
+                  <p className="docs-p">Search by following one path:</p>
+                  <CodeBlock code={`SCENE BSTSearch\nDECLARE\n  BST t = [50, 30, 70, 20, 40, 60, 80]\nSEQUENCE\n  key = 60\n  curr = t.root\n  WHILE curr != NULL AND curr.val != key\n    IF key < curr.val\n      curr = curr.left\n    ELSE\n      curr = curr.right\n    END\n  END\n  IF curr != NULL\n    PRINT "Found" curr.val\n  END\nEND`} />
+                  <p className="docs-p">Insert: the new node hangs off the last node visited.</p>
+                  <CodeBlock code={`  // insert key: walk down remembering the parent\n  parent = NULL\n  curr = t.root\n  WHILE curr != NULL\n    parent = curr\n    IF key < curr.val\n      curr = curr.left\n    ELSE\n      curr = curr.right\n    END\n  END\n  n = NEW_NODE(t, key)\n  IF parent == NULL\n    t.root = n\n  ELSE IF key < parent.val\n    parent.left = n\n  ELSE\n    parent.right = n\n  END`} />
+                  <p className="docs-p">The built-ins:</p>
+                  <CodeBlock code={`SCENE BSTBuiltins\nDECLARE\n  BST t = [50, 30, 70]\nSEQUENCE\n  INSERT t 65\n  SEARCH t 65\n  DELETE t 30\n  INORDER t\nEND`} />
                 </section>
-
                 <section id="bst-errors" className="docs-section">
-                  <h2 className="docs-h2">Errors &amp; Tips</h2>
-
-                  <Alert kind="warn" title="Duplicate values">
-                    Node values identify nodes, so inserting a value that already exists has no well-defined home in the
-                    tree. Keep the values in a BST distinct.
-                  </Alert>
-
-                  <Alert kind="warn" title="Deleting a value that is not there">
-                    <C>DELETE 99</C> on a tree with no 99 animates the failed search and leaves the tree unchanged; it is
-                    reported in the console rather than silently ignored.
-                  </Alert>
-
-                  <Alert kind="warn" title="Operations on an empty tree">
-                    <C>MIN</C>, <C>MAX</C>, <C>ROOT</C>, and the traversals have nothing to show before the first
-                    <C>INSERT</C>. Check with <C>IS_EMPTY</C> if the sequence may have cleared the tree earlier.
-                  </Alert>
-
-                  <Alert kind="tip" title="BST or BINARY_TREE?">
-                    Use <C>BST</C> when the ordering rule is the point and you want the runtime to place nodes. Use
-                    <C>BINARY_TREE</C> when you need to build an exact shape by hand with <C>LEFT_CHILD</C> and
-                    <C>RIGHT_CHILD</C>.
-                  </Alert>
-
-                  <Alert kind="note" title="Tuning the tree layout">
-                    <C>LAYOUT myTree AS HIERARCHY(levelGap=2, siblingGap=1)</C> tightens or spreads the tree when a deep
-                    example runs out of room — see the Layout &amp; Camera page.
-                  </Alert>
+                  <h2 className="docs-h2">Errors & Tips</h2>
+                  <div className="docs-cmd-table-wrap">
+                  <table className="docs-cmd-table">
+                    <thead><tr><th>Message</th><th>What to do</th></tr></thead>
+                    <tbody>
+                      <tr><td><C>BST t lists 50 twice</C></td><td>Keys in a BST are unique.</td></tr>
+                      <tr><td><C>DELETE by value is defined for a BST</C></td><td>On a plain BINARY_TREE, unlink the node with pointer code and FREE it.</td></tr>
+                      <tr><td><C>X is not a built-in for the tree</C></td><td>Only the commands above exist as built-ins; everything else is written as pointer code.</td></tr>
+                    </tbody>
+                  </table>
+                  </div>
+                  <p className="docs-p">Deleting a node with two children: copy the successor's value into the node (<C>curr.val = succ.val</C>), then unlink the successor — it never has a left child.</p>
                 </section>
               </>
             )}
-
-            {/* ══════════════════════════════════════════════
-                HEAPS PAGE
-            ══════════════════════════════════════════════ */}
             {activePage === 'heaps' && (
               <>
                 <header className="docs-page-hero">

@@ -108,6 +108,7 @@ export class ExecutionEngine {
 
     // When a scene loads, calculate initial layout and save state
     this.eventDispatcher.on('SCENE_LOADED', () => {
+      this.animationController.onSceneLoaded();
       const layoutMap = this.layoutManager.updateLayout();
       this.layoutManager.applyLayoutInstantly(layoutMap);
       this.stateManager.saveState(this.sceneManager.getSceneGraph(), 'Initial State');
@@ -230,7 +231,9 @@ export class ExecutionEngine {
         const instruction = frame.instruction;
         this.currentInstructionIndex = frame.state.pc;
 
-        if (isVisibleStep(instruction)) {
+        // `frame.animated`: e.g. `curr = curr.next`, a variable assignment that
+        // visibly moved a linked-list pointer.
+        if (isVisibleStep(instruction) || frame.animated) {
           const actionLabel = (instruction as any).action ?? (instruction as any).opcode;
           this.stateManager.saveState(
             this.sceneManager.getSceneGraph(),
@@ -441,8 +444,15 @@ export class ExecutionEngine {
       }
     });
 
-    // 3. Sync relationship manager and notify renderer
+    // 3. Sync relationship manager and notify renderer. Snapshots share
+    // position/scale objects with the live elements (so tweens animate
+    // them), so structures laid out purely from their state (linked lists)
+    // are re-placed here rather than trusting those shared objects.
     this.relationshipManager.loadFromScene(this.sceneManager.getSceneGraph());
-    this.eventDispatcher.dispatch('STATE_UPDATED', this.stateManager.getCurrentState());
+    this.animationController.onStateRestored();
+    // Broadcast the live (restored) elements, so the renderer draws the
+    // positions just settled rather than the snapshot's shared objects.
+    const live = this.stateManager.captureSnapshot(this.sceneManager.getSceneGraph(), currentState.description, currentState.timeMs);
+    this.eventDispatcher.dispatch('STATE_UPDATED', { ...currentState, elements: live.elements });
   }
 }

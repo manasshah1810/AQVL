@@ -2,7 +2,6 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import {
   EXAMPLES,
   EXAMPLE_CATEGORIES,
-  getExamplesByCategory,
   type Example,
   type ExampleCategory,
 } from '../examples/registry';
@@ -429,8 +428,10 @@ export function ExampleExplorer({ activeSource, onSelect, onClose }: ExampleExpl
   // Close on Escape (uses refs for `query`/`handleClose` so the listener isn't
   // torn down and re-attached — and the editor isn't re-focused — on every keystroke)
   const queryRef = useRef(query);
-  queryRef.current = query;
   const handleCloseRef = useRef<() => void>(() => {});
+  useEffect(() => {
+    queryRef.current = query;
+  }, [query]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -453,13 +454,13 @@ export function ExampleExplorer({ activeSource, onSelect, onClose }: ExampleExpl
     };
   }, []);
 
-  // When searching, switch to All
-  useEffect(() => {
-    const trimmed = query.trim().toLowerCase();
-    if (trimmed && activeCategory !== 'All') {
+  // Typing a search looks through every category
+  const handleQueryChange = (value: string) => {
+    setQuery(value);
+    if (value.trim() && activeCategory !== 'All') {
       setActiveCategory('All');
     }
-  }, [query]);
+  };
 
   const trimmedQuery = query.trim().toLowerCase();
 
@@ -481,7 +482,9 @@ export function ExampleExplorer({ activeSource, onSelect, onClose }: ExampleExpl
     setIsExiting(true);
     setTimeout(() => onClose(), 220);
   }, [onClose]);
-  handleCloseRef.current = handleClose;
+  useEffect(() => {
+    handleCloseRef.current = handleClose;
+  }, [handleClose]);
 
   const handleCategoryChange = (cat: ExampleCategory | 'All') => {
     setActiveCategory(cat);
@@ -541,7 +544,7 @@ export function ExampleExplorer({ activeSource, onSelect, onClose }: ExampleExpl
               type="text"
               placeholder="Search for an algorithm, structure, or lesson…"
               value={query}
-              onChange={e => setQuery(e.target.value)}
+              onChange={e => handleQueryChange(e.target.value)}
               spellCheck={false}
               autoComplete="off"
               aria-label="Search examples"
