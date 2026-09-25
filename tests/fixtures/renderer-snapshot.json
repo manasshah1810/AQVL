@@ -1,0 +1,12 @@
+{
+  "components/AQVECanvas.tsx": "47beb96f0105a31f218ea4ce5f3b51cfdc12c35fac18e6baa6ac07ddf49798e3",
+  "components/camera/CameraController.test.tsx": "5016dd1da2dc789deb28912a7e6107b3b9e09d170c146fd7da38039031572b59",
+  "components/camera/CameraController.tsx": "53ab870f085797611ac95ea046ff9558a59ff5da5eb23a506cc745650963f7cb",
+  "components/elements/HighlightRing.tsx": "4bdf0019c7caa541a8be0f3adc2e4f66d21aeadea376d887ad81ef912c8db255",
+  "components/generic/GenericSceneRenderer.test.tsx": "10f7acbb64d04d2a669de06cca62093d4c4f6e4ca7c539b66f26609916d4292e",
+  "components/generic/GenericSceneRenderer.tsx": "0e33e9ac688ca7441d6119132a24436e37ecdd22cf94f1e463390033439b2e87",
+  "components/generic/PrimitiveEdge.tsx": "a50fc7f6ec16d2fea2c2e36429910a2ea79303d3027ba1aae7f6e6330a16d391",
+  "components/generic/PrimitiveNode.tsx": "c5842c90816f0adfe0ea300b89712a976b546cf199243c6878ff22ff57e57806",
+  "components/generic/types.ts": "2e28f3fbdcad679b22b855b6ce76072932d83b4557ed2e217378bf058a23c731",
+  "index.ts": "2d481911cf320d873f3cbee450268a6a08302941a6e303b73dcae768ff53e4bb"
+}

@@ -1,0 +1,206 @@
+// Skip List, expressed entirely with existing AQVL primitives:
+//   - NODE per (key, level) "rung" (a key with a tower of 2 appears as
+//     k2_0/k2_1, one rung per level it participates in)
+//   - LINK for both kinds of pointer a real skip list has: horizontal
+//     forward pointers within a level, and vertical tower pointers between
+//     a key's own rungs
+//   - LAYOUT ... AS CUSTOM() + POSITION for the 2D (key-order x, level y)
+//     grid layout that a skip list's shape actually needs (no built-in
+//     strategy produces this)
+//   - HIGHLIGHT to animate a real O(log n) search walk in the exact order
+//     the classic "start top-left, go right while safe, else drop a level"
+//     skip list search algorithm visits nodes
+//
+// Levels below were assigned with the classic *deterministic* skip list
+// scheme (Munro/Papadakis/Sedgewick): the i-th key inserted gets
+// level = number of trailing zero bits of i. This keeps the demo
+// reproducible instead of depending on a random source AQVL doesn't have.
+// levelFor()/isEven() below are executed for real by the VM (see the acid
+// test's "recursion" assertions) and independently reproduce the same
+// levels baked into the DECLARE section below by hand:
+//   i:      1  2  3  4  5  6  7  8  9  10
+//   key:    3  6  7  9  12 17 19 21 25 26
+//   level:  0  1  0  2  0  1  0  3  0  1
+
+SCENE SkipListDemo
+DECLARE
+  FUNCTION isEven(n) {
+    IF n == 0 {
+      RETURN 1
+    }
+    IF n == 1 {
+      RETURN 0
+    }
+    RETURN isEven(n - 2)
+  }
+
+  FUNCTION levelFor(n) {
+    IF n <= 0 {
+      RETURN 0
+    }
+    IF isEven(n) == 0 {
+      RETURN 0
+    }
+    RETURN 1 + levelFor(n / 2)
+  }
+
+  GRAPH sl
+
+  NODE head0 = [0] { parent: sl }
+  NODE head1 = [0] { parent: sl }
+  NODE head2 = [0] { parent: sl }
+  NODE head3 = [0] { parent: sl }
+
+  NODE k3_0 = [3] { parent: sl }
+
+  NODE k6_0 = [6] { parent: sl }
+  NODE k6_1 = [6] { parent: sl }
+
+  NODE k7_0 = [7] { parent: sl }
+
+  NODE k9_0 = [9] { parent: sl }
+  NODE k9_1 = [9] { parent: sl }
+  NODE k9_2 = [9] { parent: sl }
+
+  NODE k12_0 = [12] { parent: sl }
+
+  NODE k17_0 = [17] { parent: sl }
+  NODE k17_1 = [17] { parent: sl }
+
+  NODE k19_0 = [19] { parent: sl }
+
+  NODE k21_0 = [21] { parent: sl }
+  NODE k21_1 = [21] { parent: sl }
+  NODE k21_2 = [21] { parent: sl }
+  NODE k21_3 = [21] { parent: sl }
+
+  NODE k25_0 = [25] { parent: sl }
+
+  NODE k26_0 = [26] { parent: sl }
+  NODE k26_1 = [26] { parent: sl }
+
+SEQUENCE
+  // Real recursion (Phase 1), executed by the VM: reproduces, at runtime,
+  // the same level-per-key scheme used to decide the DECLARE section above.
+  // levelFor() takes the *insertion index* (1..10, in key order), not the
+  // key itself: key3 was the 1st key inserted, key6 the 2nd, etc.
+  lvl3 = levelFor(1)
+  lvl6 = levelFor(2)
+  lvl7 = levelFor(3)
+  lvl9 = levelFor(4)
+  lvl12 = levelFor(5)
+  lvl17 = levelFor(6)
+  lvl19 = levelFor(7)
+  lvl21 = levelFor(8)
+  lvl25 = levelFor(9)
+  lvl26 = levelFor(10)
+
+  CAMERA POSITION(0, 4, 26)
+  LAYOUT sl AS CUSTOM()
+
+  // Column x = key rank * 2.4 - 12 (centers the row); row y = level * 2.4.
+  POSITION head0 AT (x=-12, y=0, z=0)
+  POSITION head1 AT (x=-12, y=2.4, z=0)
+  POSITION head2 AT (x=-12, y=4.8, z=0)
+  POSITION head3 AT (x=-12, y=7.2, z=0)
+
+  POSITION k3_0 AT (x=-9.6, y=0, z=0)
+
+  POSITION k6_0 AT (x=-7.2, y=0, z=0)
+  POSITION k6_1 AT (x=-7.2, y=2.4, z=0)
+
+  POSITION k7_0 AT (x=-4.8, y=0, z=0)
+
+  POSITION k9_0 AT (x=-2.4, y=0, z=0)
+  POSITION k9_1 AT (x=-2.4, y=2.4, z=0)
+  POSITION k9_2 AT (x=-2.4, y=4.8, z=0)
+
+  POSITION k12_0 AT (x=0, y=0, z=0)
+
+  POSITION k17_0 AT (x=2.4, y=0, z=0)
+  POSITION k17_1 AT (x=2.4, y=2.4, z=0)
+
+  POSITION k19_0 AT (x=4.8, y=0, z=0)
+
+  POSITION k21_0 AT (x=7.2, y=0, z=0)
+  POSITION k21_1 AT (x=7.2, y=2.4, z=0)
+  POSITION k21_2 AT (x=7.2, y=4.8, z=0)
+  POSITION k21_3 AT (x=7.2, y=7.2, z=0)
+
+  POSITION k25_0 AT (x=9.6, y=0, z=0)
+
+  POSITION k26_0 AT (x=12, y=0, z=0)
+  POSITION k26_1 AT (x=12, y=2.4, z=0)
+
+  // Tower pointers (a key's own rungs, level i -> level i+1).
+  LINK head0 TO head1
+  LINK head1 TO head2
+  LINK head2 TO head3
+  LINK k6_0 TO k6_1
+  LINK k9_0 TO k9_1
+  LINK k9_1 TO k9_2
+  LINK k17_0 TO k17_1
+  LINK k21_0 TO k21_1
+  LINK k21_1 TO k21_2
+  LINK k21_2 TO k21_3
+  LINK k26_0 TO k26_1
+
+  // Forward pointers, level 0 (every key).
+  LINK head0 TO k3_0
+  LINK k3_0 TO k6_0
+  LINK k6_0 TO k7_0
+  LINK k7_0 TO k9_0
+  LINK k9_0 TO k12_0
+  LINK k12_0 TO k17_0
+  LINK k17_0 TO k19_0
+  LINK k19_0 TO k21_0
+  LINK k21_0 TO k25_0
+  LINK k25_0 TO k26_0
+  WAIT
+
+  // Forward pointers, level 1.
+  LINK head1 TO k6_1
+  LINK k6_1 TO k9_1
+  LINK k9_1 TO k17_1
+  LINK k17_1 TO k21_1
+  LINK k21_1 TO k26_1
+  WAIT
+
+  // Forward pointers, level 2.
+  LINK head2 TO k9_2
+  LINK k9_2 TO k21_2
+  WAIT
+
+  // Forward pointers, level 3.
+  LINK head3 TO k21_3
+  WAIT
+
+  // SEARCH(19): start top-left, walk right while the next key is <= target,
+  // otherwise drop one level. Highlight order below is the real path a
+  // skip list search takes through the structure built above.
+  HIGHLIGHT head3
+  HIGHLIGHT k21_3
+  HIGHLIGHT head2
+  HIGHLIGHT k9_2
+  HIGHLIGHT k21_2
+  HIGHLIGHT head1
+  HIGHLIGHT k6_1
+  HIGHLIGHT k9_1
+  HIGHLIGHT k17_1
+  HIGHLIGHT k21_1
+  HIGHLIGHT head0
+  HIGHLIGHT k3_0
+  HIGHLIGHT k6_0
+  HIGHLIGHT k7_0
+  HIGHLIGHT k9_0
+  HIGHLIGHT k12_0
+  HIGHLIGHT k17_0
+  HIGHLIGHT k19_0 'SUCCESS'
+  WAIT
+
+  // DELETE(19): once found, mark it removed (AQVL has no generic UNLINK
+  // for plain NODE/LINK edges — see the acid test report's gap #3 — so the
+  // node is marked rather than actually spliced out of the pointer chain).
+  SET k19_0 STATE removed
+  WAIT
+END

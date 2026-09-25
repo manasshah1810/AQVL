@@ -1,0 +1,11 @@
+SCENE PinnedElementDemo
+DECLARE
+  ARRAY arr = [5, 3, 8, 1, 9]
+
+SEQUENCE
+  CAMERA POSITION(0, 6, 14)
+  LAYOUT arr AS LINE(spacing=1.5, axis=horizontal)
+  POSITION arr[2] AT (x=5, y=2, z=0)
+  HIGHLIGHT arr[2]
+  WAIT
+END
