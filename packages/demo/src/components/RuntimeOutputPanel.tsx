@@ -7,6 +7,8 @@ export interface RuntimeLogEntry {
   keyword: string;
   message: string;
   kind: 'traversal' | 'search' | 'info' | 'relationship' | 'operation' | 'step' | 'result' | 'swap' | 'compare';
+  /** Visible step (1-based) whose execution produced this line; lets the playground drop lines when stepping back. */
+  step?: number;
 }
 
 interface RuntimeOutputPanelProps {

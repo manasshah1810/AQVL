@@ -194,36 +194,6 @@ a.nb-footer-link:hover {
   100% { transform: scale(1); }
 }
 
-.nb-footer-socials {
-  display: flex;
-  gap: 12px;
-}
-
-.nb-footer-social {
-  width: 36px;
-  height: 36px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: var(--border-w) solid var(--border);
-  border-radius: var(--radius-xs);
-  background: var(--card-bg);
-  color: var(--text);
-  box-shadow: 3px 3px 0 var(--border);
-  transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
-}
-
-.nb-footer-social:hover {
-  background: var(--blue-bg);
-  color: var(--blue);
-  transform: translate(-1px, -1px);
-  box-shadow: 4px 4px 0 var(--border);
-}
-
-.nb-footer-social:active {
-  transform: translate(2px, 2px);
-  box-shadow: 1px 1px 0 var(--border);
-}
 
 /* ── Responsive ── */
 @media (max-width: 768px) {

@@ -202,8 +202,118 @@ SEQUENCE
   HIGHLIGHT list[2]
   HIGHLIGHT list[4]
   WAIT
-  
+
   // Fast is at the end, slow is at the middle (30)
+END
+`,
+
+  DetectCycleFloyd: `SCENE DetectCycleFloyd
+
+DECLARE
+  CIRCULAR LINKEDLIST list = [1, 2, 3, 4]
+
+SEQUENCE
+  // Floyd's tortoise-and-hare: a slow pointer moves one node at a
+  // time, a fast pointer moves two; if the list is circular they
+  // are guaranteed to meet again.
+
+  HIGHLIGHT list[0]
+  WAIT
+
+  // Slow moves to index 1, fast moves to index 2
+  HIGHLIGHT list[1]
+  HIGHLIGHT list[2]
+  WAIT
+
+  // Slow moves to index 2, fast wraps around to index 0
+  HIGHLIGHT list[2]
+  HIGHLIGHT list[0]
+  WAIT
+
+  // Slow moves to index 3, fast wraps to index 2 -- they meet -> cycle confirmed
+  HIGHLIGHT list[3] 'SUCCESS'
+  HIGHLIGHT list[2] 'SUCCESS'
+END
+`,
+
+  MergeTwoSortedLinkedLists: `SCENE MergeTwoSortedLinkedLists
+
+DECLARE
+  LINKEDLIST listA = [1, 3, 5]
+  LINKEDLIST listB = [2, 4, 6]
+  LINKEDLIST merged = []
+
+SEQUENCE
+  // Compare the heads of both lists and always take the smaller one
+  HIGHLIGHT listA[0]
+  HIGHLIGHT listB[0]
+  INSERT_TAIL merged 1
+  WAIT
+
+  HIGHLIGHT listA[1]
+  HIGHLIGHT listB[0]
+  INSERT_TAIL merged 2
+  WAIT
+
+  HIGHLIGHT listA[1]
+  HIGHLIGHT listB[1]
+  INSERT_TAIL merged 3
+  WAIT
+
+  HIGHLIGHT listA[2]
+  HIGHLIGHT listB[1]
+  INSERT_TAIL merged 4
+  WAIT
+
+  HIGHLIGHT listA[2]
+  HIGHLIGHT listB[2]
+  INSERT_TAIL merged 5
+  WAIT
+
+  // listA is exhausted; append the rest of listB
+  INSERT_TAIL merged 6
+END
+`,
+
+  RemoveNthFromEnd: `SCENE RemoveNthFromEnd
+
+DECLARE
+  LINKEDLIST list = [1, 2, 3, 4, 5]
+
+SEQUENCE
+  // Two pointers, n apart: when the fast one reaches the tail,
+  // the slow one sits right before the node to remove.
+  // Removing the 2nd node from the end (value 4).
+
+  HIGHLIGHT list[2]
+  HIGHLIGHT list[4]
+  WAIT
+
+  HIGHLIGHT list[3]
+  // Fast pointer reaches the last node -> slow pointer marks the target
+  HIGHLIGHT list[3] 'SUCCESS'
+END
+`,
+
+  PalindromeLinkedList: `SCENE PalindromeLinkedList
+
+DECLARE
+  LINKEDLIST list = [1, 2, 3, 2, 1]
+
+SEQUENCE
+  // Walk inward from both ends, comparing values as we go
+  HIGHLIGHT list[0]
+  HIGHLIGHT list[4]
+  COMPARE list[0] list[4]
+  WAIT
+
+  HIGHLIGHT list[1]
+  HIGHLIGHT list[3]
+  COMPARE list[1] list[3]
+  WAIT
+
+  // Middle element needs no comparison against itself
+  HIGHLIGHT list[2] 'SUCCESS'
 END
 `
 };

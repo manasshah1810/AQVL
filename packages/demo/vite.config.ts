@@ -13,5 +13,18 @@ export default defineConfig(({ command }) => ({
       '@aqvl/renderer': path.resolve(__dirname, '../renderer/src/index.ts'),
       '@aqvl/shared': path.resolve(__dirname, '../shared/src/index.ts'),
     }
+  },
+  build: {
+    rolldownOptions: {
+      output: {
+        codeSplitting: {
+          groups: [
+            { name: 'vendor-three', test: /[\\/]node_modules[\\/](three|@react-three)[\\/]/ },
+            { name: 'vendor-react', test: /[\\/]node_modules[\\/](react|react-dom|scheduler)[\\/]/ },
+            { name: 'vendor-animejs', test: /[\\/]node_modules[\\/]animejs[\\/]/ },
+          ]
+        }
+      }
+    }
   }
 }))

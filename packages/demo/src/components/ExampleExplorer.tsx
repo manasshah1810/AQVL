@@ -188,6 +188,186 @@ const CATEGORY_META: Record<ExampleCategory, CategoryMeta> = {
       </svg>
     ),
   },
+  'Stacks': {
+    color: '#f97316',
+    accent: 'rgba(249,115,22,0.15)',
+    glow: 'rgba(249,115,22,0.35)',
+    description: 'Last in, first out',
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="4" y="4" width="16" height="4" rx="1"/>
+        <rect x="4" y="10" width="16" height="4" rx="1"/>
+        <rect x="4" y="16" width="16" height="4" rx="1"/>
+      </svg>
+    ),
+    pattern: (
+      <svg width="120" height="80" viewBox="0 0 120 80" fill="none">
+        {[0,1,2,3].map(i => (
+          <rect key={i} x="30" y={16 + i*14} width="60" height="10" rx="2"
+            fill={`rgba(249,115,22,${0.06 + i*0.05})`} stroke="rgba(249,115,22,0.3)" strokeWidth="1"/>
+        ))}
+        <path d="M60 8 L60 2 M56 6 L60 2 L64 6" stroke="rgba(249,115,22,0.5)" strokeWidth="1.5" fill="none"/>
+      </svg>
+    ),
+  },
+  'Queues': {
+    color: '#14b8a6',
+    accent: 'rgba(20,184,166,0.15)',
+    glow: 'rgba(20,184,166,0.35)',
+    description: 'First in, first out',
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="3" y="8" width="4" height="8" rx="1"/>
+        <rect x="10" y="8" width="4" height="8" rx="1"/>
+        <rect x="17" y="8" width="4" height="8" rx="1"/>
+        <path d="M21 12 L23 12"/>
+      </svg>
+    ),
+    pattern: (
+      <svg width="120" height="80" viewBox="0 0 120 80" fill="none">
+        {[10,34,58,82].map((x,i) => (
+          <rect key={i} x={x} y="30" width="18" height="20" rx="3"
+            fill={`rgba(20,184,166,${0.06 + i*0.05})`} stroke="rgba(20,184,166,0.3)" strokeWidth="1"/>
+        ))}
+        <path d="M104 40 L112 40 M108 36 L112 40 L108 44" stroke="rgba(20,184,166,0.5)" strokeWidth="1.5" fill="none"/>
+      </svg>
+    ),
+  },
+  'Graphs': {
+    color: '#3b82f6',
+    accent: 'rgba(59,130,246,0.15)',
+    glow: 'rgba(59,130,246,0.35)',
+    description: 'Vertices and edges',
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="6" cy="6" r="2.5"/>
+        <circle cx="18" cy="6" r="2.5"/>
+        <circle cx="12" cy="18" r="2.5"/>
+        <line x1="6" y1="8.5" x2="12" y2="15.5"/>
+        <line x1="18" y1="8.5" x2="12" y2="15.5"/>
+        <line x1="8.5" y1="6" x2="15.5" y2="6"/>
+      </svg>
+    ),
+    pattern: (
+      <svg width="120" height="80" viewBox="0 0 120 80" fill="none">
+        <line x1="24" y1="20" x2="90" y2="20" stroke="rgba(59,130,246,0.25)" strokeWidth="1"/>
+        <line x1="24" y1="20" x2="60" y2="60" stroke="rgba(59,130,246,0.25)" strokeWidth="1"/>
+        <line x1="90" y1="20" x2="60" y2="60" stroke="rgba(59,130,246,0.25)" strokeWidth="1"/>
+        <line x1="90" y1="20" x2="100" y2="55" stroke="rgba(59,130,246,0.25)" strokeWidth="1"/>
+        {[[24,20],[90,20],[60,60],[100,55]].map(([x,y],i) => (
+          <circle key={i} cx={x} cy={y} r="6" fill="rgba(59,130,246,0.12)" stroke="rgba(59,130,246,0.4)" strokeWidth="1.5"/>
+        ))}
+      </svg>
+    ),
+  },
+  'Heaps': {
+    color: '#eab308',
+    accent: 'rgba(234,179,8,0.15)',
+    glow: 'rgba(234,179,8,0.35)',
+    description: 'Priority-ordered trees',
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="4" r="2"/>
+        <circle cx="6" cy="12" r="2"/>
+        <circle cx="18" cy="12" r="2"/>
+        <circle cx="3" cy="20" r="2"/>
+        <circle cx="9" cy="20" r="2"/>
+        <line x1="12" y1="6" x2="6" y2="10"/>
+        <line x1="12" y1="6" x2="18" y2="10"/>
+        <line x1="6" y1="14" x2="3" y2="18"/>
+        <line x1="6" y1="14" x2="9" y2="18"/>
+      </svg>
+    ),
+    pattern: (
+      <svg width="120" height="80" viewBox="0 0 120 80" fill="none">
+        <circle cx="60" cy="14" r="8" fill="rgba(234,179,8,0.12)" stroke="rgba(234,179,8,0.4)" strokeWidth="1.5"/>
+        <line x1="52" y1="19" x2="36" y2="39" stroke="rgba(234,179,8,0.25)" strokeWidth="1"/>
+        <line x1="68" y1="19" x2="84" y2="39" stroke="rgba(234,179,8,0.25)" strokeWidth="1"/>
+        {[36,84].map((x,i) => (
+          <circle key={i} cx={x} cy="46" r="7" fill="rgba(234,179,8,0.1)" stroke="rgba(234,179,8,0.3)" strokeWidth="1"/>
+        ))}
+      </svg>
+    ),
+  },
+  'Hash Maps': {
+    color: '#d946ef',
+    accent: 'rgba(217,70,239,0.15)',
+    glow: 'rgba(217,70,239,0.35)',
+    description: 'Keys mapped to values',
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <line x1="4" y1="9" x2="20" y2="9"/>
+        <line x1="4" y1="15" x2="20" y2="15"/>
+        <line x1="9" y1="4" x2="9" y2="20"/>
+        <line x1="15" y1="4" x2="15" y2="20"/>
+      </svg>
+    ),
+    pattern: (
+      <svg width="120" height="80" viewBox="0 0 120 80" fill="none">
+        {[0,1,2].map(row => (
+          <g key={row}>
+            <rect x="20" y={16 + row*18} width="35" height="14" rx="2" fill="rgba(217,70,239,0.08)" stroke="rgba(217,70,239,0.3)" strokeWidth="1"/>
+            <rect x="65" y={16 + row*18} width="35" height="14" rx="2" fill="rgba(217,70,239,0.14)" stroke="rgba(217,70,239,0.3)" strokeWidth="1"/>
+            <path d={`M55 ${23+row*18} L65 ${23+row*18}`} stroke="rgba(217,70,239,0.4)" strokeWidth="1.5"/>
+          </g>
+        ))}
+      </svg>
+    ),
+  },
+  'Tries': {
+    color: '#22c55e',
+    accent: 'rgba(34,197,94,0.15)',
+    glow: 'rgba(34,197,94,0.35)',
+    description: 'Prefix trees for words',
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="4" r="2"/>
+        <circle cx="6" cy="12" r="2"/>
+        <circle cx="18" cy="12" r="2"/>
+        <circle cx="6" cy="20" r="2"/>
+        <circle cx="12" cy="20" r="2"/>
+        <line x1="12" y1="6" x2="6" y2="10"/>
+        <line x1="12" y1="6" x2="18" y2="10"/>
+        <line x1="6" y1="14" x2="6" y2="18"/>
+        <line x1="6" y1="14" x2="12" y2="18"/>
+      </svg>
+    ),
+    pattern: (
+      <svg width="120" height="80" viewBox="0 0 120 80" fill="none">
+        <circle cx="60" cy="12" r="6" fill="rgba(34,197,94,0.12)" stroke="rgba(34,197,94,0.4)" strokeWidth="1.5"/>
+        <line x1="54" y1="16" x2="38" y2="34" stroke="rgba(34,197,94,0.25)" strokeWidth="1"/>
+        <line x1="66" y1="16" x2="82" y2="34" stroke="rgba(34,197,94,0.25)" strokeWidth="1"/>
+        {[38,82].map((x,i) => (
+          <circle key={i} cx={x} cy="40" r="6" fill="rgba(34,197,94,0.1)" stroke="rgba(34,197,94,0.3)" strokeWidth="1"/>
+        ))}
+        <line x1="34" y1="45" x2="26" y2="62" stroke="rgba(34,197,94,0.2)" strokeWidth="1"/>
+        <line x1="42" y1="45" x2="50" y2="62" stroke="rgba(34,197,94,0.2)" strokeWidth="1"/>
+        {[26,50].map((x,i) => (
+          <circle key={i} cx={x} cy="68" r="5" fill="rgba(34,197,94,0.07)" stroke="rgba(34,197,94,0.2)" strokeWidth="1"/>
+        ))}
+      </svg>
+    ),
+  },
+  'Recursion & Functions': {
+    color: '#64748b',
+    accent: 'rgba(100,116,139,0.15)',
+    glow: 'rgba(100,116,139,0.35)',
+    description: 'Functions calling themselves',
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M17.5 12a5.5 5.5 0 1 1-5.5-5.5"/>
+        <polyline points="17.5 6 17.5 12 11.5 12"/>
+      </svg>
+    ),
+    pattern: (
+      <svg width="120" height="80" viewBox="0 0 120 80" fill="none">
+        {[26,20,14].map((r,i) => (
+          <circle key={i} cx="60" cy="40" r={r} fill="none" stroke={`rgba(100,116,139,${0.35 - i*0.08})`} strokeWidth="1.5" strokeDasharray="4 3"/>
+        ))}
+        <circle cx="60" cy="40" r="4" fill="rgba(100,116,139,0.4)"/>
+      </svg>
+    ),
+  },
 };
 
 // ── Difficulty Badge ───────────────────────────────────────────────────────────
@@ -246,23 +426,32 @@ export function ExampleExplorer({ activeSource, onSelect, onClose }: ExampleExpl
   const searchInputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Close on Escape
+  // Close on Escape (uses refs for `query`/`handleClose` so the listener isn't
+  // torn down and re-attached — and the editor isn't re-focused — on every keystroke)
+  const queryRef = useRef(query);
+  queryRef.current = query;
+  const handleCloseRef = useRef<() => void>(() => {});
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (query) setQuery('');
-        else handleClose();
+        if (queryRef.current) setQuery('');
+        else handleCloseRef.current();
       }
     };
     window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
+  // Return focus to the playground editor only when the explorer unmounts.
+  useEffect(() => {
     return () => {
-      window.removeEventListener('keydown', handler);
       requestAnimationFrame(() => {
         const editor = document.querySelector('.aqvl-editor-textarea') as HTMLTextAreaElement | null;
         if (editor) editor.focus();
       });
     };
-  }, [query]);
+  }, []);
 
   // When searching, switch to All
   useEffect(() => {
@@ -292,6 +481,7 @@ export function ExampleExplorer({ activeSource, onSelect, onClose }: ExampleExpl
     setIsExiting(true);
     setTimeout(() => onClose(), 220);
   }, [onClose]);
+  handleCloseRef.current = handleClose;
 
   const handleCategoryChange = (cat: ExampleCategory | 'All') => {
     setActiveCategory(cat);

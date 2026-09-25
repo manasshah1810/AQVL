@@ -99,10 +99,23 @@ const DotGrid = ({ cols, rows, style, color }: {
   </div>
 );
 
+// Feature toggle for custom 3D cursor.
+const ENABLE_CUSTOM_CURSOR = true;
+
 const CustomCursor = () => {
   const cursorRef = React.useRef<HTMLDivElement>(null);
+  const [enabled, setEnabled] = useState(ENABLE_CUSTOM_CURSOR);
 
   useEffect(() => {
+    const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+    if (mediaQuery.matches) {
+      setEnabled(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!enabled) return;
+
     let ticking = false;
     let mouseX = -100;
     let mouseY = -100;
@@ -126,13 +139,19 @@ const CustomCursor = () => {
     return () => {
       window.removeEventListener('mousemove', moveCursor);
     };
-  }, []);
+  }, [enabled]);
+
+  if (!enabled) return null;
 
   return (
     <div 
       ref={cursorRef}
       className="custom-cursor-wrapper"
-      style={{ transform: 'translate3d(-100px, -100px, 0)' }}
+      style={{ 
+        transform: 'translate3d(-100px, -100px, 0)',
+        pointerEvents: 'none', // Ensure it doesn't block clicks
+        zIndex: 9999
+      }}
     >
       <div className="scroll-cube-container">
         <div className="scroll-cube">
@@ -150,45 +169,19 @@ const CustomCursor = () => {
 
 const BackgroundDecorations = ({ isDark }: { isDark: boolean }) => {
   const elements = [
-    // Section 1 / Top
-    { type: 'text', content: 'DSA', top: '5%', left: '8%', rot: -15, delay: 0, color: 'var(--purple)', size: '20px' },
-    { type: 'text', content: '{ }', top: '8%', left: '85%', rot: 10, delay: 1, color: 'var(--blue)', size: '24px' },
-    { type: 'text', content: 'Tree', top: '15%', left: '15%', rot: -5, delay: 2, color: 'var(--green)' },
-    { type: 'text', content: 'Graph', top: '12%', left: '75%', rot: 25, delay: 0.5, color: 'var(--pink)' },
-    { type: 'text', content: 'O(log n)', top: '18%', left: '5%', rot: -20, delay: 1.5, color: 'var(--yellow)' },
-    { type: 'text', content: 'Stack', top: '22%', left: '88%', rot: 15, delay: 2.5, color: 'var(--text-muted)' },
-    
-    // Section 2
-    { type: 'text', content: '( )', top: '30%', left: '90%', rot: 0, delay: 0, color: 'var(--text-muted)', size: '28px' },
-    { type: 'text', content: 'Queue', top: '28%', left: '12%', rot: -10, delay: 1, color: 'var(--blue)' },
-    { type: 'text', content: '< >', top: '35%', left: '8%', rot: 5, delay: 2, color: 'var(--green)', size: '22px' },
-    { type: 'text', content: '[ ]', top: '38%', left: '85%', rot: -15, delay: 0.5, color: 'var(--purple)', size: '26px' },
-    { type: 'text', content: 'Heap', top: '42%', left: '25%', rot: -5, delay: 1.2, color: 'var(--pink)' },
-    
-    // Section 3
-    { type: 'text', content: 'O(1)', top: '50%', left: '15%', rot: 10, delay: 0.8, color: 'var(--yellow)' },
-    { type: 'text', content: 'Trie', top: '48%', left: '85%', rot: -8, delay: 0.3, color: 'var(--text-muted)' },
-    { type: 'text', content: 'BFS', top: '55%', left: '8%', rot: 12, delay: 1.8, color: 'var(--green)' },
-    { type: 'text', content: 'DFS', top: '58%', left: '92%', rot: -18, delay: 0.7, color: 'var(--blue)' },
-    
-    // Section 4
-    { type: 'text', content: 'Sort', top: '65%', left: '18%', rot: 22, delay: 1.4, color: 'var(--purple)' },
-    { type: 'text', content: 'Search', top: '68%', left: '78%', rot: 14, delay: 0.9, color: 'var(--pink)' },
-    { type: 'text', content: 'Array', top: '75%', left: '12%', rot: -12, delay: 2.1, color: 'var(--text-muted)' },
-    { type: 'text', content: 'Linked List', top: '78%', left: '88%', rot: 8, delay: 2.3, color: 'var(--green)' },
-
-    // Section 5 / Bottom
-    { type: 'text', content: 'AQVL', top: '85%', left: '5%', rot: -15, delay: 0, color: 'var(--yellow)', size: '20px' },
-    { type: 'text', content: '{ }', top: '88%', left: '85%', rot: 10, delay: 1, color: 'var(--blue)' },
-    { type: 'text', content: 'Tree', top: '92%', left: '15%', rot: -5, delay: 2, color: 'var(--pink)' },
-    { type: 'text', content: 'Graph', top: '95%', left: '90%', rot: 25, delay: 0.5, color: 'var(--purple)' },
-    { type: 'text', content: 'O(n log n)', top: '98%', left: '10%', rot: -20, delay: 1.5, color: 'var(--text-muted)' },
-    
-    // Middle scatter
-    { type: 'text', content: 'Node', top: '25%', left: '45%', rot: 15, delay: 2.5, color: 'var(--green)' },
-    { type: 'text', content: 'Edge', top: '45%', left: '60%', rot: -10, delay: 0.5, color: 'var(--purple)' },
-    { type: 'text', content: 'Root', top: '62%', left: '35%', rot: 5, delay: 1.2, color: 'var(--pink)' },
-    { type: 'text', content: 'Leaf', top: '82%', left: '55%', rot: -8, delay: 0.8, color: 'var(--yellow)' },
+    // Curated 12 elements with wide spacing
+    { type: 'text', content: 'DSA', top: '15%', left: '10%', rot: -15, delay: 0, color: 'var(--purple)', size: '20px' },
+    { type: 'text', content: '{ }', top: '25%', left: '80%', rot: 10, delay: 1.5, color: 'var(--blue)', size: '24px' },
+    { type: 'text', content: 'Tree', top: '40%', left: '15%', rot: -5, delay: 3, color: 'var(--green)' },
+    { type: 'text', content: 'Graph', top: '15%', left: '70%', rot: 25, delay: 0.5, color: 'var(--pink)' },
+    { type: 'text', content: 'O(log n)', top: '55%', left: '12%', rot: -20, delay: 2.5, color: 'var(--yellow)' },
+    { type: 'text', content: 'Queue', top: '70%', left: '85%', rot: -10, delay: 1, color: 'var(--blue)' },
+    { type: 'text', content: '[ ]', top: '85%', left: '18%', rot: -15, delay: 4, color: 'var(--purple)', size: '26px' },
+    { type: 'text', content: 'Heap', top: '45%', left: '85%', rot: -5, delay: 2, color: 'var(--pink)' },
+    { type: 'text', content: 'O(1)', top: '35%', left: '25%', rot: 10, delay: 3.5, color: 'var(--yellow)' },
+    { type: 'text', content: 'DFS', top: '65%', left: '90%', rot: -18, delay: 0.7, color: 'var(--green)' },
+    { type: 'text', content: 'AQVL', top: '90%', left: '75%', rot: -15, delay: 1.2, color: 'var(--yellow)', size: '20px' },
+    { type: 'text', content: 'Node', top: '80%', left: '50%', rot: 15, delay: 5, color: 'var(--text-muted)' },
   ];
 
   return (
@@ -198,7 +191,9 @@ const BackgroundDecorations = ({ isDark }: { isDark: boolean }) => {
           top: el.top, left: el.left,
           color: el.color,
           fontSize: el.size || '16px',
-          animation: `floatY ${6 + (i % 4)}s ease-in-out infinite`,
+          opacity: isDark ? 0.15 : 0.2, // Lower default opacity
+          filter: 'blur(1.5px)', // Add slight blur
+          animation: `floatY ${16 + (i % 4) * 3}s ease-in-out infinite`, // Slower animation (16-25s)
           animationDelay: `${el.delay}s`,
           transform: `rotate(${el.rot}deg)`
         }}>
@@ -206,39 +201,39 @@ const BackgroundDecorations = ({ isDark }: { isDark: boolean }) => {
         </div>
       ))}
       
-      {/* Extra Geometric Shapes */}
+      {/* Extra Geometric Shapes - slowed down */}
       <CubeDecoration style={{
         top: '25%', right: '10%',
         width: '40px', height: '40px',
-        color: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)',
-        animation: 'floatY 9s ease-in-out infinite',
+        color: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)',
+        animation: 'floatY 18s ease-in-out infinite',
       }}/>
       <CubeDecoration style={{
         top: '70%', left: '8%',
         width: '30px', height: '30px',
-        color: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)',
-        animation: 'floatY 12s ease-in-out infinite reverse',
+        color: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)',
+        animation: 'floatY 24s ease-in-out infinite reverse',
       }}/>
       <AxesDecoration style={{
         top: '55%', right: '5%',
         width: '60px', height: '60px',
-        color: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.1)',
-        animation: 'floatX 10s ease-in-out infinite',
+        color: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)',
+        animation: 'floatX 20s ease-in-out infinite',
       }}/>
       <CrossDecoration
-        color={isDark ? 'rgba(52,211,153,0.3)' : 'rgba(52,211,153,0.5)'}
+        color={isDark ? 'rgba(52,211,153,0.15)' : 'rgba(52,211,153,0.2)'}
         style={{
           top: '45%', left: '15%',
           width: '18px', height: '18px',
-          animation: 'floatX 5s ease-in-out infinite reverse',
+          animation: 'floatX 15s ease-in-out infinite reverse',
         }}
       />
       <CrossDecoration
-        color={isDark ? 'rgba(244,114,182,0.3)' : 'rgba(244,114,182,0.5)'}
+        color={isDark ? 'rgba(244,114,182,0.15)' : 'rgba(244,114,182,0.2)'}
         style={{
           top: '85%', right: '20%',
           width: '24px', height: '24px',
-          animation: 'floatY 7s ease-in-out infinite',
+          animation: 'floatY 16s ease-in-out infinite',
         }}
       />
     </>
@@ -280,45 +275,47 @@ export default function Landing() {
       <AxesDecoration style={{
         top: '22%', left: '2%',
         width: '110px', height: '110px',
-        color: isDark ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.2)',
-        animation: 'floatY 8s ease-in-out infinite',
+        color: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.1)',
+        animation: 'floatY 18s ease-in-out infinite',
+        filter: 'blur(2px)',
       }}/>
 
       <CubeDecoration style={{
         top: '60%', left: '1.5%',
         width: '60px', height: '60px',
-        color: isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.15)',
-        animation: 'floatY 11s ease-in-out infinite reverse',
+        color: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)',
+        animation: 'floatY 22s ease-in-out infinite reverse',
+        filter: 'blur(1px)',
       }}/>
 
       <CrossDecoration
-        color={isDark ? 'rgba(168,85,247,0.6)' : 'rgba(168,85,247,0.45)'}
+        color={isDark ? 'rgba(168,85,247,0.3)' : 'rgba(168,85,247,0.2)'}
         style={{
           top: '75%', left: '2%',
           width: '26px', height: '26px',
-          animation: 'floatX 5s ease-in-out infinite',
+          animation: 'floatX 16s ease-in-out infinite',
         }}
       />
 
-      <DotGrid cols={5} rows={4} color={isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.15)'}
+      <DotGrid cols={5} rows={4} color={isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)'}
         style={{ top: '14%', right: '2%' }}
       />
 
       <CrossDecoration
-        color={isDark ? 'rgba(96,165,250,0.6)' : 'rgba(59,130,246,0.5)'}
+        color={isDark ? 'rgba(96,165,250,0.3)' : 'rgba(59,130,246,0.2)'}
         style={{
           top: '12%', left: '40%',
           width: '20px', height: '20px',
-          animation: 'floatY 7s ease-in-out infinite',
+          animation: 'floatY 19s ease-in-out infinite',
         }}
       />
 
       <CrossDecoration
-        color={isDark ? 'rgba(253,224,71,0.7)' : 'rgba(161,140,0,0.45)'}
+        color={isDark ? 'rgba(253,224,71,0.3)' : 'rgba(161,140,0,0.2)'}
         style={{
           top: '28%', right: '1.5%',
           width: '20px', height: '20px',
-          animation: 'floatX 6s ease-in-out infinite reverse',
+          animation: 'floatX 15s ease-in-out infinite reverse',
         }}
       />
 

@@ -560,9 +560,6 @@
   background: var(--pg-bg);
 }
 
-.pg-editor-container .aqvl-editor-container {
-  background: var(--pg-bg) !important;
-}
 
 /* ── Right Panel — Visualization ────────────────────────── */
 .pg-right-panel {
@@ -938,6 +935,7 @@
 }
 
 .pg-progress-track {
+  width: 100%;
   height: 6px;
   background: var(--pg-surface-3);
   border: 2px solid var(--pg-border);
@@ -2226,63 +2224,144 @@
   color: var(--pg-text-1);
 }
 
-/* ── Light mode: fix editor syntax colors ─────────────────────
-   The --syn-* vars come from :root with dark defaults.
-   Override them here so the overlay renders dark text on cream.
+/* ── Code editor theme ─────────────────────────────────────────
+   The editor (IDEEditor.tsx) reads --syn-* / --bg-surface style tokens
+   from :root, which only has light values, and `.playground-root *`
+   above zeroes every padding. Both are re-established here, per theme,
+   with selectors specific enough to win over the reset.
+   The overlay and the textarea MUST keep identical font, padding and
+   line-height, and the gutter's top padding must equal theirs, or the
+   caret/selection drift away from the highlighted text.
    ─────────────────────────────────────────────────────────── */
-.playground-root[data-theme="light"] .aqvl-editor-overlay {
-  color: #1e293b;              /* --syn-default equivalent */
+.playground-root {
+  --ed-bg:                #fffdf8;
+  --ed-gutter-bg:         #f5f0e8;
+  --ed-gutter-fg:         #9b958a;
+  --ed-gutter-fg-current: #111111;
+  --ed-divider:           rgba(17, 17, 17, 0.12);
+  --ed-caret:             #4f46e5;
+  --ed-selection:         rgba(99, 102, 241, 0.22);
+
+  --syn-keyword:  #6d28d9;
+  --syn-circular: #be185d;
+  --syn-number:   #c2410c;
+  --syn-string:   #047857;
+  --syn-comment:  #6b7280;
+  --syn-default:  #1e293b;
 }
 
-.playground-root[data-theme="light"] .aqvl-editor-overlay .keyword {
-  color: #7c3aed;              /* deep violet for keywords */
+.playground-root[data-theme="dark"] {
+  --ed-bg:                #14141c;
+  --ed-gutter-bg:         #101017;
+  --ed-gutter-fg:         #4b5563;
+  --ed-gutter-fg-current: #e2e8f0;
+  --ed-divider:           rgba(226, 232, 240, 0.08);
+  --ed-caret:             #a78bfa;
+  --ed-selection:         rgba(167, 139, 250, 0.28);
+
+  --syn-keyword:  #c4a7ff;
+  --syn-circular: #ff79c6;
+  --syn-number:   #ffb86c;
+  --syn-string:   #6ee7a0;
+  --syn-comment:  #7c86a8;
+  --syn-default:  #e2e8f0;
 }
 
-.playground-root[data-theme="light"] .aqvl-editor-overlay .keyword-circular {
-  color: #6d28d9;
+.playground-root .aqvl-editor-root {
+  background: var(--ed-bg);
 }
 
-.playground-root[data-theme="light"] .aqvl-editor-overlay .number {
-  color: #b45309;              /* amber for numbers */
+.playground-root .aqvl-editor-gutter {
+  width: 52px;
+  min-width: 52px;
+  background: var(--ed-gutter-bg);
+  border-right: 1px solid var(--ed-divider);
 }
 
-.playground-root[data-theme="light"] .aqvl-editor-overlay .string {
-  color: #047857;              /* green for strings */
+.playground-root .aqvl-gutter-body {
+  padding: 12px 0;
 }
 
-.playground-root[data-theme="light"] .aqvl-editor-overlay .comment {
-  color: #6b7280;              /* grey for comments */
-  font-style: normal;
+.playground-root .aqvl-gutter-line {
+  height: 22px;
+  line-height: 22px;
+  padding: 0 14px 0 8px;
+  font-family: var(--pg-font-mono);
+  font-size: 12px;
+  letter-spacing: 0;
+  text-align: right;
+  color: var(--ed-gutter-fg);
 }
 
-/* Light mode: fix caret and editor container background */
-.playground-root[data-theme="light"] .aqvl-editor-container {
-  background: var(--pg-bg);
+.playground-root .aqvl-gutter-line.current {
+  color: var(--ed-gutter-fg-current);
+  font-weight: 600;
 }
 
-.playground-root[data-theme="light"] .aqvl-editor-textarea {
-  caret-color: #6366f1;
+.playground-root .aqvl-editor-overlay,
+.playground-root .aqvl-editor-textarea {
+  padding: 12px 16px;
+  font-family: var(--pg-font-mono);
+  font-size: 13px;
+  line-height: 22px;
+  letter-spacing: 0;
 }
 
-/* Playground Editor Selection Styling:
-   Keep text inside textarea 100% transparent on selection so it never double-draws
-   over the syntax overlay div underneath. */
-.playground-root .aqvl-editor-textarea::selection,
+.playground-root .aqvl-editor-overlay {
+  color: var(--syn-default);
+}
+
+/* The width probe must measure glyphs only, never padding. */
+.playground-root .aqvl-metrics-probe {
+  padding: 0;
+}
+
+.playground-root .aqvl-editor-textarea {
+  caret-color: var(--ed-caret);
+}
+
+/* `::selection` and `::-moz-selection` must be separate rules: a browser
+   that doesn't know one of them drops the entire selector list, and the
+   textarea's own (normally invisible) text then paints over the overlay. */
+.playground-root .aqvl-editor-textarea::selection {
+  background: var(--ed-selection);
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+}
 .playground-root .aqvl-editor-textarea::-moz-selection {
-  background: rgba(99, 102, 241, 0.35) !important;
-  color: transparent !important;
-  -webkit-text-fill-color: transparent !important;
-  text-shadow: none !important;
+  background: var(--ed-selection);
+  color: transparent;
 }
 
-.playground-root[data-theme="light"] .aqvl-editor-textarea::selection,
-.playground-root[data-theme="light"] .aqvl-editor-textarea::-moz-selection {
-  background: rgba(253, 224, 71, 0.5) !important;
-  color: transparent !important;
-  -webkit-text-fill-color: transparent !important;
-  text-shadow: none !important;
-}
+.playground-root .aqvl-editor-overlay .hl-keyword    { color: var(--syn-keyword); }
+.playground-root .aqvl-editor-overlay .hl-structural { color: var(--syn-circular); }
+.playground-root .aqvl-editor-overlay .hl-number     { color: var(--syn-number); }
+.playground-root .aqvl-editor-overlay .hl-string     { color: var(--syn-string); }
+.playground-root .aqvl-editor-overlay .hl-comment    { color: var(--syn-comment); }
 
+/* Autocomplete dropdown follows the playground palette */
+.playground-root .aqvl-autocomplete {
+  background: var(--pg-surface);
+  border: 2px solid var(--pg-border);
+  font-family: var(--pg-font-mono);
+}
+.playground-root .aqvl-autocomplete-item {
+  padding: 5px 12px;
+  color: var(--pg-text-1);
+}
+.playground-root .aqvl-autocomplete-item:hover,
+.playground-root .aqvl-autocomplete-item.selected {
+  background: var(--pg-accent-bg);
+}
+.playground-root .aqvl-autocomplete-hint {
+  color: var(--pg-text-4);
+}
+.playground-root .aqvl-autocomplete-footer {
+  padding: 4px 12px;
+  color: var(--pg-text-4);
+  background: var(--pg-surface-2);
+  border-top: 1px solid var(--ed-divider);
+}
 
 
 /* ══════════════════════════════════════════════════════════════

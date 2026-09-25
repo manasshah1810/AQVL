@@ -3,7 +3,7 @@ import { Lexer, Parser, SemanticValidator, Optimizer, AQIRGenerator } from '@aqv
 import { ExecutionEngine } from '@aqvl/runtime';
 import { AQVECanvas } from '@aqvl/renderer';
 
-import { IDEEditor } from '../components/IDEEditor';
+import { IDEEditor, type EditorErrorMarker } from '../components/IDEEditor';
 import { ExampleExplorer } from '../components/ExampleExplorer';
 import { EXAMPLES } from '../examples/registry';
 import { ArrayScripts } from '../examples/ArrayLibrary';
@@ -138,13 +138,15 @@ export default function Playground() {
   // Pipeline State
   const [isCompiling, setIsCompiling] = useState(false);
   const [compileError, setCompileError] = useState<string | null>(null);
+  const [runtimeError, setRuntimeError] = useState<string | null>(null);
+  const [errorMarkers, setErrorMarkers] = useState<EditorErrorMarker[]>([]);
 
   // Runtime State
   const engineRef = useRef<ExecutionEngine | null>(null);
   const [sceneState, setSceneState] = useState<any>(null);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [currentInstructionIndex, setCurrentInstructionIndex] = useState(0);
-  const [totalInstructions, setTotalInstructions] = useState(0);
+  const [animatedStepCurrent, setAnimatedStepCurrent] = useState(0);
+  const [animatedStepTotal, setAnimatedStepTotal] = useState(0);
   const [resetKey, setResetKey] = useState(0);
 
   // Runtime Output Logs
@@ -177,10 +179,14 @@ export default function Playground() {
   // ── Handlers ──────────────────────────────────────────────────────────────────
 
   const handlePlay = () => {
-    if (engineRef.current) {
-      engineRef.current.play();
-      setIsPlaying(true);
+    const engine = engineRef.current;
+    if (!engine) return;
+    // Finished: Play replays the program from the beginning.
+    if (engine.isAtEnd()) {
+      engine.restart();
     }
+    engine.play();
+    setIsPlaying(true);
   };
 
   const handlePause = () => {
@@ -193,8 +199,11 @@ export default function Playground() {
   const handleCompileAndRun = () => {
     setIsCompiling(true);
     setCompileError(null);
+    setRuntimeError(null);
+    setErrorMarkers([]);
     setSceneState(null);
-    setCurrentInstructionIndex(0);
+    setAnimatedStepCurrent(0);
+    setAnimatedStepTotal(0);
     setIsPlaying(false);
     setResetKey(prev => prev + 1);
     setRuntimeLogs([]);
@@ -214,6 +223,7 @@ export default function Playground() {
       const validator = new SemanticValidator();
       const diagnostics = validator.validate(generatedAst);
       if (diagnostics.length > 0) {
+        setErrorMarkers(diagnostics.map(d => ({ line: d.line, column: d.column, message: d.message })));
         const errors = diagnostics.map(d => `[${d.level}] Line ${d.line}, Col ${d.column}: ${d.message}`).join('\n');
         throw new Error(`Semantic Validation Failed:\n${errors}`);
       }
@@ -224,8 +234,6 @@ export default function Playground() {
       const generator = new AQIRGenerator();
       const generatedAqir = generator.generate(optimizedAst);
 
-      setTotalInstructions(generatedAqir.instructions?.length || 0);
-
       const engine = new ExecutionEngine();
       engine.eventDispatcher.on('SCENE_LOADED', () => {
         setSceneState({ ...engine.stateManager.getCurrentState() });
@@ -234,15 +242,32 @@ export default function Playground() {
         setSceneState({ ...newState });
       });
       engine.eventDispatcher.on('RUNTIME_LOG', (entry: RuntimeLogEntry) => {
-        setRuntimeLogs(prev => [...prev, { ...entry, id: ++runtimeLogIdRef.current }]);
+        // Tag each line with the step that produced it (the step being
+        // executed = the one after the step currently shown), so stepping
+        // back can drop the lines of the steps that were undone.
+        const step = engine.getCurrentStep() + 1;
+        setRuntimeLogs(prev => [...prev, { ...entry, id: ++runtimeLogIdRef.current, step }]);
       });
-      engine.eventDispatcher.on('INSTRUCTION_START', (idx: any) => {
-        setCurrentInstructionIndex(idx);
+      let shownStep = 0;
+      engine.eventDispatcher.on('ANIMATED_STEP', (payload: { current: number; total: number }) => {
+        if (payload.current < shownStep) {
+          setRuntimeLogs(prev => prev.filter(log => (log.step ?? 0) <= payload.current));
+        }
+        shownStep = payload.current;
+        setAnimatedStepCurrent(payload.current);
+        setAnimatedStepTotal(payload.total);
       });
       engine.eventDispatcher.on('EXECUTION_FINISHED', () => {
         setIsPlaying(false);
       });
+      engine.eventDispatcher.on('EXECUTION_ERROR', (payload: { error: unknown; message: string }) => {
+        setIsPlaying(false);
+        setRuntimeError(payload.message);
+      });
       engine.loadProgram(generatedAqir);
+      // Seed the denominator immediately so the step counter shows "0 of N"
+      // before any animated instruction plays, rather than "0 of —".
+      setAnimatedStepTotal(engine.getTotalAnimatedSteps());
 
       engineRef.current = engine;
       // Apply current speed immediately to the fresh engine
@@ -253,6 +278,11 @@ export default function Playground() {
 
     } catch (e: any) {
       setCompileError(e.message || String(e));
+      // Lexer/Parser errors are AQVLError instances carrying a source line/column
+      // (see @aqvl/shared). SemanticValidator diagnostics already set markers above.
+      if (typeof e?.lineNumber === 'number') {
+        setErrorMarkers([{ line: e.lineNumber, column: e.column, message: e.message }]);
+      }
       setIsCompiling(false);
     }
   };
@@ -277,27 +307,20 @@ export default function Playground() {
     }
   };
 
-  const handleReset = () => {
-    if (engineRef.current) {
-      engineRef.current.restart();
-      setIsPlaying(false);
-      setCurrentInstructionIndex(0);
-      setResetKey(prev => prev + 1);
-      setSceneState({ ...engineRef.current.stateManager.getCurrentState() });
-    }
-  };
-
   const isRuntimeReady = !!sceneState && !isCompiling;
 
-  // Progress percentage
-  const progressPct = totalInstructions > 0
-    ? Math.round(((currentInstructionIndex + 1) / totalInstructions) * 100)
+  // Progress percentage — uses visible step counts so the bar advances in
+  // sync with each animation beat, not the raw VM instruction PC. The total
+  // comes from a dry run of the program, so current never exceeds it.
+  const progressPct = animatedStepTotal > 0
+    ? Math.min(100, Math.round((animatedStepCurrent / animatedStepTotal) * 100))
     : 0;
 
   // Status chip data
   const getStatusChipProps = () => {
     if (isCompiling) return { cls: 'compiling', label: 'Compiling…' };
     if (compileError) return { cls: 'error', label: 'Compile Error' };
+    if (runtimeError) return { cls: 'error', label: 'Runtime Error' };
     if (isPlaying) return { cls: 'running', label: 'Running' };
     if (isRuntimeReady) return { cls: 'idle', label: 'Ready' };
     return { cls: 'idle', label: 'Idle' };
@@ -318,7 +341,7 @@ export default function Playground() {
           </div>
           <div className="pg-brand-text">
             <span className="pg-brand-name">AQVL</span>
-            <span className="pg-brand-sub">Algorithm Visualiser</span>
+            <span className="pg-brand-sub">Algorithm Visualizer</span>
           </div>
         </div>
 
@@ -411,7 +434,15 @@ export default function Playground() {
               </div>
             )}
             <div style={{ flex: 1, position: 'relative', display: 'flex', minHeight: 0 }}>
-              <IDEEditor initialValue={sourceCode} onChange={setSourceCode} />
+              <IDEEditor
+                initialValue={sourceCode}
+                onChange={(value) => {
+                  setSourceCode(value);
+                  // Marker positions go stale the moment source shifts under them.
+                  if (errorMarkers.length > 0) setErrorMarkers([]);
+                }}
+                errorMarkers={errorMarkers}
+              />
             </div>
           </div>
         </aside>
@@ -459,8 +490,21 @@ export default function Playground() {
               </div>
             )}
 
+            {/* Runtime error overlay */}
+            {runtimeError && !isCompiling && !compileError && (
+              <div className="pg-overlay pg-overlay-error">
+                <div className="pg-error-box">
+                  <div className="pg-error-header">
+                    <IconXCircle />
+                    Runtime Error
+                  </div>
+                  <div className="pg-error-body">{runtimeError}</div>
+                </div>
+              </div>
+            )}
+
             {/* Empty / welcome state */}
-            {!isCompiling && !compileError && !sceneState && (
+            {!isCompiling && !compileError && !runtimeError && !sceneState && (
               <div className="pg-overlay pg-overlay-empty">
                 <div className="pg-empty-state">
                   <div className="pg-empty-icon">
@@ -532,7 +576,14 @@ export default function Playground() {
 
             {/* Progress area */}
             <div className="pg-progress-area">
-              <div className="pg-progress-track">
+              <div
+                className="pg-progress-track"
+                role="progressbar"
+                aria-valuemin={0}
+                aria-valuemax={animatedStepTotal}
+                aria-valuenow={animatedStepCurrent}
+                aria-label="Visualization progress"
+              >
                 <div
                   className="pg-progress-fill"
                   style={{ width: `${progressPct}%` }}
@@ -541,11 +592,13 @@ export default function Playground() {
               <div className="pg-progress-labels">
                 <span className="pg-step-label">
                   Step{' '}
-                  <span className="pg-step-current">{currentInstructionIndex + 1}</span>
-                  {' '}of{' '}
-                  <span className="pg-step-current">
-                    {totalInstructions > 0 ? totalInstructions : '—'}
-                  </span>
+                  <span className="pg-step-current">{animatedStepCurrent}</span>
+                  {animatedStepTotal > 0 && (
+                    <>
+                      {' '}of{' '}
+                      <span className="pg-step-current">{animatedStepTotal}</span>
+                    </>
+                  )}
                 </span>
                 <span className="pg-step-label">{progressPct}%</span>
               </div>

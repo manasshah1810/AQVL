@@ -214,9 +214,15 @@ export default function App() {
       setIsPlaying(false);
     };
 
+    const handleExecutionError = (payload: { error: unknown; message: string }) => {
+      setIsPlaying(false);
+      addLog(`Runtime error: ${payload.message}`, 'error');
+    };
+
     engineRef.current.eventDispatcher.on('INSTRUCTION_START', handleStart);
     engineRef.current.eventDispatcher.on('INSTRUCTION_COMPLETE', handleComplete);
     engineRef.current.eventDispatcher.on('EXECUTION_FINISHED', handleFinished);
+    engineRef.current.eventDispatcher.on('EXECUTION_ERROR', handleExecutionError);
 
     return () => {
       if (engineRef.current) {
@@ -306,7 +312,7 @@ export default function App() {
             </svg>
             AQVL Source Editor
           </div>
-          <div className="ide-panel-content">
+          <div className="ide-panel-content" style={{ overflow: 'hidden' }}>
             <IDEEditor initialValue={sourceCode} onChange={setSourceCode} />
           </div>
         </div>

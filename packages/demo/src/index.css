@@ -55,7 +55,7 @@
   --shadow-md:      6px 6px 0 #111111;
   --shadow-lg:      8px 8px 0 #111111;
 
-  /* Syntax colours — light mode (high contrast neobrutalism) */
+  /* Syntax colors — light mode (high contrast neobrutalism) */
   --syn-keyword:    #6d28d9;
   --syn-circular:   #be185d;
   --syn-number:     #c2410c;
@@ -587,30 +587,170 @@ button.primary:active:not(:disabled) {
 }
 
 /* ─────────────────────────────────────────────────────────── */
-/*  EDITOR                                                      */
+/*  EDITOR — Root layout                                        */
 /* ─────────────────────────────────────────────────────────── */
-.aqvl-editor-container {
-  position: relative;
+
+/*
+  Spacing system used throughout the editor:
+    --editor-lh:      20px   (line height — single source of truth)
+    --editor-fs:      13px   (font size)
+    --editor-pt:      12px   (top padding — small gap below header)
+    --editor-px:      16px   (horizontal padding inside code area)
+    Gutter width:     52px   (numbers + breathing room)
+*/
+.aqvl-editor-root {
+  display: flex;
+  flex-direction: row;
   width: 100%;
   height: 100%;
   min-height: 0;
-  background: var(--bg-base);
-  overflow: auto;
-}
-
-.aqvl-editor-scroller {
+  background: var(--bg-surface);
+  overflow: hidden;
   position: relative;
-  min-height: 100%;
-  min-width: 100%;
 }
 
+/* ── Gutter (line numbers) ───────────────────────────────────── */
+.aqvl-editor-gutter {
+  flex-shrink: 0;
+  width: 52px;
+  min-width: 52px;
+  background: var(--bg-surface);
+  border-right: 1px solid color-mix(in srgb, var(--border-color) 18%, transparent);
+  overflow: hidden;   /* clips the inner body that gets translateY'd */
+  padding: 0;         /* padding is on .aqvl-gutter-body instead */
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Inner body — translated by JS to sync with textarea scroll */
+.aqvl-gutter-body {
+  padding-top: 10px;
+  padding-bottom: 10px;
+  will-change: transform;
+}
+
+.aqvl-gutter-line {
+  height: 22px;
+  line-height: 22px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: color-mix(in srgb, var(--text-subtle) 55%, transparent);
+  text-align: right;
+  padding-right: 12px;
+  padding-left: 6px;
+  transition: color 0.12s ease;
+  letter-spacing: -0.03em;
+}
+
+.aqvl-gutter-line.current {
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.aqvl-gutter-line.has-error {
+  position: relative;
+}
+
+.aqvl-gutter-error-dot {
+  position: absolute;
+  left: 4px;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #ff5555;
+  transform: translateY(-50%);
+}
+
+/* ── Editor content area (textarea + overlay stacked) ────────── */
+.aqvl-editor-content {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  /* content div is NOT the scroll container — the textarea is */
+  overflow: hidden;
+}
+
+/* ── Overlay — syntax-highlighted mirror ─────────────────────── */
+.aqvl-editor-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  /* MUST match textarea padding exactly */
+  padding: 10px 14px;
+  margin: 0;
+  border: 0;
+  box-sizing: border-box;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  /* MUST match textarea line-height exactly */
+  line-height: 22px;
+  letter-spacing: 0.01em;
+  color: var(--syn-default);
+  white-space: pre;
+  word-wrap: normal;
+  /* overflow:auto + no-scrollbar = scrollTop assignment works in all browsers */
+  overflow: auto;
+  scrollbar-width: none;      /* Firefox */
+  -ms-overflow-style: none;   /* IE/Edge */
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+  z-index: 1;
+}
+.aqvl-editor-overlay::-webkit-scrollbar { display: none; }
+
+/* Hidden text sample used purely to measure the real rendered char width
+   (see measureEditorMetrics in IDEEditor.tsx) — overrides the base overlay
+   sizing/scroll rules it inherits so it just shrink-wraps its own text. */
+.aqvl-metrics-probe {
+  padding: 0;
+  width: auto;
+  height: auto;
+  overflow: visible;
+  visibility: hidden;
+  white-space: pre;
+  top: -9999px;
+  left: -9999px;
+}
+
+/* ── Diagnostic squiggles — scroll-synced layer above syntax, below caret ── */
+.aqvl-error-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.aqvl-error-squiggle {
+  position: absolute;
+  height: 22px; /* one line-height; the wavy mark itself sits at the bottom via background-position */
+  background-image: linear-gradient(45deg, transparent 40%, #ff5555 50%, transparent 60%),
+                     linear-gradient(135deg, transparent 40%, #ff5555 50%, transparent 60%);
+  background-size: 5px 3px, 5px 3px;
+  background-position: bottom left, bottom left 2.5px;
+  background-repeat: repeat-x;
+}
+
+/* ── Textarea — transparent text on top of overlay ───────────── */
 .aqvl-editor-textarea {
   position: absolute;
   top: 0;
   left: 0;
   width: 100%;
   height: 100%;
-  padding: 16px 18px;
+  /* MUST be identical to .aqvl-editor-overlay padding */
+  padding: 10px 14px;
   margin: 0;
   box-sizing: border-box;
   appearance: none;
@@ -624,48 +764,108 @@ button.primary:active:not(:disabled) {
   resize: none;
   font-family: var(--font-mono);
   font-size: 13px;
-  line-height: 24px;
+  /* MUST be identical to .aqvl-editor-overlay line-height */
+  line-height: 22px;
   letter-spacing: 0.01em;
   white-space: pre;
-  overflow: hidden;
+  overflow: auto;
   z-index: 2;
+  tab-size: 2;
+  -moz-tab-size: 2;
 }
 
-.aqvl-editor-textarea::selection,
-.aqvl-editor-textarea::-moz-selection {
+.aqvl-editor-textarea::selection {
   background: rgba(99, 102, 241, 0.35) !important;
   color: transparent !important;
   -webkit-text-fill-color: transparent !important;
   text-shadow: none !important;
 }
-
-.aqvl-editor-overlay {
-  position: relative;
-  width: 100%;
-  min-height: 100%;
-  margin: 0;
-  border: 0;
-  box-sizing: border-box;
-  padding: 16px 18px;
-  font-family: var(--font-mono);
-  font-size: 13px;
-  line-height: 24px;
-  letter-spacing: 0.01em;
-  color: var(--syn-default);
-  white-space: pre;
-  overflow: hidden;
-  pointer-events: none;
-  user-select: none;
-  -webkit-user-select: none;
-  z-index: 1;
+/* Kept separate: one unknown pseudo-element in a selector list drops the whole rule. */
+.aqvl-editor-textarea::-moz-selection {
+  background: rgba(99, 102, 241, 0.35) !important;
+  color: transparent !important;
+  text-shadow: none !important;
 }
 
-/* Syntax tokens */
-.aqvl-editor-overlay .keyword          { color: var(--syn-keyword); }
-.aqvl-editor-overlay .keyword-circular { color: var(--syn-circular); }
-.aqvl-editor-overlay .number           { color: var(--syn-number); }
-.aqvl-editor-overlay .string           { color: var(--syn-string); }
-.aqvl-editor-overlay .comment          { color: var(--syn-comment); font-style: normal; }
+/* ── Syntax token classes (used by highlightCode()) ─────────── */
+.aqvl-editor-overlay .hl-keyword    { color: var(--syn-keyword); font-weight: 600; }
+.aqvl-editor-overlay .hl-structural { color: var(--syn-circular); font-weight: 600; }
+.aqvl-editor-overlay .hl-number     { color: var(--syn-number); }
+.aqvl-editor-overlay .hl-string     { color: var(--syn-string); }
+.aqvl-editor-overlay .hl-comment    { color: var(--syn-comment); font-style: italic; }
+
+/* ── Autocomplete dropdown ───────────────────────────────────── */
+.aqvl-autocomplete {
+  position: absolute;
+  z-index: 100;
+  background: var(--bg-surface);
+  border: var(--border-w) solid var(--border-color);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+  min-width: 200px;
+  max-width: 320px;
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  animation: acFadeIn 0.1s ease;
+}
+
+@keyframes acFadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.aqvl-autocomplete-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 12px;
+  cursor: pointer;
+  gap: 12px;
+  transition: background 0.08s ease;
+  border-left: 3px solid transparent;
+}
+
+.aqvl-autocomplete-item:hover,
+.aqvl-autocomplete-item.selected {
+  background: var(--bg-hover);
+  border-left-color: var(--accent);
+}
+
+.aqvl-autocomplete-item.selected {
+  background: var(--accent-soft);
+  border-left-color: var(--accent);
+}
+
+.aqvl-autocomplete-kw {
+  color: var(--syn-keyword);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.aqvl-autocomplete-hint {
+  color: var(--text-subtle);
+  font-size: 10px;
+  font-family: var(--font-ui);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  flex-shrink: 0;
+}
+
+.aqvl-autocomplete-footer {
+  padding: 4px 12px;
+  font-family: var(--font-ui);
+  font-size: 9px;
+  color: var(--text-subtle);
+  background: var(--bg-elevated);
+  border-top: 1px solid var(--border-color);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* Backwards compat: old CSS class names still referenced in other panels */
+.aqvl-editor-container { display: contents; }
+.aqvl-editor-scroller  { display: contents; }
 
 /* ─────────────────────────────────────────────────────────── */
 /*  PRE / CODE BLOCKS                                           */
@@ -1094,8 +1294,17 @@ select option, select optgroup {
   --syn-default:    #111111;
 }
 
-.ide-container[data-theme="light"] .aqvl-editor-container {
+.ide-container[data-theme="light"] .aqvl-editor-root {
   background: #ffffff;
+}
+
+.ide-container[data-theme="light"] .aqvl-editor-gutter {
+  background: #fafaf8;
+  border-right-color: rgba(17,17,17,0.1);
+}
+.ide-container[data-theme="dark"] .aqvl-editor-gutter {
+  background: #1a1a24;
+  border-right-color: rgba(226,232,240,0.08);
 }
 
 .ide-container[data-theme="light"] .aqvl-editor-textarea {
@@ -1106,15 +1315,19 @@ select option, select optgroup {
   color: #111111;
 }
 
-.ide-container[data-theme="light"] .aqvl-editor-overlay .comment {
+.ide-container[data-theme="light"] .aqvl-editor-overlay .hl-comment {
   color: #475569;
 }
 
-.ide-container[data-theme="light"] .aqvl-editor-textarea::selection,
-.ide-container[data-theme="light"] .aqvl-editor-textarea::-moz-selection {
+.ide-container[data-theme="light"] .aqvl-editor-textarea::selection {
   background: #fde047 !important;
   color: transparent !important;
   -webkit-text-fill-color: transparent !important;
+  text-shadow: none !important;
+}
+.ide-container[data-theme="light"] .aqvl-editor-textarea::-moz-selection {
+  background: #fde047 !important;
+  color: transparent !important;
   text-shadow: none !important;
 }
 
