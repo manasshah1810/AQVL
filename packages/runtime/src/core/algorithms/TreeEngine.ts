@@ -96,7 +96,22 @@ const BUILTINS = new Set([
   'MIN', 'MAX', 'MIN_VALUE', 'MAX_VALUE', 'MIRROR', 'INVERT', 'ROTATE', 'CLEAR', 'IS_EMPTY', 'ROOT',
 ]);
 
+/**
+ * References owned by another engine that a queue / stack may hold (graph
+ * vertices and edges, see GraphProgramEngine): how to recognise one and the
+ * value its box shows.
+ */
+export interface ForeignRefs {
+  isRef(value: unknown): boolean;
+  display(value: unknown): unknown;
+  /** Called after every refresh, so the other engine's pointer tags follow this engine's steps (e.g. `v = DEQUEUE(q)`). */
+  afterRefresh?(temp: Record<string, string | null>): void;
+}
+
 export class TreeEngine {
+  /** Set by the AnimationController when the program also has graphs. */
+  public foreignRefs?: ForeignRefs;
+
   // ---------------------------------------------------------------------
   // Model queries
   // ---------------------------------------------------------------------
@@ -484,6 +499,8 @@ export class TreeEngine {
         if (TreeEngine.isNodeRef(item.ref)) {
           const n = this.node(ctx, item.ref);
           item.value = n ? n.value : 'freed';
+        } else if (item.ref && this.foreignRefs?.isRef(item.ref)) {
+          item.value = this.foreignRefs.display(item.ref);
         }
         const tags: string[] = [];
         if (c.kind === 'QUEUE') {
@@ -498,6 +515,7 @@ export class TreeEngine {
       c.itemCount = items.length;
     }
     this.restoreBaseColors(ctx);
+    this.foreignRefs?.afterRefresh?.(temp);
   }
 
   /** The call's arguments as shown in the call-stack panel (parameters only, when the VM says which). */
@@ -969,7 +987,7 @@ export class TreeEngine {
 
   /** `[50, 30, 70]` — front to rear for a queue, bottom to top for a stack. */
   public formatContainer(ctx: AlgorithmContext, name: string): string {
-    return `[${this.itemsOf(ctx, name).map((it) => TreeEngine.itemText(it.value)).join(', ')}]`;
+    return `[${this.itemsOf(ctx, name).map((it) => (it.ref ? String(it.value) : TreeEngine.itemText(it.value))).join(', ')}]`;
   }
 
   private containerLabel(ctx: AlgorithmContext, name: string): string {
@@ -992,14 +1010,16 @@ export class TreeEngine {
     c.nextItemNumber = n + 1;
     const last = this.itemsOf(ctx, name).pop();
     const id = `ctr:${name}:${n}`;
-    const isRef = TreeEngine.isNodeRef(value);
+    const isForeign = !TreeEngine.isNodeRef(value) && !!this.foreignRefs?.isRef(value);
+    const isRef = TreeEngine.isNodeRef(value) || isForeign;
+    const shown = isForeign ? this.foreignRefs!.display(value) : isRef ? this.val(ctx, value as string) : value;
     const token = getSemanticColorToken('STRUCTURAL');
     ctx.sceneManager.addElement({
       id,
       type: 'box',
       originalType: 'CONTAINER_ITEM',
       logicalParent: name,
-      value: isRef ? this.val(ctx, value) : value,
+      value: shown,
       ref: isRef ? value : null,
       order: (last?.order ?? -1) + 1,
       label: '',
@@ -1020,7 +1040,7 @@ export class TreeEngine {
       nodes: { [id]: 'MODIFYING', ...(isRef ? { [value as string]: 'TRAVERSING' } : {}) },
       logs: [{
         keyword: op,
-        message: `${sourceText}   ⟹   ${isRef ? `pointer to node ${this.val(ctx, value)}` : TreeEngine.itemText(value)} ${where} ${name}   ${this.containerLabel(ctx, name)}`,
+        message: `${sourceText}   ⟹   ${isForeign ? `vertex ${shown}` : isRef ? `pointer to node ${shown}` : TreeEngine.itemText(value)} ${where} ${name}   ${this.containerLabel(ctx, name)}`,
         kind: 'operation',
       }],
     });
@@ -1055,10 +1075,12 @@ export class TreeEngine {
     const result = item.ref ?? item.value;
     if (instr.resultVar) ctx.host.setVariable(instr.resultVar, result);
     const removes = op === 'DEQUEUE' || op === 'POP';
-    const refNode = TreeEngine.isNodeRef(item.ref) && this.node(ctx, item.ref) ? item.ref : null;
-    const temp: Record<string, string | null> = instr.assignTo && TreeEngine.isNodeRef(result) ? { [instr.assignTo]: result as string } : {};
-    const described = refNode ? `pointer to node ${this.val(ctx, refNode)}` : TreeEngine.itemText(item.value);
-    const rest = items.filter((it) => it !== item).map((it) => TreeEngine.itemText(it.value));
+    const foreign = !!item.ref && !TreeEngine.isNodeRef(item.ref) && !!this.foreignRefs?.isRef(item.ref);
+    const refNode = (TreeEngine.isNodeRef(item.ref) && this.node(ctx, item.ref)) || (foreign && ctx.sceneManager.getElement(item.ref)) ? item.ref : null;
+    const temp: Record<string, string | null> =
+      instr.assignTo && (TreeEngine.isNodeRef(result) || foreign) ? { [instr.assignTo]: result as string } : {};
+    const described = foreign ? `vertex ${item.value}` : refNode ? `pointer to node ${this.val(ctx, refNode)}` : TreeEngine.itemText(item.value);
+    const rest = items.filter((it) => it !== item).map((it) => (it.ref ? String(it.value) : TreeEngine.itemText(it.value)));
     const after = removes ? `; ${name} is now [${rest.join(', ')}]` : '';
     this.frame(ctx, {
       nodes: { [item.id]: removes ? 'MODIFYING' : 'EVALUATING', ...(refNode ? { [refNode]: 'TRAVERSING' } : {}) },

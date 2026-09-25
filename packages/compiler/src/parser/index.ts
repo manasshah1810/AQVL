@@ -66,7 +66,11 @@ export class Parser {
   ]);
 
   /** Built-in functions usable inside expressions: `MAX(a, b)`, `node = DEQUEUE(q)`, `IS_EMPTY(s)`. */
-  private static readonly BUILTIN_EXPRESSION_FUNCTIONS = new Set(['MAX', 'MIN', 'ABS', 'DEQUEUE', 'POP', 'PEEK', 'FRONT', 'REAR', 'IS_EMPTY', 'NEW_NODE']);
+  private static readonly BUILTIN_EXPRESSION_FUNCTIONS = new Set([
+    'MAX', 'MIN', 'ABS', 'DEQUEUE', 'POP', 'PEEK', 'FRONT', 'REAR', 'IS_EMPTY', 'NEW_NODE',
+    // Graphs: `v = VERTEX(g, "A")`, `w = NEIGHBOR(v, i)`, `DEGREE(v)`, `WEIGHT(u, w)`, ...
+    'VERTEX', 'VERTEX_AT', 'VERTEX_COUNT', 'EDGE_AT', 'EDGE_COUNT', 'DEGREE', 'IN_DEGREE', 'NEIGHBOR', 'WEIGHT', 'HAS_EDGE',
+  ]);
 
   /** A keyword token that may be used as a name here (see RESERVED_WORDS). */
   private isNameKeyword(t: Token | undefined): boolean {
@@ -730,7 +734,7 @@ export class Parser {
   }
 
   /** Keywords that start a generic data-structure action statement (parsed by parseGenericAction). */
-  private static readonly GENERIC_ACTION_KEYWORDS = new Set(['TREE', 'ROOT', 'REMOVE', 'COPY', 'FIND', 'SELECT', 'PREORDER', 'INORDER', 'POSTORDER', 'LEVELORDER', 'REVERSELEVELORDER', 'REVERSE', 'ZIGZAG', 'DFS', 'BFS', 'DIJKSTRA', 'BELLMAN_FORD', 'ASTAR', 'PRIM', 'KRUSKAL', 'TOPO_SORT', 'HEIGHT', 'DEPTH', 'LEVEL', 'MAX_DEPTH', 'MIN_DEPTH', 'SIZE', 'LEAVES', 'INTERNAL', 'DEGREE', 'STATS', 'PARENTOF', 'CHILDRENOF', 'ANCESTORS', 'DESCENDANTS', 'SIBLINGS', 'PATH', 'HIGHLIGHT', 'INSERT', 'DELETE', 'INSERT_HEAD', 'INSERT_TAIL', 'DELETE_HEAD', 'DELETE_TAIL', 'FREE', 'UPDATE', 'MOVE', 'CONNECT', 'DISCONNECT', 'PUSH', 'POP', 'PEEK', 'ENQUEUE', 'DEQUEUE', 'FRONT', 'REAR', 'VISIT', 'MARK', 'TRAVERSE', 'ROTATE', 'SEARCH', 'HEAPIFY', 'HEAP_INSERT', 'HEAP_EXTRACT', 'HEAP_DECREASE', 'BUILD_HEAP', 'HASHMAP_INSERT', 'HASHMAP_LOOKUP', 'HASHMAP_DELETE', 'TRIE_INSERT', 'TRIE_SEARCH', 'TRIE_DELETE', 'TRIE_AUTOCOMPLETE', 'TRIE_STARTSWITH', 'CHILD', 'PARENT', 'LEFT_CHILD', 'RIGHT_CHILD', 'SIBLING', 'CLEAR', 'IS_EMPTY', 'COUNT_NODES', 'COUNT_LEAVES', 'COUNT_INTERNAL', 'COUNT_LEFT_LEAVES', 'COUNT_RIGHT_LEAVES', 'COUNT_FULL', 'COUNT_HALF', 'IS_FULL', 'IS_COMPLETE', 'IS_PERFECT', 'IS_BALANCED', 'IS_DEGENERATE', 'IS_LEFT_SKEWED', 'IS_RIGHT_SKEWED', 'IS_SYMMETRIC', 'LCA', 'DISTANCE', 'GRANDPARENT', 'UNCLE', 'COUSINS', 'ROOT_TO_NODE', 'ROOT_TO_LEAVES', 'LONGEST_PATH', 'SHORTEST_PATH', 'MIRROR', 'INVERT', 'CLONE', 'REMOVE_LEAVES', 'PRUNE', 'LEFT_VIEW', 'RIGHT_VIEW', 'TOP_VIEW', 'BOTTOM_VIEW', 'BOUNDARY', 'VERTICAL_ORDER', 'DIAGONAL', 'MAX_VALUE', 'MIN_VALUE', 'MIN', 'MAX', 'SUM', 'AVERAGE', 'MAX_LEVEL_SUM', 'BUBBLE_SORT', 'SELECTION_SORT', 'INSERTION_SORT', 'MERGE_SORT', 'QUICK_SORT']);
+  private static readonly GENERIC_ACTION_KEYWORDS = new Set(['TREE', 'ROOT', 'REMOVE', 'COPY', 'FIND', 'SELECT', 'PREORDER', 'INORDER', 'POSTORDER', 'LEVELORDER', 'REVERSELEVELORDER', 'REVERSE', 'ZIGZAG', 'DFS', 'BFS', 'DIJKSTRA', 'BELLMAN_FORD', 'ASTAR', 'PRIM', 'KRUSKAL', 'TOPO_SORT', 'HEIGHT', 'DEPTH', 'LEVEL', 'MAX_DEPTH', 'MIN_DEPTH', 'SIZE', 'LEAVES', 'INTERNAL', 'DEGREE', 'STATS', 'PARENTOF', 'CHILDRENOF', 'ANCESTORS', 'DESCENDANTS', 'SIBLINGS', 'PATH', 'HIGHLIGHT', 'INSERT', 'DELETE', 'INSERT_HEAD', 'INSERT_TAIL', 'DELETE_HEAD', 'DELETE_TAIL', 'FREE', 'UPDATE', 'MOVE', 'CONNECT', 'DISCONNECT', 'PUSH', 'POP', 'PEEK', 'ENQUEUE', 'DEQUEUE', 'FRONT', 'REAR', 'VISIT', 'MARK', 'TRAVERSE', 'ROTATE', 'SEARCH', 'HEAPIFY', 'HEAP_INSERT', 'HEAP_EXTRACT', 'HEAP_DECREASE', 'BUILD_HEAP', 'HASHMAP_INSERT', 'HASHMAP_LOOKUP', 'HASHMAP_DELETE', 'TRIE_INSERT', 'TRIE_SEARCH', 'TRIE_DELETE', 'TRIE_AUTOCOMPLETE', 'TRIE_STARTSWITH', 'CHILD', 'PARENT', 'LEFT_CHILD', 'RIGHT_CHILD', 'SIBLING', 'CLEAR', 'IS_EMPTY', 'COUNT_NODES', 'COUNT_LEAVES', 'COUNT_INTERNAL', 'COUNT_LEFT_LEAVES', 'COUNT_RIGHT_LEAVES', 'COUNT_FULL', 'COUNT_HALF', 'IS_FULL', 'IS_COMPLETE', 'IS_PERFECT', 'IS_BALANCED', 'IS_DEGENERATE', 'IS_LEFT_SKEWED', 'IS_RIGHT_SKEWED', 'IS_SYMMETRIC', 'LCA', 'DISTANCE', 'GRANDPARENT', 'UNCLE', 'COUSINS', 'ROOT_TO_NODE', 'ROOT_TO_LEAVES', 'LONGEST_PATH', 'SHORTEST_PATH', 'MIRROR', 'INVERT', 'CLONE', 'REMOVE_LEAVES', 'PRUNE', 'LEFT_VIEW', 'RIGHT_VIEW', 'TOP_VIEW', 'BOTTOM_VIEW', 'BOUNDARY', 'VERTICAL_ORDER', 'DIAGONAL', 'MAX_VALUE', 'MIN_VALUE', 'MIN', 'MAX', 'SUM', 'AVERAGE', 'MAX_LEVEL_SUM', 'BUBBLE_SORT', 'SELECTION_SORT', 'INSERTION_SORT', 'MERGE_SORT', 'QUICK_SORT', 'ADD_VERTEX', 'ADD_EDGE', 'REMOVE_EDGE', 'REMOVE_VERTEX']);
 
   private parseSequenceBlock(): SequenceBlockNode {
     const pos = this.previous().pos;
@@ -1174,6 +1178,21 @@ export class Parser {
   private parseAtom(): ExpressionNode {
     if (this.matchKeyword('NULL')) {
       return { type: 'LiteralNode', dataType: 'null', value: null, pos: this.previous().pos };
+    }
+
+    // `TRUE` / `FALSE` (any case) and `INFINITY` — e.g. `v.visited = TRUE`, `dist = INFINITY`.
+    if (this.check(TokenType.Identifier)) {
+      const word = this.peek().value.toUpperCase();
+      const next = this.tokens[this.current + 1];
+      const called = next?.type === TokenType.Symbol && (next.value === '(' || next.value === '[');
+      if (!called && (word === 'TRUE' || word === 'FALSE')) {
+        const token = this.advance();
+        return { type: 'LiteralNode', dataType: 'boolean', value: word === 'TRUE', pos: token.pos };
+      }
+      if (!called && word === 'INFINITY') {
+        const token = this.advance();
+        return { type: 'LiteralNode', dataType: 'number', value: Infinity, pos: token.pos };
+      }
     }
 
     if (this.check(TokenType.Number)) {

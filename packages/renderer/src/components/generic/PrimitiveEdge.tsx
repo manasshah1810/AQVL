@@ -1,6 +1,6 @@
 import React, { useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
-import { Line } from '@react-three/drei';
+import { Line, Text } from '@react-three/drei';
 import {
   isElementActive,
   getUnifiedMaterialConfig,
@@ -30,6 +30,8 @@ export interface PrimitiveEdgeProps {
   arrowScale?: number;
   /** Lowest opacity the edge is drawn with, even when idle (idle edges are otherwise faint). */
   minOpacity?: number;
+  /** Text drawn at the middle of the path, e.g. a weighted graph edge's weight. */
+  label?: string;
 }
 
 const ARC_SAMPLES = 28;
@@ -88,6 +90,7 @@ export const PrimitiveEdge: React.FC<PrimitiveEdgeProps> = ({
   targetRadius = 0.6,
   arrowScale = 1,
   minOpacity,
+  label,
 }) => {
   const lineRef = useRef<any>(null);
   const arrowRef = useRef<THREE.Mesh>(null);
@@ -105,6 +108,10 @@ export const PrimitiveEdge: React.FC<PrimitiveEdgeProps> = ({
   const coneLength = 0.25 * arrowScale;
   const coneRadius = 0.08 * arrowScale;
   const initialPoints = buildPath(from, to, route);
+  const labelPoint = initialPoints[Math.floor((initialPoints.length - 1) / 2)].clone().lerp(
+    initialPoints[Math.ceil((initialPoints.length - 1) / 2)],
+    0.5
+  );
 
   useFrame((state, delta) => {
     const active = isElementActive(highlightState ?? {});
@@ -184,6 +191,19 @@ export const PrimitiveEdge: React.FC<PrimitiveEdgeProps> = ({
         dashSize={style === 'dashed' ? 0.15 : undefined}
         gapSize={style === 'dashed' ? 0.1 : undefined}
       />
+      {label && (
+        <Text
+          position={[labelPoint.x, labelPoint.y + 0.22, labelPoint.z + 0.05]}
+          fontSize={0.3}
+          color="#fbbf24"
+          outlineWidth={0.03}
+          outlineColor="#0b1120"
+          anchorX="center"
+          anchorY="middle"
+        >
+          {label}
+        </Text>
+      )}
       {style === 'arrow' && (
         <mesh ref={arrowRef}>
           <coneGeometry args={[coneRadius, coneLength, 12]} />

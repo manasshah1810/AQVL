@@ -308,7 +308,14 @@ export interface BinaryOpNode extends ASTNode {
   right: ExpressionNode;
 }
 
-export type LiteralNode = NumberLiteralNode | StringLiteralNode | ColorLiteralNode | NullLiteralNode;
+export type LiteralNode = NumberLiteralNode | StringLiteralNode | ColorLiteralNode | NullLiteralNode | BooleanLiteralNode;
+
+/** `TRUE` / `FALSE`. */
+export interface BooleanLiteralNode extends ASTNode {
+  type: 'LiteralNode';
+  dataType: 'boolean';
+  value: boolean;
+}
 
 /** The `NULL` pointer literal. */
 export interface NullLiteralNode extends ASTNode {

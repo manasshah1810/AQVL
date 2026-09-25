@@ -59,4 +59,6 @@ export interface RenderableConnection {
   route?: EdgeRoute;
   /** Pointer kind for linked-list edges (`next` / `prev`); drawn bolder with larger arrowheads. */
   pointer?: string;
+  /** Text drawn at the middle of the connection, e.g. a weighted graph edge's weight. */
+  label?: string;
 }

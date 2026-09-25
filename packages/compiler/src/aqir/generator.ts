@@ -109,11 +109,19 @@ export class AQIRGenerator {
   private treeNames = new Set<string>();
   // Names declared with `QUEUE` / `STACK` — their length is read at run time.
   private containerNames = new Set<string>();
+  // Names declared with `GRAPH` (see the runtime's GraphProgramEngine).
+  private graphNames = new Set<string>();
   // Every user FUNCTION name (a user function shadows a built-in of the same name).
   private userFunctionNames = new Set<string>();
 
   /** Built-in functions usable in expressions (see Parser.BUILTIN_EXPRESSION_FUNCTIONS). */
   private static readonly CONTAINER_READS = new Set(['DEQUEUE', 'POP', 'PEEK', 'FRONT', 'REAR']);
+  /** Graph reads usable in expressions, evaluated by the runtime's GraphProgramEngine. */
+  private static readonly GRAPH_READS = new Set([
+    'VERTEX', 'VERTEX_AT', 'VERTEX_COUNT', 'EDGE_AT', 'EDGE_COUNT', 'DEGREE', 'IN_DEGREE', 'NEIGHBOR', 'WEIGHT', 'HAS_EDGE',
+  ]);
+  /** Graph edits usable as statements: `ADD_EDGE g "A" "B" 4`, `REMOVE_VERTEX g "C"`, ... */
+  private static readonly GRAPH_EDITS = new Set(['ADD_VERTEX', 'ADD_EDGE', 'REMOVE_EDGE', 'REMOVE_VERTEX']);
 
   /** True when `name(...)` is the built-in `builtin` rather than a user function. */
   private isBuiltinCall(node: CallNode, builtin: string): boolean {
@@ -249,6 +257,7 @@ export class AQIRGenerator {
     this.linkedListNames.clear();
     this.treeNames.clear();
     this.containerNames.clear();
+    this.graphNames.clear();
     this.userFunctionNames.clear();
 
     // Since v1 assumes one scene per program, we extract the first one
@@ -459,6 +468,8 @@ export class AQIRGenerator {
         return expr.name;
       case 'LiteralNode':
         if (expr.value === null) return 'NULL';
+        if (typeof expr.value === 'boolean') return expr.value ? 'TRUE' : 'FALSE';
+        if (expr.value === Infinity) return 'INFINITY';
         return expr.dataType === 'string' ? `"${expr.value}"` : String(expr.value);
       case 'MemberAccessNode':
         return `${this.exprToString(expr.object)}.${expr.member}`;
@@ -503,6 +514,15 @@ export class AQIRGenerator {
         if (AQIRGenerator.CONTAINER_READS.has(call.callee.name.toUpperCase()) && !this.userFunctionNames.has(call.callee.name)) {
           return this.generateContainerRead(call);
         }
+        if (AQIRGenerator.GRAPH_READS.has(call.callee.name.toUpperCase()) && !this.userFunctionNames.has(call.callee.name)) {
+          // Read at run time: `{ gfn, args }` (see VM evaluateExpression / GraphProgramEngine.read).
+          return {
+            gfn: call.callee.name.toUpperCase(),
+            args: call.args.map((a) => this.compileGraphOperand(a)),
+            source: this.exprToString(call),
+            argSources: call.args.map((a) => this.exprToString(a)),
+          } as unknown as AQIRValue;
+        }
         return this.generateFunctionCall(call);
       }
       case 'MemberAccessNode':
@@ -540,7 +560,8 @@ export class AQIRGenerator {
             this.arrayNames.has(arrayName) ||
             this.linkedListNames.has(arrayName) ||
             this.treeNames.has(arrayName) ||
-            this.containerNames.has(arrayName)
+            this.containerNames.has(arrayName) ||
+            this.graphNames.has(arrayName)
           ) {
             return { len: arrayName } as unknown as AQIRValue;
           }
@@ -640,6 +661,99 @@ export class AQIRGenerator {
           args: [nodeId(parent), nodeId(child)],
           properties: { directed: true, pointer, label },
         });
+      });
+    }
+  }
+
+  /**
+   * `GRAPH g = ["A-B:4", "A-C", "D"]`: `A-B` is an undirected edge, `A->B`
+   * (or the older shorthand `A>B`) a directed one, `:4` its weight (1 when omitted) and a lone name an
+   * isolated vertex. Emits an invisible anchor `g:<graph>` (whether the graph
+   * is directed), one VERTEX `gv:<graph>:<name>` per vertex in order of first
+   * appearance and one GRAPH_EDGE `ge:<graph>:<n>` per edge in the order
+   * listed — which is also the order NEIGHBOR(v, i) lists a vertex's
+   * neighbours. A vertex / edge reference held in a variable is that id.
+   */
+  private declareGraph(graph: GraphDeclNode, userInputs: Record<string, any>): void {
+    const graphName = graph.name.name;
+    let edges: string[] = graph.initialElements ? graph.initialElements.map((e: any) => String(e.value)) : [];
+    if (userInputs[graphName] && Array.isArray(userInputs[graphName])) edges = userInputs[graphName].map(String);
+    this.graphNames.add(graphName);
+
+    const parsed: { source: string; target?: string; directed: boolean; weight?: number; text: string }[] = [];
+    for (const raw of edges) {
+      const text = raw.trim();
+      const match = text.match(/^([^\->:]+?)\s*(?:(->|>|-)\s*([^:]+?)\s*(?::\s*(.+))?)?$/);
+      if (!match) {
+        throw new Error(`GRAPH ${graphName}: "${raw}" is not an edge. Write "A-B" (undirected), "A->B" (directed), "A-B:4" (weighted) or "A" (a vertex on its own) (line ${graph.pos.line}).`);
+      }
+      let weight: number | undefined;
+      if (match[4] !== undefined) {
+        weight = Number(match[4]);
+        if (!Number.isFinite(weight)) {
+          throw new Error(`GRAPH ${graphName}: the weight in "${raw}" must be a number, e.g. "A-B:4" (line ${graph.pos.line}).`);
+        }
+      }
+      parsed.push({ source: match[1].trim(), target: match[3]?.trim(), directed: match[2] === '->' || match[2] === '>', weight, text });
+    }
+    const withTarget = parsed.filter((p) => p.target !== undefined);
+    const directed = withTarget.some((p) => p.directed);
+    if (directed && withTarget.some((p) => !p.directed)) {
+      throw new Error(`GRAPH ${graphName} mixes directed ("A->B") and undirected ("A-B") edges. Use one kind for every edge (line ${graph.pos.line}).`);
+    }
+    const weighted = withTarget.some((p) => p.weight !== undefined);
+
+    this.generatedObjects.push({
+      id: `g:${graphName}`,
+      type: 'GRAPH',
+      originalType: 'GRAPH',
+      logicalParent: graphName,
+      label: graphName,
+      properties: { directed, weighted, nextEdgeNumber: withTarget.length },
+    } as any);
+
+    const vertexIds = new Map<string, string>();
+    const ensureVertex = (name: string) => {
+      if (!vertexIds.has(name)) {
+        const id = `gv:${graphName}:${name}`;
+        vertexIds.set(name, id);
+        this.symbolMap.set(`${graphName}["${name}"]`, id);
+        this.generatedObjects.push({
+          id,
+          type: 'VERTEX',
+          logicalParent: graphName,
+          logicalIndex: vertexIds.size - 1,
+          value: name,
+          label: '',
+        });
+      }
+      return vertexIds.get(name)!;
+    };
+
+    let edgeNumber = 0;
+    const seen = new Set<string>();
+    for (const p of parsed) {
+      const sourceId = ensureVertex(p.source);
+      if (p.target === undefined) continue;
+      const targetId = ensureVertex(p.target);
+      const key = directed ? `${p.source}->${p.target}` : [p.source, p.target].sort().join('-');
+      if (seen.has(key)) {
+        throw new Error(`GRAPH ${graphName} lists the edge "${p.text}" twice (line ${graph.pos.line}).`);
+      }
+      seen.add(key);
+      const edgeId = `ge:${graphName}:${edgeNumber++}`;
+      this.symbolMap.set(`${graphName}["${p.source}${directed ? '->' : '-'}${p.target}"]`, edgeId);
+      this.generatedObjects.push({
+        id: edgeId,
+        type: 'GRAPH_EDGE',
+        logicalParent: graphName,
+        args: [sourceId, targetId],
+        properties: {
+          directed,
+          // The weight drawn on the edge; an unweighted graph shows none (every weight is 1).
+          label: weighted ? String(p.weight ?? 1) : undefined,
+          weight: p.weight ?? 1,
+        },
       });
     }
   }
@@ -758,6 +872,18 @@ export class AQIRGenerator {
     this.labelCurrentPC(done);
     this.patchJump(done);
     return resultVar;
+  }
+
+  /**
+   * An operand of a graph built-in or graph edit: a graph's name and a text
+   * literal (a vertex name such as "A") are passed as `{ text }` so they can
+   * never be mistaken for a variable of the same name; anything else is an
+   * ordinary expression evaluated when the step runs.
+   */
+  private compileGraphOperand(arg: ExpressionNode): AQIRValue {
+    if (arg.type === 'IdentifierNode' && this.graphNames.has(arg.name)) return { text: arg.name } as unknown as AQIRValue;
+    if (arg.type === 'LiteralNode' && typeof arg.value === 'string') return { text: arg.value } as unknown as AQIRValue;
+    return this.compileValue(arg);
   }
 
   /** The queue / stack named by a built-in's single argument (`DEQUEUE(q)`). */
@@ -1106,61 +1232,7 @@ export class AQIRGenerator {
           } as any);
         }
       } else if (v.type === 'GraphDeclNode') {
-        const graph = v as GraphDeclNode;
-        let edges = graph.initialElements ? graph.initialElements.map((e: any) => e.value as string) : [];
-        if (userInputs[graph.name.name] && Array.isArray(userInputs[graph.name.name])) {
-          edges = userInputs[graph.name.name];
-        }
-
-        const nodesMap = new Map<string, string>(); // name -> id
-
-        const ensureNode = (nodeName: string) => {
-          if (!nodesMap.has(nodeName)) {
-            const nodeId = this.generateId();
-            nodesMap.set(nodeName, nodeId);
-            this.symbolMap.set(`${graph.name.name}["${nodeName}"]`, nodeId);
-
-            this.generatedObjects.push({
-              id: nodeId,
-              type: 'VERTEX',
-              logicalParent: graph.name.name,
-              value: nodeName,
-              label: nodeName,
-            });
-          }
-          return nodesMap.get(nodeName)!;
-        };
-
-        for (const edgeStr of edges) {
-          // Format: "A->B:5", "A-B:5", "A"
-          const match = edgeStr.match(/^([^->:]+)(?:(-|>)([^:]+)(?::(.*))?)?$/);
-          if (match) {
-            const source = match[1].trim();
-            const sourceId = ensureNode(source);
-
-            if (match[3]) { // Has target
-              const target = match[3].trim();
-              const targetId = ensureNode(target);
-
-              const isDirected = match[2] === '>';
-              const weight = match[4] ? match[4].trim() : undefined;
-
-              const edgeId = this.generateId();
-              this.symbolMap.set(`${graph.name.name}["${source}${isDirected ? '->' : '-'}${target}"]`, edgeId);
-
-              this.generatedObjects.push({
-                id: edgeId,
-                type: 'GRAPH_EDGE',
-                logicalParent: graph.name.name,
-                args: [sourceId, targetId],
-                properties: {
-                  directed: isDirected,
-                  label: weight
-                }
-              });
-            }
-          }
-        }
+        this.declareGraph(v as GraphDeclNode, userInputs);
       } else if (v.type === 'ObjectDeclNode') {
         const obj = v as any; // Type assert to avoid import issues if not explicitly typed in this file
         const id = this.generateId();
@@ -1459,6 +1531,22 @@ export class AQIRGenerator {
           } as any);
           break;
         }
+        if (AQIRGenerator.GRAPH_EDITS.has(actionNode.actionName)) {
+          // `ADD_EDGE g "A" "B" 4`, `ADD_EDGE g u w`: operands evaluated when the step runs.
+          const first = actionNode.args[0];
+          if (!first || first.type !== 'IdentifierNode' || !this.graphNames.has(first.name)) {
+            throw new Error(`${actionNode.actionName} needs a declared GRAPH first, e.g. ${actionNode.actionName} g "A"${actionNode.actionName.endsWith('EDGE') ? ' "B"' : ''} (line ${actionNode.pos.line}).`);
+          }
+          this.emit({
+            action: 'GRAPH_EDIT',
+            op: actionNode.actionName,
+            graph: first.name,
+            args: actionNode.args.slice(1).map((a: ExpressionNode) => this.compileGraphOperand(a)),
+            sourceText: `${actionNode.actionName} ${actionNode.args.map((a: ExpressionNode) => this.exprToString(a)).join(' ')}`,
+            lineNumber: actionNode.pos.line,
+          } as any);
+          break;
+        }
         const targetsArraySlot =
           actionNode.args[0]?.type === 'ArrayAccessNode' &&
           (this.arrayNames.has(actionNode.args[0].array.name) || this.linkedListNames.has(actionNode.args[0].array.name));
@@ -1547,6 +1635,8 @@ export class AQIRGenerator {
                   ? ({ tree: arg.name } as unknown as AQIRValue)
                   : arg.type === 'IdentifierNode' && this.containerNames.has(arg.name)
                     ? ({ container: arg.name } as unknown as AQIRValue)
+                    : arg.type === 'IdentifierNode' && this.graphNames.has(arg.name)
+                    ? ({ graph: arg.name } as unknown as AQIRValue)
                     : arg.type === 'LiteralNode' && typeof arg.value === 'string'
                       // Printed as written, even when a variable has the same name (`PRINT "top" top`).
                       ? ({ text: arg.value } as unknown as AQIRValue)
@@ -1700,7 +1790,7 @@ export class AQIRGenerator {
         }
         if (!id) {
           const declaredLength = this.resolveArrayLength(expr.array.name);
-          throw new OutOfBoundsError(idx ?? 'NULL', declaredLength, expr.array.name, {
+          throw new OutOfBoundsError(typeof idx === 'boolean' ? String(idx) : (idx ?? 'NULL'), declaredLength, expr.array.name, {
             line: expr.pos.line,
             column: expr.pos.column,
           });

@@ -174,6 +174,17 @@ const BUILTIN_FUNCTIONS: Record<string, number> = {
   FRONT: 1,
   REAR: 1,
   IS_EMPTY: 1,
+  // Graphs: vertices and edges are references, like tree nodes.
+  VERTEX: 2,
+  VERTEX_AT: 2,
+  VERTEX_COUNT: 1,
+  EDGE_AT: 2,
+  EDGE_COUNT: 1,
+  DEGREE: 1,
+  IN_DEGREE: 1,
+  NEIGHBOR: 2,
+  WEIGHT: 2,
+  HAS_EDGE: 2,
 };
 
 function analyzeExpression(

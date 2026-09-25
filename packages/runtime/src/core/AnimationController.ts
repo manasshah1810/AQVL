@@ -51,6 +51,7 @@ import { AnimationContext, MoveAnimation, AnticipationAnimation } from './animat
 import type { LinkedListContext } from './algorithms/LinkedListEngine';
 import { LinkedListEngine as LinkedListModel, LinkedListError } from './algorithms/LinkedListEngine';
 import { TreeEngine, TreeError, type TreeContext } from './algorithms/TreeEngine';
+import { GraphProgramEngine } from './algorithms/GraphProgramEngine';
 import { AQVLVirtualMachine, type StepCallback } from '../VirtualMachine';
 import type { VMInstruction, FunctionTable, ExecutionResult } from '../types';
 
@@ -66,7 +67,7 @@ export class ArrayIndexOutOfRangeError extends Error {
 /** Formats a PRINT argument for the output console. */
 function formatPrintValue(value: unknown): string {
   if (typeof value === 'number') return Number.isInteger(value) ? String(value) : String(Number(value.toFixed(4)));
-  if (typeof value === 'boolean') return value ? 'true' : 'false';
+  if (typeof value === 'boolean') return value ? 'TRUE' : 'FALSE';
   if (value === null || value === undefined) return 'null';
   return String(value);
 }
@@ -88,6 +89,8 @@ export class AnimationController {
   private linkedListEngine: LinkedListEngine = new LinkedListEngine();
   /** Pointer trees (BINARY_TREE / BST), their recursion and their queues / stacks (see TreeEngine.ts) */
   private treeEngine: TreeEngine = new TreeEngine();
+  /** Graphs used by real code: vertex / edge references, fields, NEIGHBOR / DEGREE / ... (see GraphProgramEngine.ts) */
+  private graphEngine: GraphProgramEngine = new GraphProgramEngine();
   /**
    * Live reference to the currently-executing VM, set in `createExecutionVM`
    * so that `resolveElementId` can call `vm.getVariable()` to read loop
@@ -282,13 +285,19 @@ export class AnimationController {
             ? this.treeEngine.size(this.treeContext(), arrayName)
             : this.treeEngine.isContainer(this.treeContext(), arrayName)
               ? this.treeEngine.containerLength(this.treeContext(), arrayName)
-              : this.getArrayElements(arrayName).length
+              : this.graphEngine.isGraph(this.treeContext(), arrayName)
+                ? (this.graphEngine.read(this.treeContext(), 'VERTEX_COUNT', [arrayName], `LENGTH(${arrayName})`) as number)
+                : this.getArrayElements(arrayName).length
     );
     // Linked lists and trees: `curr.next` / `node.left` reads, and
     // pointer-variable assignments (`curr = curr.next`) animated as steps
     // of their own.
+    // Graphs: `NEIGHBOR(v, i)`, `DEGREE(v)`, `WEIGHT(u, w)`, ... read live from the scene.
+    vm.setGraphReader((fn, args, text, argTexts) => this.graphEngine.read(this.treeContext(), fn, args, text, argTexts));
     vm.setMemberReader((object, member, objectExpr) =>
-      this.pointerOwnerIsTree(object)
+      this.graphEngine.owns(this.treeContext(), object)
+        ? this.graphEngine.readMember(this.treeContext(), object, member, objectExpr)
+        : this.pointerOwnerIsTree(object)
         ? this.treeEngine.readMember(this.treeContext(), object, member, objectExpr)
         : this.linkedListEngine.readMember(this.llContext(), object, member, objectExpr)
     );
@@ -296,6 +305,12 @@ export class AnimationController {
       async (name, value, previous, instr) => {
         // `n = NEW_NODE(...)` / `node = DEQUEUE(q)`: already shown by that step.
         if (typeof instr.value === 'string' && (instr.value.startsWith('__new_') || instr.value.startsWith('__take_'))) return false;
+        // `w = NEIGHBOR(v, i)`, `u = VERTEX(g, "A")`, `v = v.parent`: a vertex pointer moves.
+        if (this.graphEngine.isPointerAssignment(this.treeContext(), value, previous) && !TreeEngine.isNodeRef(value) && !TreeEngine.isNodeRef(previous)) {
+          this.currentVM = vm;
+          await this.executeInstruction({ action: 'GRAPH_POINTER_MOVE', name, value, previous, sourceText: instr.sourceText, valueExpr: instr.value } as any);
+          return true;
+        }
         const tree = this.treeEngine.isPointerAssignment(this.treeContext(), value, previous) &&
           (TreeEngine.isNodeRef(value) || TreeEngine.isNodeRef(previous) || !this.linkedListEngine.hasAnyList(this.llContext()));
         if (!tree && !this.linkedListEngine.isPointerAssignment(this.llContext(), value, previous)) return false;
@@ -309,15 +324,24 @@ export class AnimationController {
       () => {
         this.linkedListEngine.onScopeExit(this.llContext());
         this.treeEngine.onScopeExit(this.treeContext());
+        this.graphEngine.onScopeExit(this.treeContext());
       }
     );
     // Recursion over a tree: every call and return is a step (the node
     // passed in lights up, the call-stack panel grows / shrinks).
     vm.setCallObserver(async (event) => {
-      if (!this.treeEngine.hasAnyTree(this.treeContext())) return false;
-      this.currentVM = vm;
-      await this.executeInstruction({ action: 'TREE_CALL', event } as any);
-      return true;
+      if (this.treeEngine.hasAnyTree(this.treeContext())) {
+        this.currentVM = vm;
+        await this.executeInstruction({ action: 'TREE_CALL', event } as any);
+        return true;
+      }
+      // Recursion over a graph (recursive DFS, ...): the same, for vertices.
+      if (this.graphEngine.hasAnyGraph(this.treeContext())) {
+        this.currentVM = vm;
+        await this.executeInstruction({ action: 'GRAPH_CALL', event } as any);
+        return true;
+      }
+      return false;
     });
     return vm;
   }
@@ -366,13 +390,27 @@ export class AnimationController {
   public onSceneLoaded(): void {
     this.currentVM = null; // the previous program's variables must not tag the new scene's nodes
     this.linkedListEngine.initialize(this.llContext());
+    this.connectGraphRefs();
     this.treeEngine.initialize(this.treeContext());
+    this.graphEngine.initialize(this.treeContext());
   }
 
   /** Called after the scene is restored to an earlier step (step back / scrub). */
   public onStateRestored(): void {
     this.linkedListEngine.settleAfterRestore(this.llContext());
     this.treeEngine.settleAfterRestore(this.treeContext());
+    this.graphEngine.settleAfterRestore(this.treeContext());
+  }
+
+  /** Queues / stacks (drawn by TreeEngine) may hold graph vertices: tell TreeEngine how to show them. */
+  private connectGraphRefs(): void {
+    this.treeEngine.foreignRefs = this.graphEngine.hasAnyGraph(this.treeContext())
+      ? {
+          isRef: (v) => GraphProgramEngine.isRef(v),
+          display: (v) => this.graphEngine.displayValue(this.treeContext(), v),
+          afterRefresh: (temp) => this.graphEngine.refresh(this.treeContext(), temp),
+        }
+      : undefined;
   }
 
   /** Live elements of array `arrayName`, in index order (elements mid-deletion excluded). */
@@ -542,6 +580,9 @@ export class AnimationController {
       const { op, left, right } = operand as any;
       return `${this.describeOperand(left)} ${op} ${this.describeOperand(right)}`;
     }
+    // A graph built-in (`VERTEX(g, "B")`, `NEIGHBOR(v, i)`) or a literal name.
+    if (typeof operand === 'object' && operand && 'gfn' in (operand as any)) return String((operand as any).source);
+    if (typeof operand === 'object' && operand && 'text' in (operand as any)) return `"${(operand as any).text}"`;
     if (typeof operand === 'object') return 'value';
     // A string operand is a variable's name, or else a string literal ("(").
     if (typeof operand === 'string' && this.currentVM && this.currentVM.tryGetVariable(operand) === undefined) return `"${operand}"`;
@@ -565,6 +606,7 @@ export class AnimationController {
       this.clearTransientActiveStates();
       this.linkedListEngine.restoreBaseColors(this.llContext());
       this.treeEngine.restoreBaseColors(this.treeContext());
+      this.graphEngine.restoreBaseColors(this.treeContext());
       this.animationScheduler.init(resolve);
 
       // Auto-configure tree context from scene objects (handles BST declared
@@ -598,6 +640,9 @@ export class AnimationController {
               if (part !== null && typeof part === 'object' && 'tree' in part) {
                 return this.treeEngine.format(this.treeContext(), part.tree);
               }
+              if (part !== null && typeof part === 'object' && 'graph' in part) {
+                return this.graphEngine.format(this.treeContext(), part.graph);
+              }
               if (part !== null && typeof part === 'object' && 'container' in part) {
                 return this.treeEngine.isContainer(this.treeContext(), part.container)
                   ? this.treeEngine.formatContainer(this.treeContext(), part.container)
@@ -605,6 +650,7 @@ export class AnimationController {
               }
               const value = this.currentVM ? this.currentVM.evaluateExpression(part) : part;
               return (
+                this.graphEngine.formatValue(this.treeContext(), value) ??
                 this.treeEngine.formatValue(this.treeContext(), value) ??
                 this.linkedListEngine.formatValue(this.llContext(), value) ??
                 formatPrintValue(value)
@@ -631,7 +677,8 @@ export class AnimationController {
         // routed by what the operand actually is when the step runs.
         case 'LL_SET': {
           const target = this.currentVM ? this.currentVM.evaluateExpression((instruction as any).target) : null;
-          if (this.pointerOwnerIsTree(target)) this.treeEngine.setField(this.treeContext(), instruction as any);
+          if (this.graphEngine.owns(this.treeContext(), target)) this.graphEngine.setField(this.treeContext(), instruction as any);
+          else if (this.pointerOwnerIsTree(target)) this.treeEngine.setField(this.treeContext(), instruction as any);
           else this.linkedListEngine.setField(this.llContext(), instruction as any);
           break;
         }
@@ -654,6 +701,19 @@ export class AnimationController {
         }
         case 'TREE_CALL':
           this.treeEngine.onCall(this.treeContext(), (instruction as any).event);
+          break;
+
+        // Graphs written as code (see GraphProgramEngine).
+        case 'GRAPH_POINTER_MOVE': {
+          const i = instruction as any;
+          this.graphEngine.animatePointerMove(this.treeContext(), i.name, i.value, i.previous, i.sourceText, i.valueExpr);
+          break;
+        }
+        case 'GRAPH_CALL':
+          this.graphEngine.onCall(this.treeContext(), (instruction as any).event);
+          break;
+        case 'GRAPH_EDIT':
+          this.graphEngine.edit(this.treeContext(), instruction as any);
           break;
         case 'CONTAINER_READ': {
           const i = instruction as any;

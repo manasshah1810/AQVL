@@ -49,6 +49,14 @@ export class SceneManager {
           el.pointerVars = [];
           el.tags = [];
         }
+        if (obj.type === 'VERTEX' && /^gv:/.test(obj.id)) {
+          // Graph vertices (see GraphProgramEngine): the name is drawn on the
+          // box; fields the program sets (dist, ...) and pointer variables
+          // pointing at it are shown under / above it.
+          el.label = '';
+          el.tags = [];
+          el.fields = {};
+        }
         if (obj.originalType === 'TREE_NODE' && /^bt:/.test(obj.id)) {
           // Pointer-tree nodes (see TreeEngine): the value is drawn on the
           // sphere; tags (ROOT, pointer variables) and layout come from the engine.
@@ -56,6 +64,27 @@ export class SceneManager {
           el.inTree = true;
           el.tags = [];
         }
+        this.elements.set(el.id, el);
+        this.sceneGraph.push(el);
+      } else if (obj.type === 'GRAPH') {
+        // A graph's anchor (see GraphProgramEngine): whether it is directed /
+        // weighted and the next free edge number. Not drawn.
+        const el: any = {
+          id: obj.id,
+          type: 'GRAPH',
+          originalType: 'GRAPH',
+          logicalParent: obj.logicalParent,
+          label: obj.label,
+          directed: !!obj.properties?.directed,
+          weighted: !!obj.properties?.weighted,
+          nextEdgeNumber: obj.properties?.nextEdgeNumber ?? 0,
+          position: { x: 0, y: 0, z: 0 },
+          scale: { x: 1, y: 1, z: 1 },
+          color: '',
+          emissiveIntensity: 0,
+          emissiveColor: '',
+          visible: false,
+        };
         this.elements.set(el.id, el);
         this.sceneGraph.push(el);
       } else if (obj.type === 'BINARYTREE' || obj.type === 'CONTAINER') {
@@ -150,6 +179,8 @@ export class SceneManager {
           circular: obj.properties?.circular,
           forward: obj.properties?.forward,
           pointer: obj.properties?.pointer,
+          weight: obj.properties?.weight,
+          fields: obj.type === 'GRAPH_EDGE' ? {} : undefined,
           // e.g. a tree edge's { label: 'L' | 'R' }, read by the tree algorithms.
           properties: obj.properties,
         };

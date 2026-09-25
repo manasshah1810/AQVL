@@ -161,7 +161,7 @@ The demo Playground ships with a categorized example library, including:
 - **Sorting** — bubble, selection, insertion, merge, quick sort
 - **Trees** — binary trees, BST insert/delete/search, traversals, lowest common ancestor
 - **Linked lists** — singly/doubly/circular, reversal, tortoise-and-hare (find-middle)
-- **Graphs** — DFS, BFS
+- **Graphs** — 19 algorithms written out with loops, queues, stacks and recursion: BFS, iterative and recursive DFS, fewest-stop paths, connected components, cycle detection, bipartite check, topological sort (Kahn and DFS), Dijkstra, Bellman-Ford, Prim, Kruskal with union-find, backtracking over all paths, greedy colouring
 - **Searching** — linear and binary search
 - **Advanced structures** — segment trees, skip lists (see `examples/data-structures/`)
 

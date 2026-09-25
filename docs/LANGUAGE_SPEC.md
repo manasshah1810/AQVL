@@ -100,7 +100,11 @@ delimiters (`END` vs `{ }`).
     arbitrary expression (`-x`) is a **parse error** with the message
     "Use subtraction instead" — write `0 - x` instead.
 - **Strings**: double- or single-quoted (`"hello"`, `'hello'`).
-- **Colors / barewords**: there is no dedicated boolean or color token type.
+- **Booleans**: `TRUE` and `FALSE` (any case). `PRINT` shows them as `TRUE` / `FALSE`.
+- **`INFINITY`**: a number larger than every other number, e.g. a starting
+  distance `v.dist = INFINITY`. `PRINT` shows it as `INFINITY`.
+- `NULL`: the empty pointer (no node / no vertex).
+- **Colors / barewords**: there is no dedicated color token type.
   Colors are plain identifiers or string literals, e.g.:
   ```aqvl
   HIGHLIGHT arr[4] 'SUCCESS'
@@ -131,6 +135,24 @@ LOOP i FROM 0 TO LENGTH(arr) - 1
   ...
 END
 ```
+
+Other built-in functions usable in expressions:
+
+- `MAX(a, b)`, `MIN(a, b)` and `ABS(x)`.
+- Queue / stack reads: `DEQUEUE(q)`, `POP(s)`, `PEEK(s)`, `FRONT(q)`,
+  `REAR(q)` and `IS_EMPTY(x)`.
+- `NEW_NODE(list_or_tree, value)`.
+- Graph reads: `VERTEX(g, "A")`, `VERTEX_AT(g, i)`, `VERTEX_COUNT(g)`,
+  `EDGE_AT(g, i)`, `EDGE_COUNT(g)`, `DEGREE(v)`, `IN_DEGREE(v)`,
+  `NEIGHBOR(v, i)`, `WEIGHT(u, w)` and `HAS_EDGE(u, w)`
+  (see `API_REFERENCE.md` §7).
+
+A user `FUNCTION` with the same name hides the built-in.
+
+`LOOP i FROM a TO b` counts **down** when `b < a`. So
+`LOOP i FROM 0 TO DEGREE(v) - 1` runs once, with `i = -1`, for a vertex with
+no neighbours, and `LOOP i FROM 0 TO n - 1` does the same when `n` is 0. When
+the count can be 0, loop with `i = 0` / `WHILE i < n` / … / `i = i + 1` / `END`.
 
 ### 4.5 Expression AST node kinds
 
@@ -350,7 +372,7 @@ contents (`= [...]` / `= {...}`) are optional unless noted.
 | `HEAP name [= [n,...]]` | Min-heap only — there is no max-heap variant. |
 | `HASH_MAP name [= {k1: v1, k2: v2}]` | Keys/values: number, quoted string, or bareword identifier (treated as a string). |
 | `TRIE name [= ["str", "str", ...]]` | String literals only. |
-| `GRAPH name [= ["A-B", "A->B", "A-B:5", ...]]` | Edge strings: `"A-B"` undirected, `"A->B"` directed, `"A-B:5"` weighted (colon suffix is the weight). Directedness/weight is inferred from the edge-string syntax at code generation time, not stored separately on the declaration node. |
+| `GRAPH name [= ["A-B", "A->B", "A-B:5", "D", ...]]` | Edge strings: `"A-B"` undirected, `"A->B"` (or `"A>B"`) directed, `"A-B:5"` weighted (colon suffix is the weight, default 1), `"D"` a vertex with no edges. All edges of one graph must be the same kind. A duplicate edge is a compile error. Vertices and edges are references usable in code; see `API_REFERENCE.md` §7. |
 | `NODE / EDGE / POINTER / TREE_NODE / LABEL / ANNOTATION name [= expr...] [{ prop: val, ... }]` | Generic object declaration with optional property block. |
 
 Example — general tree built from explicit `TREE_NODE` declarations:

@@ -284,6 +284,8 @@ const KEYWORDS = new Set([
   'ROOT', 'REMOVE', 'COPY', 'FIND', 'SELECT',
   'PREORDER', 'INORDER', 'POSTORDER', 'LEVELORDER', 'REVERSELEVELORDER', 'REVERSE', 'ZIGZAG',
   'DFS', 'BFS', 'DIJKSTRA', 'BELLMAN_FORD', 'ASTAR', 'PRIM', 'KRUSKAL', 'TOPO_SORT',
+  'ADD_VERTEX', 'ADD_EDGE', 'REMOVE_EDGE', 'REMOVE_VERTEX', 'VERTEX_AT', 'VERTEX_COUNT', 'EDGE_AT', 'EDGE_COUNT',
+  'IN_DEGREE', 'NEIGHBOR', 'WEIGHT', 'HAS_EDGE', 'TRUE', 'FALSE', 'INFINITY',
   'HEIGHT', 'DEPTH', 'LEVEL', 'MAX_DEPTH', 'MIN_DEPTH', 'SIZE', 'LEAVES', 'INTERNAL', 'DEGREE', 'STATS',
   'PARENTOF', 'CHILDRENOF', 'ANCESTORS', 'DESCENDANTS', 'SIBLINGS', 'PATH', 'INTO',
   'COUNT_NODES', 'COUNT_LEAVES', 'COUNT_INTERNAL', 'COUNT_LEFT_LEAVES', 'COUNT_RIGHT_LEAVES', 'COUNT_FULL', 'COUNT_HALF',
@@ -500,7 +502,7 @@ const TOC_ITEMS_QUEUES = [
 const TOC_ITEMS_GRAPHS = [
   { id: 'gp-introduction', label: 'Introduction' },
   { id: 'gp-declaration', label: 'Declaring a Graph' },
-  { id: 'gp-commands', label: 'Commands Reference' },
+  { id: 'gp-commands', label: 'Graph Code Reference' },
   { id: 'gp-examples', label: 'Examples' },
   { id: 'gp-errors', label: 'Errors & Tips' },
 ];
@@ -2492,274 +2494,227 @@ END`} />
                     <h1 className="docs-page-title">Graphs</h1>
                   </div>
                   <p className="docs-page-lead">
-                    Vertices connected by edges, placed by a force-directed simulation — with traversals and
-                    shortest-path algorithms available as single keywords.
+                    Vertices joined by edges. Write BFS, DFS, shortest paths and spanning trees with loops, queues,
+                    stacks and recursion, and watch every step on the graph.
                   </p>
                 </header>
 
                 <section id="gp-introduction" className="docs-section">
                   <h2 className="docs-h2">Introduction</h2>
                   <p className="docs-p">
-                    A <C>GRAPH</C> is a set of vertices joined by edges. It is the most general of AQVL's structures —
-                    arrays, lists, and trees are all special cases of it — and the one where layout matters most, so
-                    graphs default to a force-directed layout that spreads vertices apart while keeping connected pairs
-                    close.
+                    A <C>GRAPH</C> is a set of <b>vertices</b> joined by <b>edges</b>: people and friendships, airports and
+                    flights, web pages and links. Arrays, lists and trees are all special cases of it. AQVL spreads the
+                    vertices out with a force-directed layout that keeps connected vertices close.
                   </p>
                   <p className="docs-p">
-                    Vertices are named by string keys rather than numeric indices. Once declared, an individual vertex is
-                    addressed as <C>g["A"]</C>, and whole-graph algorithms like <C>DFS</C> or <C>DIJKSTRA</C> take the
-                    graph name plus an optional start vertex.
+                    You write graph algorithms the way a textbook does. A variable can hold a vertex
+                    (<C>v = VERTEX(g, "A")</C>); you walk its neighbours with <C>DEGREE(v)</C> and <C>NEIGHBOR(v, i)</C>;
+                    and you store what the algorithm needs in fields of your own, such as <C>v.visited</C>,
+                    <C>v.dist</C> and <C>v.parent</C>. Queues, stacks and recursive functions work with vertices too.
                   </p>
                   <Alert kind="note" title="Visualization">
-                    Each vertex renders as a labelled node and each edge as a line between two nodes. Traversal
-                    algorithms colour vertices in visit order and trace the edges they cross.
+                    Every step is animated and logged: each field change, each <C>w = NEIGHBOR(v, i)</C> (the edge it
+                    follows lights up), each call and each return.
+                    <ul>
+                      <li>Variables are tags above their vertex, and fields are shown under it (<C>dist=4  parent=A</C>).</li>
+                      <li>Visited vertices turn green; vertices waiting on the call stack are purple.</li>
+                      <li>The edge to each vertex's <C>parent</C> turns green, so a BFS tree, shortest-path tree or spanning tree appears while it is built.</li>
+                    </ul>
                   </Alert>
                 </section>
 
                 <section id="gp-declaration" className="docs-section">
                   <h2 className="docs-h2">Declaring a Graph</h2>
+                  <CodeBlock label="Syntax" code={`GRAPH <name> = ["A-B", "B-C", ...]        // undirected
+GRAPH <name> = ["A->B", "B->C", ...]      // directed (one-way)
+GRAPH <name> = ["A-B:4", "B-C:1", ...]    // weighted (weight after the colon)
+GRAPH <name> = ["A-B", "D"]               // "D" = a vertex with no edges`} />
                   <p className="docs-p">
-                    A graph is declared from a list of edge strings. Each string names two vertices and the arrow between
-                    them; any vertex mentioned in an edge is created automatically, so there is no separate vertex list
-                    to keep in sync.
+                    Every vertex named in an edge is created automatically. All edges of one graph are either
+                    undirected or directed. An edge without a weight has weight 1, and in a weighted graph the weights
+                    are drawn on the edges.
                   </p>
-                  <CodeBlock label="Syntax" code={`GRAPH <name>
-GRAPH <name> = ["<from>-><to>", "<from>-><to>", ...]`} />
-
-                  <p className="docs-p">A full minimal program:</p>
+                  <p className="docs-p">
+                    Vertices are numbered in the order they first appear and edges in the order they are listed.
+                    <C>NEIGHBOR(v, 0)</C>, <C>NEIGHBOR(v, 1)</C> and so on follow that order.
+                  </p>
                   <CodeBlock code={`SCENE GraphIntro
-
 DECLARE
-  GRAPH g = ["A->B", "A->C", "B->D"]
-
+  GRAPH friends = ["Asha-Ben", "Asha-Chen", "Ben-Dev", "Chen-Dev"]
 SEQUENCE
-  HIGHLIGHT g["A"]
-  DFS g "A"
+  PRINT friends                       // Asha: Ben Chen | Ben: Asha Dev | ...
+  asha = VERTEX(friends, "Asha")
+  PRINT asha.name "has" DEGREE(asha) "friends"
+  ADD_EDGE friends "Dev" "Esha"       // graphs can change while the program runs
 END`} />
-                  <p className="docs-p">
-                    Four vertices (A, B, C, D) and three directed edges appear immediately, arranged by the
-                    force-directed layout. The sequence then highlights A and runs a depth-first traversal from it.
-                  </p>
-                  <Alert kind="tip" title="Edge strings are ordinary string literals">
-                    Either quote style works — <C>"A-&gt;B"</C> and <C>'A-&gt;B'</C> are the same. The arrow lives
-                    inside the string, so it is never confused with the <C>-&gt;</C> relationship operator.
-                  </Alert>
-                  <Alert kind="warn" title="Vertices cannot be added mid-sequence">
-                    There is no <C>VERTEX</C> statement inside <C>SEQUENCE</C>. Declare every vertex up front through the
-                    edge list, then use <C>CONNECT</C> and <C>DISCONNECT</C> to change which of them are joined.
-                  </Alert>
                 </section>
 
                 <section id="gp-commands" className="docs-section">
-                  <h2 className="docs-h2">Commands Reference</h2>
-
-                  <h3 className="docs-h3">Structure &amp; Access</h3>
+                  <h2 className="docs-h2">Graph Code Reference</h2>
                   <div className="docs-cmd-table-wrap">
-                    <table className="docs-cmd-table">
-                      <thead>
-                        <tr><th>Command</th><th>Description</th></tr>
-                      </thead>
-                      <tbody>
-                        <tr>
-                          <td><span className="tok-keyword">HIGHLIGHT</span> <span className="tok-param">name["key"]</span></td>
-                          <td>Pulses a single vertex by its string key. The same access form works anywhere an expression is expected.</td>
-                        </tr>
-                        <tr>
-                          <td><span className="tok-keyword">CONNECT</span> <span className="tok-param">name "from" "to"</span></td>
-                          <td>Draws a new edge between two existing vertices.</td>
-                        </tr>
-                        <tr>
-                          <td><span className="tok-keyword">DISCONNECT</span> <span className="tok-param">name "from" "to"</span></td>
-                          <td>Removes the edge between two vertices, leaving both vertices in place.</td>
-                        </tr>
-                        <tr>
-                          <td><span className="tok-keyword">SIZE</span> <span className="tok-param">name</span></td>
-                          <td>Reports the vertex count to the output console.</td>
-                        </tr>
-                        <tr>
-                          <td><span className="tok-keyword">CLEAR</span> <span className="tok-param">name</span></td>
-                          <td>Removes every vertex and edge.</td>
-                        </tr>
-                      </tbody>
-                    </table>
+                  <table className="docs-cmd-table">
+                    <thead><tr><th>Code</th><th>Meaning</th></tr></thead>
+                    <tbody>
+                      <tr><td><C>VERTEX(g, "A")</C></td><td>The vertex named A.</td></tr>
+                      <tr><td><C>VERTEX_AT(g, i)</C></td><td>The i-th vertex, counting from 0. Loop over every vertex with <C>LOOP i FROM 0 TO VERTEX_COUNT(g) - 1</C>.</td></tr>
+                      <tr><td><C>VERTEX_COUNT(g)</C> / <C>LENGTH(g)</C></td><td>Number of vertices.</td></tr>
+                      <tr><td><C>EDGE_COUNT(g)</C> / <C>EDGE_AT(g, i)</C></td><td>Number of edges / the i-th edge. An edge has <C>e.from</C>, <C>e.to</C> and <C>e.weight</C>.</td></tr>
+                      <tr><td><C>DEGREE(v)</C></td><td>How many neighbours v has (in a directed graph: edges leaving v).</td></tr>
+                      <tr><td><C>IN_DEGREE(v)</C></td><td>Edges coming into v.</td></tr>
+                      <tr><td><C>NEIGHBOR(v, i)</C></td><td>v's i-th neighbour, counting from 0.</td></tr>
+                      <tr><td><C>WEIGHT(u, w)</C> / <C>HAS_EDGE(u, w)</C></td><td>Weight of the edge u → w / whether that edge exists.</td></tr>
+                      <tr><td><C>v.name</C></td><td>The vertex's name.</td></tr>
+                      <tr><td><C>v.visited</C>, <C>v.dist</C>, <C>v.parent</C>, ...</td><td>Fields of your own, on vertices and edges. <C>visited</C> starts as FALSE; every other field must be set before it is read.</td></tr>
+                      <tr><td><C>v.color = "GRAY"</C></td><td>Paints the vertex (<C>WHITE</C>, <C>GRAY</C>, <C>BLACK</C>, <C>RED</C>, <C>BLUE</C>, ... or a number 0, 1, 2, ...).</td></tr>
+                      <tr><td><C>TRUE</C>, <C>FALSE</C>, <C>INFINITY</C></td><td>Literals: <C>v.visited = TRUE</C>, <C>v.dist = INFINITY</C>.</td></tr>
+                      <tr><td><C>ADD_VERTEX g "E"</C></td><td>Add a vertex.</td></tr>
+                      <tr><td><C>ADD_EDGE g "A" "B" 4</C></td><td>Add an edge (the weight is optional). The ends can be names or vertex variables; a new name adds that vertex.</td></tr>
+                      <tr><td><C>REMOVE_EDGE g "A" "B"</C> / <C>REMOVE_VERTEX g "C"</C></td><td>Remove an edge / a vertex together with its edges.</td></tr>
+                      <tr><td><C>QUEUE q = [] / STACK s = []</C></td><td>Hold vertices: <C>ENQUEUE q v</C>, <C>v = DEQUEUE(q)</C>, <C>PUSH s v</C>, <C>v = POP(s)</C>.</td></tr>
+                      <tr><td><C>PRINT g</C></td><td>Prints the adjacency lists: <C>A: B(4) C(1) | B: A(4) | ...</C></td></tr>
+                    </tbody>
+                  </table>
                   </div>
-
-                  <h3 className="docs-h3">Traversals &amp; Algorithms</h3>
                   <p className="docs-p">
-                    Each of these runs a full algorithm as one statement, animating every step: the vertex under
-                    consideration, the edges relaxed or rejected, and the final result set.
+                    Loop over a vertex's neighbours like this. It also works for a vertex with no neighbours:
                   </p>
-                  <div className="docs-cmd-table-wrap">
-                    <table className="docs-cmd-table">
-                      <thead>
-                        <tr><th>Command</th><th>Description</th></tr>
-                      </thead>
-                      <tbody>
-                        <tr>
-                          <td><span className="tok-keyword">DFS</span> <span className="tok-param">name "start"</span></td>
-                          <td>Depth-first traversal — follows one branch as deep as it goes before backtracking.</td>
-                        </tr>
-                        <tr>
-                          <td><span className="tok-keyword">BFS</span> <span className="tok-param">name "start"</span></td>
-                          <td>Breadth-first traversal — visits every vertex at the current distance before going deeper.</td>
-                        </tr>
-                        <tr>
-                          <td><span className="tok-keyword">DIJKSTRA</span> <span className="tok-param">name "start"</span></td>
-                          <td>Single-source shortest paths over non-negative edge weights, relaxing one edge at a time.</td>
-                        </tr>
-                        <tr>
-                          <td><span className="tok-keyword">BELLMAN_FORD</span> <span className="tok-param">name "start"</span></td>
-                          <td>Single-source shortest paths that also tolerates negative edge weights.</td>
-                        </tr>
-                        <tr>
-                          <td><span className="tok-keyword">ASTAR</span> <span className="tok-param">name "start"</span></td>
-                          <td>Heuristic-guided shortest path — the informed counterpart to Dijkstra.</td>
-                        </tr>
-                        <tr>
-                          <td><span className="tok-keyword">PRIM</span> <span className="tok-param">name</span></td>
-                          <td>Builds a minimum spanning tree by repeatedly adding the cheapest edge leaving the tree.</td>
-                        </tr>
-                        <tr>
-                          <td><span className="tok-keyword">KRUSKAL</span> <span className="tok-param">name</span></td>
-                          <td>Builds a minimum spanning tree by adding globally cheapest edges that do not form a cycle.</td>
-                        </tr>
-                        <tr>
-                          <td><span className="tok-keyword">TOPO_SORT</span> <span className="tok-param">name</span></td>
-                          <td>Orders the vertices of a directed acyclic graph so every edge points forward.</td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
+                  <CodeBlock code={`i = 0
+WHILE i < DEGREE(v)
+  w = NEIGHBOR(v, i)
+  // ... use w ...
+  i = i + 1
+END`} />
+                  <p className="docs-p">
+                    Each whole algorithm is also available as a single command that animates it in one go:
+                    <C>DFS g FROM A</C>, <C>BFS g FROM A</C>, <C>DIJKSTRA g FROM A</C>, <C>BELLMAN_FORD g FROM A</C>,
+                    <C>ASTAR g FROM A TO C</C>, <C>PRIM g FROM A</C>, <C>KRUSKAL g</C> and <C>TOPO_SORT g</C>. Writing the
+                    algorithm yourself shows much more of how it works.
+                  </p>
                 </section>
 
                 <section id="gp-examples" className="docs-section">
                   <h2 className="docs-h2">Examples</h2>
-
-                  <h3 className="docs-h3">Example 1 — Depth-First vs. Breadth-First</h3>
-                  <p className="docs-p">
-                    The same graph traversed both ways. Running them back to back on one scene makes the difference in
-                    visit order unmistakable.
-                  </p>
-                  <CodeBlock code={`SCENE GraphTraversals
-
+                  <h3 className="docs-h3">Breadth-first search with a queue</h3>
+                  <CodeBlock code={`SCENE BFS
 DECLARE
-  GRAPH g = ["A->B", "A->C", "B->D", "B->E", "C->F"]
-
+  GRAPH g = ["A-B", "A-C", "B-D", "C-D", "D-E"]
+  QUEUE q = []
 SEQUENCE
-  DFS g "A"
-  WAIT
-
-  BFS g "A"
-  WAIT
+  start = VERTEX(g, "A")
+  start.visited = TRUE
+  start.dist = 0
+  ENQUEUE q start
+  WHILE LENGTH(q) > 0
+    v = DEQUEUE(q)
+    i = 0
+    WHILE i < DEGREE(v)
+      w = NEIGHBOR(v, i)
+      IF w.visited == FALSE
+        w.visited = TRUE
+        w.dist = v.dist + 1
+        w.parent = v
+        ENQUEUE q w
+      END
+      i = i + 1
+    END
+  END
+  PRINT "E is" VERTEX(g, "E").dist "steps from A"
+END`} />
+                  <h3 className="docs-h3">Recursive depth-first search</h3>
+                  <CodeBlock code={`SCENE DFS
+DECLARE
+  GRAPH g = ["A-B", "A-C", "B-D", "C-D", "D-E"]
+  FUNCTION dfs(v)
+    v.visited = TRUE
+    PRINT "Visit" v.name
+    i = 0
+    WHILE i < DEGREE(v)
+      w = NEIGHBOR(v, i)
+      IF w.visited == FALSE
+        dfs(w)
+      END
+      i = i + 1
+    END
+  END
+SEQUENCE
+  dfs(VERTEX(g, "A"))
+END`} />
+                  <h3 className="docs-h3">Dijkstra's shortest paths</h3>
+                  <CodeBlock code={`SCENE Dijkstra
+DECLARE
+  GRAPH g = ["A-B:4", "A-C:1", "C-B:2", "B-D:1", "C-D:5"]
+SEQUENCE
+  LOOP k FROM 0 TO VERTEX_COUNT(g) - 1
+    p = VERTEX_AT(g, k)
+    p.dist = INFINITY
+  END
+  start = VERTEX(g, "A")
+  start.dist = 0
+  LOOP round FROM 1 TO VERTEX_COUNT(g)
+    // the closest vertex not finished yet
+    u = NULL
+    LOOP k FROM 0 TO VERTEX_COUNT(g) - 1
+      p = VERTEX_AT(g, k)
+      IF p.visited == FALSE
+        IF u == NULL
+          u = p
+        ELSE
+          IF p.dist < u.dist
+            u = p
+          END
+        END
+      END
+    END
+    u.visited = TRUE
+    // relax its edges
+    i = 0
+    WHILE i < DEGREE(u)
+      w = NEIGHBOR(u, i)
+      IF u.dist + WEIGHT(u, w) < w.dist
+        w.dist = u.dist + WEIGHT(u, w)
+        w.parent = u
+      END
+      i = i + 1
+    END
+  END
+  PRINT "A to D:" VERTEX(g, "D").dist
 END`} />
                   <p className="docs-p">
-                    <strong>Expected behavior:</strong> DFS dives A → B → D before coming back for E and C;
-                    BFS sweeps A, then B and C, then D, E, and F.
+                    The Playground has 19 complete graph programs:
                   </p>
-
-                  <h3 className="docs-h3">Example 2 — Hand-Stepped BFS by Level</h3>
-                  <p className="docs-p">
-                    Stepping the traversal manually, one level per <C>WAIT</C>, when you want to narrate each level
-                    rather than play the whole algorithm at once.
-                  </p>
-                  <CodeBlock code={`SCENE BFSByLevel
-
-DECLARE
-  GRAPH myGraph = [
-    "A->B",
-    "A->C",
-    "B->D",
-    "B->E",
-    "C->F"
-  ]
-
-SEQUENCE
-  // Level 0
-  HIGHLIGHT myGraph["A"]
-  WAIT
-
-  // Level 1
-  HIGHLIGHT myGraph["B"]
-  HIGHLIGHT myGraph["C"]
-  WAIT
-
-  // Level 2
-  HIGHLIGHT myGraph["D"]
-  HIGHLIGHT myGraph["E"]
-  HIGHLIGHT myGraph["F"]
-  WAIT
-END`} />
-
-                  <h3 className="docs-h3">Example 3 — Rewiring a Graph</h3>
-                  <p className="docs-p">
-                    Edges can be added and removed mid-sequence; the layout re-settles around the change.
-                  </p>
-                  <CodeBlock code={`SCENE GraphRewire
-
-DECLARE
-  GRAPH g = ["A->B", "B->C"]
-
-SEQUENCE
-  // Close the loop
-  CONNECT g "C" "A"
-  WAIT
-
-  // Break the original first edge
-  DISCONNECT g "A" "B"
-  WAIT
-
-  SIZE g
-END`} />
-
-                  <h3 className="docs-h3">Example 4 — Shortest Paths and Spanning Trees</h3>
-                  <p className="docs-p">
-                    The one-shot algorithm keywords, each animating its full run against the same graph.
-                  </p>
-                  <CodeBlock code={`SCENE GraphAlgorithms
-
-DECLARE
-  GRAPH g = ["A->B", "A->C", "B->D", "C->D", "D->E"]
-
-SEQUENCE
-  DIJKSTRA g "A"
-  WAIT
-
-  TOPO_SORT g
-  WAIT
-
-  PRIM g
-  WAIT
-
-  KRUSKAL g
-END`} />
+                  <ul>
+                    <li>graph basics, directed and weighted graphs, and the adjacency matrix;</li>
+                    <li>BFS, fewest-stop routes, and iterative and recursive DFS;</li>
+                    <li>connected components, cycle detection and the bipartite check;</li>
+                    <li>topological sort, both Kahn's algorithm and the DFS version;</li>
+                    <li>Dijkstra, Bellman-Ford, Prim and Kruskal;</li>
+                    <li>listing every route by backtracking, and greedy colouring.</li>
+                  </ul>
                 </section>
 
                 <section id="gp-errors" className="docs-section">
                   <h2 className="docs-h2">Errors &amp; Tips</h2>
-
-                  <Alert kind="warn" title="Unknown vertex key">
-                    <C>HIGHLIGHT g["Z"]</C> on a graph with no <C>Z</C> vertex finds nothing to animate. Vertex keys are
-                    exactly the strings used in the edge list, including case.
+                  <div className="docs-cmd-table-wrap">
+                  <table className="docs-cmd-table">
+                    <thead><tr><th>Message</th><th>What to do</th></tr></thead>
+                    <tbody>
+                      <tr><td><C>graph 'g' has no vertex named "Z"</C></td><td>Vertex names are exactly the strings used in the edge list, including case. The message lists the real names.</td></tr>
+                      <tr><td><C>A has 2 neighbours — valid indexes are 0 to 1</C></td><td>Loop with <C>WHILE i &lt; DEGREE(v)</C>. Note that <C>LOOP i FROM 0 TO DEGREE(v) - 1</C> counts down to -1 when the degree is 0.</td></tr>
+                      <tr><td><C>v.dist has not been set yet</C></td><td>Give every vertex a starting value first, for example <C>p.dist = INFINITY</C> in a loop over <C>VERTEX_AT</C>.</td></tr>
+                      <tr><td><C>there is no edge from A to C</C></td><td>Check <C>HAS_EDGE(u, w)</C> before <C>WEIGHT(u, w)</C>.</td></tr>
+                      <tr><td><C>DEGREE(x): x is not a vertex</C></td><td>The variable holds a number or a name, not a vertex. Get the vertex with <C>VERTEX(g, "A")</C>.</td></tr>
+                      <tr><td><C>mixes directed and undirected edges</C></td><td>Use either <C>A-B</C> or <C>A-&gt;B</C> for every edge of one graph.</td></tr>
+                    </tbody>
+                  </table>
+                  </div>
+                  <Alert kind="tip" title="Functions return their results">
+                    Variables assigned inside a <C>FUNCTION</C> are local to that call. To count or collect things
+                    in a recursive search, <C>RETURN</C> the result. Fields such as <C>v.visited</C> belong to the
+                    graph, so every call sees them.
                   </Alert>
-
-                  <Alert kind="warn" title="Traversals need a non-empty graph">
-                    <C>DFS</C> and friends report a warning and do nothing when the named graph has no vertices — the
-                    usual cause is a <C>GRAPH g</C> declaration with no edge list and no <C>CONNECT</C> before the call.
-                  </Alert>
-
-                  <Alert kind="warn" title="TOPO_SORT requires a DAG">
-                    A topological order only exists for a directed graph with no cycles. Run it on a graph containing a
-                    cycle and the algorithm reports that no valid ordering exists.
-                  </Alert>
-
-                  <Alert kind="tip" title="Freeze a graph into a circle to show a cycle">
-                    <C>LAYOUT g AS CIRCULAR(radius=3)</C> replaces the physics simulation with an even ring, which makes
-                    a cycle far easier to point at than a force-directed blob.
-                  </Alert>
-
-                  <Alert kind="note" title="Start vertex is optional">
-                    <C>DFS g</C> starts from the first declared vertex. Passing it explicitly — <C>DFS g "A"</C> — is
-                    clearer and survives edits to the edge list.
+                  <Alert kind="note" title="Reserved words">
+                    <C>from</C>, <C>to</C> and <C>link</C> are keywords and cannot be variable names. Use names like
+                    <C>src</C>, <C>dst</C> and <C>next</C> instead. Field names such as <C>e.from</C> are fine.
                   </Alert>
                 </section>
               </>

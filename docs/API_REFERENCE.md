@@ -318,8 +318,126 @@ END
 
 ## 7. Graphs
 
-Declared with `GRAPH name = ["A-B", "A->B", "A-B:5", ...]`. Implemented in
-`GraphEngine.ts` / `GraphAlgorithms.ts`.
+Declared with `GRAPH g = ["A-B", "A->C:4", "D"]`:
+
+- `"A-B"` is an undirected edge, `"A->B"` (or the older `"A>B"`) a directed one;
+  a graph uses one kind for all its edges (mixing them is a compile error).
+- `":4"` gives the edge a weight; without one every weight is 1. In a
+  weighted graph the weight is drawn on the edge.
+- A lone name (`"D"`) is a vertex with no edges.
+- Listing the same edge twice is a compile error.
+
+Vertices are numbered in order of first appearance and edges in the order
+listed; that order is what `VERTEX_AT`, `EDGE_AT` and `NEIGHBOR` use.
+Implemented in `packages/runtime/src/core/algorithms/GraphProgramEngine.ts`.
+
+### Graph algorithms as code
+
+A vertex (or an edge) held in a variable is a reference, like a tree-node
+pointer. Graph algorithms are written with loops, IFs, queues, stacks and
+recursion:
+
+| Expression / statement | Meaning |
+|---|---|
+| `VERTEX(g, "A")` | The vertex named A (error if there is none). |
+| `VERTEX_AT(g, i)` | The i-th vertex, from 0. |
+| `VERTEX_COUNT(g)` / `LENGTH(g)` | Number of vertices. |
+| `EDGE_COUNT(g)` | Number of edges (an undirected edge counts once). |
+| `EDGE_AT(g, i)` | The i-th edge, from 0; `e.from`, `e.to`, `e.weight`. |
+| `DEGREE(v)` | Number of neighbours: edges leaving v (directed), or touching v (undirected). |
+| `IN_DEGREE(v)` | Edges coming into v (equals `DEGREE` in an undirected graph). |
+| `NEIGHBOR(v, i)` | v's i-th neighbour, from 0, in edge order. |
+| `WEIGHT(u, w)` | Weight of the edge u → w (error if there is none). |
+| `HAS_EDGE(u, w)` | `TRUE` when the edge u → w exists. |
+| `v.name` | The vertex's name (read-only; also `v.val`). |
+| `v.anything` | A field of your own: `v.visited`, `v.dist`, `v.parent = u`, `v.color`, … Assignable on vertices and edges. |
+| `ADD_VERTEX g "E"` | Add a vertex. |
+| `ADD_EDGE g "A" "B" [weight]` | Add an edge; the ends may be names or vertex variables. A name not in the graph yet becomes a new vertex. |
+| `REMOVE_EDGE g "A" "B"` / `REMOVE_VERTEX g "C"` | Remove an edge / a vertex with all its edges. |
+| `PRINT g` | Adjacency lists: `A: B(4) C(1) \| B: A(4) \| …`. `PRINT v` prints the name, `PRINT e` prints `A-B(4)`. |
+| `QUEUE q = []`, `STACK s = []` | Hold vertices: `ENQUEUE q v`, `w = DEQUEUE(q)`, `PUSH s v`, `POP(s)`, … |
+| `TRUE`, `FALSE`, `INFINITY` | Literals, e.g. `v.visited = TRUE`, `v.dist = INFINITY`. |
+
+**Fields.** Every field starts unset, and reading an unset field is an
+error, so initialise it first (for example `v.dist = INFINITY` for every
+vertex). The one exception is `visited`, which starts as `FALSE`. Field
+names are not case-sensitive: `e.inTree` and `e.intree` are the same field.
+
+**Neighbour loops.** Write them as
+`i = 0` / `WHILE i < DEGREE(v)` / … / `i = i + 1` / `END`. Avoid
+`LOOP i FROM 0 TO DEGREE(v) - 1`: when `DEGREE` is 0 it counts *down*
+from 0 to -1.
+
+**Visualization.** Each field write, vertex-pointer move (`w = NEIGHBOR(v, i)`
+lights up the edge it followed), call, return and graph edit is its own step
+with a console line.
+
+- Pointer variables are drawn as tags above their vertex, and fields as a
+  label under it (`dist=4  parent=A`).
+- `visited` vertices turn green.
+- Vertices held by calls still waiting on the call stack are purple.
+- `v.color = "GRAY"` (or `WHITE`, `BLACK`, `RED`, `BLUE`, …, or a number
+  0, 1, 2, …) paints a vertex. A negative number leaves it unpainted.
+- The edge between a vertex and its `parent`, and any edge with a field set
+  to `TRUE` (`e.inTree = TRUE`), is drawn green, so a BFS tree, shortest-path
+  tree or spanning tree appears while it is built.
+
+**Run-time errors:**
+
+- an unknown vertex name
+- a `NEIGHBOR` / `VERTEX_AT` / `EDGE_AT` index out of range (the message
+  gives the valid range)
+- reading an unset field
+- assigning `name` / `degree` / `from` / `to` / `weight`
+- `WEIGHT` of a missing edge
+- a NULL or non-vertex operand (`DEGREE(x): x is not a vertex`)
+- adding an edge that already exists, or a self-loop
+
+```aqvl
+SCENE BFS
+DECLARE
+  GRAPH g = ["A-B", "A-C", "B-D", "C-D"]
+  QUEUE q = []
+SEQUENCE
+  start = VERTEX(g, "A")
+  start.visited = TRUE
+  start.dist = 0
+  ENQUEUE q start
+  WHILE LENGTH(q) > 0
+    v = DEQUEUE(q)
+    i = 0
+    WHILE i < DEGREE(v)
+      w = NEIGHBOR(v, i)
+      IF w.visited == FALSE
+        w.visited = TRUE
+        w.dist = v.dist + 1
+        w.parent = v
+        ENQUEUE q w
+      END
+      i = i + 1
+    END
+  END
+  PRINT "D is" VERTEX(g, "D").dist "steps from A"
+END
+```
+
+The Playground's **Graphs** examples cover these algorithms written in full:
+
+- BFS, fewest-hops paths, and iterative and recursive DFS
+- connected components
+- cycle detection in undirected and directed graphs
+- the bipartite check
+- topological sort (Kahn's algorithm and DFS)
+- Dijkstra and Bellman-Ford
+- Prim and Kruskal (with union-find)
+- listing all paths by backtracking
+- greedy colouring
+
+### One-line built-ins
+
+The same algorithms are also available as single commands that run the
+whole algorithm in one step (implemented in `GraphEngine.ts` /
+`GraphAlgorithms.ts`):
 
 | Operation | Syntax | Description | Complexity |
 |---|---|---|---|

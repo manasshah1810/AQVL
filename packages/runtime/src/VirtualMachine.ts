@@ -135,6 +135,12 @@ export type CallObserver = (event: {
   depth: number;
 }) => Promise<boolean> | boolean;
 
+/**
+ * Evaluates a graph built-in (`NEIGHBOR(v, i)`, `DEGREE(v)`, `WEIGHT(u, w)`, ...)
+ * for `{ gfn, args }` operands; `args` are already evaluated.
+ */
+export type GraphReader = (fn: string, args: unknown[], text: string, argTexts: string[]) => unknown;
+
 /** Reads `object.member` (e.g. `curr.next`, `list.head`) for `{ member, object }` operands. */
 export type MemberReader = (object: unknown, member: string, objectExpr: unknown) => unknown;
 
@@ -206,8 +212,9 @@ export class AQVLVirtualMachine {
         }
         continue;
       }
-      // A queue / stack's anchor is its name label, not one of its slots.
-      if (obj.type === 'CONTAINER') continue;
+      // A queue / stack's anchor is its name label, not one of its slots;
+      // a graph's anchor only records whether it is directed.
+      if (obj.type === 'CONTAINER' || (obj.type as string) === 'GRAPH') continue;
       if (!grouped.has(obj.logicalParent)) grouped.set(obj.logicalParent, []);
       grouped.get(obj.logicalParent)!.push(obj);
     }
@@ -309,6 +316,7 @@ export class AQVLVirtualMachine {
   private lengthReader?: (arrayName: string) => number;
 
   private memberReader?: MemberReader;
+  private graphReader?: GraphReader;
   private variableObserver?: VariableObserver;
   private scopeObserver?: () => void;
   private callObserver?: CallObserver;
@@ -321,6 +329,11 @@ export class AQVLVirtualMachine {
   /** Name of the function executing now, from the outermost frame inwards (the call stack). */
   public getCallStack(): { functionName: string; locals: Record<string, unknown> }[] {
     return this.frames.map((f) => ({ functionName: f.functionName, locals: { ...f.locals } }));
+  }
+
+  /** Supplies graph built-in reads, see `GraphReader`. */
+  public setGraphReader(reader: GraphReader): void {
+    this.graphReader = reader;
   }
 
   /** Supplies `object.member` reads (linked-list fields), see `MemberReader`. */
@@ -367,6 +380,17 @@ export class AQVLVirtualMachine {
   public evaluateExpression(expr: unknown): unknown {
     if (typeof expr === 'string') {
       return this.hasVariable(expr) ? this.getVariable(expr) : expr;
+    }
+    // `{ text }`: a literal name (a graph, a vertex name) that must not resolve to a variable.
+    if (expr !== null && typeof expr === 'object' && 'text' in (expr as any) && Object.keys(expr as object).length === 1) {
+      return (expr as { text: string }).text;
+    }
+    if (expr !== null && typeof expr === 'object' && 'gfn' in (expr as any)) {
+      const { gfn, args, source: text, argSources } = expr as { gfn: string; args: unknown[]; source: string; argSources?: string[] };
+      if (!this.graphReader) {
+        throw new Error(`Cannot evaluate ${text}: no graph is attached to this program.`);
+      }
+      return this.graphReader(gfn, args.map((a) => this.evaluateExpression(a)), text, argSources ?? []);
     }
     if (expr !== null && typeof expr === 'object' && 'len' in (expr as any) && !('op' in (expr as any))) {
       const arrayName = (expr as { len: string }).len;

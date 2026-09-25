@@ -66,6 +66,11 @@ function toRenderableConnection(
     color: el.color,
     emissiveColor: el.emissiveColor,
     pointer: (el as any).pointer,
+    // A weighted graph edge shows its weight (tree / list edges keep their labels internal).
+    label:
+      el.originalType === 'GRAPH_EDGE' && (el as any).properties?.label !== undefined && (el as any).properties?.label !== null
+        ? String((el as any).properties.label)
+        : undefined,
     highlightState: {
       isHighlighted: el.isHighlighted,
       state: el.state,
@@ -91,7 +96,13 @@ function restingPosition(el: SceneElement): Vec3 {
 function routePointerEdges(connections: RenderableConnection[], elements: Map<string, SceneElement>): void {
   const pairs = new Set(connections.map((c) => `${c.fromId}|${c.toId}`));
   for (const c of connections) {
-    if (!c.pointer) continue;
+    if (!c.pointer) {
+      // Directed graph edges both ways (A -> B and B -> A): drawn side by side, not on top of each other.
+      if (c.style === 'arrow' && c.fromId !== c.toId && pairs.has(`${c.toId}|${c.fromId}`)) {
+        c.route = { kind: 'straight', offset: c.fromId < c.toId ? 0.18 : -0.18 };
+      }
+      continue;
+    }
     if (c.fromId === c.toId) {
       c.route = { kind: 'loop' };
       continue;
@@ -393,6 +404,7 @@ export const GenericSceneRenderer: React.FC<GenericSceneRendererProps> = ({
           route={c.route}
           arrowScale={c.pointer ? 1.6 : 1}
           minOpacity={c.pointer ? 0.85 : undefined}
+          label={c.label}
         />
       ))}
       <LinkedListDecorations elements={elements} />
