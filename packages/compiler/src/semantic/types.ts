@@ -42,4 +42,10 @@ export class SymbolTable {
     }
     return undefined;
   }
+
+  /** Every name visible from this scope (this scope's own symbols plus every ancestor's), for "did you mean" suggestions. */
+  public names(): string[] {
+    const own = Array.from(this.symbols.keys());
+    return this.parent ? [...own, ...this.parent.names()] : own;
+  }
 }

@@ -1,3 +1,5 @@
+import { TokenError } from '@aqvl/shared';
+
 export enum TokenType {
   Keyword = 'Keyword',
   Identifier = 'Identifier',
@@ -23,13 +25,16 @@ const KEYWORDS = new Set([
   'COMPARE', 'SWAP', 'HIGHLIGHT', 'WAIT', 'END',
   'LINKEDLIST', 'TYPE', 'SINGLY', 'DOUBLY', 'CIRCULAR',
   'NODE', 'EDGE', 'POINTER', 'STACK', 'QUEUE', 'HEAP',
-  'GRAPH', 'VERTEX', 'GRAPH_EDGE', 'TREE', 'TREE_NODE', 'BINARY_TREE',
+  'GRAPH', 'VERTEX', 'GRAPH_EDGE', 'TREE', 'TREE_NODE', 'BINARY_TREE', 'BST',
   'LABEL', 'ANNOTATION', 'LINK', 'RELATION', 'DIRECTED', 'UNDIRECTED',
   'TO', 'FROM', 'PARENT', 'CHILD', 'LEFT_CHILD', 'RIGHT_CHILD', 'SIBLING',
   'INSERT', 'DELETE', 'INSERT_HEAD', 'INSERT_TAIL', 'DELETE_HEAD', 'DELETE_TAIL', 'MOVE', 'CONNECT', 'DISCONNECT', 'PUSH', 'POP', 'PEEK',
   'ENQUEUE', 'DEQUEUE', 'FRONT', 'REAR', 'VISIT', 'MARK', 'TRAVERSE', 'ROTATE', 'SEARCH', 'HEAPIFY', 'UPDATE',
+  'HEAP_INSERT', 'HEAP_EXTRACT', 'HEAP_DECREASE', 'BUILD_HEAP',
+  'HASH_MAP', 'HASHMAP_INSERT', 'HASHMAP_LOOKUP', 'HASHMAP_DELETE',
+  'TRIE_INSERT', 'TRIE_SEARCH', 'TRIE_DELETE', 'TRIE_AUTOCOMPLETE', 'TRIE_STARTSWITH',
   'SET', 'STATE', 'LOOP', 'LENGTH', 'NULL', 'TRIE', 'IF', 'HEAD', 'CLEAR', 'IS_EMPTY',
-  'ROOT', 'REMOVE', 'COPY', 'FIND', 'SELECT', 'PREORDER', 'INORDER', 'POSTORDER', 'LEVELORDER', 'REVERSELEVELORDER', 'REVERSE', 'ZIGZAG', 'DFS', 'BFS',
+  'ROOT', 'REMOVE', 'COPY', 'FIND', 'SELECT', 'PREORDER', 'INORDER', 'POSTORDER', 'LEVELORDER', 'REVERSELEVELORDER', 'REVERSE', 'ZIGZAG', 'DFS', 'BFS', 'DIJKSTRA', 'BELLMAN_FORD', 'ASTAR', 'PRIM', 'KRUSKAL', 'TOPO_SORT',
   'HEIGHT', 'DEPTH', 'LEVEL', 'MAX_DEPTH', 'MIN_DEPTH', 'SIZE', 'LEAVES', 'INTERNAL', 'DEGREE', 'STATS', 'PARENTOF', 'CHILDRENOF', 'ANCESTORS', 'DESCENDANTS', 'SIBLINGS', 'PATH', 'INTO',
   'COUNT_NODES', 'COUNT_LEAVES', 'COUNT_INTERNAL', 'COUNT_LEFT_LEAVES', 'COUNT_RIGHT_LEAVES', 'COUNT_FULL', 'COUNT_HALF',
   'IS_FULL', 'IS_COMPLETE', 'IS_PERFECT', 'IS_BALANCED', 'IS_DEGENERATE', 'IS_LEFT_SKEWED', 'IS_RIGHT_SKEWED', 'IS_SYMMETRIC',
@@ -37,7 +42,15 @@ const KEYWORDS = new Set([
   'ROOT_TO_NODE', 'ROOT_TO_LEAVES', 'LONGEST_PATH', 'SHORTEST_PATH',
   'MIRROR', 'INVERT', 'CLONE', 'REMOVE_LEAVES', 'PRUNE',
   'LEFT_VIEW', 'RIGHT_VIEW', 'TOP_VIEW', 'BOTTOM_VIEW', 'BOUNDARY', 'VERTICAL_ORDER', 'DIAGONAL',
-  'MAX_VALUE', 'MIN_VALUE', 'SUM', 'AVERAGE', 'MAX_LEVEL_SUM'
+  'MAX_VALUE', 'MIN_VALUE', 'MIN', 'MAX', 'SUM', 'AVERAGE', 'MAX_LEVEL_SUM',
+  'BUBBLE_SORT', 'SELECTION_SORT', 'INSERTION_SORT', 'MERGE_SORT', 'QUICK_SORT',
+  // User-defined functions (VM mode)
+  'FUNCTION', 'RETURN', 'ELSE',
+  // Scene-level control flow / output
+  'WHILE', 'PRINT', 'AND', 'OR',
+  // Spatial syntax (LAYOUT / CAMERA / POSITION) — see docs/design/spatial-syntax-spec.md
+  'LAYOUT', 'AS', 'LINE', 'HIERARCHY', 'FORCE_DIRECTED', 'GRID', 'CUSTOM',
+  'CAMERA', 'FOCUS', 'AUTO_FIT', 'ORBIT', 'POSITION', 'AT',
 ]);
 
 export class Lexer {
@@ -45,9 +58,31 @@ export class Lexer {
   private current: number = 0;
   private line: number = 1;
   private column: number = 1;
+  /** The most recently emitted token, used to disambiguate a leading '-' as negation vs subtraction. */
+  private lastToken?: Token;
 
   constructor(source: string) {
     this.source = source;
+  }
+
+  /**
+   * Token types after which a '-' must mean subtraction (the previous token
+   * is a complete value/operand). Anywhere else — start of input, after an
+   * operator, '(', '[', ',', ':', '=', or a keyword like RETURN — a '-'
+   * immediately followed by a digit starts a negative number literal.
+   */
+  private isOperandEnd(token: Token): boolean {
+    if (token.type === TokenType.Number || token.type === TokenType.Identifier || token.type === TokenType.String) {
+      return true;
+    }
+    if (token.type === TokenType.Symbol && (token.value === ')' || token.value === ']')) {
+      return true;
+    }
+    return false;
+  }
+
+  private tokenError(message: string, pos: Position, suggestion?: string): TokenError {
+    return new TokenError(message, { line: pos.line, column: pos.column, source: this.source, suggestion });
   }
 
   public tokenize(): Token[] {
@@ -55,6 +90,7 @@ export class Lexer {
     let token = this.nextToken();
     while (token.type !== TokenType.EOF) {
       tokens.push(token);
+      this.lastToken = token;
       token = this.nextToken();
     }
     tokens.push(token); // Push EOF
@@ -100,13 +136,28 @@ export class Lexer {
       return { type: TokenType.Symbol, value: '->', pos };
     }
 
-    if ('=[]+,{}:-<>()'.includes(c)) {
+    // A '-' directly followed by a digit is a negative number literal
+    // (e.g. `-5`, `-3.14`) unless the previous token was itself a complete
+    // value (a number/identifier/string, or a closing ')'/']'), in which
+    // case it's the subtraction operator, e.g. `x - 5`.
+    if (c === '-' && this.isDigit(this.peekNext()) && !(this.lastToken && this.isOperandEnd(this.lastToken))) {
+      return this.readNumber();
+    }
+
+    // Two-char comparison operators (function/expression conditions)
+    if (this.peekNext() === '=' && (c === '<' || c === '>' || c === '=' || c === '!')) {
+      const pos = this.getPos();
+      this.advance(); this.advance();
+      return { type: TokenType.Symbol, value: c + '=', pos };
+    }
+
+    if ('=[]+,{}:-<>()*/%;'.includes(c)) {
       const pos = this.getPos();
       this.advance();
       return { type: TokenType.Symbol, value: c, pos };
     }
 
-    throw new Error(`Unexpected character '${c}' at line ${this.line}, column ${this.column}`);
+    throw this.tokenError(`Unexpected character '${c}'.`, this.getPos());
   }
 
   private skipWhitespace() {
@@ -141,6 +192,9 @@ export class Lexer {
   private readNumber(): Token {
     const pos = this.getPos();
     let value = '';
+    if (this.peek() === '-') {
+      value += this.advance();
+    }
     let hasDot = false;
     while (!this.isAtEnd()) {
       const c = this.peek();
@@ -164,7 +218,7 @@ export class Lexer {
       value += this.advance();
     }
     if (this.isAtEnd()) {
-      throw new Error(`Unterminated string at line ${pos.line}, column ${pos.column}`);
+      throw this.tokenError(`Unterminated string starting with ${quote}${value}.`, pos, `Add a closing ${quote} to end the string.`);
     }
     this.advance(); // consume closing quote
     return { type: TokenType.String, value, pos };

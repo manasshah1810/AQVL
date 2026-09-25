@@ -6,6 +6,7 @@ import {
   SequenceBlockNode,
   LoopNode,
   IfNode,
+  WhileNode,
   CompareNode,
   SwapNode,
   RelationshipNode,
@@ -18,6 +19,9 @@ import {
   BinaryOpNode,
   ArrayDeclNode
 } from '../ast/types';
+import { AQIROpcode } from '../aqir/InstructionSet';
+import type { JumpInstruction, JumpIfFalseInstruction } from '../aqir/InstructionSet';
+import type { VMInstruction } from '../aqir/types';
 
 export class Optimizer {
   private env = new Map<string, number>();
@@ -30,6 +34,8 @@ export class Optimizer {
     const optimizedScenes: SceneNode[] = [];
 
     for (const scene of ast.scenes) {
+      const resized = new Set<string>();
+      if (scene.sequence) Optimizer.collectResizedArrays(scene.sequence.statements, resized);
       if (scene.declarations) {
         // Track variable states for simulation
         for (const v of scene.declarations.variables) {
@@ -39,7 +45,11 @@ export class Optimizer {
             if (userInputs[arr.name.name] && Array.isArray(userInputs[arr.name.name])) {
               elements = [...userInputs[arr.name.name]];
             }
-            this.env.set(`LENGTH(${arr.name.name})`, elements.length);
+            // An array that INSERT/DELETE resize has no compile-time length:
+            // leave LENGTH(arr) for the runtime to evaluate.
+            if (!resized.has(arr.name.name)) {
+              this.env.set(`LENGTH(${arr.name.name})`, elements.length);
+            }
             this.arraySimulations.set(arr.name.name, elements);
           }
           // We can add tracking for other types here if needed for if-conditions
@@ -63,6 +73,19 @@ export class Optimizer {
     };
   }
 
+  /** Names of arrays targeted by INSERT / DELETE anywhere in `statements` (recursing into blocks). */
+  private static collectResizedArrays(statements: StatementNode[], out: Set<string>): void {
+    for (const stmt of statements) {
+      const any = stmt as any;
+      if (stmt.type === 'GenericActionNode' && (any.actionName === 'INSERT' || any.actionName === 'DELETE')
+          && any.args[0]?.type === 'ArrayAccessNode') {
+        out.add(any.args[0].array.name);
+      }
+      if (Array.isArray(any.body)) Optimizer.collectResizedArrays(any.body, out);
+      if (Array.isArray(any.elseBody)) Optimizer.collectResizedArrays(any.elseBody, out);
+    }
+  }
+
   private expandSequence(sequence: SequenceBlockNode): SequenceBlockNode {
     const flattenedStatements: StatementNode[] = [];
     for (const stmt of sequence.statements) {
@@ -77,37 +100,62 @@ export class Optimizer {
   private expandStatement(stmt: StatementNode, out: StatementNode[]): void {
     switch (stmt.type) {
       case 'LoopNode': {
+        // No longer unrolled: the generator compiles LOOP directly to a
+        // JUMP_IF_FALSE/JUMP branch, so this pass only constant-folds the
+        // bounds (e.g. LENGTH(arr), literal arithmetic) when possible and
+        // recurses into the body once — it does not duplicate it per
+        // iteration, and it does not bind the iterator into `this.env`
+        // (nothing inside the body can be evaluated against a concrete
+        // iterator value anymore; see resolveToConcreteExpression's
+        // try/catch fallback for array-index folding).
         const loop = stmt as LoopNode;
-        const start = this.evaluateExpressionNumber(loop.start);
-        const end = this.evaluateExpressionNumber(loop.end);
-        
-        const iterName = loop.iterator.name;
-        const previousValue = this.env.get(iterName);
-        
-        const step = start <= end ? 1 : -1;
-        for (let i = start; start <= end ? i <= end : i >= end; i += step) {
-          this.env.set(iterName, i);
-          for (const bodyStmt of loop.body) {
-            this.expandStatement(bodyStmt, out);
-          }
+        const start = this.tryFoldToLiteral(loop.start);
+        const end = this.tryFoldToLiteral(loop.end);
+
+        const bodyOut: StatementNode[] = [];
+        for (const bodyStmt of loop.body) {
+          this.expandStatement(bodyStmt, bodyOut);
         }
-        
-        if (previousValue !== undefined) this.env.set(iterName, previousValue);
-        else this.env.delete(iterName);
+
+        out.push({ ...loop, start, end, body: bodyOut });
         break;
       }
-      
+
+      case 'WhileNode': {
+        // Compiled to a runtime branch like LOOP; only the body is optimized.
+        const whileNode = stmt as WhileNode;
+        const bodyOut: StatementNode[] = [];
+        for (const bodyStmt of whileNode.body) {
+          this.expandStatement(bodyStmt, bodyOut);
+        }
+        out.push({ ...whileNode, body: bodyOut });
+        break;
+      }
+
       case 'IfNode': {
+        // No longer statically evaluated/inlined: the generator compiles IF
+        // directly to a JUMP_IF_FALSE branch over the (possibly runtime-only)
+        // condition, so both branches are kept and only their bodies are
+        // recursively optimized.
         const ifNode = stmt as IfNode;
-        const condition = this.evaluateExpressionNumber(ifNode.condition);
-        if (condition > 0) {
-          for (const bodyStmt of ifNode.body) {
-            this.expandStatement(bodyStmt, out);
+
+        const bodyOut: StatementNode[] = [];
+        for (const bodyStmt of ifNode.body) {
+          this.expandStatement(bodyStmt, bodyOut);
+        }
+
+        let elseBodyOut: StatementNode[] | undefined;
+        if (ifNode.elseBody) {
+          elseBodyOut = [];
+          for (const bodyStmt of ifNode.elseBody) {
+            this.expandStatement(bodyStmt, elseBodyOut);
           }
         }
+
+        out.push({ ...ifNode, body: bodyOut, elseBody: elseBodyOut });
         break;
       }
-      
+
       case 'CompareNode': {
         const compare = stmt as CompareNode;
         out.push({
@@ -193,13 +241,20 @@ export class Optimizer {
 
   private resolveToConcreteExpression(expr: ExpressionNode): ExpressionNode {
     if (expr.type === 'ArrayAccessNode') {
-      const idx = this.evaluateExpressionNumber(expr.index);
-      return {
-        ...expr,
-        index: { type: 'LiteralNode', dataType: 'number', value: idx, pos: expr.index.pos } as LiteralNode
-      };
+      try {
+        const idx = this.evaluateExpressionNumber(expr.index);
+        return {
+          ...expr,
+          index: { type: 'LiteralNode', dataType: 'number', value: idx, pos: expr.index.pos } as LiteralNode
+        };
+      } catch {
+        // Index depends on a value only known at runtime (e.g. a LOOP
+        // iterator, now that loops aren't unrolled) — leave it symbolic;
+        // the generator resolves it dynamically (see resolveExpressionId).
+        return expr;
+      }
     }
-    
+
     if (expr.type === 'IdentifierNode') {
       // It might be a variable that should be substituted, or just an object ref.
       // In AQVL, we mostly use array indices, but let's keep identifier intact for now,
@@ -251,5 +306,85 @@ export class Optimizer {
       if (expr.operator === '=') return left === right ? 1 : 0;
     }
     throw new Error(`Compiler cannot currently statically evaluate expression at compile time.`);
+  }
+
+  /** Constant-folds `expr` to a literal when possible (e.g. `LENGTH(arr)`, literal arithmetic); otherwise returns it unchanged. */
+  private tryFoldToLiteral(expr: ExpressionNode): ExpressionNode {
+    try {
+      const value = this.evaluateExpressionNumber(expr);
+      return { type: 'LiteralNode', dataType: 'number', value, pos: expr.pos } as LiteralNode;
+    } catch {
+      return expr;
+    }
+  }
+
+  /**
+   * Post-generation pass: strips instructions that can never execute —
+   * anything between an unconditional JUMP/RET and the next instruction any
+   * JUMP/JUMP_IF_FALSE actually targets, or that a CALL enters (see
+   * `functionEntryPoints`) — and re-targets every remaining jump/call to
+   * account for the shifted indices. Duplicate-instruction removal and
+   * constant folding happen earlier, on the AST (see `optimize()` /
+   * `resolveToConcreteExpression`); this is the one optimization that must
+   * run after AQIRGenerator has produced a flat instruction stream, since
+   * only then do JUMP/RET/CALL and their targets exist.
+   *
+   * `functionEntryPoints` must list every function's `startPC` (e.g.
+   * `generator.getFunctionTable().all().map(f => f.startPC)`) — a function
+   * body is only ever reached via CALL, never via a JUMP/JUMP_IF_FALSE
+   * target, so it isn't visible from the instruction stream alone. Every
+   * function in AQVL is always emitted behind a guarding JUMP (see
+   * AQIRGenerator.generateSceneInstructions), so without these roots this
+   * pass would treat every function body as dead code.
+   */
+  public removeUnreachableInstructions(
+    instructions: VMInstruction[],
+    functionEntryPoints: number[] = []
+  ): { instructions: VMInstruction[]; remapPC: (pc: number) => number } {
+    const isJump = (instr: VMInstruction): instr is JumpInstruction | JumpIfFalseInstruction =>
+      (instr as any).opcode === AQIROpcode.JUMP || (instr as any).opcode === AQIROpcode.JUMP_IF_FALSE;
+
+    const jumpTargets = new Set<number>(functionEntryPoints);
+    jumpTargets.add(0);
+    for (const instr of instructions) {
+      if (isJump(instr)) jumpTargets.add(instr.target);
+    }
+
+    const keep: boolean[] = new Array(instructions.length).fill(true);
+    let deadUntilNextTarget = false;
+    for (let i = 0; i < instructions.length; i++) {
+      if (jumpTargets.has(i)) deadUntilNextTarget = false;
+      if (deadUntilNextTarget) keep[i] = false;
+
+      const instr = instructions[i];
+      if ((instr as any).opcode === AQIROpcode.JUMP || (instr as any).opcode === AQIROpcode.RET) {
+        deadUntilNextTarget = true;
+      }
+    }
+
+    const indexMap = new Map<number, number>();
+    let newIndex = 0;
+    instructions.forEach((_, i) => {
+      if (keep[i]) indexMap.set(i, newIndex++);
+    });
+    // One-past-the-end is a valid fallthrough target for jumps that land after the last instruction.
+    indexMap.set(instructions.length, newIndex);
+
+    const result: VMInstruction[] = [];
+    instructions.forEach((instr, i) => {
+      if (!keep[i]) return;
+      if (isJump(instr)) {
+        const mappedTarget = indexMap.get(instr.target);
+        result.push({ ...instr, target: mappedTarget ?? instr.target });
+      } else {
+        result.push(instr);
+      }
+    });
+
+    return {
+      instructions: result,
+      /** Maps a pre-removal PC (e.g. a `FunctionTable` entry's `startPC`) to its post-removal index. */
+      remapPC: (pc: number) => indexMap.get(pc) ?? pc,
+    };
   }
 }

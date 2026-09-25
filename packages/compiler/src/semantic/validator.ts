@@ -21,8 +21,15 @@ import {
   RelationshipNode,
   GenericActionNode,
   SetStateNode,
+  LayoutStatementNode,
+  CameraStatementNode,
+  PositionStatementNode,
 } from '../ast/types';
 import { SymbolTable, SemanticDiagnostic } from './types';
+import { suggestFor } from '@aqvl/shared';
+
+/** The 6 valid LAYOUT strategy names — see docs/design/spatial-syntax-spec.md §1. */
+const LAYOUT_STRATEGIES = new Set(['LINE', 'HIERARCHY', 'CIRCULAR', 'FORCE_DIRECTED', 'GRID', 'CUSTOM']);
 
 export class SemanticValidator {
   private diagnostics: SemanticDiagnostic[] = [];
@@ -169,15 +176,42 @@ export class SemanticValidator {
       case 'LoopNode':
         this.visitLoop(node);
         break;
-      case 'ExpressionStatementNode':
-        this.visitExpression(node.expression);
+      case 'WhileNode':
+        this.visitExpression(node.condition);
+        this.visitScopedBlock(node.body);
         break;
+      case 'IfNode':
+        this.visitExpression(node.condition);
+        this.visitScopedBlock(node.body);
+        if (node.elseBody) this.visitScopedBlock(node.elseBody);
+        break;
+      case 'PrintNode':
+        for (const arg of node.args) this.visitExpression(arg);
+        break;
+      case 'ExpressionStatementNode': {
+        // `target = expr` (VM mode: SET_VAR) auto-declares `target` in the
+        // current scope on first assignment, the same way a LOOP iterator or
+        // a DECLARE'd variable is defined — it doesn't need (and can't have)
+        // a prior DECLARE entry. Any other expression (e.g. a bare function
+        // call) is validated as-is.
+        const expr = node.expression;
+        if (expr.type === 'BinaryOpNode' && (expr as BinaryOpNode).operator === '=' && (expr as BinaryOpNode).left.type === 'IdentifierNode') {
+          const target = (expr as BinaryOpNode).left as IdentifierNode;
+          if (!this.currentSymbolTable.lookup(target.name)) {
+            this.currentSymbolTable.define({ name: target.name, type: 'SCALAR', declaredAt: target.pos });
+          }
+          this.visitExpression((expr as BinaryOpNode).right);
+        } else {
+          this.visitExpression(expr);
+        }
+        break;
+      }
       case 'RelationshipNode':
         this.visitExpression(node.source);
         this.visitExpression(node.target);
         break;
       case 'GenericActionNode': {
-        const treeActions = ['TREE', 'ROOT', 'CHILD', 'PARENT', 'INSERT', 'DELETE', 'REMOVE', 'MOVE', 'COPY', 'SEARCH', 'FIND', 'HIGHLIGHT', 'SELECT', 'PREORDER', 'POSTORDER', 'LEVELORDER', 'DFS', 'BFS', 'HEIGHT', 'DEPTH', 'SIZE', 'LEAVES', 'INTERNAL', 'DEGREE', 'STATS', 'PARENTOF', 'CHILDRENOF', 'ANCESTORS', 'DESCENDANTS', 'SIBLINGS', 'PATH'];
+        const treeActions = ['TREE', 'ROOT', 'CHILD', 'PARENT', 'INSERT', 'DELETE', 'REMOVE', 'MOVE', 'COPY', 'SEARCH', 'FIND', 'HIGHLIGHT', 'SELECT', 'PREORDER', 'POSTORDER', 'LEVELORDER', 'DFS', 'BFS', 'DIJKSTRA', 'BELLMAN_FORD', 'ASTAR', 'PRIM', 'KRUSKAL', 'TOPO_SORT', 'HEIGHT', 'DEPTH', 'SIZE', 'LEAVES', 'INTERNAL', 'DEGREE', 'STATS', 'PARENTOF', 'CHILDRENOF', 'ANCESTORS', 'DESCENDANTS', 'SIBLINGS', 'PATH', 'HASHMAP_INSERT', 'HASHMAP_LOOKUP', 'HASHMAP_DELETE', 'TRIE_INSERT', 'TRIE_SEARCH', 'TRIE_DELETE', 'TRIE_AUTOCOMPLETE', 'TRIE_STARTSWITH'];
         if (treeActions.includes(node.actionName)) {
           // Tree actions use dynamically created node IDs that aren't defined in the DECLARE block.
           // Skip identifier validation for their arguments.
@@ -191,7 +225,46 @@ export class SemanticValidator {
       case 'SetStateNode':
         this.visitExpression(node.target);
         break;
+      case 'LayoutStatementNode': {
+        const layout = node as LayoutStatementNode;
+        const symbol = this.currentSymbolTable.lookup(layout.target.name);
+        if (!symbol) {
+          const suggestion = suggestFor(layout.target.name, this.currentSymbolTable.names());
+          this.reportError(layout.target, `Undeclared structure '${layout.target.name}' in LAYOUT statement.${suggestion ? ` ${suggestion}` : ''}`);
+        }
+        if (!LAYOUT_STRATEGIES.has(layout.strategy)) {
+          this.reportError(layout.target, `Unknown layout strategy '${layout.strategy}'. Expected one of: LINE, HIERARCHY, CIRCULAR, FORCE_DIRECTED, GRID, CUSTOM.`);
+        }
+        break;
+      }
+      case 'CameraStatementNode': {
+        const camera = node as CameraStatementNode;
+        if (camera.mode === 'FOCUS' && camera.target) {
+          this.visitExpression(camera.target);
+        }
+        break;
+      }
+      case 'PositionStatementNode': {
+        const posStmt = node as PositionStatementNode;
+        this.visitExpression(posStmt.target);
+        break;
+      }
     }
+  }
+
+  /**
+   * IF / ELSE / WHILE bodies each run in their own runtime scope (the
+   * generator wraps them in PUSH_SCOPE/POP_SCOPE), so a variable first
+   * assigned inside one is not visible after it — mirror that here so the
+   * mistake is reported at compile time instead of failing mid-animation.
+   */
+  private visitScopedBlock(statements: StatementNode[]) {
+    const previousScope = this.currentSymbolTable;
+    this.currentSymbolTable = new SymbolTable(previousScope);
+    for (const stmt of statements) {
+      this.visitStatement(stmt);
+    }
+    this.currentSymbolTable = previousScope;
   }
 
   private visitLoop(node: LoopNode) {
@@ -225,14 +298,16 @@ export class SemanticValidator {
       case 'IdentifierNode':
         const symbol = this.currentSymbolTable.lookup(node.name);
         if (!symbol) {
-          this.reportError(node, `Undeclared identifier '${node.name}'.`);
+          const suggestion = suggestFor(node.name, this.currentSymbolTable.names());
+          this.reportError(node, `Undeclared identifier '${node.name}'.${suggestion ? ` ${suggestion}` : ''}`);
         }
         break;
       case 'ArrayAccessNode':
         const arrSymbol = this.currentSymbolTable.lookup(node.array.name);
         if (!arrSymbol) {
-          this.reportError(node.array, `Undeclared array '${node.array.name}'.`);
-        } else if (!['ARRAY', 'LINKEDLIST', 'STACK', 'QUEUE', 'TREE', 'HEAP', 'TRIE', 'GRAPH'].includes(arrSymbol.type)) {
+          const suggestion = suggestFor(node.array.name, this.currentSymbolTable.names());
+          this.reportError(node.array, `Undeclared array '${node.array.name}'.${suggestion ? ` ${suggestion}` : ''}`);
+        } else if (!['ARRAY', 'LINKEDLIST', 'STACK', 'QUEUE', 'TREE', 'HEAP', 'TRIE', 'GRAPH', 'BST', 'HASHMAP'].includes(arrSymbol.type)) {
           this.reportError(node.array, `Identifier '${node.array.name}' is not indexable.`);
         }
         this.visitExpression(node.index);
