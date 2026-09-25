@@ -1,4 +1,4 @@
-import type { AQIRInstruction, SwapObjectsInstruction, CompareObjectsInstruction, HighlightObjectInstruction, LinkObjectsInstruction, GenericActionInstruction, SetStateInstruction } from '@aqvl/shared';
+import type { AQIRInstruction, AQIRObject, SwapObjectsInstruction, CompareObjectsInstruction, HighlightObjectInstruction, LinkObjectsInstruction, GenericActionInstruction, SetStateInstruction, SetPartitionBoundaryInstruction, ClearPartitionBoundaryInstruction, MarkSortedRegionInstruction } from '@aqvl/shared';
 import { getSemanticColorToken, normalizeSemanticState } from '@aqvl/shared';
 import { AnimationScheduler } from './AnimationScheduler';
 import { SceneManager } from './SceneManager';
@@ -8,20 +8,88 @@ import { EventDispatcher } from './EventDispatcher';
 
 import { LifecycleManager } from './LifecycleManager';
 import { RelationshipManager } from './RelationshipManager';
-import { AlgorithmRegistry, AlgorithmContext, BinaryTreeAlgorithms } from './algorithms';
+import { AlgorithmRegistry, AlgorithmContext, BinaryTreeAlgorithms, BSTAlgorithms, SortAlgorithms, GraphAlgorithms, HeapEngine, HashMapVisualizer, TrieVisualizer, ArrayEngine, StackEngine, StackAnimationContext, QueueEngine, QueueAnimationContext, LinkedListEngine } from './algorithms';
+import { Graph } from '../data-structures/Graph';
 
-// Register plugins
+// Register BinaryTree advanced algorithms
 AlgorithmRegistry.register([
   'MIRROR', 'INVERT', 'CLONE', 'COPY', 'REMOVE_LEAVES', 'PRUNE',
   'LEFT_VIEW', 'RIGHT_VIEW', 'TOP_VIEW', 'BOTTOM_VIEW', 'BOUNDARY', 'VERTICAL_ORDER', 'DIAGONAL',
   'MAX_VALUE', 'MIN_VALUE', 'SUM', 'AVERAGE', 'MAX_LEVEL_SUM'
 ], new BinaryTreeAlgorithms());
-import { AnimationContext, MoveAnimation, AnticipationAnimation } from './animations';
 
+// Register BST CRUD operations
+const _bstAlgorithmsInstance = new BSTAlgorithms();
+AlgorithmRegistry.register([
+  'BST_INSERT', 'BST_DELETE', 'BST_SEARCH', 'BST_CLEAR', 'ROTATE'
+], _bstAlgorithmsInstance);
+
+// Register array sorting algorithms
+AlgorithmRegistry.register([
+  'BUBBLE_SORT', 'SELECTION_SORT', 'INSERTION_SORT', 'MERGE_SORT', 'QUICK_SORT'
+], new SortAlgorithms());
+
+// Register graph traversal / shortest-path / MST / topological-sort algorithms
+AlgorithmRegistry.register(['DFS', 'BFS', 'DIJKSTRA', 'BELLMAN_FORD', 'ASTAR', 'PRIM', 'KRUSKAL', 'TOPO_SORT'], new GraphAlgorithms());
+
+// Register heap operations (real insert/extract/decrease-key/build-heap/heapify, backed by MinHeap)
+AlgorithmRegistry.register(['HEAP_INSERT', 'HEAP_EXTRACT', 'HEAP_DECREASE', 'BUILD_HEAP', 'HEAPIFY'], new HeapEngine());
+
+// Register hash map operations (real chaining/resize/rehash, backed by HashMap)
+AlgorithmRegistry.register(['HASHMAP_INIT', 'HASHMAP_INSERT', 'HASHMAP_LOOKUP', 'HASHMAP_DELETE'], new HashMapVisualizer());
+
+// Instruction-level tracing is off by default since it runs on every instruction and
+// JSON.stringify's the payload; opt in with window.__AQVL_DEBUG_ANIMATION__ = true
+// (or globalThis.__AQVL_DEBUG_ANIMATION__ in non-browser environments) when diagnosing an issue.
+const DEBUG_ANIMATION: boolean =
+  typeof globalThis !== 'undefined' && !!(globalThis as any).__AQVL_DEBUG_ANIMATION__;
+
+// Register trie operations (real insert/search/startsWith/delete/autocomplete, backed by Trie)
+AlgorithmRegistry.register(['TRIE_INIT', 'TRIE_INSERT', 'TRIE_SEARCH', 'TRIE_STARTSWITH', 'TRIE_DELETE', 'TRIE_AUTOCOMPLETE'], new TrieVisualizer());
+
+import { AnimationContext, MoveAnimation, AnticipationAnimation } from './animations';
+import { AQVLVirtualMachine, type StepCallback } from '../VirtualMachine';
+import type { VMInstruction, FunctionTable, ExecutionResult } from '../types';
+
+
+/** Raised when an `arr[i]` reference / read falls outside the array's current bounds. */
+export class ArrayIndexOutOfRangeError extends Error {
+  constructor(public readonly arrayName: string, public readonly index: number, public readonly length: number) {
+    super(`Index ${index} is out of bounds for array '${arrayName}' (valid indices are 0 to ${length - 1}).`);
+    this.name = 'ArrayIndexOutOfRangeError';
+  }
+}
+
+/** Formats a PRINT argument for the output console. */
+function formatPrintValue(value: unknown): string {
+  if (typeof value === 'number') return Number.isInteger(value) ? String(value) : String(Number(value.toFixed(4)));
+  if (typeof value === 'boolean') return value ? 'true' : 'false';
+  if (value === null || value === undefined) return 'null';
+  return String(value);
+}
 
 export class AnimationController {
   private defaultColor = getSemanticColorToken('NEUTRAL').color;
   private activeTreeName: string | null = null;
+  /** Tracks whether the current active tree is a BST (so INSERT/DELETE/SEARCH/CLEAR route to BSTAlgorithms) */
+  private activeTreeIsBST: boolean = false;
+  /** Shared BSTAlgorithms instance used for dispatch-based BST routing */
+  private bstAlgorithms: BSTAlgorithms = _bstAlgorithmsInstance;
+  /** Handles the array-targeted branches of bare INSERT/DELETE (see ArrayEngine.ts) */
+  private arrayEngine: ArrayEngine = new ArrayEngine();
+  /** Handles PUSH/POP/PEEK (see StackEngine.ts) */
+  private stackEngine: StackEngine = new StackEngine();
+  /** Handles ENQUEUE/DEQUEUE/FRONT/REAR (see QueueEngine.ts) */
+  private queueEngine: QueueEngine = new QueueEngine();
+  /** Handles INSERT_HEAD/INSERT_TAIL/DELETE_HEAD/DELETE_TAIL/REVERSE (see LinkedListEngine.ts) */
+  private linkedListEngine: LinkedListEngine = new LinkedListEngine();
+  /**
+   * Live reference to the currently-executing VM, set in `createExecutionVM`
+   * so that `resolveElementId` can call `vm.getVariable()` to read loop
+   * iterator values from their actual runtime scope (PUSH_SCOPE frames are
+   * not reflected in the `state.globals` snapshot the legacy-handler receives).
+   */
+  private currentVM: AQVLVirtualMachine | null = null;
 
 
   constructor(
@@ -32,7 +100,37 @@ export class AnimationController {
     private eventDispatcher: EventDispatcher,
     private lifecycleManager: LifecycleManager,
     private relationshipManager: RelationshipManager
-  ) {}
+  ) {
+    // SET_PARTITION_BOUNDARY / CLEAR_PARTITION_BOUNDARY / MARK_SORTED_REGION are dispatched by
+    // algorithm handlers (e.g. SortAlgorithms) as generic AQIR_INSTRUCTION events, deferred to
+    // land in sync with the animation beat they describe (see SortAlgorithms.dispatchInstruction).
+    // Apply them to sticky StateManager state and re-broadcast STATE_UPDATED so the renderer's
+    // partition boundary / sorted region indicators (array-visual-language-spec.md §4.2/§4.3)
+    // pick up the change on the next frame.
+    this.eventDispatcher.on('AQIR_INSTRUCTION', (instruction: AQIRInstruction) => {
+      switch (instruction.action) {
+        case 'SET_PARTITION_BOUNDARY': {
+          const i = instruction as SetPartitionBoundaryInstruction;
+          this.stateManager.setPartitionBoundary(i.structureId, i.startIndex, i.endIndex, i.label);
+          break;
+        }
+        case 'CLEAR_PARTITION_BOUNDARY': {
+          const i = instruction as ClearPartitionBoundaryInstruction;
+          this.stateManager.clearPartitionBoundary(i.structureId);
+          break;
+        }
+        case 'MARK_SORTED_REGION': {
+          const i = instruction as MarkSortedRegionInstruction;
+          this.stateManager.markSortedRegion(i.structureId, i.startIndex, i.endIndex);
+          break;
+        }
+        default:
+          return;
+      }
+      this.stateManager.saveState(this.sceneManager.getSceneGraph(), instruction.action, this.animationScheduler.getCurrentTime());
+      this.eventDispatcher.dispatch('STATE_UPDATED', this.stateManager.getCurrentState());
+    });
+  }
 
   private clearTransientActiveStates(): void {
     const neutralToken = getSemanticColorToken('NEUTRAL');
@@ -53,10 +151,277 @@ export class AnimationController {
     }
   }
 
+  /**
+   * Scan the scene for a BST or TREE anchor object and auto-configure
+   * activeTreeName / activeTreeIsBST.  This is called at the start of every
+   * instruction so context is always in sync even before any explicit
+   * TREE/BST sequence action is encountered (e.g. when BST is declared in
+   * the DECLARE block and operations start immediately).
+   */
+  private autoDetectActiveTree(): void {
+    // If already set, keep it — only override when scene changes
+    if (this.activeTreeName) return;
+
+    const graph = this.sceneManager.getSceneGraph() as any[];
+    // Look for BST anchor first (BST takes priority over TREE)
+    const bstEl = graph.find(el => el.type === 'BST' || el.originalType === 'BST');
+    if (bstEl) {
+      this.activeTreeName = bstEl.logicalParent || bstEl.label || bstEl.id;
+      this.activeTreeIsBST = true;
+      return;
+    }
+    // Fallback: any TREE or BINARY_TREE anchor
+    const treeEl = graph.find(el => el.type === 'TREE' || el.type === 'BINARY_TREE');
+    if (treeEl) {
+      this.activeTreeName = treeEl.logicalParent || treeEl.label || treeEl.id;
+      this.activeTreeIsBST = false;
+    }
+  }
+
+  /**
+   * Determines whether the structure named `targetName` (as carried in an
+   * instruction's payload.logicalParent) is a BST anchor in the current
+   * scene. Falls back to activeTreeIsBST only when no explicit target name
+   * is available, so bare INSERT/DELETE/SEARCH instructions are routed by
+   * what they actually target rather than a scene-global flag.
+   */
+  private isTargetBST(targetName: string | undefined): boolean {
+    if (!targetName) return this.activeTreeIsBST;
+    const graph = this.sceneManager.getSceneGraph() as any[];
+    const anchor = graph.find(
+      el => el.logicalParent === targetName && (el.type === 'BST' || el.originalType === 'BST')
+    );
+    if (anchor) return true;
+    const nonBstAnchor = graph.find(
+      el =>
+        el.logicalParent === targetName &&
+        (el.type === 'TREE' || el.type === 'BINARY_TREE' || el.originalType === 'TREE' || el.originalType === 'BINARY_TREE' ||
+         el.type === 'ARRAY' || el.originalType === 'ARRAY_ELEMENT' || el.originalType === 'ARRAY')
+    );
+    if (nonBstAnchor) return false;
+    // No matching anchor found for this target name — fall back to the
+    // scene-global flag rather than guessing.
+    return this.activeTreeIsBST;
+  }
+
+  /**
+   * Builds a `Graph` instance from the VERTEX / GRAPH_EDGE (or EDGE) scene
+   * elements belonging to `graphName`, so algorithm code (GraphAlgorithm)
+   * has an adjacency-list view to operate on instead of querying the scene
+   * directly. Vertex/edge scene elements are created elsewhere (graph
+   * declaration handling); this only reads them.
+   */
+  public buildGraphFromScene(graphName: string, directed = false, weighted = false): Graph {
+    const sceneElements = this.sceneManager.getSceneGraph() as any[];
+    const vertexElements = sceneElements.filter(
+      el => el.logicalParent === graphName && el.originalType === 'VERTEX'
+    );
+    const edgeElements = sceneElements.filter(
+      el =>
+        el.logicalParent === graphName &&
+        (el.originalType === 'GRAPH_EDGE' || el.originalType === 'EDGE')
+    );
+
+    const graph = new Graph<any>([], [], directed, weighted);
+    for (const el of vertexElements) {
+      graph.addVertex(el.id, el);
+    }
+    for (const el of edgeElements) {
+      graph.addEdge(el.sourceId, el.targetId, el.weight);
+    }
+
+    return graph;
+  }
+
+  /**
+   * Builds a VM over `instructions`, wiring every legacy (action-based)
+   * instruction back through `executeInstruction` so existing animations
+   * are unaffected. The 6 new control-flow opcodes (JUMP, JUMP_IF_FALSE,
+   * CALL, RET, PUSH_SCOPE, POP_SCOPE) are handled by the VM itself and are
+   * not animated yet (Phase 1.4).
+   *
+   * Callers that need pause/step semantics (e.g. ExecutionEngine) should
+   * keep the returned VM and drive it via repeated `vm.step()` calls
+   * instead of `runProgram()`, which always runs to completion.
+   */
+  public createExecutionVM(
+    instructions: VMInstruction[],
+    functionTable: FunctionTable = {},
+    globals: Record<string, unknown> = {},
+    objects: AQIRObject[] = []
+  ): AQVLVirtualMachine {
+    const vm = new AQVLVirtualMachine(
+      instructions,
+      functionTable,
+      globals,
+      (instruction) => {
+        // Keep currentVM in sync so resolveElementId can call
+        // vm.getVariable() to read loop iterators from their PUSH_SCOPE.
+        this.currentVM = vm;
+        return this.executeInstruction(instruction);
+      },
+      objects
+    );
+    // Conditions / assignments are evaluated by the VM itself (outside the
+    // legacy handler), so it needs the current VM and live array values too.
+    this.currentVM = vm;
+    vm.setElementReader(
+      (arrayName, index) => this.readArrayValue(arrayName, index),
+      (arrayName) => this.getArrayElements(arrayName).length
+    );
+    return vm;
+  }
+
+  /** Live elements of array `arrayName`, in index order (elements mid-deletion excluded). */
+  private getArrayElements(arrayName: string): any[] {
+    return (this.sceneManager.getSceneGraph() as any[])
+      .filter((e: any) => e.logicalParent === arrayName && e.originalType === 'ARRAY_ELEMENT' && !e.animationLayer)
+      .sort((a: any, b: any) => a.logicalIndex - b.logicalIndex);
+  }
+
+  /** Current value of `arrayName[index]`, for `arr[i]` read inside an expression. */
+  private readArrayValue(arrayName: string, index: number): unknown {
+    const els = this.getArrayElements(arrayName);
+    const el = els.find((e: any) => e.logicalIndex === index);
+    if (!el) throw new ArrayIndexOutOfRangeError(arrayName, index, els.length);
+    return el.value;
+  }
+
+  /**
+   * Evaluates the `(array, index)` addressed by a compiled `arrayName#indexExpr`
+   * reference. Returns null for ordinary object IDs. `indexExpr` is either a
+   * JSON-encoded VM expression (`{"op":"-",...}`, `{"elem":...}`), or a plain
+   * number / variable name / legacy `i+1`-style string.
+   */
+  private resolveArraySlot(id: unknown): { arrayName: string; index: number } | null {
+    if (typeof id !== 'string' || !id.includes('#')) return null;
+    const hashIdx = id.indexOf('#');
+    const arrayName = id.slice(0, hashIdx);
+    const indexExpr = id.slice(hashIdx + 1);
+
+    if (indexExpr.startsWith('{')) {
+      if (!this.currentVM) return null;
+      const value = Number(this.currentVM.evaluateExpression(JSON.parse(indexExpr)));
+      return Number.isFinite(value) ? { arrayName, index: Math.round(value) } : null;
+    }
+
+    const evalExpr = (expr: string): number => {
+      expr = expr.trim();
+      // Try to parse as a plain number literal first.
+      const asNum = Number(expr);
+      if (!isNaN(asNum)) return asNum;
+      // Look up as a plain variable name — delegate to the live VM so
+      // PUSH_SCOPE variables (e.g. loop iterators) are visible.
+      if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(expr)) {
+        if (!this.currentVM) return NaN;
+        try {
+          const val = this.currentVM.getVariable(expr);
+          return typeof val === 'number' ? val : NaN;
+        } catch {
+          return NaN;
+        }
+      }
+      // Binary + (rightmost, to handle left-associativity correctly for
+      // subtraction) — split on last '+' or '-' that isn't part of a number.
+      // We scan right-to-left to respect operator precedence for these simple
+      // expressions (no parentheses in the compiler output).
+      for (let i = expr.length - 1; i >= 0; i--) {
+        const ch = expr[i];
+        if ((ch === '+' || ch === '-') && i > 0) {
+          const left = evalExpr(expr.slice(0, i));
+          const right = evalExpr(expr.slice(i + 1));
+          return ch === '+' ? left + right : left - right;
+        }
+      }
+      // Multiplication / division (lower priority — handled after +/-)
+      for (let i = expr.length - 1; i >= 0; i--) {
+        const ch = expr[i];
+        if (ch === '*' || ch === '/') {
+          const left = evalExpr(expr.slice(0, i));
+          const right = evalExpr(expr.slice(i + 1));
+          return ch === '*' ? left * right : left / right;
+        }
+      }
+      return NaN;
+    };
+
+    const computedIndex = Math.round(evalExpr(indexExpr));
+    if (isNaN(computedIndex)) return null;
+    return { arrayName, index: computedIndex };
+  }
+
+  /**
+   * Resolves a compiled object ID to the scene element it currently refers
+   * to. `arrayName#indexExpr` references (every `arr[...]` target in an
+   * ARRAY) are looked up by *current* logical index, since SWAP / INSERT /
+   * DELETE move elements between slots. Literal IDs (e.g. `obj_003`) are
+   * returned as-is.
+   */
+  private resolveElementId(id: string): string {
+    const slot = this.resolveArraySlot(id);
+    if (!slot) return id;
+    const els = this.getArrayElements(slot.arrayName);
+    if (els.length === 0) return id; // not an ARRAY (e.g. another indexed structure) — leave unresolved
+    const el = els.find((e: any) => e.logicalIndex === slot.index);
+    if (!el) throw new ArrayIndexOutOfRangeError(slot.arrayName, slot.index, els.length);
+    return el.id;
+  }
+
+  /**
+   * Binds the runtime-only operands of an ARRAY-targeted GENERIC_ACTION
+   * (`UPDATE arr[i] total`, `INSERT arr[k] x`, `DELETE arr[j]`): resolves
+   * the `arr#expr` slot to the element currently there, and evaluates the
+   * value expression. Returns a fresh instruction — the compiled one is
+   * re-executed on every loop iteration, so it must not be mutated.
+   */
+  private bindArrayActionOperands(gen: GenericActionInstruction): GenericActionInstruction {
+    const args = gen.args ?? [];
+    const slot = this.resolveArraySlot(args[0]);
+    if (!slot) return gen;
+    const els = this.getArrayElements(slot.arrayName);
+    if (els.length === 0 && slot.index !== 0) return gen; // not an ARRAY
+
+    const actionName = gen.actionName.toUpperCase();
+    const el = els.find((e: any) => e.logicalIndex === slot.index);
+    const appending = actionName === 'INSERT' && slot.index === els.length;
+    if (!el && !appending) {
+      throw new ArrayIndexOutOfRangeError(slot.arrayName, slot.index, els.length);
+    }
+
+    const boundArgs = [...args];
+    if (el) boundArgs[0] = el.id;
+    if ((actionName === 'UPDATE' || actionName === 'INSERT') && boundArgs.length > 1 && this.currentVM) {
+      boundArgs[boundArgs.length - 1] = this.currentVM.evaluateExpression(boundArgs[boundArgs.length - 1]) as any;
+    }
+
+    return {
+      ...gen,
+      args: boundArgs,
+      targetId: el ? el.id : gen.targetId,
+      payload: { ...((gen as any).payload ?? {}), logicalParent: slot.arrayName, logicalIndex: slot.index },
+    } as GenericActionInstruction;
+  }
+
+  /** Runs `instructions` to completion through a fresh VM, returning the recorded execution timeline. */
+  public async runProgram(
+    instructions: VMInstruction[],
+    functionTable: FunctionTable = {},
+    globals: Record<string, unknown> = {},
+    onStep?: StepCallback,
+    objects: AQIRObject[] = []
+  ): Promise<ExecutionResult> {
+    const vm = this.createExecutionVM(instructions, functionTable, globals, objects);
+    return vm.run(onStep);
+  }
+
   public async executeInstruction(instruction: AQIRInstruction): Promise<void> {
     return new Promise((resolve) => {
       this.clearTransientActiveStates();
       this.animationScheduler.init(resolve);
+
+      // Auto-configure tree context from scene objects (handles BST declared
+      // in DECLARE block before any explicit TREE/BST sequence action).
+      this.autoDetectActiveTree();
       
       const animCtx: AnimationContext = {
         scheduler: this.animationScheduler,
@@ -64,12 +429,35 @@ export class AnimationController {
         layoutManager: this.layoutManager
       };
 
-      console.log(`[AnimationController] Executing instruction:`, JSON.stringify(instruction));
+      if (DEBUG_ANIMATION) console.log(`[AnimationController] Executing instruction:`, JSON.stringify(instruction));
 
-      switch (instruction.action) {
+      if (instruction.action === 'GENERIC_ACTION') {
+        instruction = this.bindArrayActionOperands(instruction as GenericActionInstruction);
+      }
+
+      switch (instruction.action as string) {
+        case 'PRINT': {
+          const parts: unknown[] = (instruction as any).parts ?? [];
+          const message = parts
+            .map((part: any) => {
+              if (part !== null && typeof part === 'object' && 'array' in part) {
+                return `[${this.getArrayElements(part.array).map((el: any) => formatPrintValue(el.value)).join(', ')}]`;
+              }
+              return formatPrintValue(this.currentVM ? this.currentVM.evaluateExpression(part) : part);
+            })
+            .join(' ');
+          this.eventDispatcher.dispatch('RUNTIME_LOG', {
+            keyword: 'PRINT',
+            message,
+            kind: 'result',
+            timestamp: Date.now(),
+          });
+          break;
+        }
+
         case 'HIGHLIGHT_OBJECT': {
           const hl = instruction as HighlightObjectInstruction;
-          const targetEl = this.sceneManager.getElement(hl.targetId);
+          const targetEl = this.sceneManager.getElement(this.resolveElementId(hl.targetId));
           if (targetEl) {
             AnticipationAnimation.applyAnticipation(this.animationScheduler, [targetEl], 'SELECTION');
 
@@ -115,9 +503,14 @@ export class AnimationController {
                 this.eventDispatcher.dispatch('STATE_UPDATED', this.stateManager.getCurrentState());
                 const idx = (targetEl as any).logicalIndex !== undefined ? `[${(targetEl as any).logicalIndex}]` : '';
                 const val = (targetEl as any).value !== undefined ? (targetEl as any).value : targetEl.id;
+                const name = `${(targetEl as any).logicalParent || ''}${idx}`;
+                const colorName = String(hl.color || 'SUCCESS').toUpperCase();
+                let message = `Highlighted ${name} — value: ${val}`;
+                if (activeToken.name === 'NEUTRAL') message = `Cleared mark on ${name} (value: ${val})`;
+                else if (activeToken.name !== 'EVALUATING') message = `Marked ${name} = ${val} as ${colorName}`;
                 this.eventDispatcher.dispatch('RUNTIME_LOG', {
                   keyword: 'HIGHLIGHT',
-                  message: `Highlighted ${(targetEl as any).logicalParent || ''}${idx} — value: ${val}`,
+                  message,
                   kind: 'step',
                   timestamp: Date.now(),
                 });
@@ -130,8 +523,8 @@ export class AnimationController {
 
         case 'SWAP_OBJECTS': {
           const swp = instruction as SwapObjectsInstruction;
-          const leftEl = this.sceneManager.getElement(swp.leftId) as any;
-          const rightEl = this.sceneManager.getElement(swp.rightId) as any;
+          const leftEl = this.sceneManager.getElement(this.resolveElementId(swp.leftId)) as any;
+          const rightEl = this.sceneManager.getElement(this.resolveElementId(swp.rightId)) as any;
           
           if (leftEl && rightEl) {
             AnticipationAnimation.applyAnticipation(this.animationScheduler, [leftEl, rightEl], 'SWAP');
@@ -257,8 +650,8 @@ export class AnimationController {
 
         case 'COMPARE_OBJECTS': {
           const cmp = instruction as CompareObjectsInstruction;
-          const leftEl = this.sceneManager.getElement(cmp.leftId) as any;
-          const rightEl = this.sceneManager.getElement(cmp.rightId) as any;
+          const leftEl = this.sceneManager.getElement(this.resolveElementId(cmp.leftId)) as any;
+          const rightEl = this.sceneManager.getElement(this.resolveElementId(cmp.rightId)) as any;
           
           if (leftEl && rightEl) {
             AnticipationAnimation.applyAnticipation(this.animationScheduler, [leftEl, rightEl], 'COMPARISON');
@@ -348,15 +741,28 @@ export class AnimationController {
         case 'GENERIC_ACTION': {
           const gen = instruction as GenericActionInstruction;
           const actionName = gen.actionName.toUpperCase();
-          console.log(`[AnimationController] Executing GENERIC_ACTION ${actionName} with targetId ${gen.targetId}`, gen);
+          if (DEBUG_ANIMATION) console.log(`[AnimationController] Executing GENERIC_ACTION ${actionName} with targetId ${gen.targetId}`, gen);
           
           const handler = AlgorithmRegistry.getHandler(actionName);
           if (handler) {
+            // Allow instruction payload to override activeTreeName (e.g. compiler-generated
+            // BST_INSERT instructions from initialElements carry payload.logicalParent).
+            const payloadTree = (gen as any).payload?.logicalParent;
+            if (payloadTree) {
+              this.activeTreeName = payloadTree;
+              // If this is a BST action, ensure the flag is set
+              if (['BST_INSERT', 'BST_DELETE', 'BST_SEARCH', 'BST_CLEAR'].includes(actionName)) {
+                this.activeTreeIsBST = true;
+              }
+            }
+
             const context: AlgorithmContext = {
               scheduler: this.animationScheduler,
               sceneManager: this.sceneManager,
               layoutManager: this.layoutManager,
               eventDispatcher: this.eventDispatcher,
+              stateManager: this.stateManager,
+              relationshipManager: this.relationshipManager,
               activeTreeName: this.activeTreeName,
               defaultColor: this.defaultColor
             };
@@ -364,173 +770,62 @@ export class AnimationController {
             this.activeTreeName = context.activeTreeName ?? null; // Sync back in case it changed
             break;
           }
+
           
+          const payloadTreeForRouting = (gen as any).payload?.logicalParent;
+          if (
+            ['INSERT', 'DELETE', 'SEARCH', 'CLEAR', 'INORDER', 'PREORDER', 'POSTORDER', 'LEVELORDER', 'MIN', 'MIN_VALUE', 'MAX', 'MAX_VALUE', 'HEIGHT', 'SIZE', 'ROOT', 'IS_EMPTY'].includes(actionName) &&
+            this.isTargetBST(payloadTreeForRouting)
+          ) {
+            // Allow instruction payload to override the active tree name so
+            // un-prefixed ops (INSERT 50 in a BST scene) resolve correctly.
+            if (payloadTreeForRouting) this.activeTreeName = payloadTreeForRouting;
+
+            const context: AlgorithmContext = {
+              scheduler: this.animationScheduler,
+              sceneManager: this.sceneManager,
+              layoutManager: this.layoutManager,
+              eventDispatcher: this.eventDispatcher,
+              stateManager: this.stateManager,
+              relationshipManager: this.relationshipManager,
+              activeTreeName: this.activeTreeName,
+              defaultColor: this.defaultColor
+            };
+            this.bstAlgorithms.execute(context, gen);
+            break;
+          }
+
           if (actionName === 'INSERT') {
-            const logicalParent = (gen as any).payload?.logicalParent;
-            const insertIndex = (gen as any).payload?.logicalIndex;
-            const valueToInsert = gen.args?.[gen.args.length - 1];
-
-            if (logicalParent !== undefined && insertIndex !== undefined) {
-              const allArrayEls = this.sceneManager.getSceneGraph().filter((el: any) => el.logicalParent === logicalParent);
-              AnticipationAnimation.applyAnticipation(this.animationScheduler, allArrayEls, 'INSERTION');
-
-              const elsToShift = allArrayEls.filter((el: any) => el.logicalIndex >= insertIndex);
-              
-              // Synchronous update
-              elsToShift.forEach((el: any) => el.logicalIndex += 1);
-              
-              const modifyingToken = getSemanticColorToken('MODIFYING');
-              const newEl: any = {
-                id: `obj_dyn_${Date.now()}_${insertIndex}`,
-                type: 'box',
-                value: valueToInsert,
-                logicalIndex: insertIndex,
-                index: insertIndex,
-                logicalParent: logicalParent,
-                originalType: 'ARRAY_ELEMENT',
-                label: `${logicalParent}[${insertIndex}]`,
-                position: { x: 0, y: -5, z: 0 },
-                scale: { x: 0, y: 0, z: 0 },
-                color: modifyingToken.color,
-                emissiveIntensity: modifyingToken.emissiveIntensity,
-                emissiveColor: modifyingToken.emissiveColor,
-                state: 'MODIFYING',
-                lifecycleState: 'ACTIVE',
-                visible: true,
-                opacity: 1
-              };
-              this.sceneManager.addElement(newEl);
-              this.layoutManager.updateLayout(this.sceneManager.getSceneGraph());
-
-              if (newEl.worldTarget) {
-                 newEl.position.x = newEl.worldTarget.x;
-                 newEl.position.z = newEl.worldTarget.z;
-              }
-              
-              // Animate ALL array elements to their new centered world target
-              const updatedArrayEls = this.sceneManager.getSceneGraph().filter((el: any) => el.logicalParent === logicalParent && el.id !== newEl.id);
-              updatedArrayEls.forEach((el: any) => {
-                if (el.worldTarget) {
-                  this.animationScheduler.enqueue({
-                    targets: el.position,
-                    x: el.worldTarget.x,
-                    y: el.worldTarget.y,
-                    z: el.worldTarget.z,
-                    duration: 500,
-                    easing: 'easeOutCubic'
-                  });
-                }
-              });
-              this.animationScheduler.commitGroup(true);
-              
-              if (newEl.worldTarget) {
-                this.animationScheduler.enqueue({
-                  targets: newEl.position,
-                  y: newEl.worldTarget.y,
-                  duration: 600,
-                  easing: 'easeOutBounce'
-                });
-                this.animationScheduler.enqueue({
-                  targets: newEl.scale,
-                  x: 1, y: 1, z: 1,
-                  duration: 600,
-                  easing: 'easeOutBack'
-                });
-                this.animationScheduler.commitGroup(true);
-              }
-              
-              this.animationScheduler.enqueue({
-                targets: {},
-                duration: 1,
-                complete: () => {
-                  updatedArrayEls.forEach((el: any) => {
-                    el.label = `${el.logicalParent}[${el.logicalIndex}]`;
-                  });
-                  newEl.label = `${newEl.logicalParent}[${newEl.logicalIndex}]`;
-                  this.stateManager.saveState(this.sceneManager.getSceneGraph(), `Inserted ${valueToInsert} at index ${insertIndex}`, this.animationScheduler.getCurrentTime());
-                  this.eventDispatcher.dispatch('STATE_UPDATED', this.stateManager.getCurrentState());
-                  this.eventDispatcher.dispatch('RUNTIME_LOG', {
-                    keyword: 'INSERT',
-                    message: `Inserted value ${valueToInsert} at index ${insertIndex} in "${logicalParent}".\nElements to the right shifted one position forward.\nInsertion complete.`,
-                    kind: 'operation',
-                    timestamp: Date.now(),
-                  });
-                }
-              });
-              this.animationScheduler.commitSequential();
-            }
+            const arrayContext: AlgorithmContext = {
+              scheduler: this.animationScheduler,
+              sceneManager: this.sceneManager,
+              layoutManager: this.layoutManager,
+              eventDispatcher: this.eventDispatcher,
+              stateManager: this.stateManager,
+              relationshipManager: this.relationshipManager,
+              activeTreeName: this.activeTreeName,
+              defaultColor: this.defaultColor
+            };
+            this.arrayEngine.insert(arrayContext, gen);
           } else if (actionName === 'DELETE') {
-            const logicalParent = (gen as any).payload?.logicalParent;
-            const deleteIndex = (gen as any).payload?.logicalIndex;
             let targetEl = gen.targetId ? this.sceneManager.getElement(gen.targetId) as any : null;
             if (!targetEl && gen.args && gen.args.length > 0) {
               targetEl = this.sceneManager.getElement(String(gen.args[0])) as any;
             }
-            
-            if (logicalParent !== undefined && deleteIndex !== undefined && targetEl) {
-              AnticipationAnimation.applyAnticipation(this.animationScheduler, [targetEl], 'DELETION');
 
-              const allArrayEls = this.sceneManager.getSceneGraph().filter((el: any) => el.logicalParent === logicalParent);
-              const elsToShift = allArrayEls.filter((el: any) => el.logicalIndex > deleteIndex && el.id !== targetEl.id);
-              
-              // Set the target element to the animation layer so it's ignored by the layout engine
-              targetEl.animationLayer = true;
+            const arrayContext: AlgorithmContext = {
+              scheduler: this.animationScheduler,
+              sceneManager: this.sceneManager,
+              layoutManager: this.layoutManager,
+              eventDispatcher: this.eventDispatcher,
+              stateManager: this.stateManager,
+              relationshipManager: this.relationshipManager,
+              activeTreeName: this.activeTreeName,
+              defaultColor: this.defaultColor
+            };
+            const handledByArrayEngine = this.arrayEngine.delete(arrayContext, gen);
 
-              // Synchronous layout update
-              elsToShift.forEach((el: any) => el.logicalIndex -= 1);
-              this.layoutManager.updateLayout(this.sceneManager.getSceneGraph());
-              
-              // Animate removal
-              this.animationScheduler.enqueue({
-                targets: targetEl.scale,
-                x: 0, y: 0, z: 0,
-                duration: 500,
-                easing: 'easeInBack'
-              });
-              this.animationScheduler.enqueue({
-                targets: targetEl.position,
-                y: '+=2',
-                duration: 500,
-                easing: 'easeInBack'
-              });
-              this.animationScheduler.commitGroup(true);
-              
-              // Animate ALL remaining elements to re-center
-              const remainingEls = allArrayEls.filter((el: any) => el.id !== targetEl.id);
-              remainingEls.forEach((el: any) => {
-                if (el.worldTarget) {
-                  this.animationScheduler.enqueue({
-                    targets: el.position,
-                    x: el.worldTarget.x,
-                    y: el.worldTarget.y,
-                    z: el.worldTarget.z,
-                    duration: 500,
-                    easing: 'easeOutCubic'
-                  });
-                }
-              });
-              this.animationScheduler.commitGroup(true);
-              
-              this.animationScheduler.enqueue({
-                targets: {},
-                duration: 1,
-                complete: () => {
-                  this.sceneManager.removeElement(targetEl.id);
-                  remainingEls.forEach((el: any) => {
-                    el.label = `${el.logicalParent}[${el.logicalIndex}]`;
-                  });
-                  this.stateManager.saveState(this.sceneManager.getSceneGraph(), `Deleted item at index ${deleteIndex}`, this.animationScheduler.getCurrentTime());
-                  this.eventDispatcher.dispatch('STATE_UPDATED', this.stateManager.getCurrentState());
-                  this.eventDispatcher.dispatch('RUNTIME_LOG', {
-                    keyword: 'DELETE',
-                    message: `Deleted element at index ${deleteIndex} from "${logicalParent}".\nElements to the right shifted one position back.\nDeletion complete.`,
-                    kind: 'operation',
-                    timestamp: Date.now(),
-                  });
-                }
-              });
-              this.animationScheduler.commitSequential();
-            } else if (targetEl && targetEl.originalType === 'TREE_NODE') {
+            if (!handledByArrayEngine && targetEl && targetEl.originalType === 'TREE_NODE') {
               const edges = this.sceneManager.getSceneGraph().filter((el: any) => el.type === 'edge' && (el.sourceId === targetEl.id || el.targetId === targetEl.id));
               
               this.animationScheduler.enqueue({
@@ -557,486 +852,41 @@ export class AnimationController {
               this.animationScheduler.commitSequential();
             }
           } else if (actionName === 'INSERT_HEAD' || actionName === 'INSERT_TAIL') {
-            const logicalParent = (gen as any).payload?.logicalParent;
-            const valueToInsert = gen.args?.[gen.args.length - 1];
-            if (logicalParent !== undefined && valueToInsert !== undefined) {
-              const allEls = this.sceneManager.getSceneGraph().filter((el: any) => el.logicalParent === logicalParent);
-              AnticipationAnimation.applyAnticipation(this.animationScheduler, allEls.filter((el: any) => el.type !== 'edge'), 'INSERTION');
-
-              const edges = allEls.filter((el: any) => el.type === 'edge');
-              const headNode = allEls.find((el: any) => el.originalType === 'HEAD');
-              const nullNode = allEls.find((el: any) => el.originalType === 'NULL');
-              
-              const circularEdge = edges.find((e: any) => e.properties?.circular || e.circular);
-              const isCircular = !!circularEdge;
-
-              if (headNode && (nullNode || isCircular)) {
-                const newId = `obj_dyn_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
-                const modifyingToken = getSemanticColorToken('MODIFYING');
-                const newEl: any = {
-                  id: newId,
-                  type: 'sphere',
-                  originalType: 'LINKEDLIST_NODE',
-                  logicalParent: logicalParent,
-                  value: valueToInsert,
-                  label: String(valueToInsert),
-                  position: { x: 0, y: -5, z: 0 },
-                  scale: { x: 0, y: 0, z: 0 },
-                  color: modifyingToken.color,
-                  emissiveIntensity: modifyingToken.emissiveIntensity,
-                  emissiveColor: modifyingToken.emissiveColor,
-                  state: 'MODIFYING',
-                  lifecycleState: 'ACTIVE',
-                  visible: true,
-                  opacity: 1
-                };
-                this.sceneManager.addElement(newEl);
-                this.animationScheduler.enqueue({
-                  targets: {}, duration: 1, complete: () => {
-                    this.eventDispatcher.dispatch('RUNTIME_LOG', {
-                      keyword: 'INFO',
-                      message: `Creating new node with value ${valueToInsert}...`,
-                      kind: 'info',
-                      timestamp: Date.now(),
-                    });
-                  }
-                });
-                this.animationScheduler.commitSequential();
-
-                const isDoubly = edges.some((e: any) => e.backward === true || e.properties?.backward === true);
-
-                let edgeToRemove: any = null;
-                let prevNodeId: string = '';
-                let nextNodeId: string = '';
-
-                if (actionName === 'INSERT_HEAD') {
-                  const edgeFromHead = edges.find((e: any) => e.sourceId === headNode.id && !(e.backward || e.properties?.backward));
-                  if (edgeFromHead) {
-                    edgeToRemove = edgeFromHead;
-                    prevNodeId = headNode.id;
-                    nextNodeId = (edgeFromHead as any).targetId;
-                  }
-                } else { // INSERT_TAIL
-                  if (isCircular) {
-                    edgeToRemove = circularEdge;
-                    prevNodeId = (circularEdge as any).sourceId;
-                    nextNodeId = (circularEdge as any).targetId;
-                  } else {
-                    const edgeToNull = edges.find((e: any) => e.targetId === nullNode?.id && !(e.backward || e.properties?.backward));
-                    if (edgeToNull && nullNode) {
-                      edgeToRemove = edgeToNull;
-                      prevNodeId = (edgeToNull as any).sourceId;
-                      nextNodeId = nullNode.id;
-                    }
-                  }
-                }
-
-                if (edgeToRemove) {
-                  this.sceneManager.removeElement(edgeToRemove.id);
-                  
-                  const edge1Id = `edge_dyn_${prevNodeId}_${newId}`;
-                  const edge2Id = `edge_dyn_${newId}_${nextNodeId}`;
-                  
-                  const isEdge2Circular = actionName === 'INSERT_TAIL' && isCircular;
-
-                  this.sceneManager.addElement({
-                    id: edge1Id, type: 'edge', position: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 }, color: '#888888',
-                    sourceId: prevNodeId, targetId: newId, directed: true, logicalParent, originalType: 'EDGE'
-                  } as any);
-                  
-                  this.sceneManager.addElement({
-                    id: edge2Id, type: 'edge', position: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 }, color: '#888888',
-                    sourceId: newId, targetId: nextNodeId, directed: true, logicalParent, originalType: 'EDGE',
-                    properties: isEdge2Circular ? { circular: true } : undefined,
-                    circular: isEdge2Circular ? true : undefined
-                  } as any);
-                  
-                  this.relationshipManager.addRelationship({ id: edge1Id, sourceId: prevNodeId, targetId: newId, type: 'edge', directed: true });
-                  this.relationshipManager.addRelationship({ id: edge2Id, sourceId: newId, targetId: nextNodeId, type: 'edge', directed: true });
-
-                  if (actionName === 'INSERT_HEAD' && isCircular && circularEdge) {
-                    (circularEdge as any).targetId = newId;
-                  }
-
-                  if (isDoubly) {
-                    const bEdgeToRemove = edges.find((e: any) => (e.backward === true || e.properties?.backward === true) && e.sourceId === nextNodeId && e.targetId === prevNodeId);
-                    if (bEdgeToRemove) {
-                      this.sceneManager.removeElement(bEdgeToRemove.id);
-                    }
-                    const bEdge1Id = `edge_dyn_b_${nextNodeId}_${newId}`;
-                    const bEdge2Id = `edge_dyn_b_${newId}_${prevNodeId}`;
-                    this.sceneManager.addElement({
-                      id: bEdge1Id, type: 'edge', position: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 }, color: '#888888',
-                      sourceId: nextNodeId, targetId: newId, directed: true, backward: true, logicalParent, originalType: 'EDGE'
-                    } as any);
-                    this.sceneManager.addElement({
-                      id: bEdge2Id, type: 'edge', position: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 }, color: '#888888',
-                      sourceId: newId, targetId: prevNodeId, directed: true, backward: true, logicalParent, originalType: 'EDGE'
-                    } as any);
-                    this.relationshipManager.addRelationship({ id: bEdge1Id, sourceId: nextNodeId, targetId: newId, type: 'edge', directed: true });
-                    this.relationshipManager.addRelationship({ id: bEdge2Id, sourceId: newId, targetId: prevNodeId, type: 'edge', directed: true });
-                  }
-                }
-
-                this.animationScheduler.enqueue({
-                  targets: {}, duration: 1, complete: () => {
-                    if (isDoubly) {
-                      this.eventDispatcher.dispatch('RUNTIME_LOG', {
-                        keyword: 'RELATION',
-                        message: 'Updating Previous Pointer...\nUpdating Next Pointer...',
-                        kind: 'relationship',
-                        timestamp: Date.now(),
-                      });
-                    } else if (isCircular && actionName === 'INSERT_TAIL') {
-                      this.eventDispatcher.dispatch('RUNTIME_LOG', {
-                        keyword: 'RELATION',
-                        message: 'Tail now points back to Head.\nCircular Link Restored.',
-                        kind: 'relationship',
-                        timestamp: Date.now(),
-                      });
-                    } else {
-                      this.eventDispatcher.dispatch('RUNTIME_LOG', {
-                        keyword: 'RELATION',
-                        message: actionName === 'INSERT_HEAD' ? 'New node points to current head.\nUpdating Head pointer...' : 'Tail node points to new node.',
-                        kind: 'relationship',
-                        timestamp: Date.now(),
-                      });
-                    }
-                  }
-                });
-                this.animationScheduler.commitSequential();
-
-                this.layoutManager.updateLayout(this.sceneManager.getSceneGraph());
-
-                if (newEl.worldTarget) {
-                  newEl.position.x = newEl.worldTarget.x;
-                  newEl.position.z = newEl.worldTarget.z;
-                }
-
-                const updatedArrayEls = this.sceneManager.getSceneGraph().filter((el: any) => el.logicalParent === logicalParent && el.id !== newEl.id && el.originalType !== 'EDGE');
-                updatedArrayEls.forEach((el: any) => {
-                  if (el.worldTarget) {
-                    this.animationScheduler.enqueue({
-                      targets: el.position,
-                      x: el.worldTarget.x,
-                      y: el.worldTarget.y,
-                      z: el.worldTarget.z,
-                      duration: 500,
-                      easing: 'easeOutCubic'
-                    });
-                  }
-                });
-                this.animationScheduler.commitGroup(true);
-
-                if (newEl.worldTarget) {
-                  this.animationScheduler.enqueue({
-                    targets: newEl.position,
-                    y: newEl.worldTarget.y,
-                    duration: 600,
-                    easing: 'easeOutBounce'
-                  });
-                  this.animationScheduler.enqueue({
-                    targets: newEl.scale,
-                    x: 1, y: 1, z: 1,
-                    duration: 600,
-                    easing: 'easeOutBack'
-                  });
-                  this.animationScheduler.commitGroup(true);
-                }
-
-                this.animationScheduler.enqueue({
-                  targets: {},
-                  duration: 1,
-                  complete: () => {
-                    this.stateManager.saveState(this.sceneManager.getSceneGraph(), `${actionName} ${valueToInsert}`, this.animationScheduler.getCurrentTime());
-                    this.eventDispatcher.dispatch('STATE_UPDATED', this.stateManager.getCurrentState());
-                    this.eventDispatcher.dispatch('RUNTIME_LOG', {
-                      keyword: 'RESULT',
-                      message: 'Insertion Complete.',
-                      kind: 'result',
-                      timestamp: Date.now(),
-                    });
-                  }
-                });
-                this.animationScheduler.commitSequential();
-              }
-            }
+            const llContext: AlgorithmContext = {
+              scheduler: this.animationScheduler,
+              sceneManager: this.sceneManager,
+              layoutManager: this.layoutManager,
+              eventDispatcher: this.eventDispatcher,
+              stateManager: this.stateManager,
+              relationshipManager: this.relationshipManager,
+              activeTreeName: this.activeTreeName,
+              defaultColor: this.defaultColor
+            };
+            this.linkedListEngine.insert(llContext, gen, actionName);
           } else if (actionName === 'DELETE_HEAD' || actionName === 'DELETE_TAIL') {
-            const logicalParent = (gen as any).payload?.logicalParent;
-            if (logicalParent) {
-              const allEls = this.sceneManager.getSceneGraph().filter((el: any) => el.logicalParent === logicalParent);
-              const edges = allEls.filter((el: any) => el.type === 'edge');
-              const headNode = allEls.find((el: any) => el.originalType === 'HEAD');
-              const nullNode = allEls.find((el: any) => el.originalType === 'NULL');
-              
-              const circularEdge = edges.find((e: any) => e.properties?.circular || e.circular);
-              const isCircular = !!circularEdge;
-
-              if (headNode && (nullNode || isCircular)) {
-                let nodeToDeleteId: string | null = null;
-                let prevNodeId: string = headNode.id;
-                let nextNodeId: string = nullNode ? nullNode.id : '';
-                
-                if (actionName === 'DELETE_HEAD') {
-                  const edgeFromHead = edges.find((e: any) => e.sourceId === headNode.id && !(e.backward || e.properties?.backward));
-                  if (edgeFromHead) {
-                    nodeToDeleteId = (edgeFromHead as any).targetId;
-                    if (nullNode && nodeToDeleteId === nullNode.id) nodeToDeleteId = null; // empty list
-                  }
-                } else { // DELETE_TAIL
-                  if (isCircular) {
-                    nodeToDeleteId = (circularEdge as any).sourceId;
-                  } else {
-                    const edgeToNull = edges.find((e: any) => e.targetId === nullNode?.id && !(e.backward || e.properties?.backward));
-                    if (edgeToNull && nullNode) {
-                      nodeToDeleteId = (edgeToNull as any).sourceId;
-                      if (nodeToDeleteId === headNode.id) nodeToDeleteId = null; // empty list
-                    }
-                  }
-                }
-                
-                if (nodeToDeleteId) {
-                  const targetDelEl = this.sceneManager.getElement(nodeToDeleteId);
-                  if (targetDelEl) {
-                    AnticipationAnimation.applyAnticipation(this.animationScheduler, [targetDelEl], 'DELETION');
-                  }
-
-                  this.animationScheduler.enqueue({
-                    targets: {}, duration: 1, complete: () => {
-                      this.eventDispatcher.dispatch('RUNTIME_LOG', {
-                        keyword: 'OPERATION',
-                        message: actionName === 'DELETE_HEAD' ? 'Deleting Head Node...' : 'Removing Tail...',
-                        kind: 'operation',
-                        timestamp: Date.now(),
-                      });
-                    }
-                  });
-                  this.animationScheduler.commitSequential();
-
-                  const edgeToDel = edges.find((e: any) => e.targetId === nodeToDeleteId && !(e.backward || e.properties?.backward) && !(e.circular || e.properties?.circular));
-                  let edgeFromDel = edges.find((e: any) => e.sourceId === nodeToDeleteId && !(e.backward || e.properties?.backward) && !(e.circular || e.properties?.circular));
-                  
-                  if (isCircular && actionName === 'DELETE_TAIL') {
-                    edgeFromDel = circularEdge;
-                  }
-
-                  if (edgeToDel) {
-                    prevNodeId = (edgeToDel as any).sourceId;
-                    this.sceneManager.removeElement(edgeToDel.id);
-                  }
-                  if (edgeFromDel) {
-                    nextNodeId = (edgeFromDel as any).targetId;
-                    this.sceneManager.removeElement(edgeFromDel.id);
-                  }
-                  
-                  if (isCircular && actionName === 'DELETE_HEAD' && circularEdge) {
-                    (circularEdge as any).targetId = nextNodeId;
-                  }
-                  
-                  const newEdgeId = `edge_dyn_${prevNodeId}_${nextNodeId}`;
-                  const isNewEdgeCircular = isCircular && actionName === 'DELETE_TAIL';
-                  
-                  this.sceneManager.addElement({
-                    id: newEdgeId, type: 'edge', position: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 }, color: '#888888',
-                    sourceId: prevNodeId, targetId: nextNodeId, directed: true, logicalParent, originalType: 'EDGE',
-                    properties: isNewEdgeCircular ? { circular: true } : undefined,
-                    circular: isNewEdgeCircular ? true : undefined
-                  } as any);
-                  this.relationshipManager.addRelationship({ id: newEdgeId, sourceId: prevNodeId, targetId: nextNodeId, type: 'edge', directed: true });
-                  
-                  const isDoubly = edges.some((e: any) => e.backward === true || e.properties?.backward === true);
-                  if (isDoubly) {
-                    const bEdgeToDel = edges.find((e: any) => (e.backward || e.properties?.backward) && e.targetId === nodeToDeleteId);
-                    const bEdgeFromDel = edges.find((e: any) => (e.backward || e.properties?.backward) && e.sourceId === nodeToDeleteId);
-                    if (bEdgeToDel) this.sceneManager.removeElement(bEdgeToDel.id);
-                    if (bEdgeFromDel) this.sceneManager.removeElement(bEdgeFromDel.id);
-
-                    const bNewEdgeId = `edge_dyn_b_${nextNodeId}_${prevNodeId}`;
-                    this.sceneManager.addElement({
-                      id: bNewEdgeId, type: 'edge', position: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 }, color: '#888888',
-                      sourceId: nextNodeId, targetId: prevNodeId, directed: true, backward: true, logicalParent, originalType: 'EDGE'
-                    } as any);
-                    this.relationshipManager.addRelationship({ id: bNewEdgeId, sourceId: nextNodeId, targetId: prevNodeId, type: 'edge', directed: true });
-                  }
-                  
-                  this.animationScheduler.enqueue({
-                    targets: {}, duration: 1, complete: () => {
-                      if (isDoubly) {
-                        this.eventDispatcher.dispatch('RUNTIME_LOG', {
-                          keyword: 'RELATION',
-                          message: 'Updating Previous/Next Pointers...',
-                          kind: 'relationship',
-                          timestamp: Date.now(),
-                        });
-                      } else if (isCircular && actionName === 'DELETE_TAIL') {
-                        this.eventDispatcher.dispatch('RUNTIME_LOG', {
-                          keyword: 'RELATION',
-                          message: 'Tail updated to point to new Head.\nCircular Link Restored.',
-                          kind: 'relationship',
-                          timestamp: Date.now(),
-                        });
-                      } else {
-                        this.eventDispatcher.dispatch('RUNTIME_LOG', {
-                          keyword: 'RELATION',
-                          message: actionName === 'DELETE_HEAD' ? 'Head updated to next node.' : 'Updating Tail pointer.',
-                          kind: 'relationship',
-                          timestamp: Date.now(),
-                        });
-                      }
-                    }
-                  });
-                  this.animationScheduler.commitSequential();
-
-                  const targetEl = this.sceneManager.getElement(nodeToDeleteId) as any;
-                  this.layoutManager.updateLayout(this.sceneManager.getSceneGraph());
-                  
-                  if (targetEl) {
-                    this.animationScheduler.enqueue({ targets: targetEl.scale, x: 0, y: 0, z: 0, duration: 500, easing: 'easeInBack' });
-                    this.animationScheduler.enqueue({ targets: targetEl.position, y: '+=2', duration: 500, easing: 'easeInBack' });
-                    this.animationScheduler.commitGroup(true);
-                  }
-                  
-                  const remainingEls = allEls.filter((el: any) => el.id !== nodeToDeleteId && el.originalType !== 'EDGE');
-                  remainingEls.forEach((el: any) => {
-                    if (el.worldTarget) {
-                      this.animationScheduler.enqueue({ targets: el.position, x: el.worldTarget.x, y: el.worldTarget.y, z: el.worldTarget.z, duration: 500, easing: 'easeOutCubic' });
-                    }
-                  });
-                  this.animationScheduler.commitGroup(true);
-                  
-                  this.animationScheduler.enqueue({
-                    targets: {}, duration: 1, complete: () => {
-                      this.sceneManager.removeElement(nodeToDeleteId!);
-                      this.stateManager.saveState(this.sceneManager.getSceneGraph(), `${actionName}`, this.animationScheduler.getCurrentTime());
-                      this.eventDispatcher.dispatch('STATE_UPDATED', this.stateManager.getCurrentState());
-                      this.eventDispatcher.dispatch('RUNTIME_LOG', {
-                        keyword: 'RESULT',
-                        message: 'Deletion Complete.',
-                        kind: 'result',
-                        timestamp: Date.now(),
-                      });
-                    }
-                  });
-                  this.animationScheduler.commitSequential();
-                  this.animationScheduler.commitSequential();
-                }
-              }
-            }
+            const llContext: AlgorithmContext = {
+              scheduler: this.animationScheduler,
+              sceneManager: this.sceneManager,
+              layoutManager: this.layoutManager,
+              eventDispatcher: this.eventDispatcher,
+              stateManager: this.stateManager,
+              relationshipManager: this.relationshipManager,
+              activeTreeName: this.activeTreeName,
+              defaultColor: this.defaultColor
+            };
+            this.linkedListEngine.remove(llContext, gen, actionName);
           } else if (actionName === 'REVERSE') {
-            const logicalParent = (gen as any).payload?.logicalParent;
-            if (logicalParent) {
-              const allEls = this.sceneManager.getSceneGraph().filter((el: any) => el.logicalParent === logicalParent);
-              const edges = allEls.filter((el: any) => el.type === 'edge');
-              const headNode = allEls.find((el: any) => el.originalType === 'HEAD');
-              const nullNode = allEls.find((el: any) => el.originalType === 'NULL');
-              
-              const circularEdge = edges.find((e: any) => e.properties?.circular || e.circular);
-              const isCircular = !!circularEdge;
-              const isDoubly = edges.some((e: any) => e.backward === true || e.properties?.backward === true);
-
-              if (headNode) {
-                const orderedDataNodes: any[] = [];
-                const forwardEdges = edges.filter((e: any) => 
-                  !(e.backward || e.properties?.backward) && 
-                  !(e.circular || e.properties?.circular) &&
-                  e.sourceId !== headNode.id &&
-                  e.targetId !== nullNode?.id
-                );
-
-                const headEdge = edges.find((e: any) => e.sourceId === headNode.id && !(e.backward || e.properties?.backward));
-                let currentNodeId = headEdge ? (headEdge as any).targetId : null;
-                
-                while (currentNodeId && currentNodeId !== nullNode?.id) {
-                  const node = allEls.find((el: any) => el.id === currentNodeId);
-                  if (node && node.originalType !== 'HEAD' && node.originalType !== 'NULL') {
-                    orderedDataNodes.push(node);
-                  } else {
-                    break;
-                  }
-                  const nextEdge = forwardEdges.find((e: any) => e.sourceId === currentNodeId);
-                  currentNodeId = nextEdge ? (nextEdge as any).targetId : null;
-                }
-
-                if (orderedDataNodes.length >= 2) {
-                  AnticipationAnimation.applyAnticipation(this.animationScheduler, allEls.filter((el: any) => el.type !== 'edge'), 'UPDATE');
-
-                  this.animationScheduler.enqueue({
-                    targets: {}, duration: 1, complete: () => {
-                      this.eventDispatcher.dispatch('RUNTIME_LOG', {
-                        keyword: 'OPERATION',
-                        message: 'Reversing Linked List connections...',
-                        kind: 'operation',
-                        timestamp: Date.now(),
-                      });
-                    }
-                  });
-                  this.animationScheduler.commitSequential();
-
-                  forwardEdges.forEach((e: any) => {
-                    const temp = e.sourceId;
-                    e.sourceId = e.targetId;
-                    e.targetId = temp;
-                  });
-
-                  if (isDoubly) {
-                    const backwardEdges = edges.filter((e: any) => (e.backward || e.properties?.backward) && e.sourceId !== nullNode?.id && e.targetId !== headNode.id);
-                    backwardEdges.forEach((e: any) => {
-                      const temp = e.sourceId;
-                      e.sourceId = e.targetId;
-                      e.targetId = temp;
-                    });
-                  }
-
-                  if (headEdge) {
-                    (headEdge as any).targetId = orderedDataNodes[orderedDataNodes.length - 1].id;
-                  }
-                  
-                  if (!isCircular) {
-                    const nullEdge = edges.find((e: any) => e.targetId === nullNode?.id && !(e.backward || e.properties?.backward));
-                    if (nullEdge) {
-                      (nullEdge as any).sourceId = orderedDataNodes[0].id;
-                    }
-                    if (isDoubly) {
-                       const nullBackEdge = edges.find((e: any) => (e.backward || e.properties?.backward) && e.sourceId === nullNode?.id);
-                       if (nullBackEdge) (nullBackEdge as any).targetId = orderedDataNodes[0].id;
-                    }
-                  } else if (circularEdge) {
-                    (circularEdge as any).sourceId = orderedDataNodes[0].id;
-                    (circularEdge as any).targetId = orderedDataNodes[orderedDataNodes.length - 1].id;
-                  }
-
-                  this.layoutManager.updateLayout(this.sceneManager.getSceneGraph());
-
-                  allEls.forEach((el: any) => {
-                    if (el.type !== 'edge' && el.worldTarget) {
-                      this.animationScheduler.enqueue({
-                        targets: el.position,
-                        x: el.worldTarget.x,
-                        y: el.worldTarget.y,
-                        z: el.worldTarget.z,
-                        duration: 800,
-                        easing: 'easeInOutCubic'
-                      });
-                    }
-                  });
-                  this.animationScheduler.commitGroup(true);
-
-                  this.animationScheduler.enqueue({
-                    targets: {}, duration: 1, complete: () => {
-                      this.stateManager.saveState(this.sceneManager.getSceneGraph(), 'REVERSE', this.animationScheduler.getCurrentTime());
-                      this.eventDispatcher.dispatch('STATE_UPDATED', this.stateManager.getCurrentState());
-                      this.eventDispatcher.dispatch('RUNTIME_LOG', {
-                        keyword: 'RESULT',
-                        message: 'Linked List Reversed Successfully.',
-                        kind: 'result',
-                        timestamp: Date.now(),
-                      });
-                    }
-                  });
-                  this.animationScheduler.commitSequential();
-                }
-              }
-            }
+            const llContext: AlgorithmContext = {
+              scheduler: this.animationScheduler,
+              sceneManager: this.sceneManager,
+              layoutManager: this.layoutManager,
+              eventDispatcher: this.eventDispatcher,
+              stateManager: this.stateManager,
+              relationshipManager: this.relationshipManager,
+              activeTreeName: this.activeTreeName,
+              defaultColor: this.defaultColor
+            };
+            this.linkedListEngine.reverse(llContext, gen);
           } else if (actionName === 'UPDATE') {
             let targetEl = gen.targetId ? this.sceneManager.getElement(gen.targetId) as any : null;
             if (!targetEl && gen.args && gen.args.length > 0) {
@@ -1106,17 +956,18 @@ export class AnimationController {
                 this.animationScheduler.advanceCursor(300);
               }
             }
-          } else if (actionName === 'TREE' || actionName === 'BINARY_TREE') {
+          } else if (actionName === 'TREE' || actionName === 'BINARY_TREE' || actionName === 'BST') {
             this.activeTreeName = gen.args[0];
+            this.activeTreeIsBST = (actionName === 'BST');
             // Initialize an empty tree if it doesn't exist
             if (!this.sceneManager.getElement(this.activeTreeName!)) {
               this.sceneManager.addElement({
-                id: this.activeTreeName!, type: 'TREE', label: this.activeTreeName!
+                id: this.activeTreeName!, type: actionName === 'BST' ? 'BST' : 'TREE', label: this.activeTreeName!
               } as any);
             }
             this.eventDispatcher.dispatch('RUNTIME_LOG', {
-              keyword: 'TREE',
-              message: `Tree "${this.activeTreeName}" initialized.`,
+              keyword: actionName,
+              message: `${actionName === 'BST' ? 'BST' : 'Tree'} "${this.activeTreeName}" initialized.`,
               kind: 'operation',
               timestamp: Date.now(),
             });
@@ -2849,7 +2700,7 @@ export class AnimationController {
     const virtualGraph = JSON.parse(JSON.stringify(this.sceneManager.getSceneGraph()));
 
     instructions.forEach((instruction, idx) => {
-      console.log(`[AnimationController] Executing instruction [${idx}]:`, JSON.stringify(instruction));
+      if (DEBUG_ANIMATION) console.log(`[AnimationController] Executing instruction [${idx}]:`, JSON.stringify(instruction));
 
       switch (instruction.action) {
         case 'SWAP_OBJECTS': {
@@ -3033,8 +2884,8 @@ export class AnimationController {
 
         case 'COMPARE_OBJECTS': {
           const cmp = instruction as CompareObjectsInstruction;
-          const leftEl = this.sceneManager.getElement(cmp.leftId) as any;
-          const rightEl = this.sceneManager.getElement(cmp.rightId) as any;
+          const leftEl = this.sceneManager.getElement(this.resolveElementId(cmp.leftId)) as any;
+          const rightEl = this.sceneManager.getElement(this.resolveElementId(cmp.rightId)) as any;
           
           if (leftEl && rightEl) {
             // Highlight, scale up, lift, emissive glow
@@ -3117,7 +2968,7 @@ export class AnimationController {
         }
         case 'HIGHLIGHT_OBJECT': {
           const hl = instruction as HighlightObjectInstruction;
-          const targetEl = this.sceneManager.getElement(hl.targetId) as any;
+          const targetEl = this.sceneManager.getElement(this.resolveElementId(hl.targetId)) as any;
           if (targetEl) {
             this.animationScheduler.enqueue({
               targets: targetEl,
@@ -3239,7 +3090,7 @@ export class AnimationController {
         }
         case 'GENERIC_ACTION': {
           const gen = instruction as GenericActionInstruction;
-          console.log(`[Runtime] Executing generic action: ${gen.actionName}`, gen.args);
+          if (DEBUG_ANIMATION) console.log(`[Runtime] Executing generic action: ${gen.actionName}`, gen.args);
           
           if (gen.actionName === 'VISIT' || gen.actionName === 'MARK') {
             const targetId = gen.args[0];
@@ -3650,409 +3501,43 @@ export class AnimationController {
               this.animationScheduler.commitSequential();
               this.animationScheduler.advanceCursor(400);
             }
-          } else if (gen.actionName === 'PUSH') {
-            const stackName = gen.args[0];
-            const val = gen.args[1];
-            
-            // Find current top index
-            const stackEls = this.sceneManager.getSceneGraph().filter((el: any) => el.logicalParent === stackName && el.originalType === 'STACK_ELEMENT');
-            const newIndex = stackEls.length;
-            
-            const newId = `obj_${stackName}_new_${Date.now()}`;
-            const newEl: any = {
-              id: newId,
-              type: 'box',
-              value: val,
-              logicalIndex: newIndex,
-              logicalParent: stackName,
-              originalType: 'STACK_ELEMENT',
-              position: { x: 0, y: 10, z: 0 }, // Will be laid out but starts high
-              scale: { x: 1, y: 1, z: 1 },
-              color: '#4caf50',
-              emissiveIntensity: 0.5,
-              emissiveColor: '#4caf50',
-              lifecycleState: 'ACTIVE',
-              visible: true,
-              opacity: 0,
+          } else if (gen.actionName === 'PUSH' || gen.actionName === 'POP' || gen.actionName === 'PEEK') {
+            const stackContext: StackAnimationContext = {
+              scheduler: this.animationScheduler,
+              sceneManager: this.sceneManager,
+              layoutManager: this.layoutManager,
+              eventDispatcher: this.eventDispatcher,
+              stateManager: this.stateManager,
+              relationshipManager: this.relationshipManager,
+              activeTreeName: this.activeTreeName,
+              defaultColor: this.defaultColor,
+              lifecycleManager: this.lifecycleManager
             };
-            
-            virtualGraph.push(newEl);
-            
-            this.animationScheduler.enqueue({
-              targets: {},
-              duration: 1,
-              complete: () => {
-                this.lifecycleManager.spawn(newEl, true);
-                this.lifecycleManager.activate(newId);
-              }
-            });
-            this.animationScheduler.commitGroup(true);
-            
-            const layoutMap = this.layoutManager.updateLayout(virtualGraph);
-            const targetPos = layoutMap.get(newId);
-            
-            if (targetPos) {
-              this.animationScheduler.enqueue({
-                targets: {},
-                duration: 1,
-                complete: () => {
-                  const targetEl = this.sceneManager.getElement(newId) as any;
-                  if (targetEl) {
-                    targetEl.position.x = targetPos.x;
-                    targetEl.position.y = targetPos.y + 5; // Drop from above
-                    targetEl.position.z = targetPos.z;
-                    
-                    this.animationScheduler.enqueue({
-                      targets: targetEl.position,
-                      y: targetPos.y,
-                      duration: 500,
-                      easing: 'easeOutBounce'
-                    });
-                    this.animationScheduler.enqueue({
-                      targets: targetEl,
-                      opacity: 1,
-                      duration: 300,
-                    });
-                    this.animationScheduler.commitGroup(true);
-                  }
-                }
-              });
-              this.animationScheduler.commitGroup(true);
-              this.animationScheduler.advanceCursor(600);
-              // Log after drop animation
-              this.animationScheduler.enqueue({
-                targets: {},
-                duration: 1,
-                complete: () => {
-                  this.eventDispatcher.dispatch('RUNTIME_LOG', {
-                    keyword: 'PUSH',
-                    message: `Pushed ${val} onto stack "${stackName}".\nStack size: ${newIndex + 1}`,
-                    kind: 'operation',
-                    timestamp: Date.now(),
-                  });
-                }
-              });
-              this.animationScheduler.commitGroup(true);
+            if (gen.actionName === 'PUSH') {
+              this.stackEngine.push(stackContext, gen, virtualGraph);
+            } else if (gen.actionName === 'POP') {
+              this.stackEngine.pop(stackContext, gen, virtualGraph);
+            } else {
+              this.stackEngine.peek(stackContext, gen);
             }
-          } else if (gen.actionName === 'POP') {
-            const stackName = gen.args[0];
-            
-            const stackEls = this.sceneManager.getSceneGraph().filter((el: any) => el.logicalParent === stackName && el.originalType === 'STACK_ELEMENT');
-            if (stackEls.length > 0) {
-              const topEl = stackEls.sort((a: any, b: any) => b.logicalIndex - a.logicalIndex)[0];
-              const targetId = topEl.id;
-              
-              const targetEl = this.sceneManager.getElement(targetId) as any;
-              if (targetEl) {
-                this.animationScheduler.enqueue({
-                  targets: targetEl.position,
-                  y: targetEl.position.y + 3,
-                  duration: 400,
-                  easing: 'easeInQuad'
-                });
-                this.animationScheduler.enqueue({
-                  targets: targetEl,
-                  opacity: 0,
-                  color: '#f44336',
-                  emissiveColor: '#f44336',
-                  emissiveIntensity: 0.8,
-                  duration: 400
-                });
-                this.animationScheduler.commitGroup(true);
-              }
-              
-              const vElIdx = virtualGraph.findIndex((el: any) => el.id === targetId);
-              if (vElIdx >= 0) virtualGraph.splice(vElIdx, 1);
-              
-              this.animationScheduler.enqueue({
-                targets: {},
-                duration: 1,
-                complete: () => {
-                  const poppedVal = (topEl as any).value;
-                  const remainingSize = stackEls.length - 1;
-                  this.lifecycleManager.remove(targetId);
-                  this.lifecycleManager.destroy(targetId);
-                  this.eventDispatcher.dispatch('RUNTIME_LOG', {
-                    keyword: 'POP',
-                    message: `Popped "${poppedVal}" from stack "${stackName}".\nStack size: ${remainingSize}`,
-                    kind: 'operation',
-                    timestamp: Date.now(),
-                  });
-                }
-              });
-              this.animationScheduler.commitGroup(true);
-              this.animationScheduler.advanceCursor(450);
-            }
-          } else if (gen.actionName === 'PEEK') {
-            const stackName = gen.args[0];
-            const stackEls = this.sceneManager.getSceneGraph().filter((el: any) => el.logicalParent === stackName && el.originalType === 'STACK_ELEMENT');
-            if (stackEls.length > 0) {
-              const topEl = stackEls.sort((a: any, b: any) => b.logicalIndex - a.logicalIndex)[0];
-              const targetEl = this.sceneManager.getElement(topEl.id) as any;
-              if (targetEl) {
-                this.animationScheduler.enqueue({
-                  targets: targetEl,
-                  emissiveColor: '#ff9800',
-                  emissiveIntensity: 0.8,
-                  duration: 200
-                });
-                this.animationScheduler.enqueue({
-                  targets: targetEl.scale,
-                  x: 1.1, y: 1.1, z: 1.1,
-                  duration: 200
-                });
-                this.animationScheduler.commitSequential();
-                
-                this.animationScheduler.enqueue({
-                  targets: targetEl,
-                  emissiveIntensity: 0,
-                  duration: 200
-                });
-                this.animationScheduler.enqueue({
-                  targets: targetEl.scale,
-                  x: 1, y: 1, z: 1,
-                  duration: 200
-                });
-                this.animationScheduler.commitSequential();
-                this.animationScheduler.advanceCursor(100);
-                this.animationScheduler.enqueue({
-                  targets: {},
-                  duration: 1,
-                  complete: () => {
-                    this.eventDispatcher.dispatch('RUNTIME_LOG', {
-                      keyword: 'PEEK',
-                      message: `Top of stack "${stackName}": ${(topEl as any).value}`,
-                      kind: 'info',
-                      timestamp: Date.now(),
-                    });
-                  }
-                });
-                this.animationScheduler.commitGroup(true);
-              }
-            }
-          } else if (gen.actionName === 'ENQUEUE') {
-            const queueName = gen.args[0];
-            const val = gen.args[1];
-            
-            const queueEls = this.sceneManager.getSceneGraph().filter((el: any) => el.logicalParent === queueName && el.originalType === 'QUEUE_ELEMENT');
-            const newIndex = queueEls.length;
-            
-            const newId = `obj_${queueName}_new_${Date.now()}`;
-            const newEl: any = {
-              id: newId,
-              type: 'box',
-              value: val,
-              logicalIndex: newIndex,
-              logicalParent: queueName,
-              originalType: 'QUEUE_ELEMENT',
-              position: { x: 10, y: 5, z: 0 }, // Start high and to the right
-              scale: { x: 1, y: 1, z: 1 },
-              color: '#5c6bc0',
-              emissiveIntensity: 0.5,
-              emissiveColor: '#5c6bc0',
-              lifecycleState: 'ACTIVE',
-              visible: true,
-              opacity: 0,
+          } else if (gen.actionName === 'ENQUEUE' || gen.actionName === 'DEQUEUE' || gen.actionName === 'FRONT' || gen.actionName === 'REAR') {
+            const queueContext: QueueAnimationContext = {
+              scheduler: this.animationScheduler,
+              sceneManager: this.sceneManager,
+              layoutManager: this.layoutManager,
+              eventDispatcher: this.eventDispatcher,
+              stateManager: this.stateManager,
+              relationshipManager: this.relationshipManager,
+              activeTreeName: this.activeTreeName,
+              defaultColor: this.defaultColor,
+              lifecycleManager: this.lifecycleManager
             };
-            
-            virtualGraph.push(newEl);
-            
-            this.animationScheduler.enqueue({
-              targets: {},
-              duration: 1,
-              complete: () => {
-                this.lifecycleManager.spawn(newEl, true);
-                this.lifecycleManager.activate(newId);
-              }
-            });
-            this.animationScheduler.commitGroup(true);
-            
-            const layoutMap = this.layoutManager.updateLayout(virtualGraph);
-            const targetPos = layoutMap.get(newId);
-            
-            if (targetPos) {
-              this.animationScheduler.enqueue({
-                targets: {},
-                duration: 1,
-                complete: () => {
-                  const targetEl = this.sceneManager.getElement(newId) as any;
-                  if (targetEl) {
-                    targetEl.position.x = targetPos.x;
-                    targetEl.position.y = targetPos.y + 5; // Drop into the pipeline
-                    targetEl.position.z = targetPos.z;
-                    
-                    this.animationScheduler.enqueue({
-                      targets: targetEl.position,
-                      y: targetPos.y,
-                      duration: 500,
-                      easing: 'easeOutBounce'
-                    });
-                    this.animationScheduler.enqueue({
-                      targets: targetEl,
-                      opacity: 1,
-                      duration: 300,
-                    });
-                    this.animationScheduler.commitGroup(true);
-                  }
-                }
-              });
-              this.animationScheduler.commitGroup(true);
-              
-              // Shift existing elements slightly if the pipeline grew from the center
-              layoutMap.forEach((pos, id) => {
-                if (id !== newId) {
-                  const tel = this.sceneManager.getElement(id) as any;
-                  if (tel) {
-                    this.animationScheduler.enqueue({
-                      targets: tel.position,
-                      x: pos.x, y: pos.y, z: pos.z,
-                      duration: 400, easing: 'easeInOutQuad'
-                    });
-                  }
-                }
-              });
-              this.animationScheduler.commitGroup(true);
-              this.animationScheduler.advanceCursor(600);
-              // Log after drop animation
-              this.animationScheduler.enqueue({
-                targets: {},
-                duration: 1,
-                complete: () => {
-                  this.eventDispatcher.dispatch('RUNTIME_LOG', {
-                    keyword: 'ENQUEUE',
-                    message: `Enqueued ${val} into queue "${queueName}".\nQueue size: ${newIndex + 1}`,
-                    kind: 'operation',
-                    timestamp: Date.now(),
-                  });
-                }
-              });
-              this.animationScheduler.commitGroup(true);
-            }
-          } else if (gen.actionName === 'DEQUEUE') {
-            const queueName = gen.args[0];
-            
-            const queueEls = this.sceneManager.getSceneGraph().filter((el: any) => el.logicalParent === queueName && el.originalType === 'QUEUE_ELEMENT').sort((a: any, b: any) => a.logicalIndex - b.logicalIndex);
-            
-            if (queueEls.length > 0) {
-              const frontEl = queueEls[0];
-              const targetId = frontEl.id;
-              
-              const targetEl = this.sceneManager.getElement(targetId) as any;
-              if (targetEl) {
-                this.animationScheduler.enqueue({
-                  targets: targetEl.position,
-                  x: targetEl.position.x - 3, // Slide out left
-                  duration: 400,
-                  easing: 'easeInQuad'
-                });
-                this.animationScheduler.enqueue({
-                  targets: targetEl,
-                  opacity: 0,
-                  color: '#f44336',
-                  emissiveColor: '#f44336',
-                  emissiveIntensity: 0.8,
-                  duration: 400
-                });
-                this.animationScheduler.commitGroup(true);
-              }
-              
-              const vElIdx = virtualGraph.findIndex((el: any) => el.id === targetId);
-              if (vElIdx >= 0) virtualGraph.splice(vElIdx, 1);
-              
-              // Shift remaining elements down in index
-              virtualGraph.forEach((el: any) => {
-                if (el.logicalParent === queueName && el.originalType === 'QUEUE_ELEMENT' && el.logicalIndex > 0) {
-                  el.logicalIndex--;
-                }
-              });
-              
-              this.animationScheduler.enqueue({
-                targets: {},
-                duration: 1,
-                complete: () => {
-                  const dequeuedVal = (frontEl as any).value;
-                  const remainingSize = queueEls.length - 1;
-                  this.lifecycleManager.remove(targetId);
-                  this.lifecycleManager.destroy(targetId);
-                  this.eventDispatcher.dispatch('RUNTIME_LOG', {
-                    keyword: 'DEQUEUE',
-                    message: `Dequeued "${dequeuedVal}" from front of queue "${queueName}".\nQueue size: ${remainingSize}`,
-                    kind: 'operation',
-                    timestamp: Date.now(),
-                  });
-                }
-              });
-              this.animationScheduler.commitGroup(true);
-              
-              // Update layout for remaining elements to slide them forward
-              const layoutMap = this.layoutManager.updateLayout(virtualGraph);
-              layoutMap.forEach((pos, id) => {
-                const tel = this.sceneManager.getElement(id) as any;
-                const vEl = virtualGraph.find((e: any) => e.id === id);
-                if (vEl) {
-                  vEl.position.x = pos.x; vEl.position.y = pos.y; vEl.position.z = pos.z;
-                  if (tel) {
-                    this.animationScheduler.enqueue({
-                      targets: tel.position,
-                      x: pos.x, y: pos.y, z: pos.z,
-                      duration: 400, easing: 'easeInOutQuad'
-                    });
-                  }
-                }
-              });
-              this.animationScheduler.commitGroup(true);
-              this.animationScheduler.advanceCursor(450);
-            }
-          } else if (gen.actionName === 'FRONT' || gen.actionName === 'REAR') {
-            const queueName = gen.args[0];
-            const queueEls = this.sceneManager.getSceneGraph().filter((el: any) => el.logicalParent === queueName && el.originalType === 'QUEUE_ELEMENT').sort((a: any, b: any) => a.logicalIndex - b.logicalIndex);
-            
-            if (queueEls.length > 0) {
-              const targetNode = gen.actionName === 'FRONT' ? queueEls[0] : queueEls[queueEls.length - 1];
-              const targetEl = this.sceneManager.getElement(targetNode.id) as any;
-              
-              if (targetEl) {
-                const highlightColor = gen.actionName === 'FRONT' ? '#ef5350' : '#66bb6a';
-                this.animationScheduler.enqueue({
-                  targets: targetEl,
-                  emissiveColor: highlightColor,
-                  emissiveIntensity: 0.8,
-                  duration: 200
-                });
-                this.animationScheduler.enqueue({
-                  targets: targetEl.scale,
-                  x: 1.1, y: 1.1, z: 1.1,
-                  duration: 200
-                });
-                this.animationScheduler.commitSequential();
-                
-                this.animationScheduler.enqueue({
-                  targets: targetEl,
-                  emissiveIntensity: 0,
-                  duration: 200
-                });
-                this.animationScheduler.enqueue({
-                  targets: targetEl.scale,
-                  x: 1, y: 1, z: 1,
-                  duration: 200
-                });
-                this.animationScheduler.commitSequential();
-                this.animationScheduler.advanceCursor(100);
-                this.animationScheduler.enqueue({
-                  targets: {},
-                  duration: 1,
-                  complete: () => {
-                    const action = gen.actionName;
-                    this.eventDispatcher.dispatch('RUNTIME_LOG', {
-                      keyword: action,
-                      message: `${action} of queue "${queueName}": ${(targetNode as any).value}`,
-                      kind: 'info',
-                      timestamp: Date.now(),
-                    });
-                  }
-                });
-                this.animationScheduler.commitGroup(true);
-              }
+            if (gen.actionName === 'ENQUEUE') {
+              this.queueEngine.enqueue(queueContext, gen, virtualGraph);
+            } else if (gen.actionName === 'DEQUEUE') {
+              this.queueEngine.dequeue(queueContext, gen, virtualGraph);
+            } else {
+              this.queueEngine.peek(queueContext, gen);
             }
           } else if (gen.actionName === 'TRAVERSE' || gen.actionName === 'VISIT') {
             const treeName = gen.args[0];
@@ -4107,99 +3592,6 @@ export class AnimationController {
                 });
                 this.animationScheduler.commitGroup(true);
               }
-            }
-          } else if (gen.actionName === 'ROTATE') {
-            // Placeholder for tree rotation layout update
-            // A real rotation would adjust logical indices and let the layout engine sort it out.
-            // For now, we will just wiggle the node to acknowledge the action
-            const treeName = gen.args[0];
-            const nodeIndex = parseInt(gen.args[1]);
-            const targetEl = virtualGraph.find((el: any) => el.logicalParent === treeName && el.logicalIndex === nodeIndex);
-            
-            if (targetEl) {
-              const tel = this.sceneManager.getElement(targetEl.id) as any;
-              if (tel) {
-                this.animationScheduler.enqueue({
-                  targets: tel.position,
-                  x: tel.position.x + 1,
-                  duration: 150, easing: 'easeInOutSine'
-                });
-                this.animationScheduler.enqueue({
-                  targets: tel.position,
-                  x: tel.position.x - 1,
-                  duration: 150, easing: 'easeInOutSine'
-                });
-                this.animationScheduler.enqueue({
-                  targets: tel.position,
-                  x: tel.position.x,
-                  duration: 150, easing: 'easeInOutSine'
-                });
-                this.animationScheduler.commitSequential();
-                this.animationScheduler.advanceCursor(450);
-                this.animationScheduler.enqueue({
-                  targets: {},
-                  duration: 1,
-                  complete: () => {
-                    this.eventDispatcher.dispatch('RUNTIME_LOG', {
-                      keyword: 'ROTATE',
-                      message: `Rotate applied at index ${nodeIndex} in "${treeName}"`,
-                      kind: 'operation',
-                      timestamp: Date.now(),
-                    });
-                  }
-                });
-                this.animationScheduler.commitGroup(true);
-              }
-            }
-          } else if (gen.actionName === 'HEAPIFY') {
-            const heapName = gen.args[0];
-            const arg1 = gen.args[1];
-            // E.g. HEAPIFY myHeap 0
-            
-            const targetEls = this.sceneManager.getSceneGraph().filter((el: any) => 
-               el.logicalParent === heapName && 
-               (el.logicalIndex === arg1 || el.label === `${heapName}[${arg1}]` || el.label === arg1 || el.logicalIndex === parseInt(arg1))
-            ).map((el: any) => this.sceneManager.getElement(el.id)).filter(Boolean) as any[];
-            
-            if (targetEls.length > 0) {
-              this.animationScheduler.enqueue({
-                targets: targetEls,
-                emissiveColor: '#e91e63', // distinct color for heapify
-                emissiveIntensity: 0.8,
-                duration: 200
-              });
-              this.animationScheduler.enqueue({
-                targets: targetEls.map((el: any) => el.scale),
-                x: 1.15, y: 1.15, z: 1.15,
-                duration: 200
-              });
-              this.animationScheduler.commitSequential();
-              
-              this.animationScheduler.enqueue({
-                targets: targetEls,
-                emissiveIntensity: 0,
-                duration: 200
-              });
-              this.animationScheduler.enqueue({
-                targets: targetEls.map((el: any) => el.scale),
-                x: 1, y: 1, z: 1,
-                duration: 200
-              });
-              this.animationScheduler.commitSequential();
-              this.animationScheduler.advanceCursor(100);
-              this.animationScheduler.enqueue({
-                targets: {},
-                duration: 1,
-                complete: () => {
-                  this.eventDispatcher.dispatch('RUNTIME_LOG', {
-                    keyword: 'HEAPIFY',
-                    message: `Heapify called at index ${arg1} in "${heapName}"\nRestoring heap property from this node downward.`,
-                    kind: 'operation',
-                    timestamp: Date.now(),
-                  });
-                }
-              });
-              this.animationScheduler.commitGroup(true);
             }
           } else if (gen.actionName === 'UPDATE') {
             const arrName = gen.args[0];
@@ -4349,7 +3741,7 @@ export class AnimationController {
         }
         case 'SET_STATE': {
           const setStateIns = instruction as SetStateInstruction;
-          console.log(`[Runtime] Setting state for ${setStateIns.targetId} to ${setStateIns.stateName}`);
+          if (DEBUG_ANIMATION) console.log(`[Runtime] Setting state for ${setStateIns.targetId} to ${setStateIns.stateName}`);
           
           const targetEl = this.sceneManager.getElement(setStateIns.targetId) as any;
           if (targetEl) {

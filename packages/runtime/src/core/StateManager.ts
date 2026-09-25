@@ -1,11 +1,44 @@
-import { SceneState } from '../models/SceneState';
+import { SceneState, PartitionBoundaryRegion, SortedRegion } from '../models/SceneState';
 import { SceneElement } from '../models/SceneElement';
 
 export class StateManager {
   private timeline: SceneState[] = [];
   private currentIndex: number = -1;
 
+  /** structureId -> stack of active boundaries, outermost first (see PartitionBoundaryRegion). */
+  private partitionBoundaryStacks: Map<string, PartitionBoundaryRegion[]> = new Map();
+  /** structureId -> its current sorted range. */
+  private sortedRegions: Map<string, SortedRegion> = new Map();
+
   constructor() {}
+
+  /** Pushes a new active boundary for `structureId` (SET_PARTITION_BOUNDARY). */
+  public setPartitionBoundary(structureId: string, startIndex: number, endIndex: number, label?: string): void {
+    const stack = this.partitionBoundaryStacks.get(structureId) ?? [];
+    stack.push({ structureId, startIndex, endIndex, label, depth: stack.length });
+    this.partitionBoundaryStacks.set(structureId, stack);
+  }
+
+  /** Pops the most recently set active boundary for `structureId` (CLEAR_PARTITION_BOUNDARY). */
+  public clearPartitionBoundary(structureId: string): void {
+    const stack = this.partitionBoundaryStacks.get(structureId);
+    if (stack && stack.length > 0) stack.pop();
+  }
+
+  /** Replaces `structureId`'s current sorted range (MARK_SORTED_REGION). */
+  public markSortedRegion(structureId: string, startIndex: number, endIndex: number): void {
+    this.sortedRegions.set(structureId, { structureId, startIndex, endIndex });
+  }
+
+  /** Snapshots the current region/boundary state, for baking into a SceneState. */
+  private currentRegions(): Pick<SceneState, 'partitionBoundaries' | 'sortedRegions'> {
+    const partitionBoundaries: PartitionBoundaryRegion[] = [];
+    this.partitionBoundaryStacks.forEach((stack) => partitionBoundaries.push(...stack.map((entry) => ({ ...entry }))));
+    return {
+      partitionBoundaries,
+      sortedRegions: Array.from(this.sortedRegions.values()).map((r) => ({ ...r })),
+    };
+  }
 
   /**
    * Initializes the state manager with the base scene graph state.
@@ -46,7 +79,8 @@ export class StateManager {
     return {
       elements: clonedElements,
       description,
-      timeMs
+      timeMs,
+      ...this.currentRegions(),
     };
   }
 

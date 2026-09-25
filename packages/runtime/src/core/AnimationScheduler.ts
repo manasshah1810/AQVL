@@ -6,6 +6,20 @@ export interface AnimationTask {
   easing?: string;
   priority?: number;
   complete?: () => void;
+  /**
+   * Human-readable caption text (docs/design/array-narrative-ux-spec.md §1) describing
+   * why this frame is happening, populated by ArrayNarrativeGenerator where applicable.
+   * Optional — most animation frames (position/scale/color tweens with no narrative
+   * meaning of their own) simply omit it.
+   */
+  narrativeText?: string;
+  /**
+   * Pacing hint (docs/design/array-narrative-ux-spec.md §4) derived from the source
+   * instruction's `significance` tag via PacingConfig — e.g. 2.5 for a pivotal event.
+   * Purely advisory: this frame's own `duration` is unchanged: a renderer that wants
+   * significance-aware dwell time multiplies its own timing by this value itself.
+   */
+  suggestedDurationMultiplier?: number;
   [key: string]: any;
 }
 

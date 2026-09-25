@@ -1,3 +1,18 @@
+/**
+ * Heuristic layout dispatch for live SceneElement-based structure animations
+ * (array/stack/queue/list/tree/graph), used by ExecutionEngine/AnimationController.
+ *
+ * This is a separate system from packages/runtime/src/layout/LayoutEngine.ts,
+ * which resolves the AQIR SET_LAYOUT_STRATEGY/COMPUTE_LAYOUT opcodes for the
+ * newer spatial-syntax feature via explicit name+params dispatch instead of
+ * SceneElement-shape heuristics. The two are not interchangeable today — see
+ * docs/design/existing-layout-audit.md for why they coexist and which one a
+ * given call path should use. Where a layout type exists in both (tree,
+ * force-directed, grid), the LayoutEngine version is the deliberately
+ * improved/deterministic take (see its strategy files' doc comments); tune
+ * both sides together if you change constants here, since they're expected
+ * to converge eventually rather than drift apart.
+ */
 import { SceneManager } from './SceneManager';
 import { SceneElement } from '../models/SceneElement';
 import { LayoutStrategy } from './layouts/LayoutStrategy';

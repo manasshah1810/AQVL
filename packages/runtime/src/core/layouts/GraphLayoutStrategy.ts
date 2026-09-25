@@ -2,6 +2,16 @@ import { SceneElement, BoxElement } from '../../models/SceneElement';
 import { LayoutStrategy } from './LayoutStrategy';
 import { RelationshipManager } from '../RelationshipManager';
 
+/**
+ * Force-directed layout for live SceneElement graphs, dispatched by
+ * LayoutManager. Note this uses Math.random() as a coincident-node tie-break
+ * (non-deterministic across runs). The newer AQIR-driven counterpart,
+ * packages/runtime/src/layout/strategies/ForceDirectedLayout.ts, implements
+ * the same Fruchterman-Reingold approach but deterministically (no Math.random,
+ * no gravity term, linear cooling vs this file's exponential cooling) — that
+ * one is the intended long-term replacement. If you retune forces here,
+ * check whether the same tuning should move to that file too.
+ */
 export interface GraphLayoutOptions {
   iterations?: number;
   repulsion?: number;

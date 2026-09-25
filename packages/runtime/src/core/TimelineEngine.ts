@@ -116,3 +116,48 @@ export class TimelineEngine {
     return this.isPlaying;
   }
 }
+
+/**
+ * A timeline with no real time: `play()` completes every queued keyframe
+ * immediately, in timeline order, firing each keyframe's `complete`
+ * callback (where handlers apply deferred effects such as removing a
+ * deleted element or logging). Used for headless execution — the dry run
+ * that counts a program's steps, and tests — and never touches anime.js.
+ */
+export class InstantTimelineEngine extends TimelineEngine {
+  private keyframes: { params: any; offset: number; order: number }[] = [];
+  private onDone: (() => void) | null = null;
+
+  public init(onComplete?: () => void): void {
+    this.keyframes = [];
+    this.onDone = onComplete || null;
+  }
+
+  public addKeyframe(params: any, offset: string | number = 0): void {
+    this.keyframes.push({ params, offset: typeof offset === 'number' ? offset : 0, order: this.keyframes.length });
+  }
+
+  public play(): void {
+    const frames = this.keyframes.sort((a, b) => a.offset - b.offset || a.order - b.order);
+    this.keyframes = [];
+    for (const frame of frames) frame.params.complete?.();
+    this.triggerComplete();
+  }
+
+  public playUntil(_timeMs: number, onPause?: () => void): void {
+    this.play();
+    onPause?.();
+  }
+
+  public triggerComplete(): void {
+    const done = this.onDone;
+    this.onDone = null;
+    done?.();
+  }
+
+  public pause(): void {}
+  public seek(_time: number): void {}
+  public setPlaybackRate(_rate: number): void {}
+  public getCurrentTime(): number { return 0; }
+  public getDuration(): number { return 0; }
+}

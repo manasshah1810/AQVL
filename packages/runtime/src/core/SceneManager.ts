@@ -17,10 +17,10 @@ export class SceneManager {
 
     // Bootstrap visual elements strictly from the compiler's Object payload
     objects.forEach((obj) => {
-      if (obj.type === 'ARRAY_ELEMENT' || obj.type === 'TREE_NODE' || obj.type === 'NODE' || obj.type === 'VERTEX' || obj.type === 'MATRIX_ELEMENT' || obj.type === 'GRID_ELEMENT' || obj.type === 'sphere' || obj.type === 'TREE' || obj.type === 'BINARY_TREE') {
+      if (obj.type === 'ARRAY_ELEMENT' || obj.type === 'TREE_NODE' || obj.type === 'NODE' || obj.type === 'VERTEX' || obj.type === 'MATRIX_ELEMENT' || obj.type === 'GRID_ELEMENT' || obj.type === 'sphere' || obj.type === 'TREE' || obj.type === 'BINARY_TREE' || obj.type === 'BST' || obj.type === 'STACK_ELEMENT' || obj.type === 'QUEUE_ELEMENT' || obj.type === 'HEAP_NODE' || obj.type === 'HEAP_ARRAY_ELEMENT') {
         const el: any = {
           id: obj.id, // e.g. obj_001
-          type: obj.type === 'sphere' ? 'sphere' : 'box',
+          type: obj.type === 'sphere' ? 'sphere' : (['TREE', 'BINARY_TREE', 'BST'].includes(obj.type) ? obj.type : 'box'),
           value: obj.value,
           index: obj.logicalIndex || 0,
           logicalIndex: obj.logicalIndex,

@@ -2,6 +2,16 @@ import { SceneElement, BoxElement } from '../../models/SceneElement';
 import { LayoutStrategy } from './LayoutStrategy';
 import { RelationshipManager } from '../RelationshipManager';
 
+/**
+ * Subtree-width tree layout for live SceneElement trees, dispatched by
+ * LayoutManager. Uses naive recursion (post-order width pass, pre-order
+ * placement) — can stack-overflow on deep/degenerate trees. The newer
+ * AQIR-driven counterpart, packages/runtime/src/layout/strategies/HierarchyLayout.ts,
+ * mirrors this same algorithm generalized to the LayoutEngine's element-input
+ * shape, but with an iterative explicit-stack traversal instead. Keep the
+ * levelSpacing/siblingSpacing defaults (2.0/1.5) in sync between the two if
+ * you change them here.
+ */
 export interface TreeLayoutOptions {
   levelSpacing?: number;
   siblingSpacing?: number;
@@ -33,9 +43,15 @@ export class TreeLayoutStrategy implements LayoutStrategy {
 
   public applyLayout(elements: SceneElement[], relationshipManager: RelationshipManager): Map<string, { x: number; y: number; z: number }> {
     const map = new Map<string, { x: number; y: number; z: number }>();
-    const nodes = elements.filter(el => el.type === 'box' || el.originalType === 'TREE_NODE');
+    const nodes = elements.filter(
+      el =>
+        el.type === 'box' ||
+        el.type === 'sphere' ||
+        el.originalType === 'TREE_NODE' ||
+        el.originalType === 'TRIE_NODE' ||
+        el.originalType === 'HEAP_NODE'
+    );
     const edges = elements.filter(el => el.type === 'edge' || el.originalType === 'EDGE') as any[];
-    console.log(`[TreeLayoutStrategy] nodes: ${nodes.length}, edges: ${edges.length}`, elements);
 
     if (nodes.length === 0) return map;
 
