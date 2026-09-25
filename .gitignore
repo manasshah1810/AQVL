@@ -32,3 +32,9 @@ pnpm-debug.log*
 # Temporal files
 .tmp/
 temp/
+
+# Local tooling / scratch
+.claude/
+scratch/
+packages/compiler/probe_*.ts
+packages/compiler/smoke*.ts
