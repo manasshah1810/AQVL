@@ -10,6 +10,12 @@ export type {
   LinkObjectsInstruction,
   GenericActionInstruction,
   SetStateInstruction,
+  UpdateLayoutInstruction,
+  ShowComparisonLinkInstruction,
+  HideComparisonLinkInstruction,
+  SetPartitionBoundaryInstruction,
+  ClearPartitionBoundaryInstruction,
+  MarkSortedRegionInstruction,
 } from './aqir/types';
 
 export {
@@ -64,4 +70,34 @@ export type {
   AnticipationType,
   AnticipationConfig,
 } from './theme/anticipationSystem';
+
+export {
+  AQVLError,
+  CompileError,
+  TokenError,
+  SyntaxError,
+  ParseError,
+  SemanticError,
+  UndeclaredVariableError,
+  UndeclaredFunctionError,
+  DuplicateDeclarationError,
+  ReturnOutsideFunctionError,
+  WrongArgumentCountError,
+  TypeMismatchError,
+  RuntimeError,
+  StackUnderflowError,
+  StackOverflowError,
+  UndefinedVariableError,
+  OutOfBoundsError,
+  DivisionByZeroError,
+  JumpTargetError,
+  FunctionNotFoundError,
+  formatError,
+  formatErrors,
+  findClosestMatch,
+  suggestFor,
+  generateErrorMessage,
+} from './errors';
+
+export type { AQVLErrorOptions } from './errors';
 

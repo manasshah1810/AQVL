@@ -88,3 +88,48 @@ export interface UpdateLayoutInstruction extends AQIRInstruction {
   action: 'UPDATE_LAYOUT';
 }
 
+// ───────────────────────────────────────────────────────────────────────
+// Relationship/region instructions (docs/design/array-visual-language-spec.md
+// §4) — signal connections and boundaries spanning multiple elements, as
+// distinct from the single-element HIGHLIGHT_OBJECT/SET_STATE actions above.
+// ───────────────────────────────────────────────────────────────────────
+
+// Action: SHOW_COMPARISON_LINK
+export interface ShowComparisonLinkInstruction extends AQIRInstruction {
+  action: 'SHOW_COMPARISON_LINK';
+  elementIdA: string;
+  elementIdB: string;
+  /** Visual treatment of the link, e.g. 'beam' (§4.1's default arcing tube). */
+  style?: string;
+}
+
+// Action: HIDE_COMPARISON_LINK
+export interface HideComparisonLinkInstruction extends AQIRInstruction {
+  action: 'HIDE_COMPARISON_LINK';
+  elementIdA: string;
+  elementIdB: string;
+}
+
+// Action: SET_PARTITION_BOUNDARY
+export interface SetPartitionBoundaryInstruction extends AQIRInstruction {
+  action: 'SET_PARTITION_BOUNDARY';
+  structureId: string;
+  startIndex: number;
+  endIndex: number;
+  label?: string;
+}
+
+// Action: CLEAR_PARTITION_BOUNDARY
+export interface ClearPartitionBoundaryInstruction extends AQIRInstruction {
+  action: 'CLEAR_PARTITION_BOUNDARY';
+  structureId: string;
+}
+
+// Action: MARK_SORTED_REGION
+export interface MarkSortedRegionInstruction extends AQIRInstruction {
+  action: 'MARK_SORTED_REGION';
+  structureId: string;
+  startIndex: number;
+  endIndex: number;
+}
+

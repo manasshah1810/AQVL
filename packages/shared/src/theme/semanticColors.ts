@@ -169,6 +169,8 @@ export function normalizeSemanticState(stateName?: string): SemanticState {
     case 'HEAD':
     case 'NULL':
     case 'BOUNDARY_NODE':
+    case 'WINDOW':
+    case 'MARKED':
       return 'AUXILIARY';
 
     case 'STRUCTURAL':
