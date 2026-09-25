@@ -248,7 +248,8 @@ export default function Playground() {
       const isCurrentRun = () => runIdRef.current === runId;
       engine.eventDispatcher.on('SCENE_LOADED', () => {
         if (!isCurrentRun()) return;
-        setSceneState({ ...engine.stateManager.getCurrentState() });
+        const current = engine.stateManager.getCurrentState();
+        if (current) setSceneState({ ...current });
       });
       engine.eventDispatcher.on('STATE_UPDATED', (newState) => {
         if (!isCurrentRun()) return;
