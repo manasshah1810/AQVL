@@ -1,75 +1,31 @@
 import React, { useState, useRef } from 'react';
-import { Canvas, useFrame, useThree } from '@react-three/fiber';
+import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Environment, Grid, ContactShadows } from '@react-three/drei';
 import type { SceneState } from '@aqvl/runtime';
-import { SceneElementRenderer } from './SceneElementRenderer';
-import { ArrayRenderer } from './library/ArrayRenderer';
-import { LinkedListRenderer } from './library/LinkedListRenderer';
-import { StackRenderer } from './library/StackRenderer';
-import { QueueRenderer } from './library/QueueRenderer';
-import { TreeRenderer } from './library/TreeRenderer';
-import { GraphRenderer } from './library/GraphRenderer';
-import * as THREE from 'three';
+import { GenericSceneRenderer } from './generic/GenericSceneRenderer';
+import type { CameraControllerHandle } from './camera/CameraController';
+import type { ArrayCameraChoreographer } from './array/ArrayCameraChoreographer';
+import { isArrayDominantScene, computeArrayLightingProfile, DEFAULT_LIGHTING_PROFILE } from './array/arraySceneLighting';
 
 export interface AQVECanvasProps {
   sceneState: SceneState | null;
+  /** Optional array-operation camera emphasis — see ArrayCameraChoreographer.ts. */
+  arrayCameraChoreographer?: ArrayCameraChoreographer;
 }
 
-const CameraRig = ({ sceneState, autoFollow }: { sceneState: SceneState | null; autoFollow: boolean }) => {
-  const { controls } = useThree();
-  useFrame(() => {
-    if (!sceneState || !controls || !autoFollow) return;
-    
-    // Calculate center of elements that are active (raised y > 0.1)
-    let totalX = 0;
-    let count = 0;
-    let hasTree = false;
-    let maxTreeY = 0;
-
-    sceneState.elements.forEach((el) => {
-      if (el.originalType === 'TREE_NODE' || el.originalType === 'HEAP_NODE' || el.originalType === 'TRIE_NODE') {
-        hasTree = true;
-        if (el.position && el.position.y > maxTreeY) {
-          maxTreeY = el.position.y;
-        }
-      }
-      if (el.position && el.position.y > 0.1) {
-        totalX += el.position.x;
-        count++;
-      }
-    });
-
-    if (count > 0 && (controls as any).target) {
-      const centerX = totalX / count;
-      const target = (controls as any).target as THREE.Vector3;
-      // Soft lerp camera target towards center X
-      target.x = THREE.MathUtils.lerp(target.x, centerX, 0.03);
-      
-      if (hasTree && maxTreeY > 0) {
-        // Adjust camera target Y based on tree height to prevent top node from being cut off
-        target.y = THREE.MathUtils.lerp(target.y, maxTreeY / 2, 0.03);
-      } else {
-        target.y = THREE.MathUtils.lerp(target.y, 0, 0.03);
-      }
-    }
-  });
-  return null;
-};
-
-export const AQVECanvas: React.FC<AQVECanvasProps> = ({ sceneState }) => {
+export const AQVECanvas: React.FC<AQVECanvasProps> = ({ sceneState, arrayCameraChoreographer }) => {
   const [autoFollow, setAutoFollow] = useState(true);
   const controlsRef = useRef<any>(null);
+  const cameraControllerRef = useRef<CameraControllerHandle>(null);
 
   const handleResetCamera = () => {
-    setAutoFollow(true);
-    if (controlsRef.current) {
-      controlsRef.current.reset();
-    }
+    cameraControllerRef.current?.reset();
   };
 
-  const handleControlStart = () => {
-    setAutoFollow(false);
-  };
+  // Array scenes get lighting/environment/shadow-catcher tuning specific to them (see
+  // arraySceneLighting.ts and docs/design/array-visual-polish-notes.md); every other
+  // structure keeps the original, untouched defaults.
+  const lighting = isArrayDominantScene(sceneState) ? computeArrayLightingProfile(sceneState) : DEFAULT_LIGHTING_PROFILE;
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
@@ -103,119 +59,72 @@ export const AQVECanvas: React.FC<AQVECanvasProps> = ({ sceneState }) => {
       <Canvas shadows camera={{ position: [0, 3, 10], fov: 45 }}>
         {/* @ts-ignore */}
         <color attach="background" args={['#111111']} />
-        
-        <ambientLight intensity={0.4} />
-        <directionalLight 
-          position={[5, 10, 5]} 
-          intensity={1.5} 
-          castShadow 
-          shadow-mapSize={[1024, 1024]}
+
+        <ambientLight intensity={lighting.ambientIntensity} />
+        <directionalLight
+          position={[5, 10, 5]}
+          intensity={lighting.keyIntensity}
+          castShadow
+          shadow-mapSize={lighting.keyShadowMapSize}
           shadow-bias={-0.0001}
+          shadow-camera-left={lighting.keyShadowCameraBounds.left}
+          shadow-camera-right={lighting.keyShadowCameraBounds.right}
+          shadow-camera-top={lighting.keyShadowCameraBounds.top}
+          shadow-camera-bottom={lighting.keyShadowCameraBounds.bottom}
+          shadow-camera-near={lighting.keyShadowCameraBounds.near}
+          shadow-camera-far={lighting.keyShadowCameraBounds.far}
         />
-        
+        {/* Soft neutral-white fill (opposite the key) so the shadow-facing side of each
+            element reads as "in soft shadow," not unlit black. No castShadow — a second
+            shadow-casting light would double up on contact-shadow density. Kept strictly
+            neutral: AQVL's semantic color vocabulary depends on exact hues, so a tinted
+            fill (the usual 3-point-lighting move) would be a correctness risk here. */}
+        {lighting.fillIntensity > 0 && (
+          <directionalLight position={[-6, 4, 9]} intensity={lighting.fillIntensity} color="#ffffff" />
+        )}
+        {/* Dim backlight separating elements' far edge from the near-black background. */}
+        {lighting.rimIntensity > 0 && (
+          <directionalLight position={[0, 6, -8]} intensity={lighting.rimIntensity} color="#ffffff" />
+        )}
+
         {/* Environment lighting for premium reflections */}
-        <Environment preset="city" />
+        <Environment preset={lighting.environmentPreset} environmentIntensity={lighting.environmentIntensity} />
 
         {/* Grid helper for visual reference */}
-        <Grid 
-          position={[0, -0.5, 0]} 
-          args={[30, 30]} 
-          cellSize={1} 
-          cellThickness={0.5} 
-          cellColor="#2a2a2a" 
-          sectionSize={3} 
-          sectionThickness={1} 
-          sectionColor="#444444" 
-          fadeDistance={25} 
-          fadeStrength={1} 
+        <Grid
+          position={[0, -0.5, 0]}
+          args={[lighting.gridExtent, lighting.gridExtent]}
+          cellSize={1}
+          cellThickness={0.5}
+          cellColor="#2a2a2a"
+          sectionSize={3}
+          sectionThickness={1}
+          sectionColor="#444444"
+          fadeDistance={lighting.gridFadeDistance}
+          fadeStrength={1}
         />
 
-        <ContactShadows position={[0, -0.49, 0]} opacity={0.6} scale={20} blur={2.5} far={4} />
+        <ContactShadows
+          position={[0, -0.49, 0]}
+          opacity={lighting.contactShadow.opacity}
+          scale={lighting.contactShadow.scale}
+          blur={lighting.contactShadow.blur}
+          far={lighting.contactShadow.far}
+        />
 
-        {/* Camera logic */}
-        <CameraRig sceneState={sceneState} autoFollow={autoFollow} />
-
-        {/* Passively render all elements from the scene state */}
-        {sceneState && (() => {
-          const elements = Array.from(sceneState.elements.values());
-          const arrayGroups: Record<string, any[]> = {};
-          const linkedListGroups: Record<string, any[]> = {};
-          const stackGroups: Record<string, any[]> = {};
-          const queueGroups: Record<string, any[]> = {};
-          const treeGroups: Record<string, any[]> = {};
-          const heapArrayGroups: Record<string, any[]> = {};
-          const graphGroups: Record<string, any[]> = {};
-          const standalone: any[] = [];
-          
-          elements.forEach((el: any) => {
-            if (el.originalType === 'ARRAY_ELEMENT' && el.logicalParent) {
-              if (!arrayGroups[el.logicalParent]) arrayGroups[el.logicalParent] = [];
-              arrayGroups[el.logicalParent].push(el);
-            } else if (el.originalType === 'HEAP_ARRAY_ELEMENT' && el.logicalParent) {
-              if (!heapArrayGroups[el.logicalParent]) heapArrayGroups[el.logicalParent] = [];
-              heapArrayGroups[el.logicalParent].push(el);
-            } else if ((el.originalType === 'LINKEDLIST_NODE' || (el.originalType === 'EDGE' && el.logicalParent && elements.some((e: any) => e.originalType === 'LINKEDLIST_NODE' && e.logicalParent === el.logicalParent))) && el.logicalParent) {
-              if (!linkedListGroups[el.logicalParent]) linkedListGroups[el.logicalParent] = [];
-              linkedListGroups[el.logicalParent].push(el);
-            } else if (el.originalType === 'STACK_ELEMENT' && el.logicalParent) {
-              if (!stackGroups[el.logicalParent]) stackGroups[el.logicalParent] = [];
-              stackGroups[el.logicalParent].push(el);
-            } else if (el.originalType === 'QUEUE_ELEMENT' && el.logicalParent) {
-              if (!queueGroups[el.logicalParent]) queueGroups[el.logicalParent] = [];
-              queueGroups[el.logicalParent].push(el);
-            } else if ((el.originalType === 'TREE_NODE' || el.originalType === 'HEAP_NODE' || el.originalType === 'TRIE_NODE' || (el.originalType === 'EDGE' && el.logicalParent && elements.some((e: any) => (e.originalType === 'TREE_NODE' || e.originalType === 'HEAP_NODE' || e.originalType === 'TRIE_NODE') && e.logicalParent === el.logicalParent))) && el.logicalParent) {
-              if (!treeGroups[el.logicalParent]) treeGroups[el.logicalParent] = [];
-              treeGroups[el.logicalParent].push(el);
-            } else if ((el.originalType === 'VERTEX' || el.originalType === 'GRAPH_EDGE' || (el.originalType === 'EDGE' && el.logicalParent && elements.some((e: any) => e.originalType === 'VERTEX' && e.logicalParent === el.logicalParent))) && el.logicalParent) {
-              if (!graphGroups[el.logicalParent]) graphGroups[el.logicalParent] = [];
-              graphGroups[el.logicalParent].push(el);
-            } else {
-              standalone.push(el);
-            }
-          });
-
-          return (
-            <>
-              {Object.keys(arrayGroups).map((parent: string) => {
-                const els = arrayGroups[parent];
-                return <ArrayRenderer key={parent} parentName={parent} elements={els} sceneState={sceneState} />;
-              })}
-              {Object.keys(heapArrayGroups).map((parent: string) => {
-                const els = heapArrayGroups[parent];
-                return <ArrayRenderer key={parent} parentName={parent} elements={els} sceneState={sceneState} />;
-              })}
-              {Object.keys(linkedListGroups).map((parent: string) => {
-                const els = linkedListGroups[parent];
-                return <LinkedListRenderer key={parent} parentName={parent} elements={els} sceneState={sceneState} />;
-              })}
-              {Object.keys(stackGroups).map((parent: string) => {
-                const els = stackGroups[parent];
-                return <StackRenderer key={parent} parentName={parent} elements={els} sceneState={sceneState} />;
-              })}
-              {Object.keys(queueGroups).map((parent: string) => {
-                const els = queueGroups[parent];
-                return <QueueRenderer key={parent} parentName={parent} elements={els} sceneState={sceneState} />;
-              })}
-              {Object.keys(treeGroups).map((parent: string) => {
-                const els = treeGroups[parent];
-                return <TreeRenderer key={parent} parentName={parent} elements={els} sceneState={sceneState} />;
-              })}
-              {Object.keys(graphGroups).map((parent: string) => {
-                const els = graphGroups[parent];
-                return <GraphRenderer key={parent} parentName={parent} elements={els} sceneState={sceneState} />;
-              })}
-              {standalone.map(el => (
-                <SceneElementRenderer key={el.id} element={el} sceneState={sceneState} />
-              ))}
-            </>
-          );
-        })()}
+        {/* Passively render all elements from the scene state via the generic, structure-agnostic renderer,
+            which also mounts the CameraController driving SET_CAMERA (AUTO_FIT/FOCUS/ORBIT/POSITION) */}
+        <GenericSceneRenderer
+          sceneState={sceneState}
+          cameraControllerRef={cameraControllerRef}
+          onAutoFollowChange={setAutoFollow}
+          arrayCameraChoreographer={arrayCameraChoreographer}
+        />
 
         {/* Advanced Camera Controls */}
-        <OrbitControls 
+        <OrbitControls
           ref={controlsRef}
-          makeDefault 
-          onStart={handleControlStart}
+          makeDefault
           enableDamping
           dampingFactor={0.05}
           maxDistance={35}

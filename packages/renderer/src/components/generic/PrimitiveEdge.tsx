@@ -1,22 +1,32 @@
 import React, { useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
-import { EdgeElement, SceneState } from '@aqvl/runtime';
 import { Line } from '@react-three/drei';
 import {
   isElementActive,
-  getHighlightAccentColor,
   getUnifiedMaterialConfig,
   applyUnifiedMaterial,
   MATERIAL_PRESETS,
 } from '@aqvl/shared';
 import * as THREE from 'three';
+import { EdgeStyle, HighlightState, Vec3 } from './types';
 
-export interface EdgeRendererProps {
-  element: EdgeElement;
-  sceneState: SceneState;
+export interface PrimitiveEdgeProps {
+  from: Vec3;
+  to: Vec3;
+  color?: string;
+  emissiveColor?: string;
+  style?: EdgeStyle;
+  highlightState?: HighlightState;
 }
 
-export const EdgeRenderer: React.FC<EdgeRendererProps> = ({ element, sceneState }) => {
+export const PrimitiveEdge: React.FC<PrimitiveEdgeProps> = ({
+  from,
+  to,
+  color,
+  emissiveColor,
+  style = 'solid',
+  highlightState,
+}) => {
   const lineRef = useRef<any>(null);
   const arrowRef = useRef<THREE.Mesh>(null);
   const arrowMaterialRef = useRef<THREE.MeshStandardMaterial>(null);
@@ -24,66 +34,42 @@ export const EdgeRenderer: React.FC<EdgeRendererProps> = ({ element, sceneState 
 
   const initialMatConfig = getUnifiedMaterialConfig({
     category: 'EDGE',
-    state: element.state,
-    color: element.color,
-    emissiveColor: element.emissiveColor,
-    emissiveIntensity: element.emissiveIntensity,
-    opacity: element.opacity,
+    state: highlightState?.state,
+    color,
+    emissiveColor,
     highlightProgress: 0,
   });
 
   useFrame((state, delta) => {
-    const sourceEl = sceneState.elements.get(element.sourceId);
-    const targetEl = sceneState.elements.get(element.targetId);
-
-    const sourceActive = sourceEl ? isElementActive(sourceEl) : false;
-    const targetActive = targetEl ? isElementActive(targetEl) : false;
-    const edgeActive = isElementActive(element) || sourceActive || targetActive;
-
+    const active = isElementActive(highlightState ?? {});
     const time = state.clock.getElapsedTime();
 
     highlightProgress.current = THREE.MathUtils.lerp(
       highlightProgress.current,
-      edgeActive ? 1.0 : 0.0,
+      active ? 1.0 : 0.0,
       Math.min(1.0, delta * 12)
     );
 
     const currentProgress = highlightProgress.current;
 
-    if (sourceEl && targetEl && lineRef.current) {
-      const p1 = new THREE.Vector3(sourceEl.position.x, sourceEl.position.y, sourceEl.position.z);
-      const p2 = new THREE.Vector3(targetEl.position.x, targetEl.position.y, targetEl.position.z);
-      let points = [p1, p2];
-      const anyEl = element as any;
-      let isCurve = anyEl.backward || anyEl.circular;
-      let curve: THREE.QuadraticBezierCurve3 | null = null;
+    if (lineRef.current) {
+      const p1 = new THREE.Vector3(from.x, from.y, from.z);
+      const p2 = new THREE.Vector3(to.x, to.y, to.z);
+      const points = [p1, p2];
 
-      if (isCurve) {
-        const mid = p1.clone().lerp(p2, 0.5);
-        mid.y += anyEl.circular ? -2 : 1.5;
-        curve = new THREE.QuadraticBezierCurve3(p1, mid, p2);
-        points = curve.getPoints(20);
-      }
-
-      // Update line points safely for Drei Line / Line2
       if (lineRef.current.geometry && typeof lineRef.current.geometry.setPositions === 'function') {
         const flatArray: number[] = [];
-        points.forEach((p: THREE.Vector3) => {
-          flatArray.push(p.x, p.y, p.z);
-        });
+        points.forEach((p) => flatArray.push(p.x, p.y, p.z));
         lineRef.current.geometry.setPositions(flatArray);
       } else if (typeof lineRef.current.setPoints === 'function') {
         lineRef.current.setPoints(points);
       }
 
-      // Centralized Material System updates
       const matConfig = getUnifiedMaterialConfig({
         category: 'EDGE',
-        state: element.state,
-        color: element.color,
-        emissiveColor: element.emissiveColor,
-        emissiveIntensity: element.emissiveIntensity,
-        opacity: element.opacity,
+        state: highlightState?.state,
+        color,
+        emissiveColor,
         highlightProgress: currentProgress,
         time,
       });
@@ -91,7 +77,7 @@ export const EdgeRenderer: React.FC<EdgeRendererProps> = ({ element, sceneState 
       if (lineRef.current.material) {
         lineRef.current.material.color.copy(matConfig.color);
         const baseLineWidth = MATERIAL_PRESETS.EDGE.lineWidth ?? 2.5;
-        const targetLineWidth = baseLineWidth + currentProgress * 2.5; // 2.5px inactive -> 5.0px active
+        const targetLineWidth = baseLineWidth + currentProgress * 2.5;
         if (typeof lineRef.current.material.linewidth !== 'undefined') {
           lineRef.current.material.linewidth = targetLineWidth;
         }
@@ -103,28 +89,14 @@ export const EdgeRenderer: React.FC<EdgeRendererProps> = ({ element, sceneState 
         applyUnifiedMaterial(arrowMaterialRef.current, matConfig);
       }
 
-      // If directed, update arrowhead position/rotation
-      if (element.directed && arrowRef.current) {
+      if (style === 'arrow' && arrowRef.current) {
         const distance = p1.distanceTo(p2);
         if (distance > 0.6) {
-          let arrowPos: THREE.Vector3;
-          let dir: THREE.Vector3;
-
-          if (isCurve && curve) {
-            const curveLength = curve.getLength();
-            const t = Math.max(0, 1 - 0.7 / curveLength);
-            arrowPos = curve.getPointAt(t);
-            dir = curve.getTangentAt(t).normalize();
-          } else {
-            dir = new THREE.Vector3().subVectors(p2, p1).normalize();
-            arrowPos = p2.clone().sub(dir.clone().multiplyScalar(0.7));
-          }
+          const dir = new THREE.Vector3().subVectors(p2, p1).normalize();
+          const arrowPos = p2.clone().sub(dir.clone().multiplyScalar(0.62));
 
           arrowRef.current.position.copy(arrowPos);
-          arrowRef.current.quaternion.setFromUnitVectors(
-            new THREE.Vector3(0, 1, 0),
-            dir
-          );
+          arrowRef.current.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
           arrowRef.current.visible = true;
         } else {
           arrowRef.current.visible = false;
@@ -137,14 +109,19 @@ export const EdgeRenderer: React.FC<EdgeRendererProps> = ({ element, sceneState 
     <group>
       <Line
         ref={lineRef}
-        points={[[0, 0, 0], [0, 0, 0]]}
+        points={[
+          [from.x, from.y, from.z],
+          [to.x, to.y, to.z],
+        ]}
         color={`#${initialMatConfig.color.getHexString()}`}
         lineWidth={MATERIAL_PRESETS.EDGE.lineWidth ?? 2.5}
-        dashed={false}
+        dashed={style === 'dashed'}
+        dashSize={style === 'dashed' ? 0.15 : undefined}
+        gapSize={style === 'dashed' ? 0.1 : undefined}
       />
-      {element.directed && (
+      {style === 'arrow' && (
         <mesh ref={arrowRef}>
-          <coneGeometry args={[0.15, 0.4, 8]} />
+          <coneGeometry args={[0.08, 0.25, 8]} />
           <meshStandardMaterial
             ref={arrowMaterialRef}
             color={initialMatConfig.color}

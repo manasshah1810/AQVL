@@ -9,7 +9,7 @@ import {
 import * as THREE from 'three';
 
 export interface HighlightRingProps {
-  type: 'box' | 'sphere';
+  type: 'box' | 'sphere' | 'cylinder';
   color: string;
   emissiveColor: string;
   opacity: number; // 0.0 to 1.0
