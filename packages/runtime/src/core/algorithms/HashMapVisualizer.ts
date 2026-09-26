@@ -31,6 +31,12 @@ export class HashMapVisualizer implements AlgorithmHandler {
   static readonly ENTRY_COLOR = '#26a69a';
   static readonly NEUTRAL_EMISSIVE = '#000000';
 
+  /** An entry's label, `key: value`, with TRUE / FALSE / NULL written as in AQVL. */
+  static label(key: unknown, value: unknown): string {
+    const show = (v: unknown) => (v === true ? 'TRUE' : v === false ? 'FALSE' : v === null || v === undefined ? 'NULL' : typeof v === 'number' && !Number.isInteger(v) ? String(Number(v.toFixed(4))) : String(v));
+    return `${show(key)}: ${show(value)}`;
+  }
+
   execute(context: AlgorithmContext, instruction: GenericActionInstruction): void {
     const action = instruction.actionName.toUpperCase();
 
@@ -52,14 +58,14 @@ export class HashMapVisualizer implements AlgorithmHandler {
   private getBuckets(context: AlgorithmContext, name: string): any[] {
     return context.sceneManager
       .getSceneGraph()
-      .filter((el: any) => el.logicalParent === name && el.originalType === 'HASHMAP_BUCKET')
+      .filter((el: any) => el.logicalParent === name && el.originalType === 'HASHMAP_BUCKET' && !el.pendingRemoval)
       .sort((a: any, b: any) => a.logicalIndex - b.logicalIndex);
   }
 
   private getEntries(context: AlgorithmContext, name: string): any[] {
     return context.sceneManager
       .getSceneGraph()
-      .filter((el: any) => el.logicalParent === name && el.originalType === 'HASHMAP_ENTRY');
+      .filter((el: any) => el.logicalParent === name && el.originalType === 'HASHMAP_ENTRY' && !el.pendingRemoval);
   }
 
   private getEntriesInBucket(context: AlgorithmContext, name: string, bucketIndex: number): any[] {
@@ -69,10 +75,10 @@ export class HashMapVisualizer implements AlgorithmHandler {
   }
 
   /** Rebuilds a pure HashMap from the scene's current bucket count and stored entries. */
-  private reconstruct(context: AlgorithmContext, name: string): HashMap<string, any> {
+  private reconstruct(context: AlgorithmContext, name: string): HashMap<any, any> {
     const buckets = this.getBuckets(context, name);
     const capacity = buckets.length || HashMap.DEFAULT_CAPACITY;
-    const hm = new HashMap<string, any>(capacity);
+    const hm = new HashMap<any, any>(capacity);
     // Insert directly into buckets (bypassing set()'s resize check) since we
     // already know this exact entry set fit at this exact capacity.
     this.getEntries(context, name).forEach((el: any) => {
@@ -138,9 +144,26 @@ export class HashMapVisualizer implements AlgorithmHandler {
 
   /** Removes every bucket/entry element belonging to `name` from the scene (used before a resize rebuild). */
   private clearScene(context: AlgorithmContext, name: string): void {
-    [...this.getBuckets(context, name), ...this.getEntries(context, name)].forEach((el: any) => {
+    (context.sceneManager.getSceneGraph() as any[])
+      .filter((el: any) => el.logicalParent === name && el.pendingRemoval && (el.originalType === 'HASHMAP_BUCKET' || el.originalType === 'HASHMAP_ENTRY'))
+      .forEach((el: any) => {
       context.sceneManager.removeElement(el.id);
     });
+  }
+
+  /** Puts every bucket and entry of `name` exactly on its final place, full size. */
+  settle(context: AlgorithmContext, name: string): void {
+    const buckets = this.getBuckets(context, name);
+    for (const el of [...buckets, ...this.getEntries(context, name)]) {
+      const bucket = el.originalType === 'HASHMAP_ENTRY' ? buckets[el.bucketIndex] : undefined;
+      if (bucket) this.placeEntry(context, bucket, el, el.chainIndex);
+      if (el.worldTarget) {
+        el.position.x = el.worldTarget.x;
+        el.position.y = el.worldTarget.y;
+        el.position.z = el.worldTarget.z;
+      }
+      el.scale.x = el.scale.y = el.scale.z = 1;
+    }
   }
 
   /** Positions an entry element directly beneath its bucket, `chainIndex` slots down. */
@@ -170,7 +193,8 @@ export class HashMapVisualizer implements AlgorithmHandler {
     }
 
     const hm = this.reconstruct(context, name);
-    const keyStr = String(key);
+    // Keys keep their type: 7 and "7" are different keys (both hash alike).
+    const keyStr: any = key;
     const isUpdate = hm.has(keyStr);
     const beforeCapacity = hm.capacity;
     const willResize = !isUpdate && (hm.size + 1) / hm.capacity > hm.loadFactor;
@@ -196,6 +220,8 @@ export class HashMapVisualizer implements AlgorithmHandler {
     context.scheduler.enqueue({
       targets: {}, duration: 1, complete: () => {
         this.log(context, 'HASHMAP_INSERT', `Set "${keyStr}" -> ${value}. size=${hm.size}, capacity=${hm.capacity}`, 'result');
+        // Every entry of the map ends exactly in its chain slot under its bucket.
+        this.settle(context, name);
         if (context.stateManager) {
           context.stateManager.saveState(context.sceneManager.getSceneGraph(), `HashMap set ${keyStr}`, context.scheduler.getCurrentTime());
           context.eventDispatcher.dispatch('STATE_UPDATED', context.stateManager.getCurrentState());
@@ -206,7 +232,7 @@ export class HashMapVisualizer implements AlgorithmHandler {
   }
 
   /** Shows the hash computation and target bucket, highlighting any existing chain entries as collisions, then appends the new entry. */
-  visualizeInsert(context: AlgorithmContext, name: string, key: string, value: any, hashIndex: number, collisions: number): void {
+  visualizeInsert(context: AlgorithmContext, name: string, key: any, value: any, hashIndex: number, collisions: number): void {
     const buckets = this.getBuckets(context, name);
     const bucket = buckets[hashIndex];
     if (!bucket) return;
@@ -241,7 +267,7 @@ export class HashMapVisualizer implements AlgorithmHandler {
       chainIndex: chain.length,
       key,
       value,
-      label: `${key}: ${value}`,
+      label: HashMapVisualizer.label(key, value),
       position: { x: bucket.position.x, y: bucket.position.y, z: bucket.position.z },
       scale: { x: 0, y: 0, z: 0 },
       color: HashMapVisualizer.ENTRY_COLOR,
@@ -270,7 +296,7 @@ export class HashMapVisualizer implements AlgorithmHandler {
     context.scheduler.commitGroup(true);
   }
 
-  private visualizeUpdate(context: AlgorithmContext, name: string, key: string, value: any): void {
+  private visualizeUpdate(context: AlgorithmContext, name: string, key: any, value: any): void {
     const entries = this.getEntries(context, name);
     const entry = entries.find((el: any) => el.key === key);
     if (!entry) return;
@@ -280,7 +306,7 @@ export class HashMapVisualizer implements AlgorithmHandler {
     context.scheduler.commitGroup(true);
 
     entry.value = value;
-    entry.label = `${key}: ${value}`;
+    entry.label = HashMapVisualizer.label(key, value);
 
     context.scheduler.enqueue({ targets: entry, color: HashMapVisualizer.ENTRY_COLOR, emissiveIntensity: 0, duration: 250 });
     context.scheduler.commitGroup(true);
@@ -291,8 +317,10 @@ export class HashMapVisualizer implements AlgorithmHandler {
   // ─────────────────────────────────────────────────────────────────────────
 
   /** Fades out the old bucket row and rebuilds every bucket + entry at the doubled capacity, then re-inserts the triggering key. */
-  visualizeResize(context: AlgorithmContext, name: string, oldCapacity: number, newCapacity: number, hm: HashMap<string, any>, insertedKey?: string): void {
+  visualizeResize(context: AlgorithmContext, name: string, oldCapacity: number, newCapacity: number, hm: HashMap<any, any>, insertedKey?: unknown): void {
     const oldElements = [...this.getBuckets(context, name), ...this.getEntries(context, name)];
+    // The old row stays on screen while it fades out, but is no longer the map.
+    oldElements.forEach((el) => { el.pendingRemoval = true; });
     const errorToken = getSemanticColorToken('DISCARDED');
     oldElements.forEach((el) => {
       context.scheduler.enqueue({ targets: el, color: errorToken.color, emissiveColor: errorToken.emissiveColor, emissiveIntensity: 0.8, duration: 300 });
@@ -331,7 +359,7 @@ export class HashMapVisualizer implements AlgorithmHandler {
         chainIndex,
         key: k,
         value: v,
-        label: `${k}: ${v}`,
+        label: HashMapVisualizer.label(k, v),
         position: { x: bucket.position.x, y: bucket.position.y, z: bucket.position.z },
         scale: { x: 1, y: 1, z: 1 },
         color: HashMapVisualizer.ENTRY_COLOR,
@@ -372,7 +400,8 @@ export class HashMapVisualizer implements AlgorithmHandler {
     }
 
     const hm = this.reconstruct(context, name);
-    const keyStr = String(key);
+    // Keys keep their type: 7 and "7" are different keys (both hash alike).
+    const keyStr: any = key;
     const hashIndex = hm.hash(keyStr);
     const found = hm.has(keyStr);
     const value = hm.get(keyStr);
@@ -389,7 +418,7 @@ export class HashMapVisualizer implements AlgorithmHandler {
   }
 
   /** Walks the target bucket's chain entry by entry, highlighting each as it's compared, ending on a green hit or a red miss. */
-  visualizeLookup(context: AlgorithmContext, name: string, key: string, hashIndex: number, found: boolean): void {
+  visualizeLookup(context: AlgorithmContext, name: string, key: any, hashIndex: number, found: boolean): void {
     const buckets = this.getBuckets(context, name);
     const bucket = buckets[hashIndex];
     if (!bucket) return;
@@ -443,7 +472,8 @@ export class HashMapVisualizer implements AlgorithmHandler {
     }
 
     const hm = this.reconstruct(context, name);
-    const keyStr = String(key);
+    // Keys keep their type: 7 and "7" are different keys (both hash alike).
+    const keyStr: any = key;
     const hashIndex = hm.hash(keyStr);
     const existed = hm.has(keyStr);
 
@@ -462,7 +492,7 @@ export class HashMapVisualizer implements AlgorithmHandler {
   }
 
   /** Highlights the target bucket/entry, fades the entry out, then closes the gap by shifting the rest of the chain up one slot. */
-  visualizeDelete(context: AlgorithmContext, name: string, key: string, hashIndex: number): void {
+  visualizeDelete(context: AlgorithmContext, name: string, key: any, hashIndex: number): void {
     const buckets = this.getBuckets(context, name);
     const bucket = buckets[hashIndex];
     const chain = this.getEntriesInBucket(context, name, hashIndex);

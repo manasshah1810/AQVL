@@ -13,7 +13,7 @@ operation itself (standard CS content), not measurements of this codebase.
 This document is based on verified source inspection of:
 `packages/runtime/src/core/algorithms/` (`BSTAlgorithms.ts`, `BSTEngine.ts`,
 `BinaryTreeAlgorithms.ts`, `GraphEngine.ts`, `GraphAlgorithms.ts`,
-`SortEngine.ts`, `SortAlgorithms.ts`, `HeapEngine.ts`, `HashMapVisualizer.ts`,
+`SortEngine.ts`, `SortAlgorithms.ts`, `HeapEngine.ts`, `HashMapVisualizer.ts`, `HashMapProgramEngine.ts`,
 `TrieVisualizer.ts`) and `packages/runtime/src/data-structures/`.
 
 > **Note:** a keyword being documented here means a confirmed runtime handler
@@ -621,27 +621,54 @@ The older one-line min-heap shortcuts still work, implemented in
 
 ## 10. HashMap
 
-Declared with `HASH_MAP name [= {k1: v1, k2: v2}]`. Implemented in
-`HashMapVisualizer.ts` with a real separate-chaining `HashMap` in
-`packages/runtime/src/data-structures/HashMap.ts`, which resizes at load
-factor 0.75.
+Declared with `HASH_MAP name [= {k1: v1, k2: v2}]` (a bare word in the literal is
+text). A hash map is used from real code, run by `HashMapProgramEngine.ts`, with
+a real separate-chaining `HashMap` in
+`packages/runtime/src/data-structures/HashMap.ts`: 8 buckets to start, doubling
+(with every key rehashed) when a new key would push the load factor above 0.75.
+Integer keys hash as `key % capacity`; any other key as the sum of its
+character codes `% capacity`. Keys keep their type (`7` and `"7"` differ).
 
-| Operation | Syntax | Description | Complexity |
-|---|---|---|---|
-| Insert | `HASHMAP_INSERT name key value` | Insert or overwrite a key/value pair. | O(1) average, O(n) worst case (hash collisions / resize) |
-| Lookup | `HASHMAP_LOOKUP name key` | Look up the value for a key. | O(1) average, O(n) worst case |
-| Delete | `HASHMAP_DELETE name key` | Remove a key/value pair. | O(1) average, O(n) worst case |
-| Init (compiler-emitted) | *(auto-emitted, not written directly)* | `HASHMAP_INIT` plus one `HASHMAP_INSERT` per entry is auto-generated from a `HASH_MAP name = {...}` declaration's literal entries. | O(k) for k literal entries |
+| Code | Description | Complexity |
+|---|---|---|
+| `m[key] = value` | Insert a key, or overwrite its value (also `UPDATE m[key] value`). | O(1) average, O(n) worst case (collisions / resize) |
+| `m[key]` | The key's value inside any expression; a missing key stops the program. | O(1) average, O(n) worst case |
+| `CONTAINS(m, key)` | `TRUE` when the key is stored. | O(1) average, O(n) worst case |
+| `DELETE m[key]` | Remove a key; a missing key stops the program. | O(1) average, O(n) worst case |
+| `LENGTH(m)` | Number of keys. | O(1) |
+| `KEY_AT(m, i)` | The i-th key (0 to `LENGTH(m) - 1`), bucket by bucket, each chain top to bottom. | O(n) |
+| `BUCKET_OF(m, key)` / `CAPACITY(m)` | The bucket a key hashes to / the number of buckets. | O(1) |
+| `HIGHLIGHT m[key] 'COLOR'` | Mark a key's entry. | O(1) |
+| `PRINT m` | Print `{key: value, ...}` in bucket order. | O(n) |
+
+Reads of `m[key]` / `CONTAINS` in an assignment, IF / WHILE condition, call
+argument or RETURN animate the lookup (hash, bucket, chain walk); the right
+side of `AND` / `OR` only when it is evaluated.
+
+Text built-ins, usable anywhere: `TEXT_LENGTH(s)`, `CHAR_AT(s, i)` and
+`CHAR_CODE(s, i)` (positions from 0; out of range stops the program).
 
 ```aqvl
-SCENE HashMapDemo
+SCENE WordCount
 DECLARE
-  HASH_MAP h = {k1: v1, k2: v2}
+  HASH_MAP freq
+  ARRAY words = ["the", "cat", "the"]
 SEQUENCE
-  HASHMAP_LOOKUP h k1
-  HASHMAP_DELETE h k1
+  LOOP i FROM 0 TO LENGTH(words) - 1
+    IF CONTAINS(freq, words[i])
+      freq[words[i]] = freq[words[i]] + 1
+    ELSE
+      freq[words[i]] = 1
+    END
+  END
+  PRINT freq
 END
 ```
+
+The one-line built-ins run by `HashMapVisualizer.ts` still work:
+`HASHMAP_INSERT name key value`, `HASHMAP_LOOKUP name key`,
+`HASHMAP_DELETE name key`. A `HASH_MAP name = {...}` declaration compiles to
+`HASHMAP_INIT` plus one `HASHMAP_INSERT` per entry.
 
 ---
 

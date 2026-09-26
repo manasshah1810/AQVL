@@ -295,7 +295,11 @@ export class Optimizer {
   private evaluateExpressionNumber(expr: ExpressionNode): number {
     if (expr.type === 'LiteralNode') {
       if (typeof expr.value === 'number') return expr.value;
-      return parseFloat(expr.value as string);
+      // Text such as a hash map key (`DELETE m["bob"]`, `m["7"]`) is not a number: keep it as written.
+      if (expr.dataType === 'string') throw new Error(`Not a number: "${String(expr.value)}"`);
+      const value = parseFloat(expr.value as string);
+      if (Number.isNaN(value)) throw new Error(`Not a number: ${String(expr.value)}`);
+      return value;
     }
     if (expr.type === 'IdentifierNode') {
       const val = this.env.get(expr.name);

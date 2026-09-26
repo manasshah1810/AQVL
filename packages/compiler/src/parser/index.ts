@@ -70,6 +70,10 @@ export class Parser {
     'MAX', 'MIN', 'ABS', 'DEQUEUE', 'POP', 'PEEK', 'FRONT', 'REAR', 'IS_EMPTY', 'NEW_NODE',
     // Graphs: `v = VERTEX(g, "A")`, `w = NEIGHBOR(v, i)`, `DEGREE(v)`, `WEIGHT(u, w)`, ...
     'VERTEX', 'VERTEX_AT', 'VERTEX_COUNT', 'EDGE_AT', 'EDGE_COUNT', 'DEGREE', 'IN_DEGREE', 'NEIGHBOR', 'WEIGHT', 'HAS_EDGE',
+    // Hash maps: `CONTAINS(m, key)`, `KEY_AT(m, i)`, `BUCKET_OF(m, key)`, `CAPACITY(m)`
+    'CONTAINS', 'KEY_AT', 'BUCKET_OF', 'CAPACITY',
+    // Text: `TEXT_LENGTH(s)`, `CHAR_AT(s, i)`, `CHAR_CODE(s, i)`
+    'TEXT_LENGTH', 'CHAR_AT', 'CHAR_CODE',
   ]);
 
   /** A keyword token that may be used as a name here (see RESERVED_WORDS). */

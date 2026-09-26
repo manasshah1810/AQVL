@@ -1,5 +1,6 @@
 import type { AQIRInstruction, AQIRObject, SwapObjectsInstruction, CompareObjectsInstruction, HighlightObjectInstruction, LinkObjectsInstruction, GenericActionInstruction, SetStateInstruction, SetPartitionBoundaryInstruction, ClearPartitionBoundaryInstruction, MarkSortedRegionInstruction } from '@aqvl/shared';
 import { getSemanticColorToken, normalizeSemanticState } from '@aqvl/shared';
+import { AQIROpcode } from '../types';
 import { AnimationScheduler } from './AnimationScheduler';
 import { SceneManager } from './SceneManager';
 import { LayoutManager } from './LayoutManager';
@@ -52,6 +53,7 @@ import type { LinkedListContext } from './algorithms/LinkedListEngine';
 import { LinkedListEngine as LinkedListModel, LinkedListError } from './algorithms/LinkedListEngine';
 import { TreeEngine, TreeError, type TreeContext } from './algorithms/TreeEngine';
 import { HeapProgramEngine, HeapIndexError } from './algorithms/HeapProgramEngine';
+import { HashMapProgramEngine } from './algorithms/HashMapProgramEngine';
 import { GraphProgramEngine } from './algorithms/GraphProgramEngine';
 import { AQVLVirtualMachine, type StepCallback } from '../VirtualMachine';
 import type { VMInstruction, FunctionTable, ExecutionResult } from '../types';
@@ -94,6 +96,8 @@ export class AnimationController {
   private graphEngine: GraphProgramEngine = new GraphProgramEngine();
   /** Heaps used by real code: `h[i]`, LENGTH(h), SWAP, `h[i] = v`, INSERT h v, DELETE of the last cell (see HeapProgramEngine.ts) */
   private heapEngine: HeapProgramEngine = new HeapProgramEngine();
+  /** Hash maps used by real code: `m[key] = v`, `m[key]`, CONTAINS, DELETE m[key], LENGTH, KEY_AT, ... (see HashMapProgramEngine.ts) */
+  private hashMapEngine: HashMapProgramEngine = new HashMapProgramEngine();
   /**
    * Live reference to the currently-executing VM, set in `createExecutionVM`
    * so that `resolveElementId` can call `vm.getVariable()` to read loop
@@ -284,7 +288,9 @@ export class AnimationController {
           ? this.linkedListEngine.valueAt(this.llContext(), arrayName, index)
           : this.readArrayValue(arrayName, index),
       (arrayName) =>
-        this.heapEngine.isHeap(this.llContext(), arrayName)
+        this.hashMapEngine.isHashMap(this.llContext(), arrayName)
+          ? this.hashMapEngine.length(this.llContext(), arrayName)
+          : this.heapEngine.isHeap(this.llContext(), arrayName)
           ? this.heapEngine.length(this.llContext(), arrayName)
           : this.linkedListEngine.isList(this.llContext(), arrayName)
           ? this.linkedListEngine.length(this.llContext(), arrayName)
@@ -300,7 +306,12 @@ export class AnimationController {
     // pointer-variable assignments (`curr = curr.next`) animated as steps
     // of their own.
     // Graphs: `NEIGHBOR(v, i)`, `DEGREE(v)`, `WEIGHT(u, w)`, ... read live from the scene.
-    vm.setGraphReader((fn, args, text, argTexts) => this.graphEngine.read(this.treeContext(), fn, args, text, argTexts));
+    vm.setGraphReader((fn, args, text, argTexts) =>
+      HashMapProgramEngine.READS.has(fn)
+        ? this.hashMapEngine.read(this.llContext(), fn, args, text)
+        : this.graphEngine.read(this.treeContext(), fn, args, text, argTexts)
+    );
+    vm.setReadObserver((instr) => this.animateHashMapReads(vm, instr));
     vm.setMemberReader((object, member, objectExpr) =>
       this.graphEngine.owns(this.treeContext(), object)
         ? this.graphEngine.readMember(this.treeContext(), object, member, objectExpr)
@@ -477,6 +488,55 @@ export class AnimationController {
       return true;
     }
     return false;
+  }
+
+  /**
+   * Before an assignment, condition, call or RETURN runs, animates each
+   * hash-map lookup it will read (`m[key]`, CONTAINS(m, key)), in the order
+   * the VM evaluates them — the right side of AND / OR only when it will be
+   * evaluated. A read that cannot be worked out here (a missing key inside
+   * another key) is left for the real evaluation to report.
+   */
+  private async animateHashMapReads(vm: AQVLVirtualMachine, instr: any): Promise<void> {
+    const ctx = this.llContext();
+    if (!this.hashMapEngine.hasAnyHashMap(ctx)) return;
+    const operands: unknown[] =
+      instr.opcode === AQIROpcode.SET_VAR ? [instr.value]
+        : instr.opcode === AQIROpcode.JUMP_IF_FALSE ? [instr.condition]
+          : instr.opcode === AQIROpcode.CALL ? instr.args ?? []
+            : [instr.returnValue];
+    const reads: { map: string; key: unknown }[] = [];
+    const walk = (expr: any): void => {
+      if (expr === null || typeof expr !== 'object') return;
+      if ('gfn' in expr) {
+        (expr.args ?? []).forEach(walk);
+        if (expr.gfn === 'MAP_GET' || expr.gfn === 'CONTAINS') {
+          const map = vm.evaluateExpression(expr.args[0]);
+          if (this.hashMapEngine.isHashMap(ctx, map)) reads.push({ map: String(map), key: vm.evaluateExpression(expr.args[1]) });
+        }
+        return;
+      }
+      if ('op' in expr && 'left' in expr) {
+        walk(expr.left);
+        if (expr.op === 'AND' || expr.op === 'OR') {
+          const left = Boolean(vm.evaluateExpression(expr.left));
+          if ((expr.op === 'AND') !== left) return;
+        }
+        walk(expr.right);
+        return;
+      }
+      if ('elem' in expr) walk(expr.index);
+      if ('member' in expr) walk(expr.object);
+    };
+    try {
+      operands.forEach(walk);
+    } catch {
+      // The instruction's own evaluation reports this error.
+    }
+    for (const read of reads) {
+      this.currentVM = vm;
+      await this.executeInstruction({ action: 'MAP_LOOKUP', map: read.map, key: read.key } as any);
+    }
   }
 
   /** Live elements of array `arrayName`, in index order (elements mid-deletion excluded). */
@@ -674,6 +734,7 @@ export class AnimationController {
       this.treeEngine.restoreBaseColors(this.treeContext());
       this.graphEngine.restoreBaseColors(this.treeContext());
       this.heapEngine.restoreBaseColors(this.llContext());
+      this.hashMapEngine.restoreBaseColors(this.llContext());
       this.animationScheduler.init(resolve);
 
       // Auto-configure tree context from scene objects (handles BST declared
@@ -703,6 +764,9 @@ export class AnimationController {
           const message = parts
             .map((part: any) => {
               if (part !== null && typeof part === 'object' && 'text' in part) return String(part.text);
+              if (part !== null && typeof part === 'object' && 'hashmap' in part) {
+                return this.hashMapEngine.format(this.llContext(), part.hashmap);
+              }
               if (part !== null && typeof part === 'object' && 'array' in part && this.heapEngine.isHeap(this.llContext(), part.array)) {
                 return this.heapEngine.format(this.llContext(), part.array);
               }
@@ -790,6 +854,29 @@ export class AnimationController {
         case 'GRAPH_EDIT':
           this.graphEngine.edit(this.treeContext(), instruction as any);
           break;
+
+        // Hash maps written as code (see HashMapProgramEngine): operands are evaluated now.
+        case 'MAP_PUT': {
+          const i = instruction as any;
+          const evaluate = (v: unknown) => (this.currentVM ? this.currentVM.evaluateExpression(v) : v);
+          this.hashMapEngine.put(this.llContext(), i.map, evaluate(i.key), evaluate(i.value));
+          break;
+        }
+        case 'MAP_DELETE': {
+          const i = instruction as any;
+          this.hashMapEngine.remove(this.llContext(), i.map, this.currentVM ? this.currentVM.evaluateExpression(i.key) : i.key);
+          break;
+        }
+        case 'MAP_HIGHLIGHT': {
+          const i = instruction as any;
+          this.hashMapEngine.highlight(this.llContext(), i.map, this.currentVM ? this.currentVM.evaluateExpression(i.key) : i.key, i.color);
+          break;
+        }
+        case 'MAP_LOOKUP': {
+          const i = instruction as any;
+          this.hashMapEngine.lookup(this.llContext(), i.map, i.key);
+          break;
+        }
         case 'CONTAINER_READ': {
           const i = instruction as any;
           if (!this.treeEngine.isContainer(this.treeContext(), i.container)) {

@@ -185,6 +185,15 @@ const BUILTIN_FUNCTIONS: Record<string, number> = {
   NEIGHBOR: 2,
   WEIGHT: 2,
   HAS_EDGE: 2,
+  // Hash maps: the first argument is the map.
+  CONTAINS: 2,
+  KEY_AT: 2,
+  BUCKET_OF: 2,
+  CAPACITY: 1,
+  // Text
+  TEXT_LENGTH: 1,
+  CHAR_AT: 2,
+  CHAR_CODE: 2,
 };
 
 function analyzeExpression(

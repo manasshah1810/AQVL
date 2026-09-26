@@ -10,6 +10,7 @@ export * from './GraphEngine';
 export * from './GraphAlgorithms';
 export * from './HeapEngine';
 export * from './HashMapVisualizer';
+export * from './HashMapProgramEngine';
 export * from './TrieVisualizer';
 export * from './ArrayEngine';
 export * from './StackEngine';

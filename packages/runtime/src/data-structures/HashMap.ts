@@ -30,8 +30,11 @@ export class HashMap<K = string, V = any> {
     return Array.from({ length: capacity }, () => []);
   }
 
-  /** String-sum hash: sums the char codes of `String(key)` and reduces mod capacity. */
+  /** Integer keys: key mod capacity. Anything else: sums the char codes of `String(key)` and reduces mod capacity. */
   hash(key: K): number {
+    if (typeof key === 'number' && Number.isInteger(key)) {
+      return ((key % this.capacity) + this.capacity) % this.capacity;
+    }
     const str = String(key);
     let sum = 0;
     for (let i = 0; i < str.length; i++) {

@@ -16,6 +16,7 @@ import {
   BSTDeclNode,
   HeapDeclNode,
   HashMapDeclNode,
+  ArrayAccessNode,
   TrieDeclNode,
   GraphDeclNode,
   LoopNode,
@@ -99,6 +100,12 @@ export class AQIRGenerator {
   private arrayNames = new Set<string>();
   /** Declared HEAPs (also in arrayNames): `INSERT h value` takes a value expression. */
   private heapNames = new Set<string>();
+  /**
+   * Declared HASH_MAPs: `m[key] = v`, `m[key]`, `DELETE m[key]`, CONTAINS,
+   * KEY_AT, ... are compiled to MAP_* steps and `{ gfn }` reads, run by the
+   * runtime's HashMapProgramEngine.
+   */
+  private hashMapNames = new Set<string>();
   // Arrays some INSERT grows: a literal index past the declared length may be valid by then.
   private growableArrays = new Set<string>();
   // Names declared with `[SINGLY|DOUBLY|CIRCULAR] LINKEDLIST`. Like arrays,
@@ -122,6 +129,10 @@ export class AQIRGenerator {
   private static readonly GRAPH_READS = new Set([
     'VERTEX', 'VERTEX_AT', 'VERTEX_COUNT', 'EDGE_AT', 'EDGE_COUNT', 'DEGREE', 'IN_DEGREE', 'NEIGHBOR', 'WEIGHT', 'HAS_EDGE',
   ]);
+  /** Hash-map reads usable in expressions; the first argument is the map (`CONTAINS(m, key)`). */
+  private static readonly MAP_READS = new Set(['CONTAINS', 'KEY_AT', 'BUCKET_OF', 'CAPACITY']);
+  /** Text built-ins, compiled to VM operators: `TEXT_LENGTH(s)`, `CHAR_AT(s, i)`, `CHAR_CODE(s, i)`. */
+  private static readonly TEXT_READS = new Set(['TEXT_LENGTH', 'CHAR_AT', 'CHAR_CODE']);
   /** Graph edits usable as statements: `ADD_EDGE g "A" "B" 4`, `REMOVE_VERTEX g "C"`, ... */
   private static readonly GRAPH_EDITS = new Set(['ADD_VERTEX', 'ADD_EDGE', 'REMOVE_EDGE', 'REMOVE_VERTEX']);
 
@@ -256,6 +267,7 @@ export class AQIRGenerator {
     this.layoutTracker.reset();
     this.arrayNames.clear();
     this.heapNames.clear();
+    this.hashMapNames.clear();
     this.growableArrays.clear();
     this.linkedListNames.clear();
     this.treeNames.clear();
@@ -469,6 +481,14 @@ export class AQIRGenerator {
     }
     if (
       expr.type === 'BinaryOpNode' && expr.operator === '=' && expr.left.type === 'ArrayAccessNode' &&
+      this.hashMapNames.has(expr.left.array.name)
+    ) {
+      // `m[key] = value`: insert the key, or overwrite its value.
+      this.emitMapPut(expr.left, expr.right, expr.pos);
+      return true;
+    }
+    if (
+      expr.type === 'BinaryOpNode' && expr.operator === '=' && expr.left.type === 'ArrayAccessNode' &&
       this.arrayNames.has(expr.left.array.name)
     ) {
       // `arr[i] = value` / `h[0] = h[last]`: the same step as `UPDATE arr[i] value`
@@ -526,6 +546,28 @@ export class AQIRGenerator {
         if (this.isBuiltinCall(call, 'ABS')) {
           return { op: 'ABS', left: this.compileValue(call.args[0]), right: 0 } as unknown as AQIRValue;
         }
+        if (AQIRGenerator.MAP_READS.has(call.callee.name.toUpperCase()) && !this.userFunctionNames.has(call.callee.name)) {
+          // Read at run time: `{ gfn, args }` (see VM evaluateExpression / HashMapProgramEngine.read).
+          const map = call.args[0];
+          if (!map || map.type !== 'IdentifierNode' || !this.hashMapNames.has(map.name)) {
+            const fn = call.callee.name.toUpperCase();
+            const example = fn === 'CAPACITY' ? '' : fn === 'KEY_AT' ? ', 0' : ', "apple"';
+            throw new Error(`${fn} needs a declared HASH_MAP as its first argument, e.g. ${fn}(m${example}) (line ${call.pos.line}).`);
+          }
+          return {
+            gfn: call.callee.name.toUpperCase(),
+            args: [{ text: map.name }, ...call.args.slice(1).map((a) => this.compileMapOperand(a))],
+            source: this.exprToString(call),
+            argSources: call.args.map((a) => this.exprToString(a)),
+          } as unknown as AQIRValue;
+        }
+        if (AQIRGenerator.TEXT_READS.has(call.callee.name.toUpperCase()) && !this.userFunctionNames.has(call.callee.name)) {
+          return {
+            op: call.callee.name.toUpperCase(),
+            left: this.compileMapOperand(call.args[0]),
+            right: call.args[1] ? this.compileMapOperand(call.args[1]) : 0,
+          } as unknown as AQIRValue;
+        }
         if (this.isBuiltinCall(call, 'IS_EMPTY')) {
           return { op: '==', left: { len: this.containerArgName(call) }, right: 0 } as unknown as AQIRValue;
         }
@@ -560,6 +602,15 @@ export class AQIRGenerator {
           right: this.compileValue(expr.right),
         };
       case 'ArrayAccessNode':
+        if (this.hashMapNames.has(expr.array.name)) {
+          // `m[key]`: the key's value, read at run time (a missing key stops the program).
+          return {
+            gfn: 'MAP_GET',
+            args: [{ text: expr.array.name }, this.compileMapOperand(expr.index)],
+            source: this.exprToString(expr),
+            argSources: [expr.array.name, this.exprToString(expr.index)],
+          } as unknown as AQIRValue;
+        }
         if (this.arrayNames.has(expr.array.name) || this.linkedListNames.has(expr.array.name)) {
           // Reads the element's current value at runtime (VM `{ elem, index }`
           // operand), so `IF arr[i] > arr[i+1]` or `total = total + arr[i]`
@@ -579,7 +630,8 @@ export class AQIRGenerator {
             this.linkedListNames.has(arrayName) ||
             this.treeNames.has(arrayName) ||
             this.containerNames.has(arrayName) ||
-            this.graphNames.has(arrayName)
+            this.graphNames.has(arrayName) ||
+            this.hashMapNames.has(arrayName)
           ) {
             return { len: arrayName } as unknown as AQIRValue;
           }
@@ -904,6 +956,30 @@ export class AQIRGenerator {
     return this.compileValue(arg);
   }
 
+  /**
+   * A key, value or text operand: a text literal stays that text (`m["apple"]`
+   * is the key "apple" even when a variable is named apple); anything else is
+   * an ordinary expression evaluated when the step runs.
+   */
+  private compileMapOperand(arg: ExpressionNode): AQIRValue {
+    if (arg.type === 'LiteralNode' && typeof arg.value === 'string') return { text: arg.value } as unknown as AQIRValue;
+    return this.compileValue(arg);
+  }
+
+  /** `m[key] = value` (also `UPDATE m[key] value` / `INSERT m[key] value`). */
+  private emitMapPut(target: ArrayAccessNode, value: ExpressionNode | undefined, pos: { line: number }): void {
+    const name = `${target.array.name}[${this.exprToString(target.index)}]`;
+    if (!value) throw new Error(`Give ${name} a value, e.g. ${name} = 1 (line ${pos.line}).`);
+    this.emit({
+      action: 'MAP_PUT',
+      map: target.array.name,
+      key: this.compileMapOperand(target.index),
+      value: this.compileMapOperand(value),
+      sourceText: `${name} = ${this.exprToString(value)}`,
+      lineNumber: pos.line,
+    } as any);
+  }
+
   /** The queue / stack named by a built-in's single argument (`DEQUEUE(q)`). */
   private containerArgName(node: CallNode): string {
     const arg = node.args[0];
@@ -1212,6 +1288,7 @@ export class AQIRGenerator {
         // insert algorithm (hash -> bucket -> chain -> maybe resize).
         const hashMap = v as HashMapDeclNode;
         const hashMapName = hashMap.name.name;
+        this.hashMapNames.add(hashMapName);
         const entries = hashMap.initialEntries || [];
 
         this.pendingInitInstructions.push({
@@ -1518,6 +1595,17 @@ export class AQIRGenerator {
         break;
       }
       case 'HighlightNode':
+        if ((stmt as any).target?.type === 'ArrayAccessNode' && this.hashMapNames.has((stmt as any).target.array.name)) {
+          const target = (stmt as any).target as ArrayAccessNode;
+          this.emit({
+            action: 'MAP_HIGHLIGHT',
+            map: target.array.name,
+            key: this.compileMapOperand(target.index),
+            color: (stmt as any).color?.value,
+            lineNumber: stmt.pos.line,
+          } as any);
+          break;
+        }
         this.emit({
           action: 'HIGHLIGHT_OBJECT',
           targetId: this.resolveExpressionId((stmt as any).target),
@@ -1555,6 +1643,37 @@ export class AQIRGenerator {
             lineNumber: actionNode.pos.line,
           } as any);
           break;
+        }
+        if (actionNode.args[0]?.type === 'ArrayAccessNode' && this.hashMapNames.has(actionNode.args[0].array.name)) {
+          const target = actionNode.args[0] as ArrayAccessNode;
+          const map = target.array.name;
+          const key = this.exprToString(target.index);
+          if (actionNode.actionName === 'DELETE' && actionNode.args.length === 1) {
+            this.emit({
+              action: 'MAP_DELETE',
+              map,
+              key: this.compileMapOperand(target.index),
+              sourceText: `DELETE ${map}[${key}]`,
+              lineNumber: actionNode.pos.line,
+            } as any);
+            break;
+          }
+          if ((actionNode.actionName === 'UPDATE' || actionNode.actionName === 'INSERT') && actionNode.args.length === 2) {
+            this.emitMapPut(target, actionNode.args[1], actionNode.pos);
+            break;
+          }
+          throw new Error(
+            `${actionNode.actionName} does not work on a hash map key. Use ${map}[${key}] = value to store, DELETE ${map}[${key}] to remove, HIGHLIGHT ${map}[${key}] to mark it (line ${actionNode.pos.line}).`
+          );
+        }
+        if (
+          actionNode.args[0]?.type === 'IdentifierNode' && this.hashMapNames.has(actionNode.args[0].name) &&
+          !String(actionNode.actionName).startsWith('HASHMAP_')
+        ) {
+          const map = actionNode.args[0].name;
+          throw new Error(
+            `${actionNode.actionName} ${map} is not a hash map statement. Store with ${map}[key] = value, remove with DELETE ${map}[key], check with CONTAINS(${map}, key) (line ${actionNode.pos.line}).`
+          );
         }
         if (AQIRGenerator.GRAPH_EDITS.has(actionNode.actionName)) {
           // `ADD_EDGE g "A" "B" 4`, `ADD_EDGE g u w`: operands evaluated when the step runs.
@@ -1655,7 +1774,9 @@ export class AQIRGenerator {
           action: 'PRINT',
           // A bare array name prints the whole array, e.g. `PRINT "Result:" arr`.
           parts: (stmt as PrintNode).args.map((arg) =>
-            arg.type === 'IdentifierNode' && this.arrayNames.has(arg.name)
+            arg.type === 'IdentifierNode' && this.hashMapNames.has(arg.name)
+              ? ({ hashmap: arg.name } as unknown as AQIRValue)
+              : arg.type === 'IdentifierNode' && this.arrayNames.has(arg.name)
               ? ({ array: arg.name } as unknown as AQIRValue)
               : arg.type === 'IdentifierNode' && this.linkedListNames.has(arg.name)
                 ? ({ list: arg.name } as unknown as AQIRValue)
@@ -1803,6 +1924,12 @@ export class AQIRGenerator {
   }
 
   private resolveExpressionId(expr: ExpressionNode): string {
+    if (expr.type === 'ArrayAccessNode' && this.hashMapNames.has(expr.array.name)) {
+      const name = `${expr.array.name}[${this.exprToString(expr.index)}]`;
+      throw new Error(
+        `${name} is a hash map value, not an array cell: SWAP and COMPARE work on array cells. Copy the value into a variable first (x = ${name}) (line ${expr.pos.line}).`
+      );
+    }
     if (expr.type === 'ArrayAccessNode') {
       const indexExpr = expr.index;
       if (indexExpr.type === 'LiteralNode') {

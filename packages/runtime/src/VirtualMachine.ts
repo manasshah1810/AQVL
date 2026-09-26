@@ -303,7 +303,32 @@ export class AQVLVirtualMachine {
     'MAX': (l, r) => Math.max(l, r),
     'MIN': (l, r) => Math.min(l, r),
     'ABS': (l) => Math.abs(l),
+    // Text built-ins `TEXT_LENGTH(s)`, `CHAR_AT(s, i)`, `CHAR_CODE(s, i)` (compiled to these operators).
+    'TEXT_LENGTH': (l) => AQVLVirtualMachine.text('TEXT_LENGTH', l).length,
+    'CHAR_AT': (l, r) => AQVLVirtualMachine.text('CHAR_AT', l)[AQVLVirtualMachine.charIndex('CHAR_AT', l, r)],
+    'CHAR_CODE': (l, r) => AQVLVirtualMachine.text('CHAR_CODE', l).charCodeAt(AQVLVirtualMachine.charIndex('CHAR_CODE', l, r)),
   };
+
+  /** The text operand of a text built-in; a number is used as its digits (`CHAR_AT(407, 0)` is "4"). */
+  private static text(fn: string, value: unknown): string {
+    if (typeof value === 'string') return value;
+    if (typeof value === 'number') return String(value);
+    throw new Error(`${fn} needs text, e.g. ${fn}("hello"${fn === 'TEXT_LENGTH' ? '' : ', 0'}), not ${value === null || value === undefined ? 'NULL' : String(value)}.`);
+  }
+
+  /** A character position of `text`, checked: 0 up to TEXT_LENGTH - 1. */
+  private static charIndex(fn: string, text: unknown, index: unknown): number {
+    const s = AQVLVirtualMachine.text(fn, text);
+    const i = Number(index);
+    if (!Number.isInteger(i) || i < 0 || i >= s.length) {
+      throw new Error(
+        s.length === 0
+          ? `${fn}("", ${String(index)}): the text is empty, it has no characters.`
+          : `${fn}("${s}", ${String(index)}): position ${String(index)} is out of range (valid positions are 0 to ${s.length - 1}).`
+      );
+    }
+    return i;
+  }
 
   /**
    * Reads the current value of `array[index]` for `{ elem, index }` operands
@@ -320,6 +345,16 @@ export class AQVLVirtualMachine {
   private variableObserver?: VariableObserver;
   private scopeObserver?: () => void;
   private callObserver?: CallObserver;
+
+  private readObserver?: (instr: ControlFlowInstruction) => Promise<void>;
+
+  /**
+   * Runs before an assignment, condition, call or RETURN evaluates its
+   * expressions, e.g. to animate the hash-map lookups they read.
+   */
+  public setReadObserver(observer: (instr: ControlFlowInstruction) => Promise<void>): void {
+    this.readObserver = observer;
+  }
 
   /** Observes user-function calls and returns (see `CallObserver`), e.g. to animate recursion. */
   public setCallObserver(observer: CallObserver): void {
@@ -744,6 +779,12 @@ export class AQVLVirtualMachine {
     if (isControlFlowInstruction(instr)) {
       const setVar = instr.opcode === AQIROpcode.SET_VAR && this.variableObserver && !instr.name.startsWith('__') ? instr : null;
       const previous = setVar ? this.tryGetVariable(setVar.name) : undefined;
+      if (
+        this.readObserver &&
+        (instr.opcode === AQIROpcode.SET_VAR || instr.opcode === AQIROpcode.JUMP_IF_FALSE || instr.opcode === AQIROpcode.CALL || instr.opcode === AQIROpcode.RET)
+      ) {
+        await this.readObserver(instr);
+      }
       this.executeControlFlow(instr);
       if (setVar) {
         animated = (await this.variableObserver!(setVar.name, this.getVariable(setVar.name), previous, setVar)) === true;

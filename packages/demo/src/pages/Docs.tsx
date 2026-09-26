@@ -286,6 +286,7 @@ const KEYWORDS = new Set([
   'DFS', 'BFS', 'DIJKSTRA', 'BELLMAN_FORD', 'ASTAR', 'PRIM', 'KRUSKAL', 'TOPO_SORT',
   'ADD_VERTEX', 'ADD_EDGE', 'REMOVE_EDGE', 'REMOVE_VERTEX', 'VERTEX_AT', 'VERTEX_COUNT', 'EDGE_AT', 'EDGE_COUNT',
   'IN_DEGREE', 'NEIGHBOR', 'WEIGHT', 'HAS_EDGE', 'TRUE', 'FALSE', 'INFINITY',
+  'CONTAINS', 'KEY_AT', 'BUCKET_OF', 'CAPACITY', 'TEXT_LENGTH', 'CHAR_AT', 'CHAR_CODE',
   'HEIGHT', 'DEPTH', 'LEVEL', 'MAX_DEPTH', 'MIN_DEPTH', 'SIZE', 'LEAVES', 'INTERNAL', 'DEGREE', 'STATS',
   'PARENTOF', 'CHILDRENOF', 'ANCESTORS', 'DESCENDANTS', 'SIBLINGS', 'PATH', 'INTO',
   'COUNT_NODES', 'COUNT_LEAVES', 'COUNT_INTERNAL', 'COUNT_LEFT_LEAVES', 'COUNT_RIGHT_LEAVES', 'COUNT_FULL', 'COUNT_HALF',
@@ -526,7 +527,7 @@ const TOC_ITEMS_TRIES = [
 const TOC_ITEMS_HASHMAPS = [
   { id: 'hm-introduction', label: 'Introduction' },
   { id: 'hm-declaration', label: 'Declaring a Hash Map' },
-  { id: 'hm-commands', label: 'Commands Reference' },
+  { id: 'hm-commands', label: 'Hash Map Code Reference' },
   { id: 'hm-examples', label: 'Examples' },
   { id: 'hm-errors', label: 'Errors & Tips' },
 ];
@@ -3274,174 +3275,250 @@ END`} />
                     <h1 className="docs-page-title">Hash Maps</h1>
                   </div>
                   <p className="docs-page-lead">
-                    Key-value storage with buckets and collision chains made visible — you can watch a key hash to its
-                    bucket and land in the chain.
+                    Key-value storage written as real code — <C>m[key] = value</C>, <C>m[key]</C>, <C>CONTAINS</C> — with
+                    every hash, bucket, collision chain and resize drawn as it happens.
                   </p>
                 </header>
 
                 <section id="hm-introduction" className="docs-section">
                   <h2 className="docs-h2">Introduction</h2>
                   <p className="docs-p">
-                    A <C>HASH_MAP</C> stores key-value pairs and finds them in roughly constant time by hashing the key
-                    to a bucket index. AQVL renders the bucket array explicitly, with each entry hanging in a chain below
-                    the bucket it hashed to — so collisions are something you can see rather than something you're told
-                    about.
+                    A <C>HASH_MAP</C> stores key-value pairs and finds a key in roughly constant time. Instead of
+                    searching, it <em>computes</em> where the key lives: a hash function turns the key into a bucket index,
+                    and the key is stored in that bucket.
                   </p>
+                  <div className="docs-cmd-table-wrap">
+                    <table className="docs-cmd-table">
+                      <thead>
+                        <tr><th>Key</th><th>Hash (bucket index)</th></tr>
+                      </thead>
+                      <tbody>
+                        <tr><td>A whole number, e.g. <C>21</C></td><td><C>key % capacity</C>: with 8 buckets, <C>21 % 8 = 5</C>.</td></tr>
+                        <tr><td>Text, e.g. <C>"cat"</C></td><td>Add up the character codes, then <C>% capacity</C>: <C>(99 + 97 + 116) % 8 = 312 % 8 = 0</C>.</td></tr>
+                      </tbody>
+                    </table>
+                  </div>
                   <p className="docs-p">
-                    Keys may be strings or numbers. In a declaration a bareword key is treated as a string, so
-                    <C>apple: 5</C> and <C>"apple": 5</C> mean the same thing.
+                    Two different keys can land in the same bucket: a <em>collision</em>. AQVL uses <em>separate
+                    chaining</em>: each bucket holds a chain of keys, and a lookup compares only the keys of that one chain.
+                    A map starts with 8 buckets; when one more key would make <C>size / capacity</C> (the <em>load
+                    factor</em>) go above 0.75, the bucket row doubles and every key is hashed again.
                   </p>
                   <Alert kind="note" title="Visualization">
-                    Buckets are laid out in a row; entries stack vertically beneath their bucket. A lookup highlights the
-                    bucket first, then walks the chain one entry at a time.
+                    Buckets are laid out in a row and each key hangs in a chain under its bucket. Storing, reading and
+                    deleting all show the same steps: the hash is worked out in the console, the bucket lights up, and the
+                    chain is walked key by key until the key is found (green) or the chain ends (red).
                   </Alert>
                 </section>
 
                 <section id="hm-declaration" className="docs-section">
                   <h2 className="docs-h2">Declaring a Hash Map</h2>
-                  <p className="docs-p">
-                    Hash maps use brace-delimited literal syntax — the one place in AQVL's declaration grammar where
-                    braces appear outside a function body.
-                  </p>
                   <CodeBlock label="Syntax" code={`HASH_MAP <name>
 HASH_MAP <name> = { <key>: <value>, <key>: <value>, ... }`} />
-
-                  <p className="docs-p">A full minimal program:</p>
+                  <p className="docs-p">
+                    Keys are numbers or text. In a declaration a bare word is text, so <C>apple: 5</C> and
+                    <C> "apple": 5</C> mean the same. Keys keep their type: <C>7</C> and <C>"7"</C> are different keys.
+                  </p>
                   <CodeBlock code={`SCENE HashMapIntro
 
 DECLARE
-  HASH_MAP m = { apple: 5, banana: 3 }
+  HASH_MAP stock = {apple: 5, banana: 3}
 
 SEQUENCE
-  HASHMAP_INSERT m "cherry" 9
-  HASHMAP_LOOKUP m "apple"
+  stock["cherry"] = 9
+  stock["apple"] = stock["apple"] + 1
+  PRINT "Apples: " + stock["apple"]
+  IF CONTAINS(stock, "mango")
+    PRINT "Mangoes: " + stock["mango"]
+  ELSE
+    PRINT "No mangoes"
+  END
+  PRINT "Items: " + LENGTH(stock)
+  PRINT "Stock:" stock
 END`} />
                   <p className="docs-p">
-                    Both initial entries are hashed into buckets on load. The sequence then inserts a third key and
-                    animates a lookup of the first.
+                    <strong>Expected:</strong> <C>Apples: 6</C>, <C>No mangoes</C>, <C>Items: 3</C> and the whole map,
+                    printed bucket by bucket.
                   </p>
-                  <Alert kind="tip" title="Three key spellings, one meaning">
-                    <C>apple: 5</C>, <C>"apple": 5</C>, and <C>7: 1</C> are all valid entries — barewords and quoted
-                    strings both become string keys, and numeric keys stay numbers.
-                  </Alert>
                 </section>
 
                 <section id="hm-commands" className="docs-section">
-                  <h2 className="docs-h2">Commands Reference</h2>
+                  <h2 className="docs-h2">Hash Map Code Reference</h2>
+                  <p className="docs-p">
+                    A hash map is used the way Python dictionaries and Java HashMaps are: index it with a key.
+                  </p>
                   <div className="docs-cmd-table-wrap">
                     <table className="docs-cmd-table">
                       <thead>
-                        <tr><th>Command</th><th>Description</th></tr>
+                        <tr><th>Code</th><th>Meaning</th></tr>
                       </thead>
                       <tbody>
-                        <tr>
-                          <td><span className="tok-keyword">HASHMAP_INSERT</span> <span className="tok-param">name "key" value</span></td>
-                          <td>Hashes the key to a bucket and appends a new entry to that bucket's chain, or updates the entry if the key is already present.</td>
-                        </tr>
-                        <tr>
-                          <td><span className="tok-keyword">HASHMAP_LOOKUP</span> <span className="tok-param">name "key"</span></td>
-                          <td>Highlights the bucket the key hashes to, then walks its chain comparing keys until it finds a match or runs out.</td>
-                        </tr>
-                        <tr>
-                          <td><span className="tok-keyword">HASHMAP_DELETE</span> <span className="tok-param">name "key"</span></td>
-                          <td>Finds the entry the same way a lookup does and removes it, closing up the chain behind it.</td>
-                        </tr>
+                        <tr><td><C>m[key] = value</C></td><td>Stores a key. A new key is added to its bucket's chain; an existing key only gets its value replaced.</td></tr>
+                        <tr><td><C>m[key]</C></td><td>The key's value, inside any expression: <C>m[w] = m[w] + 1</C>. A missing key stops the program.</td></tr>
+                        <tr><td><C>CONTAINS(m, key)</C></td><td><C>TRUE</C> when the key is stored. Check it before reading a key that may be missing.</td></tr>
+                        <tr><td><C>DELETE m[key]</C></td><td>Removes the key and its value; the rest of its chain moves up.</td></tr>
+                        <tr><td><C>LENGTH(m)</C></td><td>How many keys the map holds.</td></tr>
+                        <tr><td><C>KEY_AT(m, i)</C></td><td>The i-th key (0 to <C>LENGTH(m) - 1</C>), walking bucket 0, 1, 2, ... and each chain top to bottom. Use it to visit every key.</td></tr>
+                        <tr><td><C>BUCKET_OF(m, key)</C></td><td>The bucket the key hashes to (works for keys not stored yet).</td></tr>
+                        <tr><td><C>CAPACITY(m)</C></td><td>The number of buckets (8, then 16, 32, ... after resizes).</td></tr>
+                        <tr><td><C>HIGHLIGHT m[key] 'SUCCESS'</C></td><td>Marks a key (<C>'NEUTRAL'</C> clears the mark).</td></tr>
+                        <tr><td><C>PRINT m</C></td><td>Prints the map, e.g. <C>{`{apple: 6, banana: 3}`}</C>, in bucket order.</td></tr>
                       </tbody>
                     </table>
                   </div>
+                  <p className="docs-p">
+                    For working with text (counting letters, splitting words, writing a hash function yourself):
+                  </p>
+                  <div className="docs-cmd-table-wrap">
+                    <table className="docs-cmd-table">
+                      <thead>
+                        <tr><th>Code</th><th>Meaning</th></tr>
+                      </thead>
+                      <tbody>
+                        <tr><td><C>TEXT_LENGTH(s)</C></td><td>Number of characters: <C>TEXT_LENGTH("cat")</C> is 3.</td></tr>
+                        <tr><td><C>CHAR_AT(s, i)</C></td><td>The character at position i (from 0): <C>CHAR_AT("cat", 1)</C> is <C>"a"</C>.</td></tr>
+                        <tr><td><C>CHAR_CODE(s, i)</C></td><td>That character's code: <C>CHAR_CODE("cat", 0)</C> is 99.</td></tr>
+                      </tbody>
+                    </table>
+                  </div>
+                  <p className="docs-p">
+                    Reading <C>m[key]</C> or <C>CONTAINS</C> in an assignment, an IF / WHILE condition, a function argument
+                    or a RETURN animates the lookup. The older one-line shortcuts (<C>HASHMAP_INSERT m "k" 1</C>,
+                    <C> HASHMAP_LOOKUP</C>, <C>HASHMAP_DELETE</C>) still work but hide the logic; the examples below, and
+                    all 17 Hash Maps examples in the Playground, write it out.
+                  </p>
                 </section>
 
                 <section id="hm-examples" className="docs-section">
                   <h2 className="docs-h2">Examples</h2>
 
-                  <h3 className="docs-h3">Example 1 — Insert, Look Up, Delete</h3>
-                  <CodeBlock code={`SCENE HashMapOps
+                  <h3 className="docs-h3">Example 1 — Counting Words</h3>
+                  <p className="docs-p">
+                    The most common hash map pattern: the first time a key is seen its count starts at 1, after that it goes up by 1.
+                  </p>
+                  <CodeBlock code={`SCENE WordCount
 
 DECLARE
-  HASH_MAP m = { apple: 5, banana: 3 }
+  HASH_MAP freq
+  ARRAY words = ["the", "cat", "sat", "on", "the", "mat", "the", "cat"]
 
 SEQUENCE
-  HASHMAP_INSERT m "cherry" 9
-  WAIT
-
-  // A key that is present
-  HASHMAP_LOOKUP m "banana"
-  WAIT
-
-  // A key that is not
-  HASHMAP_LOOKUP m "durian"
-  WAIT
-
-  HASHMAP_DELETE m "apple"
+  LOOP i FROM 0 TO LENGTH(words) - 1
+    word = words[i]
+    IF CONTAINS(freq, word)
+      freq[word] = freq[word] + 1
+    ELSE
+      freq[word] = 1
+    END
+  END
+  PRINT "the: " + freq["the"]
+  PRINT "cat: " + freq["cat"]
+  PRINT "Different words: " + LENGTH(freq)
 END`} />
                   <p className="docs-p">
-                    <strong>Expected behavior:</strong> the successful lookup highlights a bucket and stops on the
-                    matching entry; the failed one highlights the bucket, walks the chain, and reports a miss.
+                    <strong>Expected:</strong> <C>the: 3</C>, <C>cat: 2</C>, <C>Different words: 5</C>.
                   </p>
 
-                  <h3 className="docs-h3">Example 2 — Watching a Collision</h3>
+                  <h3 className="docs-h3">Example 2 — Two Sum in One Pass</h3>
                   <p className="docs-p">
-                    Inserting several keys grows the chains beneath individual buckets — the moment two keys land in the
-                    same bucket is the moment the chain becomes the point of the structure.
+                    For every number, look up the partner it needs among the numbers already seen. One pass, O(n), instead
+                    of trying every pair, O(n²).
                   </p>
-                  <CodeBlock code={`SCENE HashMapCollisions
+                  <CodeBlock code={`SCENE TwoSum
+
+DECLARE
+  ARRAY nums = [4, 9, 12, 2, 15, 7]
+  HASH_MAP seen
+
+SEQUENCE
+  target = 22
+  found = 0
+  i = 0
+  WHILE found == 0 AND i < LENGTH(nums)
+    need = target - nums[i]
+    IF CONTAINS(seen, need)
+      PRINT "Indices " + seen[need] + " and " + i
+      found = 1
+    ELSE
+      seen[nums[i]] = i
+    END
+    i = i + 1
+  END
+END`} />
+                  <p className="docs-p">
+                    <strong>Expected:</strong> <C>Indices 4 and 5</C> (15 + 7 = 22).
+                  </p>
+
+                  <h3 className="docs-h3">Example 3 — The Hash Function by Hand</h3>
+                  <p className="docs-p">
+                    Adding up character codes gives anagrams the same sum, so <C>"cat"</C> and <C>"act"</C> collide.
+                  </p>
+                  <CodeBlock code={`SCENE HashByHand
 
 DECLARE
   HASH_MAP m
+  ARRAY words = ["cat", "dog", "act"]
+
+  FUNCTION hashOf(word, buckets)
+    total = 0
+    LOOP i FROM 0 TO TEXT_LENGTH(word) - 1
+      total = total + CHAR_CODE(word, i)
+    END
+    RETURN total % buckets
+  END
 
 SEQUENCE
-  HASHMAP_INSERT m "ab" 1
-  HASHMAP_INSERT m "ba" 2
-  HASHMAP_INSERT m "cd" 3
-  HASHMAP_INSERT m "dc" 4
-  WAIT
-
-  // Lookups walk the chain, not just the bucket
-  HASHMAP_LOOKUP m "dc"
+  LOOP k FROM 0 TO LENGTH(words) - 1
+    b = hashOf(words[k], CAPACITY(m))
+    PRINT words[k] + " -> bucket " + b
+    m[words[k]] = k
+  END
 END`} />
-
-                  <h3 className="docs-h3">Example 3 — Counting With a Map</h3>
                   <p className="docs-p">
-                    Re-inserting an existing key updates its value, which is what makes a hash map the natural home for
-                    a frequency count.
+                    <strong>Expected:</strong> <C>cat -&gt; bucket 0</C>, <C>dog -&gt; bucket 2</C>, <C>act -&gt; bucket 0</C>,
+                    and <C>act</C> is chained under <C>cat</C>.
                   </p>
-                  <CodeBlock code={`SCENE HashMapCounter
-
-DECLARE
-  HASH_MAP counts = { a: 1 }
-
-SEQUENCE
-  // Same key again — the entry updates in place
-  HASHMAP_INSERT counts "a" 2
-  WAIT
-
-  HASHMAP_INSERT counts "b" 1
-  HASHMAP_LOOKUP counts "a"
-END`} />
                 </section>
 
                 <section id="hm-errors" className="docs-section">
                   <h2 className="docs-h2">Errors &amp; Tips</h2>
 
-                  <Alert kind="warn" title="Braces, not brackets">
-                    A hash map literal uses <C>&#123; &#125;</C> with <C>key: value</C> pairs. Square brackets are for the
-                    list-initialised structures (arrays, stacks, heaps, tries).
+                  <Alert kind="warn" title="Reading a key that is not there">
+                    <C>m["mango"]</C> for a missing key stops with <em>the key "mango" is not in hash map 'm'</em>. Guard the
+                    read with <C>IF CONTAINS(m, "mango")</C>, or store the key first. <C>DELETE m[key]</C> of a missing key
+                    stops the same way.
                   </Alert>
 
-                  <Alert kind="warn" title="Looking up a missing key">
-                    <C>HASHMAP_LOOKUP</C> on an absent key is not an error — it animates the full unsuccessful chain walk
-                    and reports the miss, which is worth showing deliberately.
+                  <Alert kind="warn" title="KEY_AT index out of range">
+                    <C>KEY_AT(m, i)</C> needs <C>0 &lt;= i &lt; LENGTH(m)</C>. <C>LOOP k FROM 0 TO LENGTH(m) - 1</C> counts
+                    <em> down</em> (0, -1) when the map is empty, so walk a map that may be empty with
+                    <C> WHILE k &lt; LENGTH(m)</C>.
                   </Alert>
 
-                  <Alert kind="warn" title="Quote keys in the sequence">
-                    Declaration literals accept barewords, but sequence commands take expressions, so
-                    <C>HASHMAP_LOOKUP m "apple"</C> needs the quotes — without them <C>apple</C> is an undeclared
-                    identifier.
+                  <Alert kind="warn" title="Hash map values are not array cells">
+                    <C>SWAP</C> and <C>COMPARE</C> work on array cells. Copy a value into a variable first
+                    (<C>x = m[key]</C>).
                   </Alert>
 
-                  <Alert kind="tip" title="Insert on an existing key is an update">
-                    There is no separate update command. <C>HASHMAP_INSERT</C> with a key already in the map replaces its
-                    value in place rather than adding a second entry.
+                  <Alert kind="tip" title="Order is by bucket, not by insertion">
+                    <C>PRINT m</C> and <C>KEY_AT</C> go bucket by bucket, so keys come out in hash order, and the order can
+                    change after a resize. When order matters (the first unique character), walk the original text or array
+                    instead of the map.
+                  </Alert>
+
+                  <Alert kind="tip" title="Don't add keys while walking the map">
+                    A new key can trigger a resize that rehashes every key, changing what <C>KEY_AT(m, i)</C> returns.
+                    Update the values of existing keys freely; collect new keys in another map.
+                  </Alert>
+
+                  <Alert kind="tip" title="Set a variable before an IF that assigns it">
+                    A variable first created inside an IF or ELSE belongs to that block. Write <C>result = n</C> before
+                    the IF, then change it inside, to use it afterwards.
+                  </Alert>
+
+                  <Alert kind="note" title="Maps are shared with functions">
+                    A FUNCTION can read and change a declared map directly (<C>countWord(word)</C> updating <C>freq</C>),
+                    which makes a map a good place for results a function must keep, such as a memo table.
                   </Alert>
                 </section>
               </>
