@@ -14,6 +14,14 @@ import { AlgorithmContext } from './AlgorithmContext';
 import { GenericActionInstruction, getSemanticColorToken } from '@aqvl/shared';
 import { AnticipationAnimation } from '../animations';
 
+/**
+ * Ids of elements created by INSERT. Date.now() alone is not unique: a program
+ * that empties an array and refills it (merge sort's temp buffer) inserts at
+ * the same index many times within one millisecond, and two elements with the
+ * same id make DELETE remove the wrong one.
+ */
+let insertedElementCounter = 0;
+
 export class ArrayEngine {
   /** Handles `INSERT arr[i] value` — no-ops (matching the original inline behavior) if the instruction doesn't target an array index. */
   insert(context: AlgorithmContext, gen: GenericActionInstruction): void {
@@ -33,7 +41,7 @@ export class ArrayEngine {
 
     const modifyingToken = getSemanticColorToken('MODIFYING');
     const newEl: any = {
-      id: `obj_dyn_${Date.now()}_${insertIndex}`,
+      id: `obj_dyn_${Date.now()}_${insertIndex}_${++insertedElementCounter}`,
       type: 'box',
       value: valueToInsert,
       logicalIndex: insertIndex,

@@ -4084,10 +4084,9 @@ END`} />
                 <section id="so-examples" className="docs-section">
                   <h2 className="docs-h2">Examples</h2>
 
-                  <h3 className="docs-h3">Example 1 — Bubble Sort</h3>
+                  <h3 className="docs-h3">Example 1 — Bubble Sort with Early Exit</h3>
                   <p className="docs-p">
-                    Each outer pass drives one more element to its final position at the right-hand end, which the closing
-                    <C>HIGHLIGHT</C> marks.
+                    Each pass drives the largest remaining value to the right end, which turns green. A <C>swapped</C> flag in the <C>WHILE</C> condition stops the sort as soon as a pass makes no swap.
                   </p>
                   <CodeBlock code={`SCENE BubbleSort
 
@@ -4095,22 +4094,45 @@ DECLARE
   ARRAY arr = [64, 34, 25, 12, 22, 11, 90]
 
 SEQUENCE
-  LOOP i FROM 0 TO LENGTH(arr) - 2
-    LOOP j FROM 0 TO LENGTH(arr) - i - 2
-      COMPARE arr[j] arr[j+1]
-      IF arr[j] > arr[j+1]
-        SWAP arr[j] arr[j+1]
+  // Walk through the array comparing neighbours; if the left one is larger,
+  // swap them. After each pass the largest remaining value has "bubbled" to
+  // the end of the unsorted part, so that cell turns green and the next pass
+  // can stop one cell earlier.
+  // If a whole pass makes no swap, the array is already sorted: stop early.
+  n = LENGTH(arr)
+  pass = 0
+  swapped = 1
+
+  WHILE swapped == 1 AND pass < n - 1
+    swapped = 0
+    LOOP j FROM 0 TO n - pass - 2
+      COMPARE arr[j] arr[j + 1]
+      IF arr[j] > arr[j + 1]
+        SWAP arr[j] arr[j + 1]
+        swapped = 1
       END
     END
-    HIGHLIGHT arr[LENGTH(arr) - i - 1]
+    HIGHLIGHT arr[n - pass - 1] 'SUCCESS'
+    pass = pass + 1
+    PRINT "After pass " + pass + ":" arr
   END
-  HIGHLIGHT arr[0]
+
+  IF swapped == 0
+    PRINT "Pass " + pass + " made no swaps, so the array is already sorted"
+  END
+
+  // Whatever is left in front of the green cells is already in order
+  k = 0
+  WHILE k < n - pass
+    HIGHLIGHT arr[k] 'SUCCESS'
+    k = k + 1
+  END
+  PRINT "Sorted:" arr
 END`} />
 
                   <h3 className="docs-h3">Example 2 — Selection Sort</h3>
                   <p className="docs-p">
-                    The outer <C>HIGHLIGHT</C> marks the slot being filled; the inner loop scans the rest of the array
-                    for something smaller.
+                    The inner loop remembers the index of the smallest value seen so far (purple); only when the scan is finished is it swapped into position <C>i</C> — at most one swap per pass.
                   </p>
                   <CodeBlock code={`SCENE SelectionSort
 
@@ -4118,66 +4140,152 @@ DECLARE
   ARRAY arr = [64, 25, 12, 22, 11]
 
 SEQUENCE
-  LOOP i FROM 0 TO LENGTH(arr) - 2
-    HIGHLIGHT arr[i]
-    LOOP j FROM i + 1 TO LENGTH(arr) - 1
-      COMPARE arr[i] arr[j]
-      IF arr[i] > arr[j]
-        SWAP arr[i] arr[j]
+  // For each position i, scan the unsorted part arr[i .. n-1] for the
+  // smallest value (purple), then swap it into position i. Exactly one swap
+  // per pass, so selection sort makes at most n - 1 swaps in total.
+  n = LENGTH(arr)
+  swaps = 0
+
+  LOOP i FROM 0 TO n - 2
+    minIndex = i
+    HIGHLIGHT arr[i] 'MARKED'
+
+    LOOP j FROM i + 1 TO n - 1
+      COMPARE arr[minIndex] arr[j]
+      IF arr[j] < arr[minIndex]
+        // A new smallest value: the old candidate loses its colour
+        // (unless it is position i, which we are filling)
+        IF minIndex != i
+          HIGHLIGHT arr[minIndex] 'NEUTRAL'
+        END
+        minIndex = j
+        HIGHLIGHT arr[minIndex] 'MARKED'
       END
     END
+
+    IF minIndex != i
+      PRINT "Smallest of the rest is " + arr[minIndex] + " at index " + minIndex + ", swap it into index " + i
+      SWAP arr[i] arr[minIndex]
+      HIGHLIGHT arr[minIndex] 'NEUTRAL'
+      swaps = swaps + 1
+    ELSE
+      PRINT arr[i] + " is already the smallest of the rest, no swap needed"
+    END
+    HIGHLIGHT arr[i] 'SUCCESS'
   END
+
+  // The last element is the only one left, so it is in place too
+  HIGHLIGHT arr[n - 1] 'SUCCESS'
+  PRINT "Sorted with " + swaps + " swaps:" arr
 END`} />
 
                   <h3 className="docs-h3">Example 3 — Insertion Sort</h3>
                   <p className="docs-p">
-                    The sorted prefix starts as the single first element and grows leftward-shifting each new value into
-                    position.
+                    The key is saved in a variable, larger values are shifted one place right with <C>UPDATE</C> inside a <C>WHILE</C> loop, and the key is written into the gap that opens up.
                   </p>
                   <CodeBlock code={`SCENE InsertionSort
 
 DECLARE
-  ARRAY arr = [4, 3, 2, 10, 12, 1, 5, 6]
+  ARRAY arr = [12, 11, 13, 5, 6]
 
 SEQUENCE
-  HIGHLIGHT arr[0]
-  LOOP i FROM 1 TO LENGTH(arr) - 1
-    LOOP j FROM i TO 1
-      COMPARE arr[j] arr[j-1]
-      IF arr[j] < arr[j-1]
-        SWAP arr[j] arr[j-1]
+  // Like sorting playing cards in your hand: arr[0 .. i-1] is already sorted.
+  // Pick up the next card (key = arr[i]), shift every larger card one place
+  // right to open a gap, then drop the key into the gap.
+  n = LENGTH(arr)
+  shifts = 0
+
+  LOOP i FROM 1 TO n - 1
+    key = arr[i]
+    HIGHLIGHT arr[i] 'MARKED'
+    PRINT "Insert key " + key
+    j = i - 1
+
+    // Keep shifting while there is a card to the left AND it is bigger than key
+    keepShifting = 1
+    WHILE keepShifting == 1
+      IF j < 0
+        keepShifting = 0
+      ELSE
+        HIGHLIGHT arr[j]
+        IF arr[j] > key
+          UPDATE arr[j + 1] arr[j]
+          shifts = shifts + 1
+          j = j - 1
+        ELSE
+          keepShifting = 0
+        END
       END
     END
+
+    // j + 1 is the gap where key belongs
+    // Cells are only final once every key is inserted, so no green yet
+    UPDATE arr[j + 1] key
+    HIGHLIGHT arr[i] 'NEUTRAL'
+    HIGHLIGHT arr[j + 1]
+    PRINT "  placed at index " + (j + 1) + ":" arr
   END
+
+  LOOP k FROM 0 TO n - 1
+    HIGHLIGHT arr[k] 'SUCCESS'
+  END
+  PRINT "Sorted with " + shifts + " shifts:" arr
 END`} />
 
-                  <h3 className="docs-h3">Example 4 — Quick Sort, Partition by Partition</h3>
+                  <h3 className="docs-h3">Example 4 — Recursive Quick Sort</h3>
                   <p className="docs-p">
-                    Quicksort's recursion has no direct sequence-block equivalent, so a hand-written version narrates one
-                    partition pass explicitly — each comparison against the pivot, and each swap it triggers.
+                    Declare <C>FUNCTION</C>s in <C>DECLARE</C> and call them from <C>SEQUENCE</C>. <C>partition</C> returns the pivot’s final index; <C>quickSort</C> calls itself on each side. Every function call has its own local variables, so recursion works exactly as in any other language.
                   </p>
-                  <CodeBlock code={`SCENE QuickSortPartition
+                  <CodeBlock code={`SCENE QuickSort
 
 DECLARE
   ARRAY arr = [10, 80, 30, 90, 40, 50, 70]
 
+  // Lomuto partition: the last element of the range is the pivot (purple).
+  // 'wall' marks the end of the "smaller than pivot" zone. Every element
+  // smaller than the pivot is swapped to just after the wall. Finally the
+  // pivot is swapped in after the wall: that is its final sorted position.
+  FUNCTION partition(low, high)
+    pivot = arr[high]
+    HIGHLIGHT arr[high] 'MARKED'
+    PRINT "Partition [" + low + ".." + high + "] around pivot " + pivot
+    wall = low - 1
+
+    LOOP j FROM low TO high - 1
+      COMPARE arr[j] arr[high]
+      IF arr[j] < pivot
+        wall = wall + 1
+        IF wall != j
+          SWAP arr[wall] arr[j]
+        END
+      END
+    END
+
+    pivotIndex = wall + 1
+    IF pivotIndex != high
+      SWAP arr[pivotIndex] arr[high]
+      HIGHLIGHT arr[high] 'NEUTRAL'
+    END
+    HIGHLIGHT arr[pivotIndex] 'SUCCESS'
+    PRINT "  pivot " + pivot + " is now fixed at index " + pivotIndex + ":" arr
+    RETURN pivotIndex
+  END
+
+  // Sort arr[low .. high]: partition it, then sort the part left of the
+  // pivot and the part right of it. A range of one element is already sorted.
+  FUNCTION quickSort(low, high)
+    IF low < high
+      p = partition(low, high)
+      quickSort(low, p - 1)
+      quickSort(p + 1, high)
+    ELSE IF low == high
+      HIGHLIGHT arr[low] 'SUCCESS'
+    END
+  END
+
 SEQUENCE
-  // 1. The pivot is the last element
-  HIGHLIGHT arr[6]
-
-  // 2. Walk the array comparing against it
-  COMPARE arr[0] arr[6]
-  COMPARE arr[1] arr[6]
-  HIGHLIGHT arr[1]
-
-  COMPARE arr[2] arr[6]
-  SWAP arr[1] arr[2]
-
-  COMPARE arr[3] arr[6]
-  HIGHLIGHT arr[3]
-
-  COMPARE arr[4] arr[6]
-  SWAP arr[3] arr[4]
+  quickSort(0, LENGTH(arr) - 1)
+  PRINT "Sorted:" arr
 END`} />
 
                   <h3 className="docs-h3">Example 5 — Every Built-in Back to Back</h3>
@@ -4224,6 +4332,17 @@ END`} />
                   <Alert kind="warn" title="Built-ins take an array name">
                     <C>BUBBLE_SORT arr</C>, not <C>BUBBLE_SORT arr[0]</C>. The built-in sorts operate on a whole
                     structure.
+                  </Alert>
+
+                  <Alert kind="warn" title="Division is real division">
+                    <C>7 / 2</C> is <C>3.5</C>, and an index must be a whole number. Write the middle of a range as
+                    <C>mid = (total - total % 2) / 2</C> with <C>total = low + high</C>, as the Merge Sort example does.
+                  </Alert>
+
+                  <Alert kind="warn" title="LOOP counts down when the end is smaller">
+                    <C>LOOP i FROM 0 TO -1</C> runs for <C>i = 0</C> and <C>i = -1</C>. When a range can be empty (the
+                    unsorted window of a cocktail shaker sort, the leftovers of a merge), use
+                    <C>WHILE i &lt;= finish</C> instead, which runs zero times.
                   </Alert>
 
                   <Alert kind="tip" title="Use small, shuffled arrays">

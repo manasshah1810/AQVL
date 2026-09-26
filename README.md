@@ -94,7 +94,7 @@ This is the *entire* visual behavior: layout, camera framing, node linking, and 
 
 **Data structures** — arrays, linked lists (singly/doubly/circular), binary trees, BSTs, AVL trees, red-black trees, graphs, heaps, priority queues, hash maps, tries, union-find.
 
-**Algorithms** — sorting (bubble, selection, insertion, merge, quick), searching (linear, binary), traversal (DFS, BFS), BST operations (insert/delete/search/traverse), lowest-common-ancestor, and more — with real functions and real recursion, not pseudocode approximations.
+**Algorithms** — sorting (bubble, selection, insertion, merge, quick, heap, shell, counting, radix and more), searching (linear, binary), traversal (DFS, BFS), BST operations (insert/delete/search/traverse), lowest-common-ancestor, and more — with real functions and real recursion, not pseudocode approximations.
 
 **Layout strategies** — `LINE`, `HIERARCHY`, `CIRCULAR`, `FORCE_DIRECTED`, `GRID`, and `CUSTOM` for hand-placed positions.
 
@@ -158,7 +158,7 @@ pnpm test
 
 The demo Playground ships with a categorized example library, including:
 
-- **Sorting** — bubble, selection, insertion, merge, quick sort
+- **Sorting** — 17 examples written out with loops, IFs and recursive functions: bubble (with early exit), selection, insertion, cocktail shaker, quick, merge, heap, shell, counting, radix, cycle and pancake sort, plus practical problems — an exam rank list, a game leaderboard, counting inversions, the median with quickselect, and a stability check
 - **Trees** — binary trees, BST insert/delete/search, traversals, lowest common ancestor
 - **Linked lists** — singly/doubly/circular, reversal, tortoise-and-hare (find-middle)
 - **Graphs** — 19 algorithms written out with loops, queues, stacks and recursion: BFS, iterative and recursive DFS, fewest-stop paths, connected components, cycle detection, bipartite check, topological sort (Kahn and DFS), Dijkstra, Bellman-Ford, Prim, Kruskal with union-find, backtracking over all paths, greedy colouring

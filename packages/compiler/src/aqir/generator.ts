@@ -294,6 +294,12 @@ export class AQIRGenerator {
       this.collectExplicitLayoutTargets(scene.sequence.statements);
       this.collectGrowableArrays(scene.sequence.statements);
     }
+    // FUNCTION bodies grow arrays too (merge sort's temp buffer): without
+    // this, `DELETE temp[0]` inside a function on an array declared empty is
+    // bound to a made-up object id and silently does nothing.
+    for (const fn of scene.declarations?.functions ?? []) {
+      this.collectGrowableArrays(fn.body.statements);
+    }
 
     if (scene.declarations) {
       this.processDeclarations(scene.declarations, userInputs);

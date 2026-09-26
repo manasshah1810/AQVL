@@ -506,12 +506,24 @@ SEQUENCE
 END
 ```
 
-### 8.2 Manual/unrolled teaching style
+### 8.2 Writing the algorithm yourself
 
-A manual style built from `LOOP`/`COMPARE`/`SWAP`/`IF` also exists and is what
-the demo/teaching example library (`packages/demo/src/examples`) uses; the
-one-shot keywords above are a newer builtin form covered by the test suite.
-Both styles are valid AQVL.
+Every Sorting example in the Playground (`packages/demo/src/examples/SortingLibrary.ts`)
+is the real algorithm written with `LOOP`, `WHILE`, `IF` / `ELSE`, `COMPARE`,
+`SWAP`, `UPDATE`, `INSERT` / `DELETE` on helper arrays, and recursive
+`FUNCTION`s declared in `DECLARE` (quick sort, merge sort, heap sort's
+`siftDown`). Nothing is hard-coded, so changing the array in `DECLARE` still
+gives a correct run. Examples: bubble, selection, insertion, cocktail shaker,
+quick, merge, heap, shell, counting, radix, cycle and pancake sort; exam rank
+list (parallel arrays), game leaderboard, count inversions, quickselect median,
+sorted check and stability.
+
+Two things to know when writing sorts:
+
+- `/` is real division (`7 / 2` is `3.5`). The middle of a range is
+  `mid = (total - total % 2) / 2` with `total = low + high`.
+- `LOOP i FROM a TO b` counts down when `b < a`. Use `WHILE` when a range can
+  be empty.
 
 ```aqvl
 SCENE BubbleSort
