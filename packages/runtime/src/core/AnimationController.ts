@@ -51,6 +51,7 @@ import { AnimationContext, MoveAnimation, AnticipationAnimation } from './animat
 import type { LinkedListContext } from './algorithms/LinkedListEngine';
 import { LinkedListEngine as LinkedListModel, LinkedListError } from './algorithms/LinkedListEngine';
 import { TreeEngine, TreeError, type TreeContext } from './algorithms/TreeEngine';
+import { HeapProgramEngine, HeapIndexError } from './algorithms/HeapProgramEngine';
 import { GraphProgramEngine } from './algorithms/GraphProgramEngine';
 import { AQVLVirtualMachine, type StepCallback } from '../VirtualMachine';
 import type { VMInstruction, FunctionTable, ExecutionResult } from '../types';
@@ -91,6 +92,8 @@ export class AnimationController {
   private treeEngine: TreeEngine = new TreeEngine();
   /** Graphs used by real code: vertex / edge references, fields, NEIGHBOR / DEGREE / ... (see GraphProgramEngine.ts) */
   private graphEngine: GraphProgramEngine = new GraphProgramEngine();
+  /** Heaps used by real code: `h[i]`, LENGTH(h), SWAP, `h[i] = v`, INSERT h v, DELETE of the last cell (see HeapProgramEngine.ts) */
+  private heapEngine: HeapProgramEngine = new HeapProgramEngine();
   /**
    * Live reference to the currently-executing VM, set in `createExecutionVM`
    * so that `resolveElementId` can call `vm.getVariable()` to read loop
@@ -275,11 +278,15 @@ export class AnimationController {
     this.currentVM = vm;
     vm.setElementReader(
       (arrayName, index) =>
-        this.linkedListEngine.isList(this.llContext(), arrayName)
+        this.heapEngine.isHeap(this.llContext(), arrayName)
+          ? this.heapEngine.valueAt(this.llContext(), arrayName, index)
+          : this.linkedListEngine.isList(this.llContext(), arrayName)
           ? this.linkedListEngine.valueAt(this.llContext(), arrayName, index)
           : this.readArrayValue(arrayName, index),
       (arrayName) =>
-        this.linkedListEngine.isList(this.llContext(), arrayName)
+        this.heapEngine.isHeap(this.llContext(), arrayName)
+          ? this.heapEngine.length(this.llContext(), arrayName)
+          : this.linkedListEngine.isList(this.llContext(), arrayName)
           ? this.linkedListEngine.length(this.llContext(), arrayName)
           : this.treeEngine.isTree(this.treeContext(), arrayName)
             ? this.treeEngine.size(this.treeContext(), arrayName)
@@ -411,6 +418,65 @@ export class AnimationController {
           afterRefresh: (temp) => this.graphEngine.refresh(this.treeContext(), temp),
         }
       : undefined;
+  }
+
+  /**
+   * Runs a statement whose operands are cells of a HEAP (`SWAP h[i] h[j]`,
+   * `COMPARE`, `HIGHLIGHT`, `h[i] = v` / UPDATE, `INSERT h v`, `DELETE h[i]`)
+   * on HeapProgramEngine. Returns false for anything that is not about a heap.
+   */
+  private executeHeapStatement(instruction: AQIRInstruction): boolean {
+    const ctx = this.llContext();
+    if (!this.heapEngine.hasAnyHeap(ctx)) return false;
+    const heapSlot = (id: unknown) => {
+      const slot = this.resolveArraySlot(id);
+      return slot && this.heapEngine.isHeap(ctx, slot.arrayName) ? { heap: slot.arrayName, index: slot.index } : null;
+    };
+    const action = instruction.action as string;
+
+    if (action === 'SWAP_OBJECTS' || action === 'COMPARE_OBJECTS') {
+      const i = instruction as SwapObjectsInstruction;
+      const left = heapSlot(i.leftId);
+      const right = heapSlot(i.rightId);
+      if (!left && !right) return false;
+      if (!left || !right) {
+        throw new HeapIndexError(`${action === 'SWAP_OBJECTS' ? 'SWAP' : 'COMPARE'} needs two heap cells, e.g. ${action === 'SWAP_OBJECTS' ? 'SWAP' : 'COMPARE'} h[i] h[j]. To use a heap value elsewhere, copy it into a variable first (x = h[0]).`);
+      }
+      if (action === 'SWAP_OBJECTS') this.heapEngine.swap(ctx, left, right);
+      else this.heapEngine.compare(ctx, left, right);
+      return true;
+    }
+    if (action === 'HIGHLIGHT_OBJECT') {
+      const hl = instruction as HighlightObjectInstruction;
+      const slot = heapSlot(hl.targetId);
+      if (!slot) return false;
+      this.heapEngine.highlight(ctx, slot.heap, slot.index, hl.color || 'SUCCESS');
+      return true;
+    }
+    if (action === 'GENERIC_ACTION') {
+      const gen = instruction as GenericActionInstruction;
+      const name = gen.actionName.toUpperCase();
+      const args = gen.args ?? [];
+      const value = () => (this.currentVM ? this.currentVM.evaluateExpression(args[args.length - 1]) : args[args.length - 1]);
+      if (name === 'INSERT' && this.heapEngine.isHeap(ctx, args[0])) {
+        if (args.length < 2) throw new HeapIndexError(`INSERT needs a value, e.g. INSERT ${args[0]} 42`);
+        this.heapEngine.append(ctx, String(args[0]), value());
+        return true;
+      }
+      const slot = heapSlot(args[0]);
+      if (!slot) return false;
+      if (name === 'UPDATE') {
+        this.heapEngine.update(ctx, slot.heap, slot.index, value());
+      } else if (name === 'DELETE') {
+        this.heapEngine.removeLast(ctx, slot.heap, slot.index);
+      } else if (name === 'INSERT') {
+        throw new HeapIndexError(`A heap only grows at its end: write INSERT ${slot.heap} value (it becomes ${slot.heap}[LENGTH(${slot.heap}) - 1]), then sift it up.`);
+      } else {
+        return false;
+      }
+      return true;
+    }
+    return false;
   }
 
   /** Live elements of array `arrayName`, in index order (elements mid-deletion excluded). */
@@ -607,6 +673,7 @@ export class AnimationController {
       this.linkedListEngine.restoreBaseColors(this.llContext());
       this.treeEngine.restoreBaseColors(this.treeContext());
       this.graphEngine.restoreBaseColors(this.treeContext());
+      this.heapEngine.restoreBaseColors(this.llContext());
       this.animationScheduler.init(resolve);
 
       // Auto-configure tree context from scene objects (handles BST declared
@@ -621,6 +688,11 @@ export class AnimationController {
 
       if (DEBUG_ANIMATION) console.log(`[AnimationController] Executing instruction:`, JSON.stringify(instruction));
 
+      if (this.executeHeapStatement(instruction)) {
+        this.animationScheduler.play();
+        return;
+      }
+
       if (instruction.action === 'GENERIC_ACTION') {
         instruction = this.bindArrayActionOperands(instruction as GenericActionInstruction);
       }
@@ -631,6 +703,9 @@ export class AnimationController {
           const message = parts
             .map((part: any) => {
               if (part !== null && typeof part === 'object' && 'text' in part) return String(part.text);
+              if (part !== null && typeof part === 'object' && 'array' in part && this.heapEngine.isHeap(this.llContext(), part.array)) {
+                return this.heapEngine.format(this.llContext(), part.array);
+              }
               if (part !== null && typeof part === 'object' && 'array' in part) {
                 return `[${this.getArrayElements(part.array).map((el: any) => formatPrintValue(el.value)).join(', ')}]`;
               }

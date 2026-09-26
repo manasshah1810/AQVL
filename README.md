@@ -161,6 +161,7 @@ The demo Playground ships with a categorized example library, including:
 - **Sorting** — 17 examples written out with loops, IFs and recursive functions: bubble (with early exit), selection, insertion, cocktail shaker, quick, merge, heap, shell, counting, radix, cycle and pancake sort, plus practical problems — an exam rank list, a game leaderboard, counting inversions, the median with quickselect, and a stability check
 - **Trees** — binary trees, BST insert/delete/search, traversals, lowest common ancestor
 - **Linked lists** — singly/doubly/circular, reversal, tortoise-and-hare (find-middle)
+- **Heaps** — 16 examples written out with loops, IFs and functions over `h[i]`, drawn as a tree and as its array: sift up / sift down, extract-min, max-heap, Floyd's bottom-up build, recursive heapify, decrease-key, delete at any index, heap sort, plus practical problems — emergency-room triage, top-k scores, k-th smallest, connecting ropes, last stone weight and the running median with two heaps
 - **Graphs** — 19 algorithms written out with loops, queues, stacks and recursion: BFS, iterative and recursive DFS, fewest-stop paths, connected components, cycle detection, bipartite check, topological sort (Kahn and DFS), Dijkstra, Bellman-Ford, Prim, Kruskal with union-find, backtracking over all paths, greedy colouring
 - **Searching** — linear and binary search
 - **Advanced structures** — segment trees, skip lists (see `examples/data-structures/`)

@@ -25,6 +25,7 @@ import { StackLayoutStrategy } from './layouts/StackLayoutStrategy';
 import { QueueLayoutStrategy } from './layouts/QueueLayoutStrategy';
 import { PointerTreeLayoutStrategy, PointerContainerLayoutStrategy, TREE_LEVEL_SPACING } from './layouts/PointerTreeLayoutStrategy';
 
+import { HeapLayoutStrategy } from './layouts/HeapLayoutStrategy';
 import { RelationshipManager } from './RelationshipManager';
 
 export class LayoutManager {
@@ -41,6 +42,7 @@ export class LayoutManager {
   private pointerStackColumnStrategy: LayoutStrategy = new PointerContainerLayoutStrategy('column');
   private treeStrategy: LayoutStrategy;
   private arrayHeapStrategy: LayoutStrategy;
+  private heapStrategy: LayoutStrategy = new HeapLayoutStrategy();
 
   private reservedSlots: Map<string, Set<number | string>> = new Map();
 
@@ -128,8 +130,9 @@ export class LayoutManager {
         const isHeapNode = elements.some(el => el.originalType === 'HEAP_NODE');
         const isHeapArray = elements.some(el => el.originalType === 'HEAP_ARRAY_ELEMENT');
         
-        if (isHeapNode) {
-          strategy = this.treeStrategy;
+        if (isHeapNode || elements.some(el => el.originalType === 'HEAP')) {
+          // Tree on top, array row underneath, both placed by index.
+          strategy = this.heapStrategy;
         } else if (isHeapArray) {
           strategy = this.arrayHeapStrategy;
         } else if (isTree) {

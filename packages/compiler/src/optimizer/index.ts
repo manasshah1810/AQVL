@@ -37,6 +37,8 @@ export class Optimizer {
     for (const scene of ast.scenes) {
       const resized = new Set<string>();
       if (scene.sequence) Optimizer.collectResizedArrays(scene.sequence.statements, resized);
+      // An INSERT / DELETE inside a FUNCTION resizes the array just the same.
+      for (const fn of scene.declarations?.functions ?? []) Optimizer.collectResizedArrays(fn.body.statements, resized);
       if (scene.declarations) {
         // Track variable states for simulation
         for (const v of scene.declarations.variables) {

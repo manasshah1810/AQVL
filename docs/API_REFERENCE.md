@@ -547,28 +547,75 @@ END
 
 ## 9. Heap
 
-Declared with `HEAP name [= [n, ...]]`. Min-heap only — there is no max-heap
-variant. Implemented in `HeapEngine.ts` (`MinHeap` in
-`packages/runtime/src/data-structures/Heap.ts`).
+Declared with `HEAP name = [n, ...]` or `HEAP name = []`. The values are
+stored in the order given (the declaration does not reorder them). A heap is
+an array read as a complete binary tree — index `i` has children `2 * i + 1`
+and `2 * i + 2` and parent `(i - 1 - (i - 1) % 2) / 2` — and is drawn both as
+that tree and as the array. Min-heap or max-heap is decided by the code you
+write. Real heap code is handled by `HeapProgramEngine.ts`, which keeps the
+tree and array views in sync; the layout is `HeapLayoutStrategy.ts`.
+
+| Code | Description |
+|---|---|
+| `h[i]` | Current value at index `i`, usable in any expression. Out-of-range indices stop with an error. |
+| `LENGTH(h)` | Current number of values. |
+| `SWAP h[i] h[j]` | Exchange two values (the nodes keep their places). |
+| `COMPARE h[i] h[j]` | Highlight a comparison and log its result. |
+| `h[i] = value` / `UPDATE h[i] value` | Overwrite a value. |
+| `INSERT h value` | Append a new last cell (the next free position of the tree). |
+| `DELETE h[LENGTH(h) - 1]` | Remove the last cell. Deleting any other index is an error, because the tree must stay complete. |
+| `HIGHLIGHT h[i] 'SUCCESS'` | Mark a cell in both views. |
+| `PRINT h` | Print the array, e.g. `[10, 20, 15]`. |
+
+```aqvl
+SCENE MinHeapInsert
+DECLARE
+  HEAP h = []
+
+  FUNCTION siftUp(start)
+    child = start
+    keepClimbing = 1
+    WHILE keepClimbing == 1
+      IF child == 0
+        keepClimbing = 0
+      ELSE
+        parent = (child - 1 - (child - 1) % 2) / 2
+        IF h[child] < h[parent]
+          SWAP h[child] h[parent]
+          child = parent
+        ELSE
+          keepClimbing = 0
+        END
+      END
+    END
+  END
+
+SEQUENCE
+  INSERT h 35
+  siftUp(LENGTH(h) - 1)
+  INSERT h 10
+  siftUp(LENGTH(h) - 1)
+  PRINT h
+END
+```
+
+The Playground has 16 heap examples written this way (`HeapLibrary.ts`):
+index map, min-heap check, insert, extract-min, max-heap, Floyd's bottom-up
+build, recursive heapify, decrease-key, delete at any index, in-place heap
+sort, and practical problems — emergency-room triage, top-k scores, k-th
+smallest, connecting ropes, last stone weight and the running median with two
+heaps.
+
+The older one-line min-heap shortcuts still work, implemented in
+`HeapEngine.ts` (`MinHeap` in `packages/runtime/src/data-structures/Heap.ts`):
 
 | Operation | Syntax | Description | Complexity |
 |---|---|---|---|
 | Insert | `HEAP_INSERT heapName value` | Insert a value and sift up. | O(log n) |
-| Extract min | `HEAP_EXTRACT heapName` | Remove and return the minimum (root), then sift down. | O(log n) |
+| Extract min | `HEAP_EXTRACT heapName` | Remove the minimum (root), then sift down. | O(log n) |
 | Decrease key | `HEAP_DECREASE heapName index newValue` | Decrease the value at `index` and sift up. | O(log n) |
-| Build heap | `BUILD_HEAP heapName` | Build a heap from existing (unordered) array contents. | O(n) |
-| Heapify | `HEAPIFY heapName` | Restore the heap property from a given node downward. | O(log n) per call |
-
-```aqvl
-SCENE HeapDemo
-DECLARE
-  HEAP h = [5, 3, 7]
-SEQUENCE
-  HEAP_INSERT h 10
-  HEAP_DECREASE h 2 1
-  HEAP_EXTRACT h
-END
-```
+| Build heap | `BUILD_HEAP heapName` | Build a heap from existing (unordered) contents. | O(n) |
+| Heapify | `HEAPIFY heapName index` | Restore the heap property from a given node downward. | O(log n) per call |
 
 ---
 

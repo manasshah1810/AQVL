@@ -87,7 +87,7 @@ export class SceneManager {
         };
         this.elements.set(el.id, el);
         this.sceneGraph.push(el);
-      } else if (obj.type === 'BINARYTREE' || obj.type === 'CONTAINER') {
+      } else if (obj.type === 'BINARYTREE' || obj.type === 'CONTAINER' || obj.type === 'HEAP') {
         // A pointer tree's anchor (root pointer + kind) or a tree program's
         // queue / stack anchor (kind): not drawn as a node.
         const el: any = {

@@ -510,7 +510,7 @@ const TOC_ITEMS_GRAPHS = [
 const TOC_ITEMS_HEAPS = [
   { id: 'hp-introduction', label: 'Introduction' },
   { id: 'hp-declaration', label: 'Declaring a Heap' },
-  { id: 'hp-commands', label: 'Commands Reference' },
+  { id: 'hp-commands', label: 'Heap Code Reference' },
   { id: 'hp-examples', label: 'Examples' },
   { id: 'hp-errors', label: 'Errors & Tips' },
 ];
@@ -2806,184 +2806,255 @@ END`} />
                     <h1 className="docs-page-title">Heaps</h1>
                   </div>
                   <p className="docs-page-lead">
-                    A complete binary tree with a priority rule at every parent-child pair — shown as both a tree and its
-                    backing array, so sift-up and sift-down become concrete.
+                    A complete binary tree with a priority rule at every parent-child pair, written as real code over the
+                    array that stores it — shown as both a tree and that array, so sift-up and sift-down become concrete.
                   </p>
                 </header>
 
                 <section id="hp-introduction" className="docs-section">
                   <h2 className="docs-h2">Introduction</h2>
                   <p className="docs-p">
-                    A <C>HEAP</C> is a complete binary tree obeying the heap property: every parent compares favourably
-                    against both of its children. That makes the extreme value always available at the root, which is why
-                    heaps back priority queues, scheduling, and heapsort.
+                    A <C>HEAP</C> is a complete binary tree (every level full except the last, which fills from the left)
+                    with one rule at every parent: in a <b>min-heap</b> a parent is never bigger than its children, in a
+                    <b> max-heap</b> never smaller. So the smallest (or largest) value is always at the root, which is why
+                    heaps power priority queues, scheduling, Dijkstra's algorithm and heap sort.
                   </p>
                   <p className="docs-p">
-                    A heap is only partially ordered — siblings have no relationship to each other at all. Insertions
-                    restore the property by <em>sifting up</em> from the new leaf, and extractions by <em>sifting down</em>
-                    from the new root; both are animated swap by swap.
+                    A heap is stored in a plain array. There are no pointers: the index alone says who is related.
+                  </p>
+                  <div className="docs-cmd-table-wrap">
+                    <table className="docs-cmd-table">
+                      <thead>
+                        <tr><th>Relative of index i</th><th>AQVL expression</th></tr>
+                      </thead>
+                      <tbody>
+                        <tr><td>Left child</td><td><C>2 * i + 1</C></td></tr>
+                        <tr><td>Right child</td><td><C>2 * i + 2</C></td></tr>
+                        <tr><td>Parent (i &gt; 0)</td><td><C>(i - 1 - (i - 1) % 2) / 2</C> — that is (i - 1) / 2 rounded down</td></tr>
+                        <tr><td>Last node with a child</td><td><C>(n - 2 - (n - 2) % 2) / 2</C> where <C>n = LENGTH(h)</C></td></tr>
+                      </tbody>
+                    </table>
+                  </div>
+                  <p className="docs-p">
+                    A heap is only partially ordered — siblings have no order between them. After a change the rule is
+                    restored by <em>sifting up</em> (a value too small for its place swaps with its parent) or <em>sifting
+                    down</em> (a value too big swaps with its smaller child). You write both as ordinary loops.
                   </p>
                   <Alert kind="note" title="Visualization">
-                    Heaps render as a tree and as the array that stores it. Watching a swap happen in both views at once
-                    is what makes the index arithmetic behind a heap click.
+                    A heap is drawn twice: as a tree on top and as the array underneath, both placed by index. Every
+                    <C> SWAP</C>, comparison and assignment lights up the same index in both views, so the index arithmetic
+                    becomes visible.
                   </Alert>
                 </section>
 
                 <section id="hp-declaration" className="docs-section">
                   <h2 className="docs-h2">Declaring a Heap</h2>
+                  <CodeBlock label="Syntax" code={`HEAP <name> = [<value>, <value>, ...]
+HEAP <name> = []`} />
                   <p className="docs-p">
-                    Declare an empty heap and fill it with <C>HEAP_INSERT</C>, or supply an initial value list.
+                    The values are stored exactly in the order given — the declaration does not rearrange them. Either list
+                    them already in heap order, or start from any order and build the heap with code (see Example 4).
                   </p>
-                  <CodeBlock label="Syntax" code={`HEAP <name>
-HEAP <name> = [<value>, <value>, ...]`} />
-
-                  <p className="docs-p">A full minimal program:</p>
                   <CodeBlock code={`SCENE HeapIntro
 
 DECLARE
-  HEAP h = [10, 20, 30]
+  HEAP h = [10, 20, 15, 40, 50]
 
 SEQUENCE
-  HEAP_INSERT h 5
-  HEAP_EXTRACT h
+  PRINT "Root (smallest):" h[0]
+  PRINT "Size:" LENGTH(h)
+  PRINT "Children of the root:" h[1] h[2]
 END`} />
-                  <p className="docs-p">
-                    Inserting 5 places it at the next free leaf and then sifts it upward until the heap property holds
-                    again. <C>HEAP_EXTRACT</C> then removes the root and sifts the replacement back down.
-                  </p>
                 </section>
 
                 <section id="hp-commands" className="docs-section">
-                  <h2 className="docs-h2">Commands Reference</h2>
+                  <h2 className="docs-h2">Heap Code Reference</h2>
                   <p className="docs-p">
-                    Every heap command names its heap first, the same convention stacks and queues use.
+                    A heap is used like an array whose shape must stay a complete tree, so it only grows or shrinks at the end.
                   </p>
                   <div className="docs-cmd-table-wrap">
                     <table className="docs-cmd-table">
                       <thead>
-                        <tr><th>Command</th><th>Description</th></tr>
+                        <tr><th>Code</th><th>Meaning</th></tr>
                       </thead>
                       <tbody>
-                        <tr>
-                          <td><span className="tok-keyword">HEAP_INSERT</span> <span className="tok-param">name value</span></td>
-                          <td>Appends <C>value</C> at the next free position and sifts it up, swapping with its parent until the heap property is restored.</td>
-                        </tr>
-                        <tr>
-                          <td><span className="tok-keyword">HEAP_EXTRACT</span> <span className="tok-param">name</span></td>
-                          <td>Removes the root, moves the last element into its place, and sifts it down. This is the priority-queue "take the next item" operation.</td>
-                        </tr>
-                        <tr>
-                          <td><span className="tok-keyword">HEAP_DECREASE</span> <span className="tok-param">name value newValue</span></td>
-                          <td>Lowers an existing element's key and sifts it up to its new position — the operation Dijkstra's algorithm needs.</td>
-                        </tr>
-                        <tr>
-                          <td><span className="tok-keyword">BUILD_HEAP</span> <span className="tok-param">name</span></td>
-                          <td>Turns an arbitrary set of values into a valid heap bottom-up, which is cheaper than inserting them one at a time.</td>
-                        </tr>
-                        <tr>
-                          <td><span className="tok-keyword">HEAPIFY</span> <span className="tok-param">name</span></td>
-                          <td>Runs a single sift-down pass, restoring the heap property at one subtree.</td>
-                        </tr>
+                        <tr><td><C>h[i]</C></td><td>The value at index i, inside any expression: <C>IF h[child] &lt; h[parent]</C>.</td></tr>
+                        <tr><td><C>LENGTH(h)</C></td><td>How many values the heap holds right now.</td></tr>
+                        <tr><td><C>SWAP h[i] h[j]</C></td><td>Exchanges two values (both views animate).</td></tr>
+                        <tr><td><C>COMPARE h[i] h[j]</C></td><td>Highlights a comparison and prints its result.</td></tr>
+                        <tr><td><C>h[i] = value</C></td><td>Overwrites a value (same as <C>UPDATE h[i] value</C>).</td></tr>
+                        <tr><td><C>INSERT h value</C></td><td>Adds a new last cell, the next free spot of the tree. Sift it up afterwards.</td></tr>
+                        <tr><td><C>DELETE h[LENGTH(h) - 1]</C></td><td>Removes the last cell. Only the last cell can be deleted.</td></tr>
+                        <tr><td><C>HIGHLIGHT h[i] 'SUCCESS'</C></td><td>Marks a cell (<C>'NEUTRAL'</C> clears the mark).</td></tr>
+                        <tr><td><C>PRINT h</C></td><td>Prints the array, e.g. <C>[10, 20, 15]</C>.</td></tr>
                       </tbody>
                     </table>
                   </div>
+                  <p className="docs-p">
+                    The older one-line shortcuts still work on a min-heap (<C>HEAP_INSERT h 5</C>, <C>HEAP_EXTRACT h</C>,
+                    <C> HEAP_DECREASE h index newValue</C>, <C>BUILD_HEAP h</C>, <C>HEAPIFY h index</C>), but they hide the
+                    algorithm. The examples below, and all 16 Heaps examples in the Playground, write it out.
+                  </p>
                 </section>
 
                 <section id="hp-examples" className="docs-section">
                   <h2 className="docs-h2">Examples</h2>
 
-                  <h3 className="docs-h3">Example 1 — Building a Heap by Insertion</h3>
+                  <h3 className="docs-h3">Example 1 — Insert and Sift Up</h3>
                   <p className="docs-p">
-                    Each insert appends at the bottom and bubbles up; inserting a new extreme value makes it travel all
-                    the way to the root.
+                    Add the value at the end (the next free spot of the tree), then swap it with its parent while it is smaller.
                   </p>
-                  <CodeBlock code={`SCENE HeapInserts
+                  <CodeBlock code={`SCENE MinHeapInsert
 
 DECLARE
-  HEAP h
+  HEAP h = []
+  ARRAY arrivals = [35, 33, 42, 10, 14]
+
+  FUNCTION siftUp(start)
+    child = start
+    keepClimbing = 1
+    WHILE keepClimbing == 1
+      IF child == 0
+        keepClimbing = 0
+      ELSE
+        parent = (child - 1 - (child - 1) % 2) / 2
+        IF h[child] < h[parent]
+          SWAP h[child] h[parent]
+          child = parent
+        ELSE
+          keepClimbing = 0
+        END
+      END
+    END
+  END
 
 SEQUENCE
-  HEAP_INSERT h 50
-  HEAP_INSERT h 30
-  HEAP_INSERT h 70
-  WAIT
-
-  // This one has to climb the whole way
-  HEAP_INSERT h 5
-  WAIT
+  LOOP k FROM 0 TO LENGTH(arrivals) - 1
+    INSERT h arrivals[k]
+    siftUp(LENGTH(h) - 1)
+    PRINT "After inserting " + arrivals[k] + ":" h
+  END
 END`} />
-
-                  <h3 className="docs-h3">Example 2 — Extracting in Priority Order</h3>
                   <p className="docs-p">
-                    Repeated extraction empties a heap in sorted order — this is heapsort with the array step left out.
+                    <strong>Expected:</strong> the last line is <C>After inserting 14: [10, 14, 42, 35, 33]</C>.
                   </p>
-                  <CodeBlock code={`SCENE HeapDrain
+
+                  <h3 className="docs-h3">Example 2 — Extract the Minimum</h3>
+                  <p className="docs-p">
+                    Take the root, copy the last value onto the root, delete the last cell, then sift the root down,
+                    always swapping with the <em>smaller</em> child.
+                  </p>
+                  <CodeBlock code={`SCENE ExtractMin
 
 DECLARE
-  HEAP h = [15, 40, 25, 60, 35]
+  HEAP h = [5, 9, 8, 17, 12, 11, 20, 25]
+
+  FUNCTION siftDown(start)
+    parent = start
+    size = LENGTH(h)
+    keepSifting = 1
+    WHILE keepSifting == 1
+      smallest = parent
+      left = 2 * parent + 1
+      right = 2 * parent + 2
+      IF left < size
+        IF h[left] < h[smallest]
+          smallest = left
+        END
+      END
+      IF right < size
+        IF h[right] < h[smallest]
+          smallest = right
+        END
+      END
+      IF smallest == parent
+        keepSifting = 0
+      ELSE
+        SWAP h[parent] h[smallest]
+        parent = smallest
+      END
+    END
+  END
+
+  FUNCTION extractMin()
+    smallestValue = h[0]
+    last = LENGTH(h) - 1
+    h[0] = h[last]
+    DELETE h[last]
+    IF LENGTH(h) > 1
+      siftDown(0)
+    END
+    RETURN smallestValue
+  END
 
 SEQUENCE
-  BUILD_HEAP h
-  WAIT
-
-  HEAP_EXTRACT h
-  WAIT
-  HEAP_EXTRACT h
-  WAIT
-  HEAP_EXTRACT h
+  LOOP round FROM 1 TO 3
+    taken = extractMin()
+    PRINT "Extracted" taken
+  END
 END`} />
                   <p className="docs-p">
-                    <strong>Expected behavior:</strong> <C>BUILD_HEAP</C> reorders the values into a valid heap, then each
-                    extraction takes the root and sifts the replacement down through its children.
+                    <strong>Expected:</strong> <C>5</C>, <C>8</C>, <C>9</C> — values leave a heap smallest first.
                   </p>
 
-                  <h3 className="docs-h3">Example 3 — Decreasing a Key</h3>
+                  <h3 className="docs-h3">Example 3 — Max-Heap</h3>
                   <p className="docs-p">
-                    Lowering a key can only move an element upward, so the fix is a sift-up from wherever it sits.
+                    A max-heap is the same code with the comparisons flipped: <C>IF h[child] &gt; h[parent]</C> in sift up,
+                    and sift down picks the <em>larger</em> child. See <em>Max-Heap: Auction Bids</em> in the Playground.
                   </p>
-                  <CodeBlock code={`SCENE HeapDecreaseKey
 
-DECLARE
-  HEAP h = [10, 20, 30, 40]
-
-SEQUENCE
-  BUILD_HEAP h
-  WAIT
-
-  // Give 40 a much better priority
-  HEAP_DECREASE h 40 1
-  WAIT
-
-  HEAP_EXTRACT h
-END`} />
+                  <h3 className="docs-h3">Example 4 — Build a Heap Bottom-Up (Floyd)</h3>
+                  <p className="docs-p">
+                    Every leaf is already a heap, so sift down each parent from the last one back to the root. This is
+                    O(n), faster than n inserts. <C>siftDown</C> is the function from Example 2.
+                  </p>
+                  <CodeBlock code={`SEQUENCE
+  n = LENGTH(h)
+  i = (n - 2 - (n - 2) % 2) / 2
+  WHILE i >= 0
+    siftDown(i)
+    i = i - 1
+  END
+  PRINT "Heap:" h`} />
                 </section>
 
                 <section id="hp-errors" className="docs-section">
                   <h2 className="docs-h2">Errors &amp; Tips</h2>
 
-                  <Alert kind="warn" title="Extracting from an empty heap">
-                    <C>HEAP_EXTRACT</C> on an empty heap has no root to remove and reports an error rather than producing
-                    a frame. Build the heap before draining it.
+                  <Alert kind="warn" title="Only the last cell can be deleted">
+                    <C>DELETE h[0]</C> stops with <em>Only the last cell of heap 'h' (index 4) can be deleted</em>: removing
+                    any other cell would leave a hole in the tree. Copy the last value into the cell first
+                    (<C>h[0] = h[last]</C>), then <C>DELETE h[last]</C>, then sift.
                   </Alert>
 
-                  <Alert kind="warn" title="HEAP_DECREASE needs an existing value">
-                    The second argument is the value already in the heap and the third is its replacement. Naming a value
-                    that is not present leaves the heap untouched.
+                  <Alert kind="warn" title="Index out of bounds">
+                    Reading <C>h[left]</C> for a node without a left child stops with <em>Index 7 is out of bounds for heap
+                    'h'</em>. Check <C>IF left &lt; LENGTH(h)</C> before reading a child.
                   </Alert>
 
-                  <Alert kind="warn" title="A heap is not fully sorted">
-                    Only the parent-child relationship is guaranteed. Reading the backing array top to bottom does not
-                    give you a sorted list — repeated <C>HEAP_EXTRACT</C> does.
+                  <Alert kind="tip" title="Rounding down the parent index">
+                    Division keeps decimals (<C>5 / 2 = 2.5</C>), so the parent is written
+                    <C> (i - 1 - (i - 1) % 2) / 2</C>: subtract the remainder, then divide.
                   </Alert>
 
-                  <Alert kind="tip" title="BUILD_HEAP beats repeated inserts">
-                    When you already have all the values, <C>BUILD_HEAP</C> shows the bottom-up construction in far fewer
-                    steps than inserting them one by one, and it is the faster algorithm too.
+                  <Alert kind="tip" title="Set a variable before an IF that assigns it">
+                    A variable first created inside an IF or ELSE belongs to that block. Write <C>median = 0</C> before the
+                    IF, then assign it in either branch, to use it afterwards.
                   </Alert>
 
-                  <Alert kind="note" title="Heaps use the tree layout">
-                    A heap is laid out with the same <C>HIERARCHY</C> strategy as trees, so <C>levelGap</C> and
-                    <C>siblingGap</C> tune it identically.
+                  <Alert kind="tip" title="Return results from functions">
+                    Assigning a SEQUENCE variable inside a FUNCTION creates a new local instead. Return the value,
+                    e.g. <C>swaps = swaps + siftDown(i)</C> with <C>RETURN swapsMade</C> in the function.
+                  </Alert>
+
+                  <Alert kind="note" title="Two heaps need two sets of functions">
+                    <C>h[i]</C> in a function always means the heap named <C>h</C>. With two heaps (e.g. the running median's
+                    <C> low</C> and <C>high</C>) write one sift function per heap.
+                  </Alert>
+
+                  <Alert kind="warn" title="A heap is not sorted">
+                    Only parent-child pairs are ordered: <C>[1, 5, 2, 7, 6]</C> is a valid min-heap. Extracting repeatedly
+                    (or heap sort) gives sorted order.
                   </Alert>
                 </section>
               </>

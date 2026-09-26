@@ -97,6 +97,8 @@ export class AQIRGenerator {
   // Names declared with `ARRAY name = [...]`. Element references into these
   // are resolved at runtime by (array, logical index) — see resolveExpressionId.
   private arrayNames = new Set<string>();
+  /** Declared HEAPs (also in arrayNames): `INSERT h value` takes a value expression. */
+  private heapNames = new Set<string>();
   // Arrays some INSERT grows: a literal index past the declared length may be valid by then.
   private growableArrays = new Set<string>();
   // Names declared with `[SINGLY|DOUBLY|CIRCULAR] LINKEDLIST`. Like arrays,
@@ -253,6 +255,7 @@ export class AQIRGenerator {
     this.tempCounter = 0;
     this.layoutTracker.reset();
     this.arrayNames.clear();
+    this.heapNames.clear();
     this.growableArrays.clear();
     this.linkedListNames.clear();
     this.treeNames.clear();
@@ -462,6 +465,15 @@ export class AQIRGenerator {
         sourceText: `${this.exprToString(expr.left)} = ${this.exprToString(expr.right)}`,
         lineNumber: expr.pos.line,
       } as any);
+      return true;
+    }
+    if (
+      expr.type === 'BinaryOpNode' && expr.operator === '=' && expr.left.type === 'ArrayAccessNode' &&
+      this.arrayNames.has(expr.left.array.name)
+    ) {
+      // `arr[i] = value` / `h[0] = h[last]`: the same step as `UPDATE arr[i] value`
+      // (before, the store was silently dropped).
+      this.generateInstruction({ type: 'GenericActionNode', actionName: 'UPDATE', args: [expr.left, expr.right], pos: expr.pos } as any);
       return true;
     }
     return false;
@@ -1127,7 +1139,14 @@ export class AQIRGenerator {
           elements = userInputs[heap.name.name];
         }
 
-        // this.env.set(`LENGTH(${heap.name.name})`, elements.length);
+        // Real heap code (`h[i]`, LENGTH(h), SWAP, `h[i] = v`, INSERT h v,
+        // DELETE h[last]) is resolved at run time by slot, like an ARRAY;
+        // HeapProgramEngine keeps the tree and array views in sync.
+        this.arrayNames.add(heap.name.name);
+        this.growableArrays.add(heap.name.name);
+        this.heapNames.add(heap.name.name);
+        // Not drawn: marks `h` as a heap even while it is empty.
+        this.generatedObjects.push({ id: `heap:${heap.name.name}`, type: 'HEAP', logicalParent: heap.name.name, label: heap.name.name } as any);
 
         const nodeIds: string[] = [];
         for (let i = 0; i < elements.length; i++) {
@@ -1559,8 +1578,11 @@ export class AQIRGenerator {
         const targetsList = actionNode.args[0]?.type === 'IdentifierNode' && this.linkedListNames.has(actionNode.args[0].name);
         const targetsTree = actionNode.args[0]?.type === 'IdentifierNode' && this.treeNames.has(actionNode.args[0].name);
         const targetsContainer = actionNode.args[0]?.type === 'IdentifierNode' && this.containerNames.has(actionNode.args[0].name);
+        const targetsHeap = actionNode.args[0]?.type === 'IdentifierNode' && this.heapNames.has(actionNode.args[0].name);
         const takesValue =
           (targetsArraySlot && (actionNode.actionName === 'UPDATE' || actionNode.actionName === 'INSERT')) ||
+          // `INSERT h value` appends to a heap
+          (targetsHeap && actionNode.actionName === 'INSERT') ||
           (targetsList && (actionNode.actionName === 'INSERT_HEAD' || actionNode.actionName === 'INSERT_TAIL')) ||
           // `INSERT t 65`, `SEARCH t key`, `DELETE t 30`
           targetsTree ||
