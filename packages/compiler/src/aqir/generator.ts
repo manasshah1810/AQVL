@@ -621,6 +621,10 @@ export class AQIRGenerator {
       case 'IdentifierNode':
         return expr.name;
       case 'LiteralNode':
+        // A text literal is passed as `{ text }` so it stays that text: "i"
+        // must not become the value of a variable named i (a bare string
+        // operand is looked up as a variable name by the VM).
+        if (typeof expr.value === 'string') return { text: expr.value } as unknown as AQIRValue;
         return expr.value;
       case 'BinaryOpNode':
         if ((expr.operator === 'AND' || expr.operator === 'OR') && this.containsContainerRead(expr.right)) {

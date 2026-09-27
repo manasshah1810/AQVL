@@ -99,7 +99,9 @@ delimiters (`END` vs `{ }`).
   - Unary `-` is only legal directly on a numeric literal (e.g. `-5`). Negating an
     arbitrary expression (`-x`) is a **parse error** with the message
     "Use subtraction instead" — write `0 - x` instead.
-- **Strings**: double- or single-quoted (`"hello"`, `'hello'`).
+- **Strings**: double- or single-quoted (`"hello"`, `'hello'`). A string
+  literal is always that text, even when a variable has the same name:
+  inside `LOOP i`, `CHAR_AT(s, k) == "i"` compares with the letter i.
 - **Booleans**: `TRUE` and `FALSE` (any case). `PRINT` shows them as `TRUE` / `FALSE`.
 - **`INFINITY`**: a number larger than every other number, e.g. a starting
   distance `v.dist = INFINITY`. `PRINT` shows it as `INFINITY`.
@@ -239,7 +241,38 @@ LOOP i FROM 0 TO LENGTH(arr) - 1
 END
 ```
 
-`LOOP` is only defined in the animation grammar (used inside `SEQUENCE`).
+`LOOP` is only defined in the animation grammar (used inside `SEQUENCE` and
+in `FUNCTION ... END` bodies declared in `DECLARE`).
+
+- Both bounds are included: `LOOP i FROM 0 TO 4` runs 5 times.
+- When the end is smaller than the start, the loop counts **down**:
+  `LOOP i FROM 2 TO 0` runs with 2, 1, 0, so `LOOP s FROM 1 TO 0` runs twice,
+  not zero times. Use `WHILE` when a range can be empty.
+- The iterator only exists inside the loop. Assigning to it in the body
+  moves the loop (`i = i + 1` makes it skip every other value).
+
+### 5.4 No `BREAK` / `CONTINUE`
+
+There are no `BREAK` or `CONTINUE` statements. Stop a loop early with a flag
+in a `WHILE` condition, skip an item with `IF` / `ELSE`, and get a
+"do-while" (body runs at least once) by starting the flag as `TRUE`:
+
+```aqvl
+found = FALSE
+i = 0
+WHILE i < LENGTH(arr) AND found == FALSE
+  IF arr[i] == target
+    found = TRUE
+  ELSE
+    i = i + 1
+  END
+END
+```
+
+Inside a `FUNCTION`, `RETURN` leaves the function immediately, also from
+inside a loop. The Loops & Control examples in the Playground
+(`packages/demo/src/examples/LoopLibrary.ts`) show every one of these
+patterns.
 
 ---
 

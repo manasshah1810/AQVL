@@ -536,7 +536,7 @@ const TOC_ITEMS_HASHMAPS = [
 const TOC_ITEMS_CONTROL_FLOW = [
   { id: 'cf-introduction', label: 'Introduction' },
   { id: 'cf-declaration', label: 'Variables & Literals' },
-  { id: 'cf-commands', label: 'Statements & Operators' },
+  { id: 'cf-commands', label: 'Loops, Conditions & Operators' },
   { id: 'cf-examples', label: 'Examples' },
   { id: 'cf-errors', label: 'Errors & Tips' },
 ];
@@ -852,7 +852,7 @@ export default function Docs() {
                 onClick={() => goToPage('control-flow')}
               >
                 <span className="docs-nav-icon"><IconFlow /></span>
-                Control Flow
+                Loops &amp; Control Flow
               </button>
               <button
                 className={`docs-nav-item ${activePage === 'functions' ? 'is-active' : ''}`}
@@ -3653,74 +3653,82 @@ END`} />
                         <circle cx="18" cy="12" r="3" />
                       </svg>
                     </div>
-                    <h1 className="docs-page-title">Control Flow &amp; Expressions</h1>
+                    <h1 className="docs-page-title">Loops &amp; Control Flow</h1>
                   </div>
                   <p className="docs-page-lead">
-                    Loops, conditionals, variables, and operators — the general-purpose half of AQVL that turns a list of
-                    animation commands into an algorithm.
+                    <C>LOOP</C>, <C>WHILE</C>, <C>IF</C> / <C>ELSE IF</C> / <C>ELSE</C>, variables and operators: the
+                    general-purpose half of AQVL that turns a list of animation commands into an algorithm.
                   </p>
                 </header>
 
                 <section id="cf-introduction" className="docs-section">
                   <h2 className="docs-h2">Introduction</h2>
                   <p className="docs-p">
-                    Every AQVL program is a <C>SCENE</C> containing a <C>DECLARE</C> block (what exists) and a
-                    <C>SEQUENCE</C> block (what happens), closed by <C>END</C>. Inside the sequence, <C>LOOP</C> and
-                    <C>IF</C> let one written statement produce many animation steps.
+                    Every AQVL program is a <C>SCENE</C> with a <C>DECLARE</C> block (what exists: arrays, other
+                    structures and <C>FUNCTION</C>s) and a <C>SEQUENCE</C> block (what happens), closed by <C>END</C>.
+                    Inside the sequence and inside functions you write ordinary code, the way you would in C or Java:
+                    counters, flags, loops and conditions. Every block, <C>LOOP</C>, <C>WHILE</C>, <C>IF</C> and
+                    <C>FUNCTION</C>, is closed by its own <C>END</C>.
                   </p>
-                  <p className="docs-p">
-                    Sequence-mode control flow is <strong>block-delimited by <C>END</C></strong>, not by braces, and
-                    <C>IF</C> has no <C>ELSE</C> here. Braces and <C>ELSE</C> belong to function bodies — see the
-                    Functions page — which is a deliberate split: the sequence block reads as a storyboard, function
-                    bodies read as code.
-                  </p>
-                  <Alert kind="note" title="The three blocks">
-                    <C>SCENE &lt;name&gt;</C> opens the program, <C>DECLARE</C> introduces structures, <C>SEQUENCE</C>
-                    lists the steps, and a final <C>END</C> closes the scene.
+                  <CodeBlock code={`SCENE LoopsAtAGlance
+
+DECLARE
+  ARRAY marks = [72, 85, 64, 90, 58]
+
+SEQUENCE
+  passed = 0
+  LOOP i FROM 0 TO LENGTH(marks) - 1
+    IF marks[i] >= 60
+      passed = passed + 1
+      HIGHLIGHT marks[i] 'SUCCESS'
+    ELSE
+      HIGHLIGHT marks[i] 'DISCARDED'
+    END
+  END
+  PRINT passed + " of " + LENGTH(marks) + " students passed"
+END`} />
+                  <Alert kind="note" title="Write it the long way">
+                    The Loops &amp; Control examples in the Playground use no shortcut built-ins. The largest value is
+                    found with a loop and an <C>IF</C>, not with <C>MAX</C>; a search stops through a flag in the
+                    <C>WHILE</C> condition. Every decision is visible in the code and in the animation.
                   </Alert>
                 </section>
 
                 <section id="cf-declaration" className="docs-section">
                   <h2 className="docs-h2">Variables &amp; Literals</h2>
                   <p className="docs-p">
-                    Scalar variables are never declared. Assigning to a name creates it on the spot, in the current
-                    scope, with the value of the right-hand expression.
+                    Variables are never declared. Assigning to a name creates it, with the value of the right-hand
+                    expression. A variable can hold a number, text, <C>TRUE</C> / <C>FALSE</C> or <C>NULL</C>.
                   </p>
                   <CodeBlock label="Syntax" code={`<name> = <expression>`} />
-
-                  <CodeBlock code={`SCENE ScalarVariables
-
-DECLARE
-  ARRAY arr = [5, 2, 9]
-
-SEQUENCE
-  // No declaration needed — assignment creates it
-  total = 0
-  target = 9
-
-  LOOP i FROM 0 TO LENGTH(arr) - 1
-    total = total + arr[i]
-  END
-END`} />
+                  <CodeBlock code={`total = 0
+count = count + 1
+name = "loops"
+found = FALSE
+average = total / count`} />
                   <p className="docs-p">
-                    A <C>LOOP</C> iterator is scoped to its loop and also needs no declaration. Both kinds of implicit
-                    variable hold numbers.
+                    Literals: numbers (<C>42</C>, <C>3.5</C>, <C>-1</C>), text in either quote style (<C>"hello"</C>,
+                    <C>'SUCCESS'</C>), <C>TRUE</C>, <C>FALSE</C>, <C>NULL</C> and <C>INFINITY</C>. A text literal is always
+                    that text: <C>"i"</C> is the letter i even inside <C>LOOP i</C>. Comments run from <C>//</C> to the end
+                    of the line.
                   </p>
-                  <p className="docs-p">
-                    Literals come in three shapes: numbers (<C>42</C>, <C>3.14</C>, <C>-5</C>), quoted strings
-                    (<C>"A-&gt;B"</C>, <C>'SUCCESS'</C> — both quote styles are equivalent), and the <C>NULL</C> sentinel
-                    used to terminate linked structures. Comments run from <C>//</C> to end of line.
-                  </p>
-                  <Alert kind="warn" title="Negation only applies to literals">
-                    <C>-5</C> is a negative number literal, but there is no unary minus on expressions. Write
-                    <C>0 - x</C> rather than <C>-x</C>.
+                  <Alert kind="warn" title="Where a variable lives (scope)">
+                    A variable first assigned <em>inside</em> a <C>LOOP</C>, <C>WHILE</C> or <C>IF</C> body only exists
+                    inside that body, and a <C>LOOP</C> variable only exists inside its loop. Create counters, totals and
+                    results <em>before</em> the loop; assigning to them inside the loop then updates that outer variable.
+                    Inside a <C>FUNCTION</C>, assigning to a name always creates a local variable, so send results back
+                    with <C>RETURN</C>.
+                  </Alert>
+                  <Alert kind="warn" title="Negation only applies to number literals">
+                    <C>-5</C> is a negative number, but there is no minus in front of an expression: write <C>0 - x</C>
+                    rather than <C>-x</C>.
                   </Alert>
                 </section>
 
                 <section id="cf-commands" className="docs-section">
                   <h2 className="docs-h2">Statements &amp; Operators</h2>
 
-                  <h3 className="docs-h3">Control Flow</h3>
+                  <h3 className="docs-h3">Loops and Conditions</h3>
                   <div className="docs-cmd-table-wrap">
                     <table className="docs-cmd-table">
                       <thead>
@@ -3728,12 +3736,32 @@ END`} />
                       </thead>
                       <tbody>
                         <tr>
-                          <td><span className="tok-keyword">LOOP</span> <span className="tok-param">var</span> <span className="tok-keyword">FROM</span> <span className="tok-param">a</span> <span className="tok-keyword">TO</span> <span className="tok-param">b</span> … <span className="tok-keyword">END</span></td>
-                          <td>Runs the body once per value of <C>var</C> from <C>a</C> to <C>b</C> inclusive. Both bounds are expressions, so <C>LENGTH(arr) - 1</C> is a valid upper bound. Loops nest freely.</td>
+                          <td><span className="tok-keyword">LOOP</span> <span className="tok-param">i</span> <span className="tok-keyword">FROM</span> <span className="tok-param">a</span> <span className="tok-keyword">TO</span> <span className="tok-param">b</span> … <span className="tok-keyword">END</span></td>
+                          <td>The "for loop": runs the body once for every value of <C>i</C> from <C>a</C> to <C>b</C>, <strong>both included</strong>. Counts down by itself when <C>b</C> is smaller than <C>a</C>. Use it when the number of rounds is known.</td>
                         </tr>
                         <tr>
-                          <td><span className="tok-keyword">IF</span> <span className="tok-param">expr</span> … <span className="tok-keyword">END</span></td>
-                          <td>Runs the body when <C>expr</C> is true. In <C>SEQUENCE</C> there is no <C>ELSE</C> branch — write a second <C>IF</C> with the opposite condition.</td>
+                          <td><span className="tok-keyword">WHILE</span> <span className="tok-param">condition</span> … <span className="tok-keyword">END</span></td>
+                          <td>Checks the condition before every round and repeats while it is true. If it is false at the start, the body runs zero times. Use it when you do not know how many rounds you need.</td>
+                        </tr>
+                        <tr>
+                          <td><span className="tok-keyword">IF</span> <span className="tok-param">condition</span> … <span className="tok-keyword">END</span></td>
+                          <td>Runs the body only when the condition is true.</td>
+                        </tr>
+                        <tr>
+                          <td><span className="tok-keyword">IF</span> … <span className="tok-keyword">ELSE</span> … <span className="tok-keyword">END</span></td>
+                          <td>Exactly one of the two bodies runs.</td>
+                        </tr>
+                        <tr>
+                          <td><span className="tok-keyword">IF</span> … <span className="tok-keyword">ELSE IF</span> … <span className="tok-keyword">ELSE</span> … <span className="tok-keyword">END</span></td>
+                          <td>A ladder: the conditions are checked from top to bottom and only the <strong>first</strong> true branch runs. <C>ELSE IF</C> is written on one line, and the whole chain shares one <C>END</C>.</td>
+                        </tr>
+                        <tr>
+                          <td><span className="tok-keyword">FUNCTION</span> <span className="tok-param">name(a, b)</span> … <span className="tok-keyword">RETURN</span> <span className="tok-param">x</span> … <span className="tok-keyword">END</span></td>
+                          <td>Declared in <C>DECLARE</C>, called from the sequence or from other functions. <C>RETURN</C> leaves the function at once, even from inside a loop.</td>
+                        </tr>
+                        <tr>
+                          <td><span className="tok-keyword">PRINT</span> <span className="tok-param">expr</span> [<span className="tok-param">array</span>]</td>
+                          <td>Writes a line to the output console. Join text and numbers with <C>+</C>; an array name after the text prints the whole array: <C>PRINT "Sorted:" arr</C>.</td>
                         </tr>
                         <tr>
                           <td><span className="tok-keyword">WAIT</span></td>
@@ -3742,6 +3770,33 @@ END`} />
                       </tbody>
                     </table>
                   </div>
+
+                  <h3 className="docs-h3">BREAK and CONTINUE, written out</h3>
+                  <p className="docs-p">
+                    AQVL has no <C>BREAK</C> or <C>CONTINUE</C>. Both are written with the constructs above, which also
+                    makes the reason a loop stops visible in its condition.
+                  </p>
+                  <CodeBlock label="Stop early (break)" code={`found = FALSE
+i = 0
+WHILE i < LENGTH(arr) AND found == FALSE
+  IF arr[i] == target
+    found = TRUE
+  ELSE
+    i = i + 1
+  END
+END`} />
+                  <CodeBlock label="Skip an item (continue)" code={`LOOP i FROM 0 TO LENGTH(readings) - 1
+  IF readings[i] < 0
+    PRINT "skipped " + readings[i]
+  ELSE
+    total = total + readings[i]
+  END
+END`} />
+                  <CodeBlock label="Run at least once (do-while)" code={`again = TRUE
+WHILE again == TRUE
+  // ... the body always runs the first time ...
+  again = tries < 3 AND loggedIn == FALSE
+END`} />
 
                   <h3 className="docs-h3">Operators</h3>
                   <div className="docs-cmd-table-wrap">
@@ -3752,27 +3807,35 @@ END`} />
                       <tbody>
                         <tr>
                           <td><span className="tok-operator">+ - * /</span></td>
-                          <td>Arithmetic on numeric expressions, evaluated left to right.</td>
+                          <td>Arithmetic. <C>/</C> is real division (<C>7 / 2</C> is <C>3.5</C>). <C>+</C> also joins text: <C>"Day " + 3</C>.</td>
                         </tr>
                         <tr>
-                          <td><span className="tok-operator">&gt; &lt; &gt;= &lt;=</span></td>
-                          <td>Ordering comparisons, used in <C>IF</C> conditions.</td>
+                          <td><span className="tok-operator">%</span></td>
+                          <td>Remainder: <C>17 % 5</C> is <C>2</C>. <C>n % 2 == 0</C> tests for even, <C>n % 10</C> is the last digit.</td>
                         </tr>
                         <tr>
-                          <td><span className="tok-operator">== !=</span></td>
-                          <td>Equality and inequality.</td>
+                          <td><span className="tok-operator">&gt; &lt; &gt;= &lt;= == !=</span></td>
+                          <td>Comparisons, giving <C>TRUE</C> or <C>FALSE</C>.</td>
+                        </tr>
+                        <tr>
+                          <td><span className="tok-keyword">AND</span> <span className="tok-keyword">OR</span></td>
+                          <td>Combine conditions. They short-circuit: in <C>i &lt; n AND arr[i] &gt; 0</C> the right side is only read while <C>i</C> is a valid index. Use brackets to group: <C>(a AND b) OR c</C>.</td>
                         </tr>
                         <tr>
                           <td><span className="tok-operator">=</span></td>
-                          <td>Assignment. It binds looser than every other operator and associates rightward, so <C>total = total + i</C> means <C>total = (total + i)</C>.</td>
+                          <td>Assignment. It binds looser than every other operator, so <C>total = total + i</C> means <C>total = (total + i)</C>, and <C>ok = a &gt; 0 AND b &gt; 0</C> stores the whole condition.</td>
                         </tr>
                         <tr>
-                          <td><span className="tok-builtin">LENGTH</span>(<span className="tok-param">name</span>)</td>
-                          <td>The current element count of a named structure — the usual upper bound of a loop over an array.</td>
+                          <td><span className="tok-builtin">LENGTH</span>(<span className="tok-param">arr</span>)</td>
+                          <td>The number of elements, so the last index is <C>LENGTH(arr) - 1</C>.</td>
                         </tr>
                         <tr>
-                          <td><span className="tok-param">name</span>[<span className="tok-param">expr</span>]</td>
-                          <td>Element access. The index may be any expression (<C>arr[j+1]</C>) and, on a graph, a string key (<C>g["A"]</C>).</td>
+                          <td><span className="tok-builtin">TEXT_LENGTH</span>(<span className="tok-param">s</span>), <span className="tok-builtin">CHAR_AT</span>(<span className="tok-param">s, i</span>), <span className="tok-builtin">CHAR_CODE</span>(<span className="tok-param">s, i</span>)</td>
+                          <td>Loop over text: its length, the character at position <C>i</C> (from 0), and that character's code (<C>"a"</C> is 97).</td>
+                        </tr>
+                        <tr>
+                          <td><span className="tok-param">arr</span>[<span className="tok-param">expr</span>]</td>
+                          <td>Element access; the index may be any expression (<C>arr[j + 1]</C>). Change a cell with <C>UPDATE arr[i] value</C>, add one with <C>INSERT arr[i] value</C>.</td>
                         </tr>
                       </tbody>
                     </table>
@@ -3790,7 +3853,7 @@ END`} />
                       <tbody>
                         <tr>
                           <td><span className="tok-keyword">HIGHLIGHT</span> <span className="tok-param">target [color]</span></td>
-                          <td>Pulses an element. An optional colour literal such as <C>'SUCCESS'</C> marks the meaning of the highlight rather than just drawing attention.</td>
+                          <td>Pulses an element. A colour such as <C>'SUCCESS'</C> (green), <C>'MARKED'</C> (purple) or <C>'DISCARDED'</C> (grey) stays until changed; <C>'NEUTRAL'</C> resets it.</td>
                         </tr>
                         <tr>
                           <td><span className="tok-keyword">COMPARE</span> <span className="tok-param">a b</span></td>
@@ -3802,23 +3865,11 @@ END`} />
                         </tr>
                         <tr>
                           <td><span className="tok-keyword">SET</span> <span className="tok-param">target</span> <span className="tok-keyword">STATE</span> <span className="tok-param">name</span></td>
-                          <td>Applies a named visual state (e.g. <C>active</C>, <C>visited</C>) that persists until changed, unlike a one-shot highlight.</td>
+                          <td>Applies a named visual state (e.g. <C>active</C>, <C>visited</C>) that persists until changed.</td>
                         </tr>
                         <tr>
-                          <td><span className="tok-param">a</span> <span className="tok-operator">-&gt;</span> <span className="tok-param">b</span></td>
-                          <td>Creates a directed relationship from <C>a</C> to <C>b</C>.</td>
-                        </tr>
-                        <tr>
-                          <td><span className="tok-param">a</span> <span className="tok-operator">&lt;-</span> <span className="tok-param">b</span></td>
-                          <td>The same edge written the other way round — directed from <C>b</C> to <C>a</C>.</td>
-                        </tr>
-                        <tr>
-                          <td><span className="tok-param">a</span> <span className="tok-operator">&lt;-&gt;</span> <span className="tok-param">b</span></td>
-                          <td>Creates an undirected relationship between the two.</td>
-                        </tr>
-                        <tr>
-                          <td><span className="tok-keyword">LINK</span> <span className="tok-param">a</span> <span className="tok-keyword">TO</span> <span className="tok-param">b</span></td>
-                          <td>The keyword spelling of a directed link, for when the arrow form reads poorly.</td>
+                          <td><span className="tok-param">a</span> <span className="tok-operator">-&gt;</span> <span className="tok-param">b</span>, <span className="tok-param">a</span> <span className="tok-operator">&lt;-&gt;</span> <span className="tok-param">b</span>, <span className="tok-keyword">LINK</span> <span className="tok-param">a</span> <span className="tok-keyword">TO</span> <span className="tok-param">b</span></td>
+                          <td>Draw a directed or undirected relationship between two declared objects.</td>
                         </tr>
                       </tbody>
                     </table>
@@ -3827,127 +3878,169 @@ END`} />
 
                 <section id="cf-examples" className="docs-section">
                   <h2 className="docs-h2">Examples</h2>
-
-                  <h3 className="docs-h3">Example 1 — Loop, Accumulate, Branch</h3>
                   <p className="docs-p">
-                    A single pass that sums an array and marks the elements above a threshold.
+                    The Playground has 23 Loops &amp; Control examples: loop basics, WHILE, counting down, grade ladders,
+                    leap years, accumulators, best-so-far, early exit, skipping, do-while, FizzBuzz, tables, star
+                    patterns, pairs, text, Fibonacci, primes, the sieve, GCD, binary, Armstrong numbers and Collatz.
+                    Four of them follow.
                   </p>
-                  <CodeBlock code={`SCENE SumAndMark
+
+                  <h3 className="docs-h3">Example 1 — IF / ELSE IF / ELSE Ladder</h3>
+                  <CodeBlock code={`SCENE GradeLadder
 
 DECLARE
-  ARRAY arr = [5, 12, 3, 19, 7]
+  ARRAY marks = [92, 67, 78, 31]
 
 SEQUENCE
-  total = 0
-
-  LOOP i FROM 0 TO LENGTH(arr) - 1
-    total = total + arr[i]
-
-    IF arr[i] > 10
-      HIGHLIGHT arr[i] 'SUCCESS'
+  LOOP i FROM 0 TO LENGTH(marks) - 1
+    grade = ""
+    IF marks[i] >= 90
+      grade = "A"
+    ELSE IF marks[i] >= 75
+      grade = "B"
+    ELSE IF marks[i] >= 60
+      grade = "C"
+    ELSE
+      grade = "F"
     END
-
-    WAIT
+    PRINT marks[i] + " -> " + grade
   END
 END`} />
                   <p className="docs-p">
-                    <strong>Expected behavior:</strong> each element is visited in turn and only 12 and 19 light up.
+                    <strong>Output:</strong> <C>92 -&gt; A</C>, <C>67 -&gt; C</C>, <C>78 -&gt; B</C>, <C>31 -&gt; F</C>.
+                    92 is also at least 75, but the ladder stops at the first true branch.
                   </p>
 
-                  <h3 className="docs-h3">Example 2 — Nested Loops</h3>
-                  <p className="docs-p">
-                    The inner loop runs to completion for every step of the outer one — the shape every quadratic
-                    algorithm is built on.
-                  </p>
-                  <CodeBlock code={`SCENE NestedLoops
+                  <h3 className="docs-h3">Example 2 — WHILE Over the Digits of a Number</h3>
+                  <CodeBlock code={`SCENE DigitSum
 
 DECLARE
-  ARRAY arr = [1, 2, 3]
+  ARRAY digits = []
 
 SEQUENCE
-  LOOP i FROM 0 TO 2
-    LOOP j FROM 0 TO 2
-      COMPARE arr[i] arr[j]
+  remaining = 90417
+  digitSum = 0
+  WHILE remaining > 0
+    lastDigit = remaining % 10
+    INSERT digits[0] lastDigit
+    digitSum = digitSum + lastDigit
+    remaining = (remaining - lastDigit) / 10
+  END
+  PRINT "Digits:" digits
+  PRINT "Sum of digits: " + digitSum
+END`} />
+                  <p className="docs-p">
+                    <strong>Output:</strong> <C>Digits: [9, 0, 4, 1, 7]</C> and <C>Sum of digits: 21</C>. Removing the last
+                    digit before dividing keeps the division whole.
+                  </p>
+
+                  <h3 className="docs-h3">Example 3 — Nested Loops: a Pyramid</h3>
+                  <CodeBlock code={`SCENE Pyramid
+
+DECLARE
+  ARRAY starsPerRow = []
+
+SEQUENCE
+  rows = 4
+  LOOP r FROM 1 TO rows
+    line = ""
+    spaces = 0
+    WHILE spaces < rows - r
+      line = line + " "
+      spaces = spaces + 1
     END
-    WAIT
+    LOOP s FROM 1 TO 2 * r - 1
+      line = line + "*"
+    END
+    INSERT starsPerRow[LENGTH(starsPerRow)] 2 * r - 1
+    PRINT line
   END
 END`} />
-
-                  <h3 className="docs-h3">Example 3 — Two Conditions Instead of ELSE</h3>
                   <p className="docs-p">
-                    Sequence-mode <C>IF</C> has no else branch, so an either/or becomes two guarded blocks with opposite
-                    conditions.
+                    The spaces use <C>WHILE</C> because the last row needs zero of them, and <C>LOOP s FROM 1 TO 0</C>
+                    would count down and run twice.
                   </p>
-                  <CodeBlock code={`SCENE NoElseBranch
+
+                  <h3 className="docs-h3">Example 4 — A Helper FUNCTION with an Early RETURN</h3>
+                  <CodeBlock code={`SCENE PrimeCheck
 
 DECLARE
-  ARRAY arr = [8, 3, 8, 1]
+  ARRAY candidates = [2, 9, 17, 21]
+
+  FUNCTION isPrime(n)
+    IF n < 2
+      RETURN FALSE
+    END
+    d = 2
+    WHILE d * d <= n
+      IF n % d == 0
+        RETURN FALSE
+      END
+      d = d + 1
+    END
+    RETURN TRUE
+  END
 
 SEQUENCE
-  LOOP i FROM 0 TO LENGTH(arr) - 2
-    COMPARE arr[i] arr[i+1]
-
-    IF arr[i] > arr[i+1]
-      SWAP arr[i] arr[i+1]
-    END
-
-    IF arr[i] == arr[i+1]
-      SET arr[i] STATE active
+  LOOP i FROM 0 TO LENGTH(candidates) - 1
+    IF isPrime(candidates[i]) == TRUE
+      HIGHLIGHT candidates[i] 'SUCCESS'
+    ELSE
+      HIGHLIGHT candidates[i] 'DISCARDED'
     END
   END
 END`} />
-
-                  <h3 className="docs-h3">Example 4 — Relationships Between Nodes</h3>
                   <p className="docs-p">
-                    The arrow operators work on declared objects, drawing edges directly rather than through a structure's
-                    own commands.
+                    <strong>Expected behavior:</strong> 2 and 17 turn green, 9 and 21 grey. For 9 the <C>WHILE</C> loop
+                    stops at <C>d = 3</C> because <C>RETURN</C> leaves the function immediately.
                   </p>
-                  <CodeBlock code={`SCENE Relationships
-
-DECLARE
-  NODE a = [1]
-  NODE b = [2]
-  NODE c = [3]
-
-SEQUENCE
-  a -> b
-  WAIT
-
-  b <-> c
-  WAIT
-
-  LINK c TO a
-END`} />
                 </section>
 
                 <section id="cf-errors" className="docs-section">
                   <h2 className="docs-h2">Errors &amp; Tips</h2>
 
-                  <Alert kind="warn" title="Every block needs its own END">
-                    <C>LOOP</C> and <C>IF</C> each close with <C>END</C>, and the scene closes with one more. A missing
-                    <C>END</C> surfaces as an unexpected-token error, usually pointing at the line <em>after</em> the
-                    problem.
+                  <div className="docs-cmd-table-wrap">
+                    <table className="docs-cmd-table">
+                      <thead>
+                        <tr><th>Message or symptom</th><th>Cause and fix</th></tr>
+                      </thead>
+                      <tbody>
+                        <tr><td><C>Index 5 is out of bounds for array 'arr' (valid indices are 0 to 4)</C></td><td>The loop went one step too far. Loop bounds are inclusive: use <C>TO LENGTH(arr) - 1</C>, not <C>TO LENGTH(arr)</C>.</td></tr>
+                        <tr><td><C>Execution exceeded the maximum allowed iteration count</C></td><td>A <C>WHILE</C> loop never ended: nothing in its body moves the condition towards false. Make sure the counter changes on every path through the body (including the <C>ELSE</C>).</td></tr>
+                        <tr><td><C>Undeclared identifier 'total'</C></td><td>The variable was first assigned inside a loop or <C>IF</C> body and is used after it. Assign it (e.g. <C>total = 0</C>) before the loop.</td></tr>
+                        <tr><td><C>Expected END to close LOOP block</C></td><td>Every <C>LOOP</C>, <C>WHILE</C>, <C>IF</C> chain and <C>FUNCTION</C> needs its own <C>END</C>. The error often points at the line after the problem.</td></tr>
+                        <tr><td><C>ELSE without a matching IF</C></td><td>An extra <C>END</C> closed the <C>IF</C> before its <C>ELSE</C>. An <C>IF</C> / <C>ELSE IF</C> / <C>ELSE</C> chain has one <C>END</C> at the very end.</td></tr>
+                        <tr><td><C>RETURN can only be used inside a FUNCTION</C></td><td>To stop a loop in the sequence, use a flag in a <C>WHILE</C> condition instead.</td></tr>
+                        <tr><td>Division by zero</td><td>Guard averages: <C>IF count &gt; 0</C> before <C>total / count</C>.</td></tr>
+                        <tr><td>A name such as <C>size</C>, <C>path</C>, <C>position</C>, <C>level</C> is rejected</td><td>It is a keyword. Pick another name, e.g. <C>mySize</C>, <C>trail</C>, <C>foundAt</C>.</td></tr>
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <Alert kind="warn" title="LOOP 1 TO 0 runs twice, not zero times">
+                    <C>LOOP</C> counts down when <C>TO</C> is smaller than <C>FROM</C>, so an "empty" range such as
+                    <C>LOOP s FROM 1 TO 0</C> runs with <C>s = 1</C> and <C>s = 0</C>. When a range can be empty, use
+                    <C>WHILE s &lt; limit</C>, which correctly runs zero times.
                   </Alert>
 
-                  <Alert kind="warn" title="No ELSE in SEQUENCE">
-                    <C>ELSE</C> is only valid inside a brace-delimited function body. Inside the sequence block it is a
-                    parse error — use a second <C>IF</C>.
+                  <Alert kind="warn" title="Changing the loop variable changes the loop">
+                    Assigning to <C>i</C> inside <C>LOOP i</C> moves the loop: <C>i = i + 1</C> in the body makes it skip
+                    every other value. If you need to control the step yourself, use a <C>WHILE</C> loop.
                   </Alert>
 
-                  <Alert kind="warn" title="Keywords are reserved case-insensitively">
-                    Variable and structure names are matched against the keyword list after upper-casing, so
-                    <C>size</C>, <C>root</C>, <C>min</C>, <C>max</C>, <C>head</C>, <C>path</C>, and <C>level</C> cannot be
-                    used as names. Pick <C>mySize</C>, <C>myRoot</C>, and so on.
+                  <Alert kind="warn" title="Order the ELSE IF branches from most to least specific">
+                    In FizzBuzz, <C>n % 3 == 0 AND n % 5 == 0</C> must come before <C>n % 3 == 0</C>, otherwise 15 takes
+                    the "Fizz" branch and the "FizzBuzz" branch never runs.
                   </Alert>
 
-                  <Alert kind="warn" title="Loop bounds are inclusive">
-                    <C>LOOP i FROM 0 TO LENGTH(arr)</C> runs one iteration too many and indexes past the end. The correct
-                    upper bound is <C>LENGTH(arr) - 1</C>.
+                  <Alert kind="tip" title="Start 'best so far' from a real element">
+                    Initialise <C>largest = arr[0]</C> and loop from index 1, instead of starting from a guess like
+                    <C>0</C>, which fails when every value is negative.
                   </Alert>
 
-                  <Alert kind="tip" title="WAIT is how you pace an explanation">
-                    Commands play back-to-back by default. A <C>WAIT</C> at the end of each loop iteration gives a viewer
-                    time to read the state before it changes again.
+                  <Alert kind="tip" title="Whole-number division">
+                    <C>/</C> gives decimals. To drop the last digit, write <C>(n - n % 10) / 10</C>; to halve an odd
+                    number downwards, <C>(n - n % 2) / 2</C>.
                   </Alert>
                 </section>
               </>
