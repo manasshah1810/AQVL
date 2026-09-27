@@ -94,7 +94,7 @@ This is the *entire* visual behavior: layout, camera framing, node linking, and 
 
 **Data structures** — arrays, linked lists (singly/doubly/circular), binary trees, BSTs, AVL trees, red-black trees, graphs, heaps, priority queues, hash maps, tries, union-find.
 
-**Algorithms** — sorting (bubble, selection, insertion, merge, quick, heap, shell, counting, radix and more), searching (linear, binary), traversal (DFS, BFS), BST operations (insert/delete/search/traverse), lowest-common-ancestor, and more — with real functions and real recursion, not pseudocode approximations.
+**Algorithms** — sorting (bubble, selection, insertion, merge, quick, heap, shell, counting, radix and more), searching (linear, sentinel, binary, jump, exponential, ternary, interpolation and binary search on the answer), traversal (DFS, BFS), BST operations (insert/delete/search/traverse), lowest-common-ancestor, and more — with real functions and real recursion, not pseudocode approximations.
 
 **Layout strategies** — `LINE`, `HIERARCHY`, `CIRCULAR`, `FORCE_DIRECTED`, `GRID`, and `CUSTOM` for hand-placed positions.
 
@@ -166,7 +166,7 @@ The demo Playground ships with a categorized example library, including:
 - **Hash maps** — 17 examples written as real code with `m[key] = value`, `m[key]`, `CONTAINS`, `DELETE m[key]` and `KEY_AT`, every hash, bucket, collision chain and resize drawn: the hash function by hand, collisions and chaining, load factor and resizing, open addressing with linear probing built from arrays, plus practical problems — a phone book, shopping cart totals, word frequency, first non-repeating character, valid anagram, two sum, first reused ticket, longest consecutive run, subarrays adding up to k, longest substring without repeats, an election tally, a ransom note and memoized Fibonacci
 - **Tries** — 18 examples written as real code with `t.root`, `GET_CHILD`, `HAS_CHILD`, `ADD_CHILD`, `REMOVE_CHILD` and `node.isEnd`, every pointer move, check, new node and recursive call drawn: inserting and searching by hand, starts-with, counting words / nodes / leaves, trie sort, autocomplete, deleting with pruning, plus practical problems — username prefix counts, word frequency, longest common prefix, shortest unique prefix, replacing words with roots, word break, the longest word built step by step, distinct substrings, wildcard search, contact search as you type and the maximum XOR of two numbers
 - **Graphs** — 19 algorithms written out with loops, queues, stacks and recursion: BFS, iterative and recursive DFS, fewest-stop paths, connected components, cycle detection, bipartite check, topological sort (Kahn and DFS), Dijkstra, Bellman-Ford, Prim, Kruskal with union-find, backtracking over all paths, greedy colouring
-- **Searching** — linear and binary search
+- **Searching** — 21 examples written out with loops, IFs and recursive functions: linear (early stop), all occurrences, sentinel, iterative and recursive binary search, first / last occurrence, insert position, jump, exponential, ternary and interpolation search, rotated arrays, peak finding, plus practical problems — integer square root, a cinema seat map, a missing roll number, delivery truck capacity, a contact book, BST search, a maze exit with DFS and the nearest hospital with BFS
 - **Advanced structures** — segment trees, skip lists (see `examples/data-structures/`)
 
 Browse them in [`packages/demo/src/examples/registry.ts`](packages/demo/src/examples/registry.ts) or open them directly in the Playground.

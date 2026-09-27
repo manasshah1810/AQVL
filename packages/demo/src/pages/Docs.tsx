@@ -559,7 +559,7 @@ const TOC_ITEMS_SORTING = [
 
 const TOC_ITEMS_SEARCHING = [
   { id: 'se-introduction', label: 'Introduction' },
-  { id: 'se-declaration', label: 'Marking a Match' },
+  { id: 'se-declaration', label: 'The Search Window' },
   { id: 'se-commands', label: 'Commands Reference' },
   { id: 'se-examples', label: 'Examples' },
   { id: 'se-errors', label: 'Errors & Tips' },
@@ -4730,8 +4730,8 @@ END`} />
                     <h1 className="docs-page-title">Searching Algorithms</h1>
                   </div>
                   <p className="docs-page-lead">
-                    Linear and binary search over arrays, plus the built-in <code>SEARCH</code> that animates a descent
-                    through a tree or BST.
+                    Linear, binary, jump, exponential, ternary and interpolation search written out with loops, IFs and
+                    recursive functions, plus searches on trees and graphs.
                   </p>
                 </header>
 
@@ -4739,37 +4739,36 @@ END`} />
                   <h2 className="docs-h2">Introduction</h2>
                   <p className="docs-p">
                     Searching is about the elements an algorithm <em>doesn't</em> look at. A linear search inspects every
-                    element; a binary search discards half the remaining candidates at each step; a BST search follows a
-                    single root-to-leaf path. Animating them side by side makes that difference obvious.
+                    element; a binary search throws away half of the remaining candidates at each step; a BST search
+                    follows a single root-to-leaf path. Animating them side by side makes that difference obvious.
                   </p>
                   <p className="docs-p">
-                    On arrays, a search is built from <C>COMPARE</C> and <C>HIGHLIGHT</C>. On trees, graphs, and tries
-                    the search is a built-in command that animates itself.
+                    Every Searching example in the Playground is the real algorithm: the loop bounds come from
+                    <C>LENGTH(...)</C>, the middle is computed from <C>low</C> and <C>high</C>, and each decision is
+                    made on the live values. Change the array or the target and the run is still correct, including the
+                    case where the target is missing. Each search is a <C>FUNCTION</C> that <C>RETURN</C>s the index it
+                    found, or <C>-1</C> for &quot;not found&quot;, the same convention as C, Java and Python.
                   </p>
                 </section>
 
                 <section id="se-declaration" className="docs-section">
-                  <h2 className="docs-h2">Marking a Match</h2>
+                  <h2 className="docs-h2">The Search Window</h2>
                   <p className="docs-p">
-                    <C>HIGHLIGHT</C> takes an optional colour literal. Using <C>'SUCCESS'</C> for the found element
-                    distinguishes the answer from the ordinary highlights used while scanning.
+                    Every array search keeps a <strong>window</strong> <C>[low .. high]</C> of cells that can still hold
+                    the target. Each step shrinks it; when <C>low &gt; high</C> the window is empty and the target is not
+                    there. Colours show the window as it shrinks:
                   </p>
-                  <CodeBlock label="Syntax" code={`HIGHLIGHT <target>
-HIGHLIGHT <target> '<color>'`} />
-
-                  <CodeBlock code={`SCENE MarkAMatch
-
-DECLARE
-  ARRAY arr = [12, 34, 25, 64]
-
-SEQUENCE
-  // Scanning
-  HIGHLIGHT arr[0]
-  HIGHLIGHT arr[1]
-
-  // Found it
-  HIGHLIGHT arr[2] 'SUCCESS'
-END`} />
+                  <CodeBlock label="Syntax" code={`HIGHLIGHT arr[i]              // amber: checking this cell right now
+HIGHLIGHT arr[i] 'MARKED'     // purple: the middle / probe / block end
+HIGHLIGHT arr[i] 'DISCARDED'  // grey: ruled out, never looked at again
+HIGHLIGHT arr[i] 'SUCCESS'    // green: found it
+HIGHLIGHT arr[i] 'NEUTRAL'    // back to blue before the next search`} />
+                  <p className="docs-p">
+                    The middle of the window must be a whole number, and <C>/</C> is real division (<C>7 / 2</C> is
+                    <C>3.5</C>), so it is written the long way:
+                  </p>
+                  <CodeBlock code={`size = high - low
+mid = low + (size - size % 2) / 2   // same as (low + high) / 2 in C or Java`} />
                 </section>
 
                 <section id="se-commands" className="docs-section">
@@ -4777,180 +4776,404 @@ END`} />
                   <div className="docs-cmd-table-wrap">
                     <table className="docs-cmd-table">
                       <thead>
-                        <tr><th>Command</th><th>Description</th></tr>
+                        <tr><th>Algorithm</th><th>Needs</th><th>Idea</th><th>Time</th></tr>
                       </thead>
                       <tbody>
-                        <tr>
-                          <td><span className="tok-keyword">COMPARE</span> <span className="tok-param">arr[i] arr[j]</span></td>
-                          <td>Shows the candidate being checked against the target. The building block of an array search.</td>
-                        </tr>
-                        <tr>
-                          <td><span className="tok-keyword">HIGHLIGHT</span> <span className="tok-param">target ['SUCCESS']</span></td>
-                          <td>Marks the element under inspection, or the match once found.</td>
-                        </tr>
-                        <tr>
-                          <td><span className="tok-keyword">SEARCH</span> <span className="tok-param">value</span></td>
-                          <td>On a <C>TREE</C>, <C>BINARY_TREE</C>, or <C>BST</C>: animates the descent from the root, highlighting each node it compares, and reports whether the value was found.</td>
-                        </tr>
-                        <tr>
-                          <td><span className="tok-keyword">DFS</span> / <span className="tok-keyword">BFS</span> <span className="tok-param">name "start"</span></td>
-                          <td>On a <C>GRAPH</C>: exhaustive search of the reachable vertices, depth-first or breadth-first.</td>
-                        </tr>
-                        <tr>
-                          <td><span className="tok-keyword">TRIE_SEARCH</span> <span className="tok-param">name "word"</span></td>
-                          <td>On a <C>TRIE</C>: traces the word's character path and reports whether it is a stored word.</td>
-                        </tr>
-                        <tr>
-                          <td><span className="tok-keyword">HASHMAP_LOOKUP</span> <span className="tok-param">name "key"</span></td>
-                          <td>On a <C>HASH_MAP</C>: hashes to the bucket and walks its collision chain.</td>
-                        </tr>
+                        <tr><td>Linear</td><td>any array</td><td>Check every cell from left to right, stop at the first match.</td><td>O(n)</td></tr>
+                        <tr><td>Sentinel linear</td><td>any array</td><td>Put the target in the last cell so the loop needs one check per step.</td><td>O(n)</td></tr>
+                        <tr><td>Binary</td><td>sorted</td><td>Compare with the middle and keep the half that can hold the target.</td><td>O(log n)</td></tr>
+                        <tr><td>First / last occurrence</td><td>sorted</td><td>Binary search that keeps going left (or right) after a match.</td><td>O(log n)</td></tr>
+                        <tr><td>Jump</td><td>sorted</td><td>Jump in blocks of sqrt(n), then scan one block.</td><td>O(sqrt n)</td></tr>
+                        <tr><td>Exponential</td><td>sorted</td><td>Double a bound until it passes the target, then binary search.</td><td>O(log i)</td></tr>
+                        <tr><td>Ternary</td><td>sorted</td><td>Two probes; keep one third of the window.</td><td>O(log n)</td></tr>
+                        <tr><td>Interpolation</td><td>sorted, evenly spread</td><td>Guess the position from the value.</td><td>O(log log n) avg, O(n) worst</td></tr>
+                        <tr><td>On the answer</td><td>a yes/no test that flips once</td><td>Binary search the answer itself (square root, truck capacity).</td><td>O(log range) tests</td></tr>
+                        <tr><td>BST search</td><td><C>BST</C></td><td>Smaller goes left, larger goes right.</td><td>O(height)</td></tr>
+                        <tr><td>DFS / BFS</td><td><C>GRAPH</C></td><td>Explore with recursion (or a <C>STACK</C>) / a <C>QUEUE</C> until the goal is reached.</td><td>O(V + E)</td></tr>
                       </tbody>
                     </table>
                   </div>
+                  <p className="docs-p">
+                    One-line built-ins still exist and animate a search in one go: <C>SEARCH t 60</C> on a tree or BST,
+                    <C>DFS g FROM A</C> / <C>BFS g FROM A</C> on a graph, <C>TRIE_SEARCH</C> and <C>HASHMAP_LOOKUP</C>.
+                    The Playground examples write the algorithm out instead, because that is what shows how it works.
+                  </p>
                 </section>
 
                 <section id="se-examples" className="docs-section">
                   <h2 className="docs-h2">Examples</h2>
 
-                  <h3 className="docs-h3">Example 1 — Linear Search</h3>
+                  <h3 className="docs-h3">Example 1 — Linear Search with an Early Stop</h3>
                   <p className="docs-p">
-                    Compare each element against the target in turn and mark the first match. Every element before the
-                    match had to be examined — which is the whole cost argument for the algorithm.
+                    The <C>WHILE</C> has two reasons to stop: the cells ran out, or the target was found. The second
+                    search is for a roll number that is not there, which is the worst case: every cell is checked.
                   </p>
                   <CodeBlock code={`SCENE LinearSearch
 
 DECLARE
-  ARRAY arr = [12, 34, 25, 64, 22, 11, 90]
+  // Roll numbers in the order students entered the exam hall (NOT sorted)
+  ARRAY rollNo = [104, 117, 109, 123, 131, 112, 140]
 
-SEQUENCE
-  // Searching for 22, which sits at index 4
+  // Check every cell from left to right until the target turns up.
+  // Returns the index of the first match, or -1 when it is not there.
+  FUNCTION linearSearch(target)
+    n = LENGTH(rollNo)
+    foundAt = -1
+    comparisons = 0
+    i = 0
 
-  COMPARE arr[0] arr[4]
-  COMPARE arr[1] arr[4]
-  COMPARE arr[2] arr[4]
-  COMPARE arr[3] arr[4]
-
-  // Found it
-  COMPARE arr[4] arr[4]
-  HIGHLIGHT arr[4] 'SUCCESS'
-END`} />
-
-                  <h3 className="docs-h3">Example 2 — Linear Search in a Loop</h3>
-                  <p className="docs-p">
-                    The same algorithm written as a loop, so the array's length rather than the program's length decides
-                    how many comparisons happen.
-                  </p>
-                  <CodeBlock code={`SCENE LinearSearchLoop
-
-DECLARE
-  ARRAY arr = [12, 34, 25, 64, 22]
-
-SEQUENCE
-  LOOP i FROM 0 TO LENGTH(arr) - 1
-    HIGHLIGHT arr[i]
-    COMPARE arr[i] arr[4]
-
-    IF arr[i] == arr[4]
-      HIGHLIGHT arr[i] 'SUCCESS'
+    // Two reasons to stop: we ran out of cells, or we already found it
+    WHILE i < n AND foundAt == -1
+      HIGHLIGHT rollNo[i]
+      comparisons = comparisons + 1
+      IF rollNo[i] == target
+        foundAt = i
+        HIGHLIGHT rollNo[i] 'SUCCESS'
+      ELSE
+        HIGHLIGHT rollNo[i] 'DISCARDED'
+      END
+      i = i + 1
     END
 
-    WAIT
+    IF foundAt != -1
+      PRINT "Roll no " + target + " found at index " + foundAt + " after " + comparisons + " comparisons"
+    ELSE
+      PRINT "Roll no " + target + " is absent: all " + comparisons + " cells were checked"
+    END
+    RETURN foundAt
+  END
+
+  // Paint every cell blue again before the next search
+  FUNCTION resetColours()
+    LOOP k FROM 0 TO LENGTH(rollNo) - 1
+      HIGHLIGHT rollNo[k] 'NEUTRAL'
+    END
+  END
+
+SEQUENCE
+  // Linear search works on ANY array, sorted or not, because it simply
+  // looks at every cell. The cost is that a miss checks all n cells.
+  present = linearSearch(123)
+  resetColours()
+  absent = linearSearch(150)
+
+  IF present != -1 AND absent == -1
+    PRINT "Best case: 1 comparison, worst case: " + LENGTH(rollNo) + " comparisons (O(n))"
   END
 END`} />
 
-                  <h3 className="docs-h3">Example 3 — Binary Search</h3>
+                  <h3 className="docs-h3">Example 2 — Binary Search</h3>
                   <p className="docs-p">
-                    Binary search requires a sorted array. Each step inspects the midpoint and throws away half of what
-                    remains — three probes are enough for seven elements.
+                    Each step compares the middle cell with the target and greys out the half that cannot hold it. Three
+                    searches show a hit, a hit at the very edge, and a miss where the window becomes empty. The last loop
+                    counts how many times the list can be halved: the worst case.
                   </p>
                   <CodeBlock code={`SCENE BinarySearch
 
 DECLARE
-  ARRAY arr = [11, 12, 22, 25, 34, 64, 90]
+  // Prices in a sorted price list. Binary search NEEDS sorted input.
+  ARRAY price = [11, 12, 22, 25, 34, 64, 90, 105, 120]
+
+  // Look at the middle of the window [low .. high]:
+  //   equal   -> found
+  //   smaller -> the target can only be to the RIGHT, so low = mid + 1
+  //   bigger  -> the target can only be to the LEFT,  so high = mid - 1
+  // Every step throws away half of the window.
+  FUNCTION binarySearch(target)
+    low = 0
+    high = LENGTH(price) - 1
+    step = 0
+
+    WHILE low <= high
+      step = step + 1
+      size = high - low
+      mid = low + (size - size % 2) / 2
+      HIGHLIGHT price[mid] 'MARKED'
+      PRINT "Step " + step + ": low=" + low + " high=" + high + " mid=" + mid + " (value " + price[mid] + ")"
+
+      IF price[mid] == target
+        HIGHLIGHT price[mid] 'SUCCESS'
+        PRINT "Found " + target + " at index " + mid + " in " + step + " steps"
+        RETURN mid
+      ELSE IF price[mid] < target
+        // Everything from low to mid is too small: grey it out
+        k = low
+        WHILE k <= mid
+          HIGHLIGHT price[k] 'DISCARDED'
+          k = k + 1
+        END
+        low = mid + 1
+      ELSE
+        // Everything from mid to high is too big
+        k = mid
+        WHILE k <= high
+          HIGHLIGHT price[k] 'DISCARDED'
+          k = k + 1
+        END
+        high = mid - 1
+      END
+    END
+
+    // The window became empty (low > high): the target is not there
+    PRINT target + " is not in the list (window empty after " + step + " steps)"
+    RETURN -1
+  END
+
+  FUNCTION resetColours()
+    LOOP k FROM 0 TO LENGTH(price) - 1
+      HIGHLIGHT price[k] 'NEUTRAL'
+    END
+  END
 
 SEQUENCE
-  // Searching for 64 (index 5)
-  // low = 0, high = 6, mid = 3
+  binarySearch(90)
+  resetColours()
+  binarySearch(11)
+  resetColours()
+  binarySearch(50)
 
-  HIGHLIGHT arr[3]
-  COMPARE arr[3] arr[5]
-
-  // 25 < 64 — discard the left half, low = 4
-  // low = 4, high = 6, mid = 5
-  HIGHLIGHT arr[5]
-  COMPARE arr[5] arr[5]
-
-  // Found it
-  HIGHLIGHT arr[5] 'SUCCESS'
+  // Worst case: how many times can the window be halved before it is empty?
+  size = LENGTH(price)
+  maxSteps = 0
+  WHILE size > 0
+    maxSteps = maxSteps + 1
+    size = (size - size % 2) / 2
+  END
+  PRINT "Never more than " + maxSteps + " steps for " + LENGTH(price) + " prices (O(log n)); linear search may need " + LENGTH(price)
 END`} />
-                  <p className="docs-p">
-                    <strong>Expected behavior:</strong> only two elements are ever highlighted, against the five a linear
-                    search would have needed to reach index 5.
-                  </p>
 
-                  <h3 className="docs-h3">Example 4 — Searching a BST</h3>
+                  <h3 className="docs-h3">Example 3 — Recursive Binary Search</h3>
                   <p className="docs-p">
-                    On a search tree the descent <em>is</em> the algorithm — <C>SEARCH</C> animates each comparison and
-                    the branch it chose.
+                    The same decisions, written as a <C>FUNCTION</C> that calls itself on the half that is left.
+                    <C>low &gt; high</C> is the base case for &quot;not found&quot;.
                   </p>
-                  <CodeBlock code={`SCENE BSTSearch
+                  <CodeBlock code={`SCENE BinarySearchRecursive
 
 DECLARE
-  BST myTree = [50, 30, 70, 20, 40, 60, 80]
+  // Page numbers where chapters start in a textbook (sorted)
+  ARRAY chapterStart = [1, 15, 32, 47, 60, 78, 95, 110, 126, 140]
+
+  // The same idea as the loop version, written as a recursive FUNCTION.
+  // Each call handles one window [low .. high] and calls itself on the
+  // half that can still contain the target. 'depth' is only for printing.
+  FUNCTION search(target, low, high, depth)
+    IF low > high
+      PRINT "  depth " + depth + ": empty window, " + target + " is not a chapter start"
+      RETURN -1
+    END
+
+    size = high - low
+    mid = low + (size - size % 2) / 2
+    HIGHLIGHT chapterStart[mid] 'MARKED'
+    PRINT "  depth " + depth + ": window [" + low + ".." + high + "], middle page " + chapterStart[mid]
+
+    IF chapterStart[mid] == target
+      HIGHLIGHT chapterStart[mid] 'SUCCESS'
+      RETURN mid
+    ELSE IF chapterStart[mid] < target
+      HIGHLIGHT chapterStart[mid] 'DISCARDED'
+      RETURN search(target, mid + 1, high, depth + 1)
+    ELSE
+      HIGHLIGHT chapterStart[mid] 'DISCARDED'
+      RETURN search(target, low, mid - 1, depth + 1)
+    END
+  END
+
+  FUNCTION resetColours()
+    LOOP k FROM 0 TO LENGTH(chapterStart) - 1
+      HIGHLIGHT chapterStart[k] 'NEUTRAL'
+    END
+  END
 
 SEQUENCE
-  // Present — three comparisons
-  SEARCH 60
-  WAIT
+  PRINT "Does a chapter start on page 110?"
+  index = search(110, 0, LENGTH(chapterStart) - 1, 1)
+  IF index != -1
+    PRINT "Yes, chapter " + (index + 1) + " starts on page 110"
+  END
 
-  // Absent — the descent runs out of tree
-  SEARCH 90
+  resetColours()
+  PRINT "Does a chapter start on page 50?"
+  index = search(50, 0, LENGTH(chapterStart) - 1, 1)
+  IF index == -1
+    PRINT "No, page 50 is in the middle of a chapter"
+  END
 END`} />
 
-                  <h3 className="docs-h3">Example 5 — Searching a Graph</h3>
+                  <h3 className="docs-h3">Example 4 — Binary Search on the Answer</h3>
                   <p className="docs-p">
-                    With no ordering to exploit, a graph search must explore. Depth-first and breadth-first differ only
-                    in the order they take.
+                    Binary search also works when there is no array to search, only a yes/no question whose answer flips
+                    once. Here the question is &quot;can a truck of this capacity ship everything in 3 days?&quot;.
                   </p>
-                  <CodeBlock code={`SCENE GraphSearch
+                  <CodeBlock code={`SCENE DeliveryTruckCapacity
 
 DECLARE
-  GRAPH g = ["A->B", "A->C", "B->D", "C->E"]
+  // Parcel weights (kg), to be shipped IN THIS ORDER within 'days' days.
+  // Each day the truck loads parcels from the front until the next one
+  // would exceed its capacity. What is the SMALLEST capacity that works?
+  ARRAY parcels = [3, 2, 2, 4, 1, 4]
+
+  // How many days does a truck of this capacity need?
+  FUNCTION daysNeeded(capacity)
+    days = 1
+    load = 0
+    LOOP i FROM 0 TO LENGTH(parcels) - 1
+      IF load + parcels[i] > capacity
+        days = days + 1
+        load = 0
+      END
+      load = load + parcels[i]
+    END
+    RETURN days
+  END
 
 SEQUENCE
-  DFS g "A"
-  WAIT
+  allowedDays = 3
 
-  BFS g "A"
+  // The capacity is at least the heaviest parcel and at most all of them.
+  heaviest = 0
+  total = 0
+  LOOP i FROM 0 TO LENGTH(parcels) - 1
+    total = total + parcels[i]
+    IF parcels[i] > heaviest
+      heaviest = parcels[i]
+    END
+  END
+
+  // A bigger truck never needs MORE days, so binary search the capacity.
+  low = heaviest
+  high = total
+  best = total
+  WHILE low <= high
+    size = high - low
+    mid = low + (size - size % 2) / 2
+    need = daysNeeded(mid)
+    IF need <= allowedDays
+      PRINT "capacity " + mid + " kg -> " + need + " days: fits, try smaller"
+      best = mid
+      high = mid - 1
+    ELSE
+      PRINT "capacity " + mid + " kg -> " + need + " days: too slow, go bigger"
+      low = mid + 1
+    END
+  END
+  PRINT "Smallest truck for " + allowedDays + " days: " + best + " kg"
 END`} />
+
+                  <h3 className="docs-h3">Example 5 — Nearest Hospital with BFS</h3>
+                  <p className="docs-p">
+                    On a graph there is no order to exploit, so the search explores. BFS explores in rings, so the first
+                    hospital it takes out of the queue is the nearest one.
+                  </p>
+                  <CodeBlock code={`SCENE NearestHospitalBFS
+
+DECLARE
+  // City areas joined by roads of equal length
+  GRAPH city = ["Home-Market", "Home-School", "Market-Station", "School-Park", "Park-Lake", "Station-Fort", "Lake-Fort", "Station-Airport"]
+  QUEUE q = []
+
+SEQUENCE
+  // Which areas have a hospital? Every vertex gets a value first.
+  LOOP k FROM 0 TO VERTEX_COUNT(city) - 1
+    area = VERTEX_AT(city, k)
+    area.hospital = FALSE
+  END
+  fort = VERTEX(city, "Fort")
+  fort.hospital = TRUE
+  park = VERTEX(city, "Park")
+  park.hospital = TRUE
+
+  // Breadth-first search explores areas in rings of 1 road, 2 roads, ...
+  // so the FIRST hospital taken out of the queue is the nearest one.
+  home = VERTEX(city, "Home")
+  home.visited = TRUE
+  home.dist = 0
+  home.parent = NULL
+  ENQUEUE q home
+  nearest = NULL
+
+  WHILE LENGTH(q) > 0 AND nearest == NULL
+    area = DEQUEUE(q)
+    PRINT "Check " + area.name + " (" + area.dist + " road(s) from Home)"
+    IF area.hospital
+      nearest = area
+    ELSE
+      i = 0
+      WHILE i < DEGREE(area)
+        next = NEIGHBOR(area, i)
+        IF next.visited == FALSE
+          next.visited = TRUE
+          next.dist = area.dist + 1
+          next.parent = area
+          ENQUEUE q next
+        END
+        i = i + 1
+      END
+    END
+  END
+
+  IF nearest == NULL
+    PRINT "No hospital can be reached from Home"
+  ELSE
+    // Walk the parents back to Home, adding each name to the FRONT
+    route = nearest.name
+    curr = nearest.parent
+    WHILE curr != NULL
+      route = curr.name + " -> " + route
+      curr = curr.parent
+    END
+    PRINT "Nearest hospital: " + nearest.name + ", " + nearest.dist + " road(s) away"
+    PRINT "Route: " + route
+  END
+END`} />
+
+                  <p className="docs-p">
+                    The Playground has 21 complete Searching programs:
+                  </p>
+                  <ul>
+                    <li>linear search, all occurrences and sentinel search;</li>
+                    <li>iterative and recursive binary search, first and last occurrence, search insert position;</li>
+                    <li>jump, exponential, ternary and interpolation search;</li>
+                    <li>a rotated sorted array, the peak of a trail, the integer square root;</li>
+                    <li>a cinema seat map, the missing roll number, delivery truck capacity, a contact book;</li>
+                    <li>BST search, a maze exit with DFS and the nearest hospital with BFS.</li>
+                  </ul>
                 </section>
 
                 <section id="se-errors" className="docs-section">
                   <h2 className="docs-h2">Errors &amp; Tips</h2>
+                  <div className="docs-cmd-table-wrap">
+                  <table className="docs-cmd-table">
+                    <thead><tr><th>Problem</th><th>What to do</th></tr></thead>
+                    <tbody>
+                      <tr><td><C>Undeclared identifier 'pos'</C></td><td>A variable set only inside the branches of an <C>IF</C> / <C>ELSE</C> is not known after it. Give it a value before the <C>IF</C> (<C>pos = low</C>), then change it inside.</td></tr>
+                      <tr><td>Index out of range on <C>arr[mid]</C></td><td><C>mid</C> is not a whole number, or the loop kept going with an empty window. Use <C>mid = low + (size - size % 2) / 2</C> and <C>WHILE low &lt;= high</C>.</td></tr>
+                      <tr><td>The loop never ends</td><td>Each step must move <C>low</C> past <C>mid</C> (<C>low = mid + 1</C>) or <C>high</C> below it (<C>high = mid - 1</C>). Setting <C>low = mid</C> can repeat the same window forever.</td></tr>
+                      <tr><td><C>Expected array name</C></td><td>The array's name is a keyword (for example <C>height</C>, which is a tree command). Pick another name such as <C>elevation</C>.</td></tr>
+                      <tr><td><C>Unexpected token &quot;VERTEX&quot;</C></td><td>Set a field on a variable, not on a call: <C>fort = VERTEX(city, &quot;Fort&quot;)</C> then <C>fort.hospital = TRUE</C>.</td></tr>
+                    </tbody>
+                  </table>
+                  </div>
 
                   <Alert kind="warn" title="Binary search needs sorted input">
-                    Run it on an unsorted array and it will confidently discard the half containing the target. Sort
-                    first — or show the failure on purpose, which makes the precondition memorable.
+                    Run it on an unsorted array and it will confidently throw away the half that holds the target. Sort
+                    first, or use linear search. Interpolation search also needs the values to be spread evenly to be
+                    fast.
                   </Alert>
 
-                  <Alert kind="warn" title="Index bounds while narrowing">
-                    A hand-written binary search that recomputes <C>mid</C> must keep it inside
-                    <C>0</C>…<C>LENGTH(arr) - 1</C>. Out-of-range access halts the sequence.
+                  <Alert kind="warn" title="Guard against dividing by zero">
+                    Interpolation search divides by <C>arr[high] - arr[low]</C>. When every value in the window is equal
+                    that is zero, so check it before dividing.
                   </Alert>
 
-                  <Alert kind="warn" title="SEARCH is for trees, not arrays">
-                    <C>SEARCH</C> operates on the active tree structure. To search an array, write the comparisons with
-                    <C>COMPARE</C> and <C>IF</C>.
+                  <Alert kind="tip" title="Always test a miss">
+                    Searching for a value that isn&apos;t there is where the stopping rule lives. Every example runs at
+                    least one hit and one miss, and resets the colours with <C>'NEUTRAL'</C> in between.
                   </Alert>
 
-                  <Alert kind="tip" title="Show the failed search too">
-                    Searching for a value that isn't there is where the algorithm's termination rule lives. A pair of
-                    calls — one hit, one miss — teaches more than either alone.
-                  </Alert>
-
-                  <Alert kind="note" title="Colour carries meaning">
-                    Reserve <C>'SUCCESS'</C> for the found element and leave plain <C>HIGHLIGHT</C> for candidates being
-                    examined, so the final answer is unambiguous.
+                  <Alert kind="note" title="Functions return their results">
+                    Variables assigned inside a <C>FUNCTION</C> are local to that call, but the arrays in
+                    <C>DECLARE</C> are shared, so a search function can colour them and <C>RETURN</C> the index.
                   </Alert>
                 </section>
               </>

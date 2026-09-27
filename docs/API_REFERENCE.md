@@ -545,6 +545,50 @@ END
 
 ---
 
+### 8.3 Searching
+
+Every Searching example in the Playground (`packages/demo/src/examples/SearchingLibrary.ts`)
+is the real algorithm written with `WHILE`, `LOOP`, `IF` / `ELSE IF` / `ELSE`,
+`HIGHLIGHT` colours and `FUNCTION`s that `RETURN` the index found, or `-1` when
+the target is missing. Examples: linear search (early stop with a flag), all
+occurrences, sentinel search, iterative and recursive binary search, first and
+last occurrence, search insert position, jump, exponential, ternary and
+interpolation search, search in a rotated array, peak finding, binary search on
+the answer (integer square root, delivery truck capacity), a sorted seat map
+stored row by row, the missing roll number, binary search on names, BST search,
+DFS to a maze exit and BFS to the nearest hospital.
+
+The middle of a window is written `size = high - low` then
+`mid = low + (size - size % 2) / 2`. Use `WHILE low <= high` so an empty
+window runs zero times. A variable used after an `IF` / `ELSE` must be given a
+value before the `IF`; one assigned only inside the branches is reported as
+undeclared.
+
+```aqvl
+SCENE BinarySearch
+DECLARE
+  ARRAY arr = [11, 12, 22, 25, 34, 64, 90]
+SEQUENCE
+  target = 64
+  low = 0
+  high = LENGTH(arr) - 1
+  foundAt = -1
+  WHILE low <= high AND foundAt == -1
+    size = high - low
+    mid = low + (size - size % 2) / 2
+    IF arr[mid] == target
+      foundAt = mid
+      HIGHLIGHT arr[mid] 'SUCCESS'
+    ELSE IF arr[mid] < target
+      low = mid + 1
+    ELSE
+      high = mid - 1
+    END
+  END
+  PRINT "Index:" foundAt
+END
+```
+
 ## 9. Heap
 
 Declared with `HEAP name = [n, ...]` or `HEAP name = []`. The values are
