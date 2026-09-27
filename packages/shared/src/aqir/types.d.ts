@@ -13,6 +13,7 @@ export interface AQIRVariable {
 }
 export interface AQIRInstruction {
     action: string;
+    lineNumber?: number;
 }
 export interface CompareInstruction extends AQIRInstruction {
     action: 'COMPARE';

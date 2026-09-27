@@ -22,6 +22,8 @@ export interface AQIRObject {
 // Base Instruction
 export interface AQIRInstruction {
   action: string;
+  /** 1-based source line the compiler emitted this instruction from. */
+  lineNumber?: number;
 }
 
 // Action: COMPARE_OBJECTS
