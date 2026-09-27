@@ -87,7 +87,7 @@ export function CopyButton({ text, label = 'Copy prompt' }: { text: string; labe
   );
 }
 
-export function Kpi({ label, value, sub, tone }: { label: string; value: React.ReactNode; sub?: React.ReactNode; tone?: 'bad' | 'warn' | 'good' }) {
+export function Kpi({ label, value, sub, tone }: { label: string; value: React.ReactNode; sub?: React.ReactNode; tone?: 'bad' | 'warn' | 'good' | 'accent' }) {
   return (
     <div className={`tk-kpi ${tone ? `tk-kpi--${tone}` : ''}`}>
       <span className="tk-kpi__label">{label}</span>
@@ -309,21 +309,25 @@ export function SessionLog({ owner }: { owner: MemberId }) {
             <textarea rows={2} value={draft.note} onChange={(e) => setDraft({ ...draft, note: e.target.value })} />
           </label>
         </div>
-        <label>
-          Related tasks
-          <select
-            multiple
-            value={draft.taskIds}
-            onChange={(e) => setDraft({ ...draft, taskIds: Array.from(e.target.selectedOptions).map((o) => o.value) })}
-            size={Math.min(5, Math.max(2, ownTasks.length))}
-          >
-            {ownTasks.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.id} — {t.title}
-              </option>
-            ))}
-          </select>
-        </label>
+        <fieldset className="tk-chips">
+          <legend>Related tasks</legend>
+          {ownTasks.length === 0 && <span className="tk-muted">No open tasks.</span>}
+          {ownTasks.map((t) => {
+            const on = draft.taskIds.includes(t.id);
+            return (
+              <button
+                key={t.id}
+                type="button"
+                aria-pressed={on}
+                className={`tk-chip ${on ? 'is-on' : ''}`}
+                title={t.title}
+                onClick={() => setDraft({ ...draft, taskIds: on ? draft.taskIds.filter((x) => x !== t.id) : [...draft.taskIds, t.id] })}
+              >
+                {t.id}
+              </button>
+            );
+          })}
+        </fieldset>
         <button type="submit" className="tk-btn tk-btn--primary" disabled={!canSave}>
           Save session
         </button>

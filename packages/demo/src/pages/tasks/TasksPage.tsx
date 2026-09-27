@@ -6,11 +6,13 @@ import { exportState, useTaskStore, useToday } from './store';
 import { MEMBERS } from './teamData';
 import type { MemberId } from './types';
 import { ManasView, MemberView, OverviewView } from './views';
+import { ReportView } from './report';
 
-type Route = 'overview' | MemberId;
+type Route = 'overview' | 'report' | MemberId;
 
 function readRoute(): Route {
   const seg = window.location.hash.replace(/^#\/tasks\/?/, '').split(/[/?]/)[0];
+  if (seg === 'report') return 'report';
   return (MEMBERS.some((m) => m.id === seg) ? seg : 'overview') as Route;
 }
 
@@ -85,12 +87,15 @@ export default function TasksPage() {
                 const s = memberSummary(tasks, m.id, today);
                 const alert = s.overdue.length + s.blocked.length;
                 return (
-                  <a key={m.id} href={`#/tasks/${m.id}`} className={route === m.id ? 'is-active' : ''} aria-current={route === m.id ? 'page' : undefined}>
+                  <a key={m.id} href={`#/tasks/${m.id}`} className={`tk-tab--${m.id} ${route === m.id ? 'is-active' : ''}`} aria-current={route === m.id ? 'page' : undefined}>
                     {m.name.split(' ')[0]}
                     {alert > 0 && <span className="tk-tabs__alert" aria-label={`${alert} overdue or blocked`}>{alert}</span>}
                   </a>
                 );
               })}
+              <a href="#/tasks/report" className={`tk-tabs__report ${route === 'report' ? 'is-active' : ''}`} aria-current={route === 'report' ? 'page' : undefined}>
+                Report
+              </a>
             </nav>
             <div className="tk-top__tools">
               <span className="tk-today-chip">{new Date().toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}</span>
@@ -123,6 +128,7 @@ export default function TasksPage() {
           )}
 
           {route === 'overview' && <OverviewView />}
+          {route === 'report' && <ReportView />}
           {route === 'manas' && <ManasView />}
           {(route === 'yash' || route === 'tirrth' || route === 'pranav') && <MemberView id={route} />}
 

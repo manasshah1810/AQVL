@@ -31,6 +31,11 @@ export function formatDate(key: string): string {
   return new Date(y, m - 1, d).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
+export function shortDate(key: string): string {
+  const [y, m, d] = key.split('-').map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+}
+
 // ─── Seed ─────────────────────────────────────────────────────────────────
 
 function promptField(prompt: string, label: string): string {

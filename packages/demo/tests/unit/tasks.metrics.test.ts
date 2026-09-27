@@ -1,0 +1,90 @@
+import { describe, expect, it } from 'vitest';
+import { SEEDS, emptyState, mergeTasks, reducer } from '../../src/pages/tasks/model';
+import {
+  burnUp,
+  scheduleAdherence,
+  sessionStreak,
+  statusCounts,
+  upcomingLoad,
+  velocity,
+  weekStart,
+  weeklyThroughput,
+} from '../../src/pages/tasks/metrics';
+import type { Session } from '../../src/pages/tasks/types';
+
+const at = (day: string) => `${day}T10:00:00`;
+
+function withCompletions(ids: [string, string][]) {
+  let s = emptyState();
+  for (const [id, day] of ids) s = reducer(s, { type: 'setStatus', id, status: 'completed', now: new Date(at(day)).toISOString() });
+  return mergeTasks(SEEDS, s);
+}
+
+describe('metrics', () => {
+  it('weekStart returns the Monday of the week', () => {
+    expect(weekStart('2026-09-27')).toBe('2026-09-21'); // Sunday
+    expect(weekStart('2026-09-28')).toBe('2026-09-28'); // Monday
+  });
+
+  it('status counts cover every task', () => {
+    const tasks = mergeTasks(SEEDS, emptyState());
+    const c = statusCounts(tasks);
+    expect(Object.values(c).reduce((a, b) => a + b, 0)).toBe(tasks.length);
+    expect(c.completed).toBe(0);
+    expect(c.unverified).toBe(1);
+  });
+
+  it('burn-up: planned follows deadlines, actual follows completion dates', () => {
+    const tasks = withCompletions([['Y1', '2026-09-29'], ['Y2', '2026-10-01']]).filter((t) => t.owner === 'yash');
+    const b = burnUp(tasks, '2026-10-02', '2026-09-27')!;
+    expect(b.total).toBe(8);
+    expect(b.planned.at(-1)!.value).toBe(8);
+    const p = (d: string) => b.planned.find((x) => x.date === d)?.value;
+    const a = (d: string) => b.actual.find((x) => x.date === d)?.value;
+    expect(p('2026-09-30')).toBe(1);
+    expect(p('2026-10-02')).toBe(2);
+    expect(a('2026-09-28')).toBe(0);
+    expect(a('2026-09-29')).toBe(1);
+    expect(a('2026-10-02')).toBe(2);
+    expect(b.actual.every((x) => x.date <= '2026-10-02')).toBe(true);
+  });
+
+  it('schedule adherence only counts work already due', () => {
+    const none = scheduleAdherence(mergeTasks(SEEDS, emptyState()).filter((t) => t.owner === 'yash'), '2026-09-27');
+    expect(none).toEqual({ due: 0, done: 0, pct: null });
+    const tasks = withCompletions([['Y1', '2026-09-29']]).filter((t) => t.owner === 'yash');
+    expect(scheduleAdherence(tasks, '2026-10-02')).toEqual({ due: 2, done: 1, pct: 50 });
+  });
+
+  it('weekly throughput buckets completions by week', () => {
+    const tasks = withCompletions([['P1', '2026-09-29'], ['P2', '2026-10-01'], ['P3', '2026-10-06']]);
+    const w = weeklyThroughput(tasks, '2026-10-07', 3);
+    expect(w.map((x) => x.week)).toEqual(['2026-09-21', '2026-09-28', '2026-10-05']);
+    expect(w.map((x) => x.value)).toEqual([0, 2, 1]);
+  });
+
+  it('upcoming load separates overdue from future weeks', () => {
+    const tasks = mergeTasks(SEEDS, emptyState()).filter((t) => t.owner === 'tirrth');
+    const l = upcomingLoad(tasks, '2026-10-01', 2);
+    expect(l.overdue).toBe(1); // T1 due 30 Sep
+    expect(l.buckets[0].value).toBe(1); // T2 due 3 Oct, week of 28 Sep
+  });
+
+  it('velocity projects a finish date only with real completions', () => {
+    const empty = velocity(mergeTasks(SEEDS, emptyState()), '2026-10-10');
+    expect(empty.projected).toBeNull();
+    const tasks = withCompletions([['Y1', '2026-10-01'], ['Y2', '2026-10-05'], ['T1', '2026-10-08'], ['P1', '2026-10-09']]);
+    const v = velocity(tasks, '2026-10-10');
+    expect(v.last28).toBe(4);
+    expect(v.perWeek).toBe(1);
+    expect(v.projected).not.toBeNull();
+  });
+
+  it('session streak counts consecutive logged days', () => {
+    const mk = (day: string): Session => ({ id: day, date: new Date(at(day)).toISOString(), owner: 'manas', workedOn: 'x', completed: '', remaining: '', blockers: '', note: '', taskIds: [] });
+    const s = [mk('2026-10-03'), mk('2026-10-04'), mk('2026-10-05'), mk('2026-10-01')];
+    expect(sessionStreak(s, '2026-10-05')).toBe(3);
+    expect(sessionStreak(s, '2026-10-06')).toBe(3);
+    expect(sessionStreak(s, '2026-10-08')).toBe(0);
+  });
+});

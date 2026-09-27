@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import {
   CopyButton,
   DeadlineChip,
@@ -12,7 +12,10 @@ import {
   TaskRow,
 } from './components';
 import { useTasks } from './context';
-import { byOwner, currentPhase, daysBetween, formatDate, HEALTH_LABEL, isOverdue, memberSummary, progress } from './model';
+import { BurnUp, Columns, Donut } from './charts';
+import { burnUp, domainOf, statusCounts, statusSegments, weeklyThroughput } from './metrics';
+import { Panel, StatusLegend } from './report';
+import { byOwner, currentPhase, daysBetween, formatDate, HEALTH_LABEL, isOverdue, memberSummary, progress, shortDate } from './model';
 import { IPD_DEADLINE, ROADMAP } from './roadmapData';
 import { GUARDRAILS, MEMBERS, MEMBER_BY_ID } from './teamData';
 import type { MemberId, Status, Task } from './types';
@@ -61,14 +64,12 @@ export function OverviewView() {
   const tp = progress(team);
   const ipdDays = daysBetween(today, IPD_DEADLINE);
 
-  const critical = useMemo(() => {
-    const soon = tasks.filter(
-      (t) => t.status !== 'completed' && t.deadline && daysBetween(today, t.deadline) >= 0 && daysBetween(today, t.deadline) <= 7,
-    );
-    const set = new Map<string, Task>();
-    [...tasks.filter((t) => isOverdue(t, today)), ...tasks.filter((t) => t.status === 'blocked'), ...soon].forEach((t) => set.set(t.id, t));
-    return [...set.values()].sort((a, b) => (a.deadline ?? '9999').localeCompare(b.deadline ?? '9999'));
-  }, [tasks, today]);
+  const soon = tasks.filter(
+    (t) => t.status !== 'completed' && t.deadline && daysBetween(today, t.deadline) >= 0 && daysBetween(today, t.deadline) <= 7,
+  );
+  const criticalMap = new Map<string, Task>();
+  [...tasks.filter((t) => isOverdue(t, today)), ...tasks.filter((t) => t.status === 'blocked'), ...soon].forEach((t) => criticalMap.set(t.id, t));
+  const critical = [...criticalMap.values()].sort((a, b) => (a.deadline ?? '9999').localeCompare(b.deadline ?? '9999'));
 
   return (
     <>
@@ -101,7 +102,19 @@ export function OverviewView() {
         </div>
       </section>
 
-      <Section title="Team" sub="Every figure below is derived from that person’s task records.">
+      <div className="tk-panels">
+        <Panel title="Roadmap: plan vs. actual" sub="Completed tasks against tasks due by each date" span={2} accent="purple">
+          {burnUp(roadmap, today, '2026-09-27') && <BurnUp data={burnUp(roadmap, today, '2026-09-27')!} today={today} height={220} />}
+        </Panel>
+        <Panel title="Everything by status" sub={`${tasks.length} tasks across the team`} accent="blue">
+          <div className="tk-donut-wrap">
+            <Donut segments={statusSegments(statusCounts(tasks))} center={`${progress(tasks).pct}%`} sub="complete" />
+            <StatusLegend tasks={tasks} />
+          </div>
+        </Panel>
+      </div>
+
+      <Section title="Team" sub={<>Every figure is derived from that person’s task records. <a href="#/tasks/report" className="tk-link">Open the full report →</a></>}>
         <div className="tk-team">
           {MEMBERS.map((m) => {
             const s = memberSummary(tasks, m.id, today);
@@ -258,6 +271,18 @@ export function ManasView() {
         <Kpi label="IPD target" value={`${ipdDays}d`} sub={formatDate(IPD_DEADLINE)} />
       </div>
 
+      <div className="tk-panels">
+        <Panel title="Roadmap burn-up" sub="Completed vs. due-by-date" span={2} accent="purple">
+          {burnUp(roadmap, today, '2026-09-27') && <BurnUp data={burnUp(roadmap, today, '2026-09-27')!} today={today} height={220} />}
+        </Panel>
+        <Panel title="Roadmap by status" accent="yellow">
+          <div className="tk-donut-wrap">
+            <Donut segments={statusSegments(statusCounts(roadmap))} center={`${s.progress.pct}%`} sub={`${s.progress.done}/${s.progress.total}`} />
+            <StatusLegend tasks={roadmap} />
+          </div>
+        </Panel>
+      </div>
+
       <Section title="Phase progress" sub="Target windows come from the roadmap synthesis; sub-phase dates are spread evenly inside each window.">
         <div className="tk-phases">
           {ROADMAP.map((p) => {
@@ -265,7 +290,7 @@ export function ManasView() {
             const pp = progress(pt);
             const late = pt.some((t) => isOverdue(t, today));
             return (
-              <button key={p.number} type="button" className={`tk-phase-row ${p.number === phase ? 'is-current' : ''}`} onClick={() => jumpTo(p.number)}>
+              <button key={p.number} type="button" className={`tk-phase-row tk-dom--${domainOf(p.number)} ${p.number === phase ? 'is-current' : ''}`} onClick={() => jumpTo(p.number)}>
                 <span className="tk-phase-row__num">P{p.number}</span>
                 <span className="tk-phase-row__title">{p.title}</span>
                 <ProgressBar pct={pp.pct} label={`Phase ${p.number} progress`} />
@@ -304,7 +329,7 @@ export function ManasView() {
             const visible = pt.filter((t) => filter === 'all' || (filter === 'open' ? t.status !== 'completed' : t.status === filter));
             const isOpen = open.has(p.number);
             return (
-              <div key={p.number} id={`phase-${p.number}`} className={`tk-phase ${isOpen ? 'is-open' : ''} ${p.number === phase ? 'is-current' : ''}`}>
+              <div key={p.number} id={`phase-${p.number}`} className={`tk-phase tk-dom--${domainOf(p.number)} ${isOpen ? 'is-open' : ''} ${p.number === phase ? 'is-current' : ''}`}>
                 <button type="button" className="tk-phase__head" aria-expanded={isOpen} onClick={() => toggle(p.number)}>
                   <span className="tk-phase__chev">{isOpen ? '−' : '+'}</span>
                   <span className="tk-phase__num">Phase {p.number}</span>
@@ -336,7 +361,7 @@ export function ManasView() {
 function MemberHeader({ id }: { id: MemberId }) {
   const m = MEMBER_BY_ID[id];
   return (
-    <header className="tk-member-head">
+    <header className={`tk-member-head tk-who-bg--${id}`}>
       <div>
         <span className="tk-eyebrow">{m.role} · {m.tool}</span>
         <h1>{m.name}</h1>
@@ -462,6 +487,26 @@ export function MemberView({ id }: { id: Exclude<MemberId, 'manas'> }) {
         <Kpi label="Overdue" value={s.overdue.length} tone={s.overdue.length ? 'bad' : undefined} />
         <Kpi label="Blocked" value={s.blocked.length} tone={s.blocked.length ? 'bad' : undefined} />
         <Kpi label="Next deadline" value={s.nextDeadline ? formatDate(s.nextDeadline.deadline!) : '—'} sub={s.nextDeadline?.id} />
+      </div>
+
+      <div className="tk-panels">
+        <Panel title="Plan vs. actual" sub="Completed against tasks due by each date" span={2} accent={id === 'yash' ? 'blue' : id === 'tirrth' ? 'pink' : 'green'}>
+          {burnUp(s.tasks, today, '2026-09-27') && <BurnUp data={burnUp(s.tasks, today, '2026-09-27')!} today={today} height={200} />}
+        </Panel>
+        <Panel title="By status" accent="yellow">
+          <div className="tk-donut-wrap">
+            <Donut segments={statusSegments(statusCounts(s.tasks))} center={`${s.progress.pct}%`} sub={`${s.progress.done}/${s.progress.total}`} size={140} />
+            <StatusLegend tasks={s.tasks} />
+          </div>
+        </Panel>
+        <Panel title="Weekly throughput" sub="Tasks completed per week" span={3}>
+          <Columns
+            bars={weeklyThroughput(s.tasks, today, 6).map((w) => ({ label: shortDate(w.week), value: w.value, title: `Week of ${formatDate(w.week)}: ${w.value} completed` }))}
+            cls="tkc-col--good"
+            height={160}
+            emptyNote="Nothing completed yet"
+          />
+        </Panel>
       </div>
 
       <Section title={s.active ? 'Current task' : 'Up next'}>

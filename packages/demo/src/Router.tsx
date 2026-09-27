@@ -7,11 +7,20 @@ const Landing = lazy(() => import('./pages/Landing.tsx'));
 const Privacy = lazy(() => import('./pages/Privacy.tsx'));
 const Tasks = lazy(() => import('./pages/tasks/TasksPage.tsx'));
 
+function savedTheme(): 'dark' | 'light' {
+  try {
+    return localStorage.getItem('aqvl-docs-theme') === 'light' ? 'light' : 'dark';
+  } catch {
+    return 'dark';
+  }
+}
+
 function RouteFallback() {
+  const light = savedTheme() === 'light';
   return (
     <div style={{
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      width: '100vw', height: '100vh', background: '#06060a', color: '#8888aa',
+      width: '100vw', height: '100vh', background: light ? '#f5f0e8' : '#06060a', color: light ? '#444444' : '#8888aa',
       fontFamily: 'system-ui, sans-serif', fontSize: '14px',
     }}>
       Loading…

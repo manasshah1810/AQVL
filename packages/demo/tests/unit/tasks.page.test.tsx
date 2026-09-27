@@ -103,6 +103,21 @@ describe('/tasks command center', () => {
     expect(screen.getByText(/Left open:/).parentElement).toHaveTextContent('Start 1.1');
   });
 
+  it('report view derives its KPIs from real completions', () => {
+    render(<TasksPage />);
+    go('#/tasks/yash');
+    fireEvent.click(within(screen.getByTestId('task-Y1')).getByRole('checkbox'));
+    fireEvent.click(within(screen.getByTestId('task-Y2')).getByRole('checkbox'));
+    go('#/tasks/report');
+    expect(screen.getByRole('heading', { level: 1, name: 'AQVL project status' })).toBeInTheDocument();
+    const kpi = (label: string) => screen.getAllByText(label).find((el) => el.classList.contains('tk-kpi__label'))!.closest('.tk-kpi') as HTMLElement;
+    expect(within(kpi('Team tasks')).getByText('2/25')).toBeInTheDocument();
+    expect(within(kpi('Done, last 7 days')).getByText('2')).toBeInTheDocument();
+    expect(within(kpi('Blocked')).getByText('0')).toBeInTheDocument();
+    expect(screen.getByText('Roadmap burn-up')).toBeInTheDocument();
+    expect(screen.getAllByText(/Y2/).length).toBeGreaterThan(0);
+  });
+
   it('marks tasks overdue from the real current date', () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(new Date(2026, 9, 5, 9));
