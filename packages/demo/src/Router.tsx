@@ -5,6 +5,7 @@ const Docs = lazy(() => import('./pages/Docs.tsx'));
 const Playground = lazy(() => import('./pages/Playground.tsx'));
 const Landing = lazy(() => import('./pages/Landing.tsx'));
 const Privacy = lazy(() => import('./pages/Privacy.tsx'));
+const Tasks = lazy(() => import('./pages/tasks/TasksPage.tsx'));
 
 function RouteFallback() {
   return (
@@ -18,7 +19,7 @@ function RouteFallback() {
   );
 }
 
-/** Hash routes: #/docs, #/playground, #/ide, #/privacy; anything else is the landing page. */
+/** Hash routes: #/docs, #/playground, #/ide, #/privacy, #/tasks; anything else is the landing page. */
 export function Router() {
   const [hash, setHash] = React.useState(window.location.hash);
   React.useEffect(() => {
@@ -32,6 +33,7 @@ export function Router() {
   else if (hash.startsWith('#/playground')) Page = Playground;
   else if (hash.startsWith('#/ide')) Page = App;
   else if (hash.startsWith('#/privacy')) Page = Privacy;
+  else if (hash.startsWith('#/tasks')) Page = Tasks;
 
   return (
     <Suspense fallback={<RouteFallback />}>
