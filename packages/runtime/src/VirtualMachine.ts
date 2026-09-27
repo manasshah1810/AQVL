@@ -281,7 +281,11 @@ export class AQVLVirtualMachine {
   }
 
   private static readonly BINARY_OPS: Record<string, (l: any, r: any) => unknown> = {
-    '+': (l, r) => l + r,
+    // Joining text: booleans read TRUE / FALSE and a missing value NULL, as PRINT shows them.
+    '+': (l, r) =>
+      typeof l === 'string' || typeof r === 'string'
+        ? AQVLVirtualMachine.asText(l) + AQVLVirtualMachine.asText(r)
+        : l + r,
     '-': (l, r) => l - r,
     '*': (l, r) => l * r,
     '/': (l, r) => l / r,
@@ -308,6 +312,14 @@ export class AQVLVirtualMachine {
     'CHAR_AT': (l, r) => AQVLVirtualMachine.text('CHAR_AT', l)[AQVLVirtualMachine.charIndex('CHAR_AT', l, r)],
     'CHAR_CODE': (l, r) => AQVLVirtualMachine.text('CHAR_CODE', l).charCodeAt(AQVLVirtualMachine.charIndex('CHAR_CODE', l, r)),
   };
+
+  /** A value as it appears when joined to text with `+`. */
+  private static asText(value: unknown): string {
+    if (value === true) return 'TRUE';
+    if (value === false) return 'FALSE';
+    if (value === null || value === undefined) return 'NULL';
+    return String(value);
+  }
 
   /** The text operand of a text built-in; a number is used as its digits (`CHAR_AT(407, 0)` is "4"). */
   private static text(fn: string, value: unknown): string {

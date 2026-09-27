@@ -544,7 +544,8 @@ const TOC_ITEMS_CONTROL_FLOW = [
 const TOC_ITEMS_FUNCTIONS = [
   { id: 'fn-introduction', label: 'Introduction' },
   { id: 'fn-declaration', label: 'Declaring a Function' },
-  { id: 'fn-commands', label: 'Statements Reference' },
+  { id: 'fn-recursion', label: 'Recursion' },
+  { id: 'fn-commands', label: 'Patterns Reference' },
   { id: 'fn-examples', label: 'Examples' },
   { id: 'fn-errors', label: 'Errors & Tips' },
 ];
@@ -859,7 +860,7 @@ export default function Docs() {
                 onClick={() => goToPage('functions')}
               >
                 <span className="docs-nav-icon"><IconFunction /></span>
-                Functions
+                Functions &amp; Recursion
               </button>
             </div>
 
@@ -4060,103 +4061,126 @@ END`} />
                         <path d="M15 4c2 0 3 1 3 3v3c0 1.5.8 2 2 2-1.2 0-2 .5-2 2v3c0 2-1 3-3 3" />
                       </svg>
                     </div>
-                    <h1 className="docs-page-title">Functions</h1>
+                    <h1 className="docs-page-title">Functions &amp; Recursion</h1>
                   </div>
                   <p className="docs-page-lead">
-                    Named, reusable computation with parameters, <code>RETURN</code> values, and full <code>IF</code> /
-                    <code>ELSE</code> branching inside braces.
+                    Named functions with parameters and <code>RETURN</code> values, guard clauses, and recursion with a
+                    visible call stack, from factorial to backtracking.
                   </p>
                 </header>
 
                 <section id="fn-introduction" className="docs-section">
                   <h2 className="docs-h2">Introduction</h2>
                   <p className="docs-p">
-                    A <C>FUNCTION</C> is named computation you can call from anywhere in the sequence. Functions are
-                    where AQVL stops being a storyboard and becomes a small programming language: they take parameters,
-                    return values, and branch with a real <C>ELSE</C>.
+                    A <C>FUNCTION</C> is a named piece of work. It takes <strong>parameters</strong> (its inputs), does
+                    one job and hands back one answer with <C>RETURN</C>. You write it once in <C>DECLARE</C> and call it
+                    as often as you like, from <C>SEQUENCE</C> or from another function. A function that calls
+                    <em> itself</em> on a smaller input is <strong>recursive</strong>.
                   </p>
                   <p className="docs-p">
-                    The syntax differs from the sequence block on purpose. A function body is delimited by braces
-                    (<C>&#123;</C> … <C>&#125;</C>) rather than <C>END</C>, and its statements are expressions and control
-                    flow rather than animation commands.
+                    Every example in the Playground&apos;s Recursion &amp; Functions category is written out the long way:
+                    guard clauses, <C>IF</C> / <C>ELSE IF</C> / <C>ELSE</C> ladders, <C>WHILE</C> loops and recursive
+                    calls with a clear base case. Nothing is hard-coded, so you can change the numbers in <C>DECLARE</C>
+                    or the arguments in <C>SEQUENCE</C> and the run is still correct.
                   </p>
                   <Alert kind="note" title="Where functions live">
-                    Functions are declared in the <C>DECLARE</C> block, alongside the structures — they are part of what
-                    the scene <em>has</em>, not part of what it <em>does</em>.
+                    Functions are declared in the <C>DECLARE</C> block, next to the arrays and stacks they work on, and
+                    called from <C>SEQUENCE</C>. A call is an ordinary expression: <C>x = f(3)</C>, <C>PRINT f(3)</C>,
+                    <C>f(g(2))</C> and <C>IF isPrime(n)</C> all work.
                   </Alert>
                 </section>
 
                 <section id="fn-declaration" className="docs-section">
                   <h2 className="docs-h2">Declaring a Function</h2>
-                  <CodeBlock label="Syntax" code={`FUNCTION <name>(<param>, <param>, ...) {
-  <statements>
-  RETURN <expression>
-}`} />
-
-                  <p className="docs-p">A full minimal program:</p>
-                  <CodeBlock code={`SCENE FunctionIntro
-
-DECLARE
-  ARRAY arr = [3, 7, 2]
-
-  FUNCTION double(n) {
-    RETURN n * 2
-  }
-
-SEQUENCE
-  v = double(arr[0])
-  UPDATE arr[0] v
+                  <CodeBlock label="Syntax" code={`FUNCTION name(param1, param2, ...)
+  statements            // any SEQUENCE statement: IF, WHILE, LOOP, PRINT, HIGHLIGHT, UPDATE, PUSH ...
+  RETURN expression     // hands the answer back and leaves the function at once
 END`} />
                   <p className="docs-p">
-                    The call <C>double(arr[0])</C> is an ordinary expression, so its result can be assigned, passed to
-                    another call, or used directly as a command argument.
+                    The body accepts every statement the <C>SEQUENCE</C> block accepts. A brace form,
+                    <C>FUNCTION name(n) &#123; ... &#125;</C> with <C>IF cond &#123; &#125; ELSE &#123; &#125;</C>,
+                    is also accepted; the Playground examples use the <C>END</C> form so that function bodies look
+                    exactly like the rest of the program.
                   </p>
-                  <Alert kind="tip" title="A bare RETURN is allowed">
-                    <C>RETURN</C> with no expression exits the function early without producing a value — useful as a
-                    guard clause at the top of a body.
-                  </Alert>
+
+                  <h3 className="docs-h3">Parameters are copies</h3>
+                  <p className="docs-p">
+                    When you call <C>addBonus(marksNow)</C>, the function gets a <em>copy</em> of the value. Changing the
+                    parameter inside the function never changes the caller&apos;s variable, so the answer has to come
+                    back with <C>RETURN</C> and be stored: <C>marksNow = addBonus(marksNow)</C>.
+                  </p>
+
+                  <h3 className="docs-h3">Local and shared data</h3>
+                  <div className="docs-cmd-table-wrap">
+                    <table className="docs-cmd-table">
+                      <thead><tr><th>Inside a function you can ...</th><th>Result</th></tr></thead>
+                      <tbody>
+                        <tr><td>assign <C>total = 0</C></td><td>a <strong>local</strong> variable of this call only; it disappears when the call returns.</td></tr>
+                        <tr><td>assign to a parameter</td><td>changes only this call&apos;s copy.</td></tr>
+                        <tr><td>read a <C>SEQUENCE</C> variable</td><td>works (<C>shopName + &quot; welcomes &quot; + name</C>).</td></tr>
+                        <tr><td>assign to a <C>SEQUENCE</C> variable</td><td>creates a <em>new local</em> with the same name; the outer one is unchanged.</td></tr>
+                        <tr><td><C>UPDATE</C>, <C>SWAP</C>, <C>PUSH</C>, <C>POP</C> a structure from <C>DECLARE</C></td><td><strong>shared</strong>: the caller sees the change.</td></tr>
+                      </tbody>
+                    </table>
+                  </div>
+                  <p className="docs-p">
+                    That is why every counter that must survive a call lives in a one-cell array:
+                    <C>UPDATE calls[0] calls[0] + 1</C>.
+                  </p>
+                </section>
+
+                <section id="fn-recursion" className="docs-section">
+                  <h2 className="docs-h2">Recursion</h2>
+                  <p className="docs-p">Every recursive function has two parts:</p>
+                  <ul>
+                    <li><strong>Base case</strong>: a small input answered directly, with no further call (<C>IF n &lt;= 1</C> … <C>RETURN 1</C>).</li>
+                    <li><strong>Recursive case</strong>: the same problem on a <em>smaller</em> input, plus one step of work (<C>RETURN n * factorial(n - 1)</C>).</li>
+                  </ul>
+                  <p className="docs-p">
+                    Each call waits on the <strong>call stack</strong> until the call it made returns. Going down
+                    (&quot;winding&quot;) the calls pile up; once the base case answers, they finish one by one in reverse
+                    order (&quot;unwinding&quot;). The examples make this visible in three ways:
+                  </p>
+                  <CodeBlock code={`PUSH calls n                        // a STACK named calls grows when a call starts
+PRINT pad(depth) + "factorial(" + n + ") called"   // deeper calls print further right
+done = POP(calls)                   // ... and shrinks when the call returns
+UPDATE counter[0] counter[0] + 1    // count the calls to measure the cost`} />
+                  <p className="docs-p">
+                    Work written <em>before</em> the recursive call happens on the way down; work written <em>after</em>
+                    it happens on the way back up, in reverse order. <strong>Backtracking</strong> uses exactly that:
+                    make a choice, recurse, then undo the choice after the call returns.
+                  </p>
                 </section>
 
                 <section id="fn-commands" className="docs-section">
-                  <h2 className="docs-h2">Statements Reference</h2>
-                  <p className="docs-p">
-                    Inside braces the statement grammar is different from the sequence block. This table covers it in
-                    full.
-                  </p>
+                  <h2 className="docs-h2">Patterns Reference</h2>
                   <div className="docs-cmd-table-wrap">
                     <table className="docs-cmd-table">
-                      <thead>
-                        <tr><th>Construct</th><th>Description</th></tr>
-                      </thead>
+                      <thead><tr><th>Pattern</th><th>What it looks like</th><th>Examples</th></tr></thead>
                       <tbody>
-                        <tr>
-                          <td><span className="tok-keyword">FUNCTION</span> <span className="tok-param">name(params)</span> <span className="tok-operator">&#123; … &#125;</span></td>
-                          <td>Declares a function. Parameters are comma-separated names; an empty parameter list is written <C>()</C>.</td>
-                        </tr>
-                        <tr>
-                          <td><span className="tok-keyword">RETURN</span> <span className="tok-param">[expr]</span></td>
-                          <td>Exits the function, optionally with a value. Without one, the function returns nothing.</td>
-                        </tr>
-                        <tr>
-                          <td><span className="tok-keyword">IF</span> <span className="tok-param">cond</span> <span className="tok-operator">&#123; … &#125;</span></td>
-                          <td>Brace-delimited conditional. Note the contrast with sequence-mode <C>IF</C>, which closes with <C>END</C> instead.</td>
-                        </tr>
-                        <tr>
-                          <td><span className="tok-keyword">ELSE</span> <span className="tok-operator">&#123; … &#125;</span></td>
-                          <td>The alternative branch, valid only in a function body.</td>
-                        </tr>
-                        <tr>
-                          <td><span className="tok-keyword">ELSE</span> <span className="tok-keyword">IF</span> <span className="tok-param">cond</span> <span className="tok-operator">&#123; … &#125;</span></td>
-                          <td>Chains another condition, and may be followed by further <C>ELSE IF</C> / <C>ELSE</C> branches.</td>
-                        </tr>
-                        <tr>
-                          <td><span className="tok-param">name</span> <span className="tok-operator">=</span> <span className="tok-param">expr</span></td>
-                          <td>Assignment. Creates the variable on first use, as in the sequence block.</td>
-                        </tr>
-                        <tr>
-                          <td><span className="tok-param">name(args)</span></td>
-                          <td>A call. Valid as a statement on its own or as part of a larger expression — including a call to another function.</td>
-                        </tr>
+                        <tr><td>Helper function</td><td>One job, one <C>RETURN</C>, called in a loop</td><td>Canteen Bill, Class Report</td></tr>
+                        <tr><td>Yes / no function</td><td><C>RETURN TRUE</C> / <C>RETURN FALSE</C>, used as <C>IF isValid(m)</C></td><td>Grade Calculator, Prime Toolkit</td></tr>
+                        <tr><td>Guard clauses</td><td>Check each rule first and <C>RETURN</C> early when it is broken</td><td>ATM Withdrawal</td></tr>
+                        <tr><td>Linear recursion</td><td>One call per step on <C>n - 1</C> or <C>i + 1</C></td><td>Factorial, Digits, Array, Palindrome</td></tr>
+                        <tr><td>Accumulator</td><td>An extra parameter carries the answer so far</td><td><C>reverseDigits(n, built)</C></td></tr>
+                        <tr><td>Divide and conquer</td><td>Halve the input on each call</td><td>Fast Power, Binary conversion, GCD</td></tr>
+                        <tr><td>Tree recursion</td><td>Two or more calls per call</td><td>Naive Fibonacci, Hanoi, Coin Change</td></tr>
+                        <tr><td>Memoisation</td><td>An array of answers, <C>-1</C> while unknown; look it up before computing</td><td>Fibonacci, Stairs, Coin Change</td></tr>
+                        <tr><td>Backtracking</td><td>Choose, recurse, undo; stop early when a branch cannot work</td><td>Subsets, Permutations, N-Queens</td></tr>
+                        <tr><td>Mutual recursion</td><td>Two functions that call each other</td><td><C>isEven</C> / <C>isOdd</C></td></tr>
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="docs-cmd-table-wrap">
+                    <table className="docs-cmd-table">
+                      <thead><tr><th>Recursion</th><th>Calls</th><th>Measured in the examples</th></tr></thead>
+                      <tbody>
+                        <tr><td><C>factorial(n)</C>, <C>slowPower(b, e)</C></td><td>n + 1</td><td>2^10: 11 calls</td></tr>
+                        <tr><td><C>fastPower(b, e)</C>, <C>gcd(a, b)</C></td><td>about log n</td><td>2^10: 5 calls</td></tr>
+                        <tr><td><C>fibNaive(n)</C></td><td>grows like 1.6^n</td><td>fib(15): 1973 calls</td></tr>
+                        <tr><td><C>fibMemo(n)</C></td><td>about 2n</td><td>fib(16): 31 calls, then 1</td></tr>
+                        <tr><td><C>hanoi(n)</C></td><td>2^n - 1 moves</td><td>3 disks: 7 moves</td></tr>
+                        <tr><td>subsets / permutations</td><td>2^n / n!</td><td>16 subsets, 6 seatings</td></tr>
                       </tbody>
                     </table>
                   </div>
@@ -4165,132 +4189,439 @@ END`} />
                 <section id="fn-examples" className="docs-section">
                   <h2 className="docs-h2">Examples</h2>
 
-                  <h3 className="docs-h3">Example 1 — IF / ELSE and a Return Value</h3>
-                  <CodeBlock code={`SCENE MaxOfTwo
+                  <h3 className="docs-h3">Example 1 — Functions that build on each other</h3>
+                  <p className="docs-p">
+                    Each function does one job; <C>finalBill</C> is built by calling <C>discountOn</C> and
+                    <C>gstOn</C>, and the same functions then work for a different amount.
+                  </p>
+                  <CodeBlock code={`SCENE FunctionBasics
 
 DECLARE
-  ARRAY arr = [14, 9]
+  // A canteen order: price of each item and how many were ordered
+  ARRAY price = [40, 25, 60, 50]
+  ARRAY qty = [2, 4, 2, 4]
 
-  FUNCTION maxOf(a, b) {
-    IF a > b {
-      RETURN a
-    } ELSE {
-      RETURN b
-    }
-  }
-
-SEQUENCE
-  COMPARE arr[0] arr[1]
-  best = maxOf(arr[0], arr[1])
-  HIGHLIGHT arr[0] 'SUCCESS'
-END`} />
-                  <p className="docs-p">
-                    <strong>Expected behavior:</strong> the comparison animates, <C>maxOf</C> returns 14, and the winning
-                    element is marked.
-                  </p>
-
-                  <h3 className="docs-h3">Example 2 — ELSE IF Chains</h3>
-                  <p className="docs-p">
-                    Several mutually exclusive cases, handled the way a general-purpose language would handle them.
-                  </p>
-                  <CodeBlock code={`SCENE ClassifySign
-
-DECLARE
-  ARRAY arr = [-4, 0, 9]
-
-  FUNCTION classify(n) {
-    IF n < 0 {
-      RETURN 0
-    } ELSE IF n == 0 {
-      RETURN 1
-    } ELSE {
-      RETURN 2
-    }
-  }
-
-SEQUENCE
-  LOOP i FROM 0 TO LENGTH(arr) - 1
-    kind = classify(arr[i])
-    HIGHLIGHT arr[i]
-    WAIT
+  // A FUNCTION is a named piece of work. It takes PARAMETERS (the inputs in
+  // brackets), does its job and hands back ONE answer with RETURN.
+  // Write it once, call it as many times as you like.
+  FUNCTION lineTotal(i)
+    total = price[i] * qty[i]
+    RETURN total
   END
-END`} />
 
-                  <h3 className="docs-h3">Example 3 — Functions Calling Functions</h3>
-                  <p className="docs-p">
-                    A call is an expression, so one function's result feeds straight into another's argument list.
-                  </p>
-                  <CodeBlock code={`SCENE ComposedCalls
-
-DECLARE
-  ARRAY arr = [2, 5, 3]
-
-  FUNCTION square(n) {
-    RETURN n * n
-  }
-
-  FUNCTION sumOfSquares(a, b) {
-    RETURN square(a) + square(b)
-  }
-
-SEQUENCE
-  result = sumOfSquares(arr[0], arr[1])
-  UPDATE arr[2] result
-END`} />
-                  <p className="docs-p">
-                    <strong>Expected behavior:</strong> <C>sumOfSquares(2, 5)</C> evaluates to 29 and the third array
-                    element animates to that value.
-                  </p>
-
-                  <h3 className="docs-h3">Example 4 — A Guard Clause</h3>
-                  <p className="docs-p">
-                    An early bare <C>RETURN</C> keeps the rest of the body from running.
-                  </p>
-                  <CodeBlock code={`SCENE GuardClause
-
-DECLARE
-  ARRAY arr = [6, 0, 4]
-
-  FUNCTION safeDivide(a, b) {
-    IF b == 0 {
+  // 10% off when the bill reaches 300, otherwise no discount
+  FUNCTION discountOn(amount)
+    IF amount >= 300
+      RETURN amount * 10 / 100
+    ELSE
       RETURN 0
-    }
-    RETURN a / b
-  }
+    END
+  END
+
+  // 5% GST on the amount after the discount
+  FUNCTION gstOn(amount)
+    RETURN amount * 5 / 100
+  END
+
+  // A function can call other functions: this one uses the two above
+  FUNCTION finalBill(subtotal)
+    afterDiscount = subtotal - discountOn(subtotal)
+    RETURN afterDiscount + gstOn(afterDiscount)
+  END
 
 SEQUENCE
-  ok = safeDivide(arr[0], arr[2])
-  guarded = safeDivide(arr[0], arr[1])
-  HIGHLIGHT arr[0]
+  subtotal = 0
+  LOOP i FROM 0 TO LENGTH(price) - 1
+    HIGHLIGHT price[i]
+    // lineTotal(i) is an expression: its RETURN value is used right here
+    line = lineTotal(i)
+    PRINT "Item " + i + ": " + qty[i] + " x " + price[i] + " = " + line
+    subtotal = subtotal + line
+    HIGHLIGHT price[i] 'SUCCESS'
+  END
+
+  PRINT "Subtotal: " + subtotal
+  PRINT "Discount: " + discountOn(subtotal)
+  PRINT "GST: " + gstOn(subtotal - discountOn(subtotal))
+  PRINT "Amount to pay: " + finalBill(subtotal)
+
+  // The same functions work for any amount, e.g. a small order of 120
+  PRINT "A bill of 120 pays " + finalBill(120) + " (no discount below 300)"
 END`} />
+                  <p className="docs-p">
+                    <strong>Expected:</strong> <C>Subtotal: 500</C>, <C>Discount: 50</C>, <C>GST: 22.5</C>,
+                    <C>Amount to pay: 472.5</C> and <C>A bill of 120 pays 126</C>.
+                  </p>
+
+                  <h3 className="docs-h3">Example 2 — Parameters are copies, arrays are shared</h3>
+                  <CodeBlock code={`SCENE ParametersAreCopies
+
+DECLARE
+  ARRAY score = [10, 20]
+
+  // Tries to swap two numbers. It swaps its OWN copies a and b only.
+  FUNCTION trySwap(a, b)
+    temp = a
+    a = b
+    b = temp
+    PRINT "  inside trySwap: a=" + a + " b=" + b
+  END
+
+  // Arrays in DECLARE are shared, so swapping two CELLS is seen by everyone
+  FUNCTION swapCells(i, j)
+    temp = score[i]
+    UPDATE score[i] score[j]
+    UPDATE score[j] temp
+  END
+
+  // Changing a parameter never changes the caller's variable ...
+  FUNCTION addBonus(points)
+    points = points + 5
+    RETURN points
+  END
+
+SEQUENCE
+  x = 1
+  y = 2
+  trySwap(x, y)
+  PRINT "after trySwap: x=" + x + " y=" + y + " (unchanged: the function got copies)"
+
+  PRINT "before swapCells:" score
+  swapCells(0, 1)
+  PRINT "after swapCells:" score
+  HIGHLIGHT score[0] 'SUCCESS'
+  HIGHLIGHT score[1] 'SUCCESS'
+
+  marksNow = 70
+  addBonus(marksNow)
+  PRINT "addBonus(marksNow) alone: marksNow is still " + marksNow
+  // ... so the answer must be RETURNed and stored by the caller
+  marksNow = addBonus(marksNow)
+  PRINT "marksNow = addBonus(marksNow): marksNow is now " + marksNow
+END`} />
+                  <p className="docs-p">
+                    <strong>Expected:</strong> <C>x=1 y=2</C> after <C>trySwap</C>, <C>score</C> becomes
+                    <C>[20, 10]</C> after <C>swapCells</C>, and <C>marksNow</C> only changes to 75 once the returned
+                    value is stored.
+                  </p>
+
+                  <h3 className="docs-h3">Example 3 — Factorial with a visible call stack</h3>
+                  <CodeBlock code={`SCENE FactorialRecursion
+
+DECLARE
+  // The call stack drawn as a real STACK: PUSH when a call starts,
+  // POP when it returns
+  STACK calls = []
+
+  // Two spaces per level of depth. A WHILE loop, because depth can be 0.
+  FUNCTION pad(depth)
+    s = ""
+    k = 0
+    WHILE k < depth
+      s = s + "  "
+      k = k + 1
+    END
+    RETURN s
+  END
+
+  // n! = n * (n-1)!   and   1! = 0! = 1
+  // Every recursion has two parts:
+  //   BASE CASE:      a small input answered directly, with no more calls
+  //   RECURSIVE CASE: the same problem on a SMALLER input, then one more step
+  FUNCTION factorial(n, depth)
+    PUSH calls n
+    PRINT pad(depth) + "factorial(" + n + ") called"
+    IF n <= 1
+      PRINT pad(depth) + "base case: factorial(" + n + ") = 1"
+      done = POP(calls)
+      RETURN 1
+    END
+    smaller = factorial(n - 1, depth + 1)
+    result = n * smaller
+    PRINT pad(depth) + "factorial(" + n + ") = " + n + " * " + smaller + " = " + result
+    done = POP(calls)
+    RETURN result
+  END
+
+  // The same answer with a loop, for comparison
+  FUNCTION factorialLoop(n)
+    result = 1
+    k = 2
+    WHILE k <= n
+      result = result * k
+      k = k + 1
+    END
+    RETURN result
+  END
+
+SEQUENCE
+  // Going DOWN (winding): 5 waits for 4, 4 waits for 3, ... until the base case.
+  // Coming UP (unwinding): each waiting call finishes its multiplication.
+  answer = factorial(5, 0)
+  PRINT "factorial(5) = " + answer + ", the loop version gives " + factorialLoop(5)
+
+  // 0! is a base case straight away: one call, nothing to wait for
+  zero = factorial(0, 0)
+  PRINT "factorial(0) = " + zero
+END`} />
+                  <p className="docs-p">
+                    <strong>Expected:</strong> five <C>called</C> lines, each indented further, the base case, then the
+                    products <C>2</C>, <C>6</C>, <C>24</C>, <C>120</C> coming back up while the <C>calls</C> stack empties.
+                  </p>
+
+                  <h3 className="docs-h3">Example 4 — Fibonacci: naive, memoised and a loop</h3>
+                  <CodeBlock code={`SCENE FibonacciThreeWays
+
+DECLARE
+  // memo[i] = fib(i) once it is known, -1 while it is still unknown
+  ARRAY memo = [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1]
+  // calls[0]: naive calls, calls[1]: memo calls
+  ARRAY calls = [0, 0]
+
+  // Naive: two calls per call, and the same fib(k) is recomputed many times
+  FUNCTION fibNaive(n)
+    UPDATE calls[0] calls[0] + 1
+    IF n <= 1
+      RETURN n
+    END
+    RETURN fibNaive(n - 1) + fibNaive(n - 2)
+  END
+
+  // Memoised: look the answer up first, compute it only once, remember it
+  FUNCTION fibMemo(n)
+    UPDATE calls[1] calls[1] + 1
+    IF memo[n] != -1
+      RETURN memo[n]
+    END
+    // value must exist BEFORE the IF: a variable first set inside a branch
+    // is not known after the END
+    value = n
+    IF n > 1
+      value = fibMemo(n - 1) + fibMemo(n - 2)
+    END
+    UPDATE memo[n] value
+    HIGHLIGHT memo[n] 'SUCCESS'
+    RETURN value
+  END
+
+  // Iterative: keep only the last two numbers
+  FUNCTION fibLoop(n)
+    IF n <= 1
+      RETURN n
+    END
+    prev = 0
+    curr = 1
+    k = 2
+    WHILE k <= n
+      next = prev + curr
+      prev = curr
+      curr = next
+      k = k + 1
+    END
+    RETURN curr
+  END
+
+SEQUENCE
+  LOOP n FROM 5 TO 15
+    UPDATE calls[0] 0
+    value = fibNaive(n)
+    IF n % 5 == 0
+      PRINT "naive fib(" + n + ") = " + value + " needed " + calls[0] + " calls"
+    END
+  END
+
+  UPDATE calls[1] 0
+  PRINT "memo fib(16) = " + fibMemo(16) + " needed " + calls[1] + " calls"
+  UPDATE calls[1] 0
+  again = fibMemo(16)
+  PRINT "asking for fib(16) again: " + again + " in " + calls[1] + " call (a table lookup)"
+  PRINT "loop fib(16) = " + fibLoop(16)
+END`} />
+                  <p className="docs-p">
+                    <strong>Expected:</strong> <C>naive fib(15) = 610 needed 1973 calls</C>, while the memo version needs
+                    31 calls for fib(16) and the <C>memo</C> array fills in green.
+                  </p>
+
+                  <h3 className="docs-h3">Example 5 — Tower of Hanoi on three stacks</h3>
+                  <CodeBlock code={`SCENE TowerOfHanoi
+
+DECLARE
+  // Three pegs; the bottom of each stack is the bottom of the peg.
+  // Disk 3 is the biggest, disk 1 the smallest.
+  STACK pegA = [3, 2, 1]
+  STACK pegB = []
+  STACK pegC = []
+  ARRAY moveCount = [0]
+
+  FUNCTION nameOf(peg)
+    IF peg == 1
+      RETURN "A"
+    ELSE IF peg == 2
+      RETURN "B"
+    ELSE
+      RETURN "C"
+    END
+  END
+
+  // Take the top disk off one peg ...
+  FUNCTION takeFrom(peg)
+    IF peg == 1
+      RETURN POP(pegA)
+    ELSE IF peg == 2
+      RETURN POP(pegB)
+    ELSE
+      RETURN POP(pegC)
+    END
+  END
+
+  // ... and put it on another
+  FUNCTION putOn(peg, disk)
+    IF peg == 1
+      PUSH pegA disk
+    ELSE IF peg == 2
+      PUSH pegB disk
+    ELSE
+      PUSH pegC disk
+    END
+  END
+
+  // (FROM and TO are AQVL keywords, so the pegs are called src and dst)
+  FUNCTION moveDisk(src, dst)
+    disk = takeFrom(src)
+    putOn(dst, disk)
+    UPDATE moveCount[0] moveCount[0] + 1
+    PRINT "Move " + moveCount[0] + ": disk " + disk + " from " + nameOf(src) + " to " + nameOf(dst)
+  END
+
+  // To move n disks from src to dst:
+  //   1. move the top n - 1 disks out of the way, onto spare
+  //   2. move the biggest disk to dst
+  //   3. move the n - 1 disks from spare on top of it
+  // Base case: 0 disks need no moves.
+  FUNCTION hanoi(n, src, dst, spare)
+    IF n == 0
+      RETURN 0
+    END
+    hanoi(n - 1, src, spare, dst)
+    moveDisk(src, dst)
+    hanoi(n - 1, spare, dst, src)
+  END
+
+SEQUENCE
+  disks = LENGTH(pegA)
+  hanoi(disks, 1, 3, 2)
+  PRINT "Peg C (bottom to top):" pegC
+  PRINT disks + " disks moved in " + moveCount[0] + " moves (2^n - 1)"
+END`} />
+                  <p className="docs-p">
+                    <strong>Expected:</strong> 7 moves, starting <C>Move 1: disk 1 from A to C</C>, and every disk ends
+                    on peg C: <C>[3, 2, 1]</C>.
+                  </p>
+
+                  <h3 className="docs-h3">Example 6 — Backtracking: subsets within a budget</h3>
+                  <CodeBlock code={`SCENE SubsetsWithinBudget
+
+DECLARE
+  // Pizza toppings and their prices; the budget for toppings is 100
+  ARRAY cost = [40, 30, 50, 20]
+  // chosen[i] is 1 when topping i is in the current combination
+  ARRAY chosen = [0, 0, 0, 0]
+  ARRAY counts = [0, 0]
+
+  FUNCTION describe()
+    text = ""
+    total = 0
+    LOOP k FROM 0 TO LENGTH(cost) - 1
+      IF chosen[k] == 1
+        text = text + cost[k] + " "
+        total = total + cost[k]
+      END
+    END
+    IF total == 0
+      RETURN "plain pizza (0)"
+    END
+    RETURN text + "(" + total + ")"
+  END
+
+  // BACKTRACKING: at item i there are two choices, leave it out or take it.
+  // Try one, come back, UNDO it, try the other. spent is the cost so far.
+  FUNCTION explore(i, spent, budget)
+    IF spent > budget
+      // Already over budget: no point looking further down this branch
+      RETURN 0
+    END
+    IF i == LENGTH(cost)
+      UPDATE counts[0] counts[0] + 1
+      PRINT "  " + describe()
+      RETURN 0
+    END
+    // Choice 1: skip item i
+    explore(i + 1, spent, budget)
+    // Choice 2: take item i ...
+    UPDATE chosen[i] 1
+    HIGHLIGHT cost[i] 'MARKED'
+    explore(i + 1, spent + cost[i], budget)
+    // ... and undo the choice before going back up
+    UPDATE chosen[i] 0
+    HIGHLIGHT cost[i] 'NEUTRAL'
+  END
+
+SEQUENCE
+  PRINT "Topping combinations within 100:"
+  explore(0, 0, 100)
+  PRINT counts[0] + " combinations fit the budget (out of 2^" + LENGTH(cost) + " = 16)"
+  PRINT "chosen is back to all zeros:" chosen
+END`} />
+                  <p className="docs-p">
+                    <strong>Expected:</strong> 13 combinations are listed (the three over 100 are cut off early) and
+                    <C>chosen</C> is back to all zeros because every choice was undone.
+                  </p>
+
+                  <p className="docs-p">
+                    The Playground has 24 complete Recursion &amp; Functions programs:
+                  </p>
+                  <ul>
+                    <li>functions: a canteen bill, a grade calculator, parameters as copies, local and global scope, a prime toolkit, a class report and an ATM with guard clauses;</li>
+                    <li>recursion basics: factorial with its call stack, printing before vs after the call, digits, slow vs fast power, GCD and LCM;</li>
+                    <li>Fibonacci three ways, recursion on an array, reversing an array, palindrome words, binary / octal / hex and mutual recursion;</li>
+                    <li>tree recursion and backtracking: the Tower of Hanoi, subsets within a budget, seating permutations, N-Queens, climbing stairs and coin change.</li>
+                  </ul>
                 </section>
 
                 <section id="fn-errors" className="docs-section">
                   <h2 className="docs-h2">Errors &amp; Tips</h2>
+                  <div className="docs-cmd-table-wrap">
+                  <table className="docs-cmd-table">
+                    <thead><tr><th>Problem</th><th>What to do</th></tr></thead>
+                    <tbody>
+                      <tr><td><C>Call stack exceeded 1000 frames</C></td><td>The base case is never reached. Check that every call moves towards it (<C>n - 1</C>, <C>i + 1</C>, a smaller amount) and that the test catches every stopping value (<C>n &lt;= 1</C>, not only <C>n == 1</C>).</td></tr>
+                      <tr><td><C>Execution exceeded the maximum allowed iteration count</C></td><td>A tree recursion is recomputing the same answers (a fewest-coins recursion without a table took hundreds of thousands of steps). Remember answers in a memo array.</td></tr>
+                      <tr><td><C>Undeclared identifier &apos;value&apos;</C></td><td>A variable first set inside the branches of an <C>IF</C> / <C>ELSE</C> is not known after the <C>END</C>. Give it a value before the <C>IF</C> (<C>value = n</C>), then change it inside.</td></tr>
+                      <tr><td><C>&quot;from&quot; is a reserved word</C></td><td><C>FROM</C>, <C>TO</C> and <C>INTO</C> are keywords, so they cannot be parameter names. Use <C>src</C>, <C>dst</C>, <C>spare</C>.</td></tr>
+                      <tr><td>A counter stays 0 after the calls</td><td>Assigning to an outer variable inside a function creates a local. <C>RETURN</C> the new value, or keep the counter in an array cell and <C>UPDATE</C> it.</td></tr>
+                      <tr><td>The indentation is wrong at depth 0</td><td><C>LOOP k FROM 1 TO 0</C> counts down and runs twice. When a count can be 0, use <C>WHILE k &lt; depth</C>.</td></tr>
+                    </tbody>
+                  </table>
+                  </div>
 
-                  <Alert kind="warn" title="Braces in functions, END in sequences">
-                    Writing <C>IF … END</C> inside a function body, or <C>IF … &#123; &#125;</C> inside <C>SEQUENCE</C>,
-                    is a parse error in both directions. The two grammars are deliberately distinct.
+                  <Alert kind="warn" title="Every path should RETURN">
+                    A function whose <C>IF</C> returns but whose other path falls off the end gives back nothing on that
+                    path. Give every branch a <C>RETURN</C>, or put one after the <C>IF</C>.
                   </Alert>
 
-                  <Alert kind="warn" title="Functions belong in DECLARE">
-                    A <C>FUNCTION</C> declaration inside the <C>SEQUENCE</C> block is not valid. Declare it above,
-                    then call it below.
+                  <Alert kind="tip" title="Undo what you changed when backtracking">
+                    A choice stored in a shared array (<C>UPDATE chosen[i] 1</C>, <C>SWAP seat[pos] seat[k]</C>) must be
+                    undone after the recursive call returns, otherwise the next branch starts from the wrong state.
                   </Alert>
 
-                  <Alert kind="warn" title="Every branch should return">
-                    A function whose <C>IF</C> returns but whose <C>ELSE</C> falls off the end returns nothing on that
-                    path. Either give every branch a <C>RETURN</C> or add a final one after the conditional.
+                  <Alert kind="tip" title="Store a half, do not compute it twice">
+                    <C>half = fastPower(b, e / 2)</C> followed by <C>half * half</C> makes one call per level. Writing
+                    <C>fastPower(b, e / 2) * fastPower(b, e / 2)</C> makes two and loses the whole speed-up.
                   </Alert>
 
-                  <Alert kind="tip" title="Functions compute, commands animate">
-                    Keep animation commands in the sequence and arithmetic in functions. A function that returns the
-                    index to highlight keeps both halves readable.
-                  </Alert>
-
-                  <Alert kind="note" title="Parameters are local">
-                    Parameter names shadow anything of the same name outside the function, and assignments inside a body
-                    do not leak back out to the sequence.
+                  <Alert kind="note" title="Negative numbers as arguments">
+                    <C>UPDATE col[row] -1</C> stores -1: a <C>-</C> with a space before it and a digit right after it
+                    starts a new argument. <C>col[row] - 1</C> and <C>col[row]-1</C> subtract.
                   </Alert>
                 </section>
               </>

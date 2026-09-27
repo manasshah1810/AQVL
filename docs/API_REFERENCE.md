@@ -589,6 +589,41 @@ SEQUENCE
 END
 ```
 
+### 8.4 Functions & recursion
+
+Functions are declared in `DECLARE` (`FUNCTION name(params) ... END`) and
+called from `SEQUENCE` or from other functions; a call is an expression.
+Parameters are copies and names assigned in a body are local to that call.
+Structures from `DECLARE` are shared, so shared counters and memo tables are
+arrays (`UPDATE calls[0] calls[0] + 1`, `memo[n] != -1`). A recursion that
+never reaches its base case stops with `Call stack exceeded 1000 frames`.
+
+The 24 Playground examples (`packages/demo/src/examples/RecursionLibrary.ts`)
+show the call stack by pushing each call onto a `STACK` and popping it on
+return, and by indenting each printed line by the call's depth:
+
+```aqvl
+SCENE Factorial
+DECLARE
+  STACK calls = []
+  FUNCTION factorial(n)
+    PUSH calls n
+    IF n <= 1
+      done = POP(calls)
+      RETURN 1
+    END
+    result = n * factorial(n - 1)
+    done = POP(calls)
+    RETURN result
+  END
+SEQUENCE
+  PRINT "5! =" factorial(5)
+END
+```
+
+In a command's argument list a spaced negative number is its own argument:
+`UPDATE memo[n] -1` stores -1, while `memo[n] - 1` and `memo[n]-1` subtract.
+
 ## 9. Heap
 
 Declared with `HEAP name = [n, ...]` or `HEAP name = []`. The values are

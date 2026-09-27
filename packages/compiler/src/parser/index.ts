@@ -1076,8 +1076,16 @@ export class Parser {
     // `total = total + 1` would be swallowed as extra arguments of
     // `HIGHLIGHT arr[i]` on the line above.
     while (!this.isAtEnd() && this.peek().pos.line === pos.line) {
-      if (this.startsExpression()) {
-        args.push(this.parseExpression());
+      if (this.startsExpression() || this.atSpacedNegativeNumber()) {
+        // Arguments are separated by spaces, so `UPDATE a[i] -1` has two
+        // arguments (a[i] and -1), while `a[i] - 1` and `a[i]-1` subtract.
+        const outer = this.actionArgDepth;
+        this.actionArgDepth = this.expressionDepth + 1;
+        try {
+          args.push(this.parseExpression());
+        } finally {
+          this.actionArgDepth = outer;
+        }
       } else if (this.peek().type === TokenType.Keyword && ['TO', 'FROM', 'INTO'].includes(this.peek().value.toUpperCase())) {
         this.advance(); // consume filler keyword
       } else {
@@ -1133,13 +1141,36 @@ export class Parser {
    * function-body or SEQUENCE assignment statement is written.
    */
   private parseExpression(): ExpressionNode {
-    const expr = this.parseBinaryExpression();
-    if (this.checkSymbol('=')) {
-      const op = this.advance();
-      const value = this.parseExpression(); // right-associative: a = b = c binds as a = (b = c)
-      return { type: 'BinaryOpNode', left: expr, operator: op.value, right: value, pos: op.pos };
+    this.expressionDepth++;
+    try {
+      const expr = this.parseBinaryExpression();
+      if (this.checkSymbol('=')) {
+        const op = this.advance();
+        const value = this.parseExpression(); // right-associative: a = b = c binds as a = (b = c)
+        return { type: 'BinaryOpNode', left: expr, operator: op.value, right: value, pos: op.pos };
+      }
+      return expr;
+    } finally {
+      this.expressionDepth--;
     }
-    return expr;
+  }
+
+  /** Nesting of parseExpression calls (brackets, parentheses and call arguments add a level). */
+  private expressionDepth = 0;
+  /** The expressionDepth of a command argument being parsed (0 when not inside one). */
+  private actionArgDepth = 0;
+
+  /**
+   * A '-' written with a space before it and a digit right after it, e.g. the
+   * `-1` in `UPDATE col[row] -1`: a negative number starting a new argument.
+   */
+  private atSpacedNegativeNumber(): boolean {
+    const minus = this.peek();
+    const digit = this.tokens[this.current + 1];
+    if (minus.type !== TokenType.Symbol || minus.value !== '-' || !digit || digit.type !== TokenType.Number) return false;
+    if (digit.pos.line !== minus.pos.line || digit.pos.column !== minus.pos.column + 1) return false;
+    const before = this.current > 0 ? this.tokens[this.current - 1] : undefined;
+    return !before || before.pos.line !== minus.pos.line || before.pos.column + before.value.length < minus.pos.column;
   }
 
   /**
@@ -1161,6 +1192,8 @@ export class Parser {
     const operators = Parser.PRECEDENCE_LEVELS[level];
     let expr = this.parseBinaryExpression(level + 1);
     while (operators.some((op) => this.checkOperator(op))) {
+      // In a command's argument list, a spaced "-1" is the next argument
+      if (this.actionArgDepth !== 0 && this.expressionDepth === this.actionArgDepth && this.atSpacedNegativeNumber()) break;
       const op = this.advance();
       const right = this.parseBinaryExpression(level + 1);
       expr = { type: 'BinaryOpNode', left: expr, operator: op.value.toUpperCase(), right, pos: op.pos };
@@ -1236,6 +1269,12 @@ export class Parser {
         args: [{ type: 'IdentifierNode', name: arrayName.value, pos: arrayName.pos }],
         pos
       } as any;
+    }
+
+    if (this.atSpacedNegativeNumber()) {
+      const minus = this.advance();
+      const digits = this.advance();
+      return { type: 'LiteralNode', dataType: 'number', value: -parseFloat(digits.value), pos: minus.pos };
     }
 
     if (this.checkSymbol('-')) {

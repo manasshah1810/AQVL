@@ -99,10 +99,15 @@ delimiters (`END` vs `{ }`).
   - Unary `-` is only legal directly on a numeric literal (e.g. `-5`). Negating an
     arbitrary expression (`-x`) is a **parse error** with the message
     "Use subtraction instead" — write `0 - x` instead.
+  - In a command's argument list (`UPDATE`, `INSERT`, `PUSH`, ...), a `-`
+    with a space before it and a digit right after it starts a new
+    argument: `UPDATE a[i] -1` stores -1. `a[i] - 1` and `a[i]-1` subtract,
+    and inside brackets or parentheses `-` always subtracts.
 - **Strings**: double- or single-quoted (`"hello"`, `'hello'`). A string
   literal is always that text, even when a variable has the same name:
   inside `LOOP i`, `CHAR_AT(s, k) == "i"` compares with the letter i.
-- **Booleans**: `TRUE` and `FALSE` (any case). `PRINT` shows them as `TRUE` / `FALSE`.
+- **Booleans**: `TRUE` and `FALSE` (any case). `PRINT` shows them as `TRUE` / `FALSE`,
+  also when they are joined to text (`"sorted? " + ok` gives `sorted? TRUE`).
 - **`INFINITY`**: a number larger than every other number, e.g. a starting
   distance `v.dist = INFINITY`. `PRINT` shows it as `INFINITY`.
 - `NULL`: the empty pointer (no node / no vertex).
@@ -305,6 +310,12 @@ Two body forms are accepted:
 `RETURN` outside a function is a syntax error. Parameters and variables first
 assigned inside a function are local to that call; assigning a parameter
 (e.g. `remaining = remaining - node.val`) changes only that call's copy.
+A function can read a `SEQUENCE` variable, but assigning to that name inside
+the function creates a local; send results back with `RETURN`, or keep shared
+state in a `DECLARE` array. Recursion deeper than 1000 frames stops with
+`Call stack exceeded 1000 frames`. The Recursion & Functions examples in the
+Playground (`packages/demo/src/examples/RecursionLibrary.ts`) cover guard
+clauses, memoisation and backtracking.
 
 ```bnf
 function_decl ::= "FUNCTION" name "(" param_list? ")" ( statement* "END" | "{" statement* "}" )
