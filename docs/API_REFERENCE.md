@@ -674,28 +674,57 @@ The one-line built-ins run by `HashMapVisualizer.ts` still work:
 
 ## 11. Trie
 
-Declared with `TRIE name [= ["str", "str", ...]]`. Implemented in
-`TrieVisualizer.ts` (`Trie` in `packages/runtime/src/data-structures/Trie.ts`).
+Declared with `TRIE name` (empty: just the root) or `TRIE name = ["str", "str", ...]`
+(the words are inserted before the program starts). A trie is used through
+**node references** held in variables, like graph vertices; implemented in
+`TrieProgramEngine.ts`. Node ids are `tn:<trie>:<prefix>`, edge ids
+`te:<trie>:<prefix>`.
 
-| Operation | Syntax | Description | Complexity |
+| Code | Kind | Description | Complexity |
 |---|---|---|---|
-| Insert | `TRIE_INSERT name word` | Insert a word. | O(m), m = word length |
-| Search | `TRIE_SEARCH name word` | Check whether a full word exists. | O(m) |
-| Delete | `TRIE_DELETE name word` | Remove a word (pruning now-unused nodes). | O(m) |
-| Autocomplete | `TRIE_AUTOCOMPLETE name prefix` | List all words with the given prefix. | O(p + k), p = prefix length, k = number of matching nodes visited |
-| Starts-with | `TRIE_STARTSWITH name prefix` | Check whether any word has the given prefix. | O(p), p = prefix length |
-| Init (compiler-emitted) | *(auto-emitted, not written directly)* | `TRIE_INIT` is auto-generated from a `TRIE name = [...]` declaration. | O(total characters across literal words) |
+| `t.root` | read | The root node (the empty prefix). | O(1) |
+| `GET_CHILD(node, ch)` | read | The child along the edge `ch`, or `NULL`. | O(1) |
+| `HAS_CHILD(node, ch)` | read | `TRUE` when the edge `ch` exists. Animated inside conditions / assignments / RETURN. | O(1) |
+| `CHILD_COUNT(node)` | read | Number of children. | O(1) |
+| `CHILD_AT(node, i)` | read | The i-th child in alphabetical order (`0 <= i < CHILD_COUNT`). | O(1) |
+| `node.isEnd` | field | `TRUE` when a stored word ends at the node; set with `node.isEnd = TRUE / FALSE`. | O(1) |
+| `node.char` | field | The character on the edge into the node (`""` for the root); read-only. | O(1) |
+| `node.count`, ... | field | Any other field the program stores; must be set before it is read. | O(1) |
+| `ADD_CHILD node ch` | statement | Creates the child along `ch` (error if it exists). | O(1) |
+| `REMOVE_CHILD node ch` | statement | Removes a child that has no children (error otherwise). | O(1) |
+| `WORD_COUNT(t)` / `NODE_COUNT(t)` | read | Words stored / nodes including the root. | O(nodes) |
+| `PRINT t` | statement | The stored words in alphabetical order, e.g. `[car, cart, cat]`. | O(nodes) |
+
+A character is one-character text; the digits 0-9 may also be numbers (bit
+tries). Field names are case-insensitive. `LENGTH(t)` and array statements on
+a trie are compile errors pointing at `WORD_COUNT` / `NODE_COUNT` and the
+node code above.
 
 ```aqvl
 SCENE TrieDemo
 DECLARE
-  TRIE t = ["cat", "car"]
+  TRIE t = ["car"]
+  FUNCTION insert(word)
+    node = t.root
+    LOOP i FROM 0 TO TEXT_LENGTH(word) - 1
+      ch = CHAR_AT(word, i)
+      IF HAS_CHILD(node, ch) == FALSE
+        ADD_CHILD node ch
+      END
+      node = GET_CHILD(node, ch)
+    END
+    node.isEnd = TRUE
+  END
 SEQUENCE
-  TRIE_SEARCH t cat
-  TRIE_AUTOCOMPLETE t ca
-  TRIE_DELETE t cat
+  insert("cat")
+  PRINT t
 END
 ```
+
+The one-line built-ins `TRIE_INSERT name "word"`, `TRIE_SEARCH`, `TRIE_DELETE`,
+`TRIE_AUTOCOMPLETE` and `TRIE_STARTSWITH` (`TrieVisualizer.ts`) still work on
+the same nodes; a declaration compiles to `TRIE_INIT` plus one `TRIE_INSERT`
+per word.
 
 ---
 

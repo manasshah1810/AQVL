@@ -106,6 +106,12 @@ export class AQIRGenerator {
    * runtime's HashMapProgramEngine.
    */
   private hashMapNames = new Set<string>();
+  /**
+   * Declared TRIEs: `t.root`, GET_CHILD / HAS_CHILD / CHILD_AT / ... reads,
+   * ADD_CHILD / REMOVE_CHILD statements and `node.isEnd = TRUE`, run by the
+   * runtime's TrieProgramEngine.
+   */
+  private trieNames = new Set<string>();
   // Arrays some INSERT grows: a literal index past the declared length may be valid by then.
   private growableArrays = new Set<string>();
   // Names declared with `[SINGLY|DOUBLY|CIRCULAR] LINKEDLIST`. Like arrays,
@@ -131,6 +137,10 @@ export class AQIRGenerator {
   ]);
   /** Hash-map reads usable in expressions; the first argument is the map (`CONTAINS(m, key)`). */
   private static readonly MAP_READS = new Set(['CONTAINS', 'KEY_AT', 'BUCKET_OF', 'CAPACITY']);
+  /** Trie reads usable in expressions: `HAS_CHILD(node, "a")`, `GET_CHILD(node, ch)`, `WORD_COUNT(t)`, ... */
+  private static readonly TRIE_READS = new Set(['HAS_CHILD', 'GET_CHILD', 'CHILD_COUNT', 'CHILD_AT', 'WORD_COUNT', 'NODE_COUNT']);
+  /** Trie edits usable as statements: `ADD_CHILD node ch`, `REMOVE_CHILD node ch`. */
+  private static readonly TRIE_EDITS = new Set(['ADD_CHILD', 'REMOVE_CHILD']);
   /** Text built-ins, compiled to VM operators: `TEXT_LENGTH(s)`, `CHAR_AT(s, i)`, `CHAR_CODE(s, i)`. */
   private static readonly TEXT_READS = new Set(['TEXT_LENGTH', 'CHAR_AT', 'CHAR_CODE']);
   /** Graph edits usable as statements: `ADD_EDGE g "A" "B" 4`, `REMOVE_VERTEX g "C"`, ... */
@@ -268,6 +278,7 @@ export class AQIRGenerator {
     this.arrayNames.clear();
     this.heapNames.clear();
     this.hashMapNames.clear();
+    this.trieNames.clear();
     this.growableArrays.clear();
     this.linkedListNames.clear();
     this.treeNames.clear();
@@ -510,7 +521,7 @@ export class AQIRGenerator {
         if (expr.value === Infinity) return 'INFINITY';
         return expr.dataType === 'string' ? `"${expr.value}"` : String(expr.value);
       case 'MemberAccessNode':
-        return `${this.exprToString(expr.object)}.${expr.member}`;
+        return `${this.exprToString(expr.object)}.${expr.memberText ?? expr.member}`;
       case 'ArrayAccessNode':
         return `${expr.array.name}[${this.exprToString(expr.index)}]`;
       case 'BinaryOpNode':
@@ -557,6 +568,25 @@ export class AQIRGenerator {
           return {
             gfn: call.callee.name.toUpperCase(),
             args: [{ text: map.name }, ...call.args.slice(1).map((a) => this.compileMapOperand(a))],
+            source: this.exprToString(call),
+            argSources: call.args.map((a) => this.exprToString(a)),
+          } as unknown as AQIRValue;
+        }
+        if (AQIRGenerator.TRIE_READS.has(call.callee.name.toUpperCase()) && !this.userFunctionNames.has(call.callee.name)) {
+          // Read at run time: `{ gfn, args }` (see VM evaluateExpression / TrieProgramEngine.read).
+          const fn = call.callee.name.toUpperCase();
+          if (fn === 'WORD_COUNT' || fn === 'NODE_COUNT') {
+            const trie = call.args[0];
+            if (!trie || trie.type !== 'IdentifierNode' || !this.trieNames.has(trie.name)) {
+              throw new Error(`${fn} needs a declared TRIE, e.g. ${fn}(t) (line ${call.pos.line}).`);
+            }
+          } else if (call.args[0]?.type === 'IdentifierNode' && this.trieNames.has(call.args[0].name)) {
+            const trie = call.args[0].name;
+            throw new Error(`${fn} needs a trie node, not the trie itself: start from its root, e.g. node = ${trie}.root, then ${fn}(node${fn === 'CHILD_COUNT' ? '' : fn === 'CHILD_AT' ? ', 0' : ', "a"'}) (line ${call.pos.line}).`);
+          }
+          return {
+            gfn: fn,
+            args: call.args.map((a) => this.compileTrieOperand(a)),
             source: this.exprToString(call),
             argSources: call.args.map((a) => this.exprToString(a)),
           } as unknown as AQIRValue;
@@ -624,6 +654,11 @@ export class AQIRGenerator {
         // resolvable at compile time from the declared array's element count.
         if ((expr as any).type === 'GenericActionNode' && (expr as any).actionName === 'LENGTH') {
           const arrayName = ((expr as any).args[0] as any).name;
+          if (this.trieNames.has(arrayName)) {
+            throw new Error(
+              `LENGTH(${arrayName}) is not defined for a TRIE: use WORD_COUNT(${arrayName}) for the number of stored words or NODE_COUNT(${arrayName}) for the number of nodes (line ${(expr as any).pos?.line ?? '?'}).`
+            );
+          }
           // Arrays can grow/shrink (INSERT / DELETE), so read their live length.
           if (
             this.arrayNames.has(arrayName) ||
@@ -952,6 +987,17 @@ export class AQIRGenerator {
    */
   private compileGraphOperand(arg: ExpressionNode): AQIRValue {
     if (arg.type === 'IdentifierNode' && this.graphNames.has(arg.name)) return { text: arg.name } as unknown as AQIRValue;
+    if (arg.type === 'LiteralNode' && typeof arg.value === 'string') return { text: arg.value } as unknown as AQIRValue;
+    return this.compileValue(arg);
+  }
+
+  /**
+   * An operand of a trie read: a trie's name and a text literal (a
+   * character such as "a") are passed as `{ text }` so they never resolve to
+   * a variable of the same name; anything else is an ordinary expression.
+   */
+  private compileTrieOperand(arg: ExpressionNode): AQIRValue {
+    if (arg.type === 'IdentifierNode' && this.trieNames.has(arg.name)) return { text: arg.name } as unknown as AQIRValue;
     if (arg.type === 'LiteralNode' && typeof arg.value === 'string') return { text: arg.value } as unknown as AQIRValue;
     return this.compileValue(arg);
   }
@@ -1313,6 +1359,7 @@ export class AQIRGenerator {
         // TRIE_INIT creates the root, then one TRIE_INSERT per word runs
         // the real insert algorithm.
         const trie = v as TrieDeclNode;
+        this.trieNames.add(trie.name.name);
         let words = trie.initialElements ? trie.initialElements.map((e: any) => e.value as string) : [];
         if (userInputs[trie.name.name] && Array.isArray(userInputs[trie.name.name])) {
           words = userInputs[trie.name.name];
@@ -1675,6 +1722,36 @@ export class AQIRGenerator {
             `${actionNode.actionName} ${map} is not a hash map statement. Store with ${map}[key] = value, remove with DELETE ${map}[key], check with CONTAINS(${map}, key) (line ${actionNode.pos.line}).`
           );
         }
+        if (AQIRGenerator.TRIE_EDITS.has(actionNode.actionName)) {
+          // `ADD_CHILD node ch` / `REMOVE_CHILD node "a"`: operands evaluated when the step runs.
+          const op = actionNode.actionName;
+          const [node, ch] = actionNode.args as ExpressionNode[];
+          if (actionNode.args.length !== 2) {
+            throw new Error(`${op} takes a node and one character, e.g. ${op} node "a" (line ${actionNode.pos.line}).`);
+          }
+          if (node.type === 'IdentifierNode' && this.trieNames.has(node.name)) {
+            throw new Error(`${op} needs a trie node, not the trie itself: start from its root, e.g. node = ${node.name}.root, then ${op} node "a" (line ${actionNode.pos.line}).`);
+          }
+          this.emit({
+            action: 'TRIE_EDIT',
+            op,
+            node: this.compileValue(node),
+            ch: this.compileTrieOperand(ch),
+            nodeText: this.exprToString(node),
+            sourceText: `${op} ${actionNode.args.map((a: ExpressionNode) => this.exprToString(a)).join(' ')}`,
+            lineNumber: actionNode.pos.line,
+          } as any);
+          break;
+        }
+        if (
+          actionNode.args[0]?.type === 'IdentifierNode' && this.trieNames.has(actionNode.args[0].name) &&
+          !String(actionNode.actionName).startsWith('TRIE_')
+        ) {
+          const trie = actionNode.args[0].name;
+          throw new Error(
+            `${actionNode.actionName} ${trie} is not a trie statement. Walk the trie from node = ${trie}.root with GET_CHILD / HAS_CHILD, add nodes with ADD_CHILD node ch and mark words with node.isEnd = TRUE (line ${actionNode.pos.line}).`
+          );
+        }
         if (AQIRGenerator.GRAPH_EDITS.has(actionNode.actionName)) {
           // `ADD_EDGE g "A" "B" 4`, `ADD_EDGE g u w`: operands evaluated when the step runs.
           const first = actionNode.args[0];
@@ -1774,7 +1851,9 @@ export class AQIRGenerator {
           action: 'PRINT',
           // A bare array name prints the whole array, e.g. `PRINT "Result:" arr`.
           parts: (stmt as PrintNode).args.map((arg) =>
-            arg.type === 'IdentifierNode' && this.hashMapNames.has(arg.name)
+            arg.type === 'IdentifierNode' && this.trieNames.has(arg.name)
+              ? ({ trie: arg.name } as unknown as AQIRValue)
+              : arg.type === 'IdentifierNode' && this.hashMapNames.has(arg.name)
               ? ({ hashmap: arg.name } as unknown as AQIRValue)
               : arg.type === 'IdentifierNode' && this.arrayNames.has(arg.name)
               ? ({ array: arg.name } as unknown as AQIRValue)

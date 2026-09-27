@@ -78,6 +78,17 @@ export class TreeLayoutStrategy implements LayoutStrategy {
       }
     });
 
+    // A trie node's children are drawn in alphabetical order of their letter,
+    // whatever order they were added in (CHILD_AT lists them the same way).
+    nodeMap.forEach(node => {
+      if (node.element.originalType !== 'TRIE_NODE') return;
+      node.children.sort((x, y) => {
+        const a = String((x.element as any).value ?? '');
+        const b = String((y.element as any).value ?? '');
+        return a < b ? -1 : a > b ? 1 : 0;
+      });
+    });
+
     // Find roots
     const roots: TreeNode[] = [];
     nodes.forEach(node => {

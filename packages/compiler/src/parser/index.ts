@@ -74,6 +74,8 @@ export class Parser {
     'CONTAINS', 'KEY_AT', 'BUCKET_OF', 'CAPACITY',
     // Text: `TEXT_LENGTH(s)`, `CHAR_AT(s, i)`, `CHAR_CODE(s, i)`
     'TEXT_LENGTH', 'CHAR_AT', 'CHAR_CODE',
+    // Tries: `HAS_CHILD(node, "a")`, `GET_CHILD(node, ch)`, `CHILD_COUNT(node)`, `CHILD_AT(node, i)`, `WORD_COUNT(t)`, `NODE_COUNT(t)`
+    'HAS_CHILD', 'GET_CHILD', 'CHILD_COUNT', 'CHILD_AT', 'WORD_COUNT', 'NODE_COUNT',
   ]);
 
   /** A keyword token that may be used as a name here (see RESERVED_WORDS). */
@@ -344,10 +346,18 @@ export class Parser {
   private parseTrieDecl(): any { // Returning TrieDeclNode but using any to avoid type issues if not imported yet (wait, they are in the same package and file probably imports it)
     const pos = this.previous().pos;
     const nameToken = this.consume(TokenType.Identifier, 'Expected trie name.');
-    this.consumeSymbol('=', 'Expected "=" after trie name.');
+    const initialElements: any[] = [];
+    // `TRIE t` on its own declares an empty trie (just the root).
+    if (!this.matchSymbol('=')) {
+      return {
+        type: 'TrieDeclNode',
+        name: { type: 'IdentifierNode', name: nameToken.value, pos: nameToken.pos },
+        initialElements,
+        pos,
+      };
+    }
     this.consumeSymbol('[', 'Expected "[" for trie initialization.');
 
-    const initialElements: any[] = [];
     if (!this.checkSymbol(']')) {
       do {
         const strToken = this.consume(TokenType.String, 'Expected string in trie.');
@@ -738,7 +748,7 @@ export class Parser {
   }
 
   /** Keywords that start a generic data-structure action statement (parsed by parseGenericAction). */
-  private static readonly GENERIC_ACTION_KEYWORDS = new Set(['TREE', 'ROOT', 'REMOVE', 'COPY', 'FIND', 'SELECT', 'PREORDER', 'INORDER', 'POSTORDER', 'LEVELORDER', 'REVERSELEVELORDER', 'REVERSE', 'ZIGZAG', 'DFS', 'BFS', 'DIJKSTRA', 'BELLMAN_FORD', 'ASTAR', 'PRIM', 'KRUSKAL', 'TOPO_SORT', 'HEIGHT', 'DEPTH', 'LEVEL', 'MAX_DEPTH', 'MIN_DEPTH', 'SIZE', 'LEAVES', 'INTERNAL', 'DEGREE', 'STATS', 'PARENTOF', 'CHILDRENOF', 'ANCESTORS', 'DESCENDANTS', 'SIBLINGS', 'PATH', 'HIGHLIGHT', 'INSERT', 'DELETE', 'INSERT_HEAD', 'INSERT_TAIL', 'DELETE_HEAD', 'DELETE_TAIL', 'FREE', 'UPDATE', 'MOVE', 'CONNECT', 'DISCONNECT', 'PUSH', 'POP', 'PEEK', 'ENQUEUE', 'DEQUEUE', 'FRONT', 'REAR', 'VISIT', 'MARK', 'TRAVERSE', 'ROTATE', 'SEARCH', 'HEAPIFY', 'HEAP_INSERT', 'HEAP_EXTRACT', 'HEAP_DECREASE', 'BUILD_HEAP', 'HASHMAP_INSERT', 'HASHMAP_LOOKUP', 'HASHMAP_DELETE', 'TRIE_INSERT', 'TRIE_SEARCH', 'TRIE_DELETE', 'TRIE_AUTOCOMPLETE', 'TRIE_STARTSWITH', 'CHILD', 'PARENT', 'LEFT_CHILD', 'RIGHT_CHILD', 'SIBLING', 'CLEAR', 'IS_EMPTY', 'COUNT_NODES', 'COUNT_LEAVES', 'COUNT_INTERNAL', 'COUNT_LEFT_LEAVES', 'COUNT_RIGHT_LEAVES', 'COUNT_FULL', 'COUNT_HALF', 'IS_FULL', 'IS_COMPLETE', 'IS_PERFECT', 'IS_BALANCED', 'IS_DEGENERATE', 'IS_LEFT_SKEWED', 'IS_RIGHT_SKEWED', 'IS_SYMMETRIC', 'LCA', 'DISTANCE', 'GRANDPARENT', 'UNCLE', 'COUSINS', 'ROOT_TO_NODE', 'ROOT_TO_LEAVES', 'LONGEST_PATH', 'SHORTEST_PATH', 'MIRROR', 'INVERT', 'CLONE', 'REMOVE_LEAVES', 'PRUNE', 'LEFT_VIEW', 'RIGHT_VIEW', 'TOP_VIEW', 'BOTTOM_VIEW', 'BOUNDARY', 'VERTICAL_ORDER', 'DIAGONAL', 'MAX_VALUE', 'MIN_VALUE', 'MIN', 'MAX', 'SUM', 'AVERAGE', 'MAX_LEVEL_SUM', 'BUBBLE_SORT', 'SELECTION_SORT', 'INSERTION_SORT', 'MERGE_SORT', 'QUICK_SORT', 'ADD_VERTEX', 'ADD_EDGE', 'REMOVE_EDGE', 'REMOVE_VERTEX']);
+  private static readonly GENERIC_ACTION_KEYWORDS = new Set(['TREE', 'ROOT', 'REMOVE', 'COPY', 'FIND', 'SELECT', 'PREORDER', 'INORDER', 'POSTORDER', 'LEVELORDER', 'REVERSELEVELORDER', 'REVERSE', 'ZIGZAG', 'DFS', 'BFS', 'DIJKSTRA', 'BELLMAN_FORD', 'ASTAR', 'PRIM', 'KRUSKAL', 'TOPO_SORT', 'HEIGHT', 'DEPTH', 'LEVEL', 'MAX_DEPTH', 'MIN_DEPTH', 'SIZE', 'LEAVES', 'INTERNAL', 'DEGREE', 'STATS', 'PARENTOF', 'CHILDRENOF', 'ANCESTORS', 'DESCENDANTS', 'SIBLINGS', 'PATH', 'HIGHLIGHT', 'INSERT', 'DELETE', 'INSERT_HEAD', 'INSERT_TAIL', 'DELETE_HEAD', 'DELETE_TAIL', 'FREE', 'UPDATE', 'MOVE', 'CONNECT', 'DISCONNECT', 'PUSH', 'POP', 'PEEK', 'ENQUEUE', 'DEQUEUE', 'FRONT', 'REAR', 'VISIT', 'MARK', 'TRAVERSE', 'ROTATE', 'SEARCH', 'HEAPIFY', 'HEAP_INSERT', 'HEAP_EXTRACT', 'HEAP_DECREASE', 'BUILD_HEAP', 'HASHMAP_INSERT', 'HASHMAP_LOOKUP', 'HASHMAP_DELETE', 'TRIE_INSERT', 'TRIE_SEARCH', 'TRIE_DELETE', 'TRIE_AUTOCOMPLETE', 'TRIE_STARTSWITH', 'CHILD', 'PARENT', 'LEFT_CHILD', 'RIGHT_CHILD', 'SIBLING', 'CLEAR', 'IS_EMPTY', 'COUNT_NODES', 'COUNT_LEAVES', 'COUNT_INTERNAL', 'COUNT_LEFT_LEAVES', 'COUNT_RIGHT_LEAVES', 'COUNT_FULL', 'COUNT_HALF', 'IS_FULL', 'IS_COMPLETE', 'IS_PERFECT', 'IS_BALANCED', 'IS_DEGENERATE', 'IS_LEFT_SKEWED', 'IS_RIGHT_SKEWED', 'IS_SYMMETRIC', 'LCA', 'DISTANCE', 'GRANDPARENT', 'UNCLE', 'COUSINS', 'ROOT_TO_NODE', 'ROOT_TO_LEAVES', 'LONGEST_PATH', 'SHORTEST_PATH', 'MIRROR', 'INVERT', 'CLONE', 'REMOVE_LEAVES', 'PRUNE', 'LEFT_VIEW', 'RIGHT_VIEW', 'TOP_VIEW', 'BOTTOM_VIEW', 'BOUNDARY', 'VERTICAL_ORDER', 'DIAGONAL', 'MAX_VALUE', 'MIN_VALUE', 'MIN', 'MAX', 'SUM', 'AVERAGE', 'MAX_LEVEL_SUM', 'BUBBLE_SORT', 'SELECTION_SORT', 'INSERTION_SORT', 'MERGE_SORT', 'QUICK_SORT', 'ADD_VERTEX', 'ADD_EDGE', 'REMOVE_EDGE', 'REMOVE_VERTEX', 'ADD_CHILD', 'REMOVE_CHILD']);
 
   private parseSequenceBlock(): SequenceBlockNode {
     const pos = this.previous().pos;
@@ -1174,7 +1184,7 @@ export class Parser {
       if (memberToken.type !== TokenType.Identifier && memberToken.type !== TokenType.Keyword) {
         throw new ParseError(`Expected a field name after "." (e.g. next, prev, val, head). Got "${memberToken.value}".`, this.errorOptions(memberToken));
       }
-      expr = { type: 'MemberAccessNode', object: expr, member: memberToken.value.toLowerCase(), pos: memberToken.pos };
+      expr = { type: 'MemberAccessNode', object: expr, member: memberToken.value.toLowerCase(), memberText: memberToken.value, pos: memberToken.pos };
     }
     return expr;
   }

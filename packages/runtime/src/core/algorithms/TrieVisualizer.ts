@@ -18,10 +18,12 @@ import { AlgorithmContext, AlgorithmHandler } from './AlgorithmContext';
 import { GenericActionInstruction, getSemanticColorToken } from '@aqvl/shared';
 import { AnticipationAnimation } from '../animations';
 import { Trie } from '../../data-structures/Trie';
+import { TrieProgramEngine } from './TrieProgramEngine';
 
 export class TrieVisualizer implements AlgorithmHandler {
-  static readonly NODE_COLOR = '#8d6e63';
-  static readonly WORD_END_COLOR = '#5d4037';
+  // The same resting colours as TrieProgramEngine: a word end is green.
+  static readonly NODE_COLOR = getSemanticColorToken('NEUTRAL').color;
+  static readonly WORD_END_COLOR = getSemanticColorToken('SUCCESS').color;
   static readonly NEUTRAL_EMISSIVE = '#000000';
 
   execute(context: AlgorithmContext, instruction: GenericActionInstruction): void {
@@ -59,11 +61,11 @@ export class TrieVisualizer implements AlgorithmHandler {
   }
 
   private getRoot(context: AlgorithmContext, name: string): any {
-    return this.getNodes(context, name).find((el: any) => el.label === '');
+    return this.getNodes(context, name).find((el: any) => TrieProgramEngine.prefixOf(el) === '');
   }
 
   private findByLabel(context: AlgorithmContext, name: string, label: string): any {
-    return this.getNodes(context, name).find((el: any) => el.label === label);
+    return this.getNodes(context, name).find((el: any) => TrieProgramEngine.prefixOf(el) === label);
   }
 
   private childEdges(context: AlgorithmContext, name: string, nodeId: string): any[] {
@@ -75,7 +77,7 @@ export class TrieVisualizer implements AlgorithmHandler {
     const trie = new Trie();
     this.getNodes(context, name)
       .filter((el: any) => el.isEndOfWord)
-      .forEach((el: any) => trie.insert(el.label));
+      .forEach((el: any) => trie.insert(TrieProgramEngine.prefixOf(el)));
     return trie;
   }
 
@@ -110,12 +112,17 @@ export class TrieVisualizer implements AlgorithmHandler {
     if (this.getRoot(context, name)) return; // already initialized
 
     const rootEl: any = {
-      id: `trie_node_${name}_root_${Date.now()}`,
+      // Same ids as TrieProgramEngine, so code (node = t.root, GET_CHILD, ...) works on a declared trie.
+      id: TrieProgramEngine.nodeId(name, ''),
       type: 'sphere',
       originalType: 'TRIE_NODE',
       logicalParent: name,
       value: '',
+      prefix: '',
       label: '',
+      tags: [],
+      fields: {},
+      state: 'NEUTRAL',
       isEndOfWord: false,
       position: { x: 0, y: 0, z: 0 },
       scale: { x: 1, y: 1, z: 1 },
@@ -204,12 +211,16 @@ export class TrieVisualizer implements AlgorithmHandler {
 
   private spawnChild(context: AlgorithmContext, name: string, parent: any, char: string, label: string): any {
     const nodeEl: any = {
-      id: `trie_node_${name}_${label}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      id: TrieProgramEngine.nodeId(name, label),
       type: 'sphere',
       originalType: 'TRIE_NODE',
       logicalParent: name,
       value: char,
+      prefix: label,
       label,
+      tags: [],
+      fields: {},
+      state: 'NEUTRAL',
       isEndOfWord: false,
       position: { x: 0, y: -10, z: 0 },
       scale: { x: 0, y: 0, z: 0 },
@@ -222,7 +233,7 @@ export class TrieVisualizer implements AlgorithmHandler {
     context.sceneManager.addElement(nodeEl);
 
     const edgeEl: any = {
-      id: `trie_edge_${parent.id}_${nodeEl.id}`,
+      id: TrieProgramEngine.edgeId(name, label),
       type: 'edge',
       originalType: 'EDGE',
       logicalParent: name,
@@ -252,6 +263,14 @@ export class TrieVisualizer implements AlgorithmHandler {
     context.scheduler.commitGroup(true);
     context.scheduler.advanceCursor(300);
     context.scheduler.enqueue({ targets: nodeEl, color: TrieVisualizer.NODE_COLOR, emissiveIntensity: 0, duration: 250 });
+    context.scheduler.commitGroup(true);
+    // Ends full size at its place even when the tweens are skipped (headless runs, jumping ahead).
+    context.scheduler.enqueue({
+      targets: {}, duration: 1, complete: () => {
+        nodeEl.scale = { x: 1, y: 1, z: 1 };
+        if (nodeEl.worldTarget) nodeEl.position = { ...nodeEl.worldTarget };
+      }
+    });
     context.scheduler.commitGroup(true);
 
     return nodeEl;
@@ -411,7 +430,10 @@ export class TrieVisualizer implements AlgorithmHandler {
       context.scheduler.advanceCursor(250);
 
       context.sceneManager.removeElement(child.id);
-      if (incomingEdge) context.sceneManager.removeElement(incomingEdge.id);
+      if (incomingEdge) {
+        context.sceneManager.removeElement(incomingEdge.id);
+        context.relationshipManager?.removeRelationship(incomingEdge.id);
+      }
 
       child = parentEl;
     }

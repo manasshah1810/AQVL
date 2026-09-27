@@ -287,6 +287,7 @@ const KEYWORDS = new Set([
   'ADD_VERTEX', 'ADD_EDGE', 'REMOVE_EDGE', 'REMOVE_VERTEX', 'VERTEX_AT', 'VERTEX_COUNT', 'EDGE_AT', 'EDGE_COUNT',
   'IN_DEGREE', 'NEIGHBOR', 'WEIGHT', 'HAS_EDGE', 'TRUE', 'FALSE', 'INFINITY',
   'CONTAINS', 'KEY_AT', 'BUCKET_OF', 'CAPACITY', 'TEXT_LENGTH', 'CHAR_AT', 'CHAR_CODE',
+  'HAS_CHILD', 'GET_CHILD', 'ADD_CHILD', 'REMOVE_CHILD', 'CHILD_COUNT', 'CHILD_AT', 'WORD_COUNT', 'NODE_COUNT',
   'HEIGHT', 'DEPTH', 'LEVEL', 'MAX_DEPTH', 'MIN_DEPTH', 'SIZE', 'LEAVES', 'INTERNAL', 'DEGREE', 'STATS',
   'PARENTOF', 'CHILDRENOF', 'ANCESTORS', 'DESCENDANTS', 'SIBLINGS', 'PATH', 'INTO',
   'COUNT_NODES', 'COUNT_LEAVES', 'COUNT_INTERNAL', 'COUNT_LEFT_LEAVES', 'COUNT_RIGHT_LEAVES', 'COUNT_FULL', 'COUNT_HALF',
@@ -519,7 +520,7 @@ const TOC_ITEMS_HEAPS = [
 const TOC_ITEMS_TRIES = [
   { id: 'tri-introduction', label: 'Introduction' },
   { id: 'tri-declaration', label: 'Declaring a Trie' },
-  { id: 'tri-commands', label: 'Commands Reference' },
+  { id: 'tri-commands', label: 'Trie Code Reference' },
   { id: 'tri-examples', label: 'Examples' },
   { id: 'tri-errors', label: 'Errors & Tips' },
 ];
@@ -3081,176 +3082,289 @@ END`} />
                     <h1 className="docs-page-title">Tries</h1>
                   </div>
                   <p className="docs-page-lead">
-                    A prefix tree over strings, where every path from the root spells a prefix and shared prefixes share
-                    a branch.
+                    A prefix tree written as real code — walk it with <C>GET_CHILD</C>, grow it with <C>ADD_CHILD</C>, mark
+                    words with <C>node.isEnd = TRUE</C> — with every step drawn as it happens.
                   </p>
                 </header>
 
                 <section id="tri-introduction" className="docs-section">
                   <h2 className="docs-h2">Introduction</h2>
                   <p className="docs-p">
-                    A <C>TRIE</C> stores strings by their characters rather than as whole values. Each edge carries one
-                    character, so the path from the root to a node spells a prefix, and words sharing a prefix share the
-                    branch that spells it — which is exactly why autocomplete is cheap on a trie.
+                    A <C>TRIE</C> stores words letter by letter. Every edge holds one character, so the path from the root
+                    down to a node spells a <em>prefix</em>, and words that begin the same way share the nodes of that
+                    beginning: <C>car</C>, <C>cart</C> and <C>care</C> all go through <C>c → a → r</C>.
                   </p>
                   <p className="docs-p">
-                    Tries are AQVL's one string-keyed tree structure: every trie command takes the trie name and a string
-                    literal rather than a number.
+                    A path alone does not make a word. Each node has a flag, <C>isEnd</C>, that is <C>TRUE</C> only where
+                    a stored word ends. In a trie holding <C>car</C> and <C>cat</C> the node <C>ca</C> exists, but no word
+                    ends there, so <C>ca</C> is a prefix, not a word.
                   </p>
+                  <div className="docs-cmd-table-wrap">
+                    <table className="docs-cmd-table">
+                      <thead>
+                        <tr><th>Operation</th><th>Cost</th></tr>
+                      </thead>
+                      <tbody>
+                        <tr><td>Insert a word of length L</td><td>O(L): one step per letter, however many words are stored.</td></tr>
+                        <tr><td>Search a word / check a prefix</td><td>O(L): one step per letter, stopping early at a missing edge.</td></tr>
+                        <tr><td>List the words with a prefix</td><td>O(L) to reach the prefix, then only the subtree below it.</td></tr>
+                      </tbody>
+                    </table>
+                  </div>
                   <Alert kind="note" title="Visualization">
-                    Inserting a word walks the existing branch as far as it matches and then grows new nodes for the
-                    remaining characters, so the shared-prefix saving is visible on screen.
+                    Every node shows the prefix it stands for underneath and the variables pointing at it above. Children
+                    are drawn in alphabetical order, word ends are green, and nodes held by recursive calls that are still
+                    waiting turn purple. Each pointer move, <C>HAS_CHILD</C> / <C>isEnd</C> check, new node and removed
+                    node is its own step with a console line.
                   </Alert>
                 </section>
 
                 <section id="tri-declaration" className="docs-section">
                   <h2 className="docs-h2">Declaring a Trie</h2>
+                  <CodeBlock label="Syntax" code={`TRIE <name>
+TRIE <name> = ["<word>", "<word>", ...]`} />
                   <p className="docs-p">
-                    A trie is declared with a list of string literals. The initializer is required — use a single-word
-                    list if you plan to build the rest from the sequence.
+                    <C>TRIE t</C> starts with just the root. Words listed in the declaration are inserted before the
+                    program starts. Words are case-sensitive: <C>"Cat"</C> and <C>"cat"</C> are different.
                   </p>
-                  <CodeBlock label="Syntax" code={`TRIE <name> = ["<word>", "<word>", ...]`} />
-
-                  <p className="docs-p">A full minimal program:</p>
+                  <p className="docs-p">A complete program that inserts and searches by hand:</p>
                   <CodeBlock code={`SCENE TrieIntro
 
 DECLARE
-  TRIE t = ["cat", "car"]
+  TRIE t = ["car"]
+
+  FUNCTION insert(word)
+    node = t.root
+    LOOP i FROM 0 TO TEXT_LENGTH(word) - 1
+      ch = CHAR_AT(word, i)
+      IF HAS_CHILD(node, ch) == FALSE
+        ADD_CHILD node ch
+      END
+      node = GET_CHILD(node, ch)
+    END
+    node.isEnd = TRUE
+  END
+
+  FUNCTION search(word)
+    node = t.root
+    LOOP i FROM 0 TO TEXT_LENGTH(word) - 1
+      node = GET_CHILD(node, CHAR_AT(word, i))
+      IF node == NULL
+        RETURN FALSE
+      END
+    END
+    RETURN node.isEnd
+  END
 
 SEQUENCE
-  TRIE_INSERT t "card"
-  TRIE_SEARCH t "cat"
+  insert("cat")
+  insert("cart")
+  PRINT "Words:" t
+  IF search("cat")
+    PRINT "cat is stored"
+  END
+  IF search("ca") == FALSE
+    PRINT "ca is only a prefix"
+  END
+  PRINT "Nodes: " + NODE_COUNT(t)
 END`} />
                   <p className="docs-p">
-                    <C>cat</C> and <C>car</C> already share the <C>ca</C> branch. Inserting <C>card</C> reuses
-                    <C>car</C> entirely and adds one node for the final <C>d</C>.
+                    <strong>Expected:</strong> <C>Words: [car, cart, cat]</C>, <C>cat is stored</C>,
+                    <C> ca is only a prefix</C> and <C>Nodes: 6</C> (the root, c, ca, car, cart, cat).
                   </p>
-                  <Alert kind="warn" title="Trie values are strings">
-                    <C>TRIE t = [1, 2]</C> is invalid — a trie is initialised from quoted strings, not numbers.
-                  </Alert>
                 </section>
 
                 <section id="tri-commands" className="docs-section">
-                  <h2 className="docs-h2">Commands Reference</h2>
+                  <h2 className="docs-h2">Trie Code Reference</h2>
+                  <p className="docs-p">
+                    A trie is used through <em>nodes</em>. A variable holds a node the way it holds a vertex of a graph or a
+                    node of a linked list; start from the root and move from node to node.
+                  </p>
                   <div className="docs-cmd-table-wrap">
                     <table className="docs-cmd-table">
                       <thead>
-                        <tr><th>Command</th><th>Description</th></tr>
+                        <tr><th>Code</th><th>Meaning</th></tr>
                       </thead>
                       <tbody>
-                        <tr>
-                          <td><span className="tok-keyword">TRIE_INSERT</span> <span className="tok-param">name "word"</span></td>
-                          <td>Walks the existing prefix path as far as it matches, then creates a node per remaining character and marks the last as a word end.</td>
-                        </tr>
-                        <tr>
-                          <td><span className="tok-keyword">TRIE_SEARCH</span> <span className="tok-param">name "word"</span></td>
-                          <td>Traces the word's path and reports a hit only if the path exists <em>and</em> its final node is marked as a complete word.</td>
-                        </tr>
-                        <tr>
-                          <td><span className="tok-keyword">TRIE_STARTSWITH</span> <span className="tok-param">name "prefix"</span></td>
-                          <td>Reports whether any stored word begins with the prefix — the path alone is enough, no word-end mark required.</td>
-                        </tr>
-                        <tr>
-                          <td><span className="tok-keyword">TRIE_AUTOCOMPLETE</span> <span className="tok-param">name "prefix"</span></td>
-                          <td>Descends to the prefix node and then highlights every complete word in the subtree beneath it.</td>
-                        </tr>
-                        <tr>
-                          <td><span className="tok-keyword">TRIE_DELETE</span> <span className="tok-param">name "word"</span></td>
-                          <td>Unmarks the word and removes the nodes that no other word needs, pruning back up the branch.</td>
-                        </tr>
+                        <tr><td><C>node = t.root</C></td><td>The root: the empty prefix, where every walk starts.</td></tr>
+                        <tr><td><C>GET_CHILD(node, ch)</C></td><td>The child along the edge <C>ch</C>, or <C>NULL</C> when there is none.</td></tr>
+                        <tr><td><C>HAS_CHILD(node, ch)</C></td><td><C>TRUE</C> when the edge <C>ch</C> exists.</td></tr>
+                        <tr><td><C>ADD_CHILD node ch</C></td><td>Creates the child along <C>ch</C> (it must not exist yet).</td></tr>
+                        <tr><td><C>REMOVE_CHILD node ch</C></td><td>Removes the child along <C>ch</C>; only a child with no children of its own can be removed.</td></tr>
+                        <tr><td><C>node.isEnd</C></td><td><C>TRUE</C> when a stored word ends at this node. Set it with <C>node.isEnd = TRUE</C> / <C>FALSE</C>.</td></tr>
+                        <tr><td><C>node.char</C></td><td>The character on the edge into the node (<C>""</C> for the root).</td></tr>
+                        <tr><td><C>node.count = 0</C></td><td>Any other field the algorithm needs (a counter, a frequency, a meaning). Set it before reading it.</td></tr>
+                        <tr><td><C>CHILD_COUNT(node)</C></td><td>How many children the node has.</td></tr>
+                        <tr><td><C>CHILD_AT(node, i)</C></td><td>The i-th child in alphabetical order, 0 to <C>CHILD_COUNT(node) - 1</C>.</td></tr>
+                        <tr><td><C>WORD_COUNT(t)</C></td><td>How many words are stored.</td></tr>
+                        <tr><td><C>NODE_COUNT(t)</C></td><td>How many nodes the trie has, the root included.</td></tr>
+                        <tr><td><C>PRINT t</C></td><td>Prints the stored words in alphabetical order, e.g. <C>[car, cart, cat]</C>.</td></tr>
                       </tbody>
                     </table>
                   </div>
+                  <p className="docs-p">
+                    A character is one-letter text such as <C>"a"</C> or <C>CHAR_AT(word, i)</C>; the digits <C>0</C> to
+                    <C> 9</C> may also be given as numbers, so a trie can store bits. The text helpers <C>TEXT_LENGTH(s)</C>,
+                    <C> CHAR_AT(s, i)</C> and <C>CHAR_CODE(s, i)</C> walk a word letter by letter. The older one-line
+                    shortcuts (<C>TRIE_INSERT t "word"</C>, <C>TRIE_SEARCH</C>, <C>TRIE_STARTSWITH</C>,
+                    <C> TRIE_AUTOCOMPLETE</C>, <C>TRIE_DELETE</C>) still work but hide the logic; the examples below, and all
+                    18 Tries examples in the Playground, write it out.
+                  </p>
                 </section>
 
                 <section id="tri-examples" className="docs-section">
                   <h2 className="docs-h2">Examples</h2>
 
-                  <h3 className="docs-h3">Example 1 — Search vs. Prefix Match</h3>
+                  <h3 className="docs-h3">Example 1 — Autocomplete</h3>
                   <p className="docs-p">
-                    The distinction that trips people up: a prefix path can exist without the prefix itself being a
-                    stored word.
+                    Walk down to the node of the prefix, then collect every word below it with a recursive depth-first
+                    walk. Visiting children a to z gives the suggestions in dictionary order.
                   </p>
-                  <CodeBlock code={`SCENE TrieSearchVsPrefix
-
-DECLARE
-  TRIE t = ["cat", "car", "card"]
-
-SEQUENCE
-  // A stored word — found
-  TRIE_SEARCH t "cat"
-  WAIT
-
-  // A path that exists, but is not a stored word
-  TRIE_SEARCH t "ca"
-  WAIT
-
-  // The same path, asked the right question
-  TRIE_STARTSWITH t "ca"
-END`} />
-                  <p className="docs-p">
-                    <strong>Expected behavior:</strong> <C>cat</C> is found, <C>ca</C> is not found as a word, but
-                    <C>TRIE_STARTSWITH</C> on <C>ca</C> reports a match.
-                  </p>
-
-                  <h3 className="docs-h3">Example 2 — Autocomplete</h3>
                   <CodeBlock code={`SCENE TrieAutocomplete
 
 DECLARE
-  TRIE t = ["car", "card", "care", "dog"]
+  TRIE t = ["car", "card", "care", "cat", "dog"]
+
+  FUNCTION collect(node, text)
+    IF node.isEnd
+      PRINT "  " + text
+    END
+    i = 0
+    WHILE i < CHILD_COUNT(node)
+      child = CHILD_AT(node, i)
+      collect(child, text + child.char)
+      i = i + 1
+    END
+  END
 
 SEQUENCE
-  // Everything under the "car" branch
-  TRIE_AUTOCOMPLETE t "car"
-  WAIT
-
-  // A branch with a single word under it
-  TRIE_AUTOCOMPLETE t "do"
+  prefix = "car"
+  node = t.root
+  i = 0
+  WHILE i < TEXT_LENGTH(prefix) AND node != NULL
+    node = GET_CHILD(node, CHAR_AT(prefix, i))
+    i = i + 1
+  END
+  IF node == NULL
+    PRINT "No words start with " + prefix
+  ELSE
+    PRINT "Words starting with " + prefix + ":"
+    collect(node, prefix)
+  END
 END`} />
-
-                  <h3 className="docs-h3">Example 3 — Insert and Delete</h3>
                   <p className="docs-p">
-                    Deleting only prunes nodes no other word depends on, which is why removing <C>card</C> leaves
-                    <C>car</C> completely intact.
+                    <strong>Expected:</strong> <C>Words starting with car:</C> then <C>car</C>, <C>card</C>, <C>care</C>.
+                    <C> cat</C> and <C>dog</C> are never visited.
                   </p>
-                  <CodeBlock code={`SCENE TrieEdits
+
+                  <h3 className="docs-h3">Example 2 — Counting Words by Prefix</h3>
+                  <p className="docs-p">
+                    Store on every node how many words pass through it. Then "how many words start with ...?" is a single
+                    walk down the prefix.
+                  </p>
+                  <CodeBlock code={`SCENE PrefixCount
 
 DECLARE
-  TRIE t = ["car"]
+  TRIE t
+  ARRAY names = ["sam", "sara", "sarah", "tom"]
 
 SEQUENCE
-  TRIE_INSERT t "card"
-  TRIE_INSERT t "dog"
-  WAIT
-
-  // Only the final "d" node goes away
-  TRIE_DELETE t "card"
-  WAIT
-
-  TRIE_SEARCH t "car"
+  LOOP k FROM 0 TO LENGTH(names) - 1
+    word = names[k]
+    node = t.root
+    LOOP i FROM 0 TO TEXT_LENGTH(word) - 1
+      ch = CHAR_AT(word, i)
+      IF HAS_CHILD(node, ch) == FALSE
+        ADD_CHILD node ch
+        child = GET_CHILD(node, ch)
+        child.count = 0
+      END
+      node = GET_CHILD(node, ch)
+      node.count = node.count + 1
+    END
+    node.isEnd = TRUE
+  END
+  node = GET_CHILD(GET_CHILD(t.root, "s"), "a")
+  PRINT "Names starting with sa: " + node.count
 END`} />
+                  <p className="docs-p">
+                    <strong>Expected:</strong> <C>Names starting with sa: 3</C>.
+                  </p>
+
+                  <h3 className="docs-h3">Example 3 — Deleting a Word</h3>
+                  <p className="docs-p">
+                    Unmark the word's last node, then on the way back up remove every node that no longer ends a word and
+                    has no children. Nodes that other words still use stay.
+                  </p>
+                  <CodeBlock code={`SCENE TrieDelete
+
+DECLARE
+  TRIE t = ["bat", "batch", "bad"]
+
+  FUNCTION removeWord(node, word, depth)
+    IF depth == TEXT_LENGTH(word)
+      node.isEnd = FALSE
+    ELSE
+      ch = CHAR_AT(word, depth)
+      unused = removeWord(GET_CHILD(node, ch), word, depth + 1)
+      IF unused
+        REMOVE_CHILD node ch
+      END
+    END
+    RETURN node.isEnd == FALSE AND CHILD_COUNT(node) == 0
+  END
+
+SEQUENCE
+  removeWord(t.root, "batch", 0)
+  PRINT "Words:" t
+  PRINT "Nodes: " + NODE_COUNT(t)
+END`} />
+                  <p className="docs-p">
+                    <strong>Expected:</strong> <C>Words: [bad, bat]</C> and <C>Nodes: 5</C>: only the <C>c</C> and
+                    <C> h</C> nodes of <C>batch</C> are removed.
+                  </p>
                 </section>
 
                 <section id="tri-errors" className="docs-section">
                   <h2 className="docs-h2">Errors &amp; Tips</h2>
 
-                  <Alert kind="warn" title="Quotes are required">
-                    <C>TRIE_INSERT t cat</C> reads <C>cat</C> as an identifier, not a word. Every trie argument must be a
-                    quoted string.
+                  <Alert kind="warn" title="GET_CHILD can return NULL">
+                    When there is no edge for the character, <C>GET_CHILD</C> gives <C>NULL</C>, and reading
+                    <C> node.isEnd</C> of <C>NULL</C> stops with a <em>NULL pointer dereference</em>. Check
+                    <C> IF node == NULL</C> (or <C>HAS_CHILD</C>) before going on.
                   </Alert>
 
-                  <Alert kind="warn" title="Deleting a word that is not stored">
-                    <C>TRIE_DELETE</C> on an absent word traces the path and reports the miss; it never prunes nodes that
-                    belong to other words.
+                  <Alert kind="warn" title="One character per edge">
+                    <C>ADD_CHILD node "ab"</C> stops: an edge holds exactly one character. Walk the word with
+                    <C> CHAR_AT(word, i)</C>. <C>ADD_CHILD</C> on a child that already exists stops too — check
+                    <C> HAS_CHILD</C> first.
                   </Alert>
 
-                  <Alert kind="tip" title="Choose overlapping words for demos">
-                    A trie built from unrelated words is just a bush of separate chains. Words like <C>car</C>,
-                    <C>card</C>, and <C>care</C> show the structure's whole point in one picture.
+                  <Alert kind="warn" title="Remove from the bottom up">
+                    <C>REMOVE_CHILD</C> refuses a child that still has children, because that would cut off every word
+                    below it. Recursion removes the deepest node first and works back up.
                   </Alert>
 
-                  <Alert kind="note" title="Case matters">
-                    <C>"Cat"</C> and <C>"cat"</C> are different words and produce different branches from the root.
+                  <Alert kind="warn" title="Loop over children with WHILE">
+                    <C>LOOP i FROM 0 TO CHILD_COUNT(node) - 1</C> counts <em>down</em> (0, -1) at a leaf, where
+                    <C> CHILD_COUNT</C> is 0, and <C>CHILD_AT(node, 0)</C> then stops. Use
+                    <C> WHILE i &lt; CHILD_COUNT(node)</C>.
+                  </Alert>
+
+                  <Alert kind="tip" title="A new node's fields start unset">
+                    Fields such as <C>count</C> must be set before they are read: right after <C>ADD_CHILD node ch</C>,
+                    write <C>child = GET_CHILD(node, ch)</C> and <C>child.count = 0</C>. Only <C>isEnd</C> (FALSE) and
+                    <C> char</C> exist from the start.
+                  </Alert>
+
+                  <Alert kind="tip" title="Choose overlapping words">
+                    A trie of unrelated words is just separate chains. Words like <C>car</C>, <C>card</C> and <C>care</C>
+                    show the shared prefixes, which is the whole point of the structure.
+                  </Alert>
+
+                  <Alert kind="note" title="Fields are case-insensitive">
+                    <C>node.isEnd</C>, <C>node.isend</C> and <C>node.ISEND</C> are the same field, as with the fields of
+                    graph vertices and tree nodes.
                   </Alert>
                 </section>
               </>

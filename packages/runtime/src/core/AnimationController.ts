@@ -54,6 +54,7 @@ import { LinkedListEngine as LinkedListModel, LinkedListError } from './algorith
 import { TreeEngine, TreeError, type TreeContext } from './algorithms/TreeEngine';
 import { HeapProgramEngine, HeapIndexError } from './algorithms/HeapProgramEngine';
 import { HashMapProgramEngine } from './algorithms/HashMapProgramEngine';
+import { TrieProgramEngine } from './algorithms/TrieProgramEngine';
 import { GraphProgramEngine } from './algorithms/GraphProgramEngine';
 import { AQVLVirtualMachine, type StepCallback } from '../VirtualMachine';
 import type { VMInstruction, FunctionTable, ExecutionResult } from '../types';
@@ -98,6 +99,8 @@ export class AnimationController {
   private heapEngine: HeapProgramEngine = new HeapProgramEngine();
   /** Hash maps used by real code: `m[key] = v`, `m[key]`, CONTAINS, DELETE m[key], LENGTH, KEY_AT, ... (see HashMapProgramEngine.ts) */
   private hashMapEngine: HashMapProgramEngine = new HashMapProgramEngine();
+  /** Tries used by real code: node references, t.root, GET_CHILD, HAS_CHILD, ADD_CHILD, node.isEnd, ... (see TrieProgramEngine.ts) */
+  private trieEngine: TrieProgramEngine = new TrieProgramEngine();
   /**
    * Live reference to the currently-executing VM, set in `createExecutionVM`
    * so that `resolveElementId` can call `vm.getVariable()` to read loop
@@ -309,11 +312,15 @@ export class AnimationController {
     vm.setGraphReader((fn, args, text, argTexts) =>
       HashMapProgramEngine.READS.has(fn)
         ? this.hashMapEngine.read(this.llContext(), fn, args, text)
+        : TrieProgramEngine.READS.has(fn)
+        ? this.trieEngine.read(this.treeContext(), fn, args, text, argTexts)
         : this.graphEngine.read(this.treeContext(), fn, args, text, argTexts)
     );
-    vm.setReadObserver((instr) => this.animateHashMapReads(vm, instr));
+    vm.setReadObserver((instr) => this.animateReads(vm, instr));
     vm.setMemberReader((object, member, objectExpr) =>
-      this.graphEngine.owns(this.treeContext(), object)
+      this.trieEngine.owns(this.treeContext(), object) || this.nullBelongsToTrie(object)
+        ? this.trieEngine.readMember(this.treeContext(), object, member, objectExpr)
+        : this.graphEngine.owns(this.treeContext(), object)
         ? this.graphEngine.readMember(this.treeContext(), object, member, objectExpr)
         : this.pointerOwnerIsTree(object)
         ? this.treeEngine.readMember(this.treeContext(), object, member, objectExpr)
@@ -323,6 +330,12 @@ export class AnimationController {
       async (name, value, previous, instr) => {
         // `n = NEW_NODE(...)` / `node = DEQUEUE(q)`: already shown by that step.
         if (typeof instr.value === 'string' && (instr.value.startsWith('__new_') || instr.value.startsWith('__take_'))) return false;
+        // `node = GET_CHILD(node, ch)`, `node = t.root`: a trie node pointer moves.
+        if (this.trieEngine.isPointerAssignment(this.treeContext(), value, previous)) {
+          this.currentVM = vm;
+          await this.executeInstruction({ action: 'TRIE_POINTER_MOVE', name, value, previous, sourceText: instr.sourceText, valueExpr: instr.value } as any);
+          return true;
+        }
         // `w = NEIGHBOR(v, i)`, `u = VERTEX(g, "A")`, `v = v.parent`: a vertex pointer moves.
         if (this.graphEngine.isPointerAssignment(this.treeContext(), value, previous) && !TreeEngine.isNodeRef(value) && !TreeEngine.isNodeRef(previous)) {
           this.currentVM = vm;
@@ -343,6 +356,7 @@ export class AnimationController {
         this.linkedListEngine.onScopeExit(this.llContext());
         this.treeEngine.onScopeExit(this.treeContext());
         this.graphEngine.onScopeExit(this.treeContext());
+        this.trieEngine.onScopeExit(this.treeContext());
       }
     );
     // Recursion over a tree: every call and return is a step (the node
@@ -351,6 +365,12 @@ export class AnimationController {
       if (this.treeEngine.hasAnyTree(this.treeContext())) {
         this.currentVM = vm;
         await this.executeInstruction({ action: 'TREE_CALL', event } as any);
+        return true;
+      }
+      // Recursion over a trie (collect words, recursive delete, ...): the same, for trie nodes.
+      if (this.trieEngine.hasAnyTrie(this.treeContext())) {
+        this.currentVM = vm;
+        await this.executeInstruction({ action: 'TRIE_CALL', event } as any);
         return true;
       }
       // Recursion over a graph (recursive DFS, ...): the same, for vertices.
@@ -362,6 +382,18 @@ export class AnimationController {
       return false;
     });
     return vm;
+  }
+
+  /** A NULL read (`node.isEnd` after GET_CHILD returned NULL) in a program whose only pointers are trie nodes. */
+  private nullBelongsToTrie(value: unknown): boolean {
+    if (value !== null && value !== undefined) return false;
+    const ctx = this.treeContext();
+    return (
+      this.trieEngine.hasAnyTrie(ctx) &&
+      !this.treeEngine.hasAnyTree(ctx) &&
+      !this.linkedListEngine.hasAnyList(this.llContext()) &&
+      !this.graphEngine.hasAnyGraph(ctx)
+    );
   }
 
   /**
@@ -411,6 +443,7 @@ export class AnimationController {
     this.connectGraphRefs();
     this.treeEngine.initialize(this.treeContext());
     this.graphEngine.initialize(this.treeContext());
+    this.trieEngine.initialize(this.treeContext());
   }
 
   /** Called after the scene is restored to an earlier step (step back / scrub). */
@@ -418,15 +451,24 @@ export class AnimationController {
     this.linkedListEngine.settleAfterRestore(this.llContext());
     this.treeEngine.settleAfterRestore(this.treeContext());
     this.graphEngine.settleAfterRestore(this.treeContext());
+    this.trieEngine.settleAfterRestore(this.treeContext());
   }
 
-  /** Queues / stacks (drawn by TreeEngine) may hold graph vertices: tell TreeEngine how to show them. */
+  /** Queues / stacks (drawn by TreeEngine) may hold graph vertices or trie nodes: tell TreeEngine how to show them. */
   private connectGraphRefs(): void {
-    this.treeEngine.foreignRefs = this.graphEngine.hasAnyGraph(this.treeContext())
+    const graphs = this.graphEngine.hasAnyGraph(this.treeContext());
+    const tries = this.trieEngine.hasAnyTrie(this.treeContext());
+    this.treeEngine.foreignRefs = graphs || tries
       ? {
-          isRef: (v) => GraphProgramEngine.isRef(v),
-          display: (v) => this.graphEngine.displayValue(this.treeContext(), v),
-          afterRefresh: (temp) => this.graphEngine.refresh(this.treeContext(), temp),
+          isRef: (v) => GraphProgramEngine.isRef(v) || TrieProgramEngine.isNodeRef(v),
+          display: (v) =>
+            TrieProgramEngine.isNodeRef(v)
+              ? this.trieEngine.displayValue(this.treeContext(), v)
+              : this.graphEngine.displayValue(this.treeContext(), v),
+          afterRefresh: (temp) => {
+            if (graphs) this.graphEngine.refresh(this.treeContext(), temp);
+            if (tries) this.trieEngine.refresh(this.treeContext(), temp);
+          },
         }
       : undefined;
   }
@@ -491,28 +533,37 @@ export class AnimationController {
   }
 
   /**
-   * Before an assignment, condition, call or RETURN runs, animates each
-   * hash-map lookup it will read (`m[key]`, CONTAINS(m, key)), in the order
-   * the VM evaluates them — the right side of AND / OR only when it will be
-   * evaluated. A read that cannot be worked out here (a missing key inside
-   * another key) is left for the real evaluation to report.
+   * Before an assignment, condition, call or RETURN runs, animates each read
+   * it will make that is a step of its own: a hash-map lookup (`m[key]`,
+   * CONTAINS(m, key)) or a trie check (`HAS_CHILD(node, ch)`, `node.isEnd`),
+   * in the order the VM evaluates them — the right side of AND / OR only
+   * when it will be evaluated. A read that cannot be worked out here (a
+   * missing key inside another key) is left for the real evaluation to report.
    */
-  private async animateHashMapReads(vm: AQVLVirtualMachine, instr: any): Promise<void> {
+  private async animateReads(vm: AQVLVirtualMachine, instr: any): Promise<void> {
     const ctx = this.llContext();
-    if (!this.hashMapEngine.hasAnyHashMap(ctx)) return;
+    const maps = this.hashMapEngine.hasAnyHashMap(ctx);
+    const tries = this.trieEngine.hasAnyTrie(ctx);
+    if (!maps && !tries) return;
     const operands: unknown[] =
       instr.opcode === AQIROpcode.SET_VAR ? [instr.value]
         : instr.opcode === AQIROpcode.JUMP_IF_FALSE ? [instr.condition]
           : instr.opcode === AQIROpcode.CALL ? instr.args ?? []
             : [instr.returnValue];
-    const reads: { map: string; key: unknown }[] = [];
+    const reads: any[] = [];
     const walk = (expr: any): void => {
       if (expr === null || typeof expr !== 'object') return;
       if ('gfn' in expr) {
         (expr.args ?? []).forEach(walk);
-        if (expr.gfn === 'MAP_GET' || expr.gfn === 'CONTAINS') {
+        if (maps && (expr.gfn === 'MAP_GET' || expr.gfn === 'CONTAINS')) {
           const map = vm.evaluateExpression(expr.args[0]);
-          if (this.hashMapEngine.isHashMap(ctx, map)) reads.push({ map: String(map), key: vm.evaluateExpression(expr.args[1]) });
+          if (this.hashMapEngine.isHashMap(ctx, map)) reads.push({ action: 'MAP_LOOKUP', map: String(map), key: vm.evaluateExpression(expr.args[1]) });
+        }
+        if (tries && expr.gfn === 'HAS_CHILD') {
+          const node = vm.evaluateExpression(expr.args[0]);
+          if (TrieProgramEngine.isNodeRef(node)) {
+            reads.push({ action: 'TRIE_CHECK', kind: 'HAS_CHILD', node, ch: vm.evaluateExpression(expr.args[1]), text: expr.source });
+          }
         }
         return;
       }
@@ -526,7 +577,16 @@ export class AnimationController {
         return;
       }
       if ('elem' in expr) walk(expr.index);
-      if ('member' in expr) walk(expr.object);
+      if ('member' in expr) {
+        walk(expr.object);
+        if (tries && String(expr.member).toLowerCase() === 'isend') {
+          const node = vm.evaluateExpression(expr.object);
+          if (TrieProgramEngine.isNodeRef(node)) {
+            const source = typeof expr.object === 'string' ? `${expr.object}.isEnd` : 'isEnd';
+            reads.push({ action: 'TRIE_CHECK', kind: 'IS_END', node, text: source });
+          }
+        }
+      }
     };
     try {
       operands.forEach(walk);
@@ -535,7 +595,7 @@ export class AnimationController {
     }
     for (const read of reads) {
       this.currentVM = vm;
-      await this.executeInstruction({ action: 'MAP_LOOKUP', map: read.map, key: read.key } as any);
+      await this.executeInstruction(read);
     }
   }
 
@@ -735,6 +795,7 @@ export class AnimationController {
       this.graphEngine.restoreBaseColors(this.treeContext());
       this.heapEngine.restoreBaseColors(this.llContext());
       this.hashMapEngine.restoreBaseColors(this.llContext());
+      this.trieEngine.restoreBaseColors(this.llContext());
       this.animationScheduler.init(resolve);
 
       // Auto-configure tree context from scene objects (handles BST declared
@@ -764,6 +825,9 @@ export class AnimationController {
           const message = parts
             .map((part: any) => {
               if (part !== null && typeof part === 'object' && 'text' in part) return String(part.text);
+              if (part !== null && typeof part === 'object' && 'trie' in part) {
+                return this.trieEngine.format(this.llContext(), part.trie);
+              }
               if (part !== null && typeof part === 'object' && 'hashmap' in part) {
                 return this.hashMapEngine.format(this.llContext(), part.hashmap);
               }
@@ -789,6 +853,7 @@ export class AnimationController {
               }
               const value = this.currentVM ? this.currentVM.evaluateExpression(part) : part;
               return (
+                this.trieEngine.formatValue(this.treeContext(), value) ??
                 this.graphEngine.formatValue(this.treeContext(), value) ??
                 this.treeEngine.formatValue(this.treeContext(), value) ??
                 this.linkedListEngine.formatValue(this.llContext(), value) ??
@@ -816,7 +881,8 @@ export class AnimationController {
         // routed by what the operand actually is when the step runs.
         case 'LL_SET': {
           const target = this.currentVM ? this.currentVM.evaluateExpression((instruction as any).target) : null;
-          if (this.graphEngine.owns(this.treeContext(), target)) this.graphEngine.setField(this.treeContext(), instruction as any);
+          if (this.trieEngine.owns(this.treeContext(), target) || this.nullBelongsToTrie(target)) this.trieEngine.setField(this.treeContext(), instruction as any);
+          else if (this.graphEngine.owns(this.treeContext(), target)) this.graphEngine.setField(this.treeContext(), instruction as any);
           else if (this.pointerOwnerIsTree(target)) this.treeEngine.setField(this.treeContext(), instruction as any);
           else this.linkedListEngine.setField(this.llContext(), instruction as any);
           break;
@@ -854,6 +920,24 @@ export class AnimationController {
         case 'GRAPH_EDIT':
           this.graphEngine.edit(this.treeContext(), instruction as any);
           break;
+
+        // Tries written as code (see TrieProgramEngine).
+        case 'TRIE_POINTER_MOVE': {
+          const i = instruction as any;
+          this.trieEngine.animatePointerMove(this.treeContext(), i.name, i.value, i.previous, i.sourceText, i.valueExpr);
+          break;
+        }
+        case 'TRIE_CALL':
+          this.trieEngine.onCall(this.treeContext(), (instruction as any).event);
+          break;
+        case 'TRIE_EDIT':
+          this.trieEngine.edit(this.treeContext(), instruction as any);
+          break;
+        case 'TRIE_CHECK': {
+          const i = instruction as any;
+          this.trieEngine.check(this.treeContext(), i.kind, i.node, i.ch, i.text);
+          break;
+        }
 
         // Hash maps written as code (see HashMapProgramEngine): operands are evaluated now.
         case 'MAP_PUT': {

@@ -194,6 +194,13 @@ const BUILTIN_FUNCTIONS: Record<string, number> = {
   TEXT_LENGTH: 1,
   CHAR_AT: 2,
   CHAR_CODE: 2,
+  // Tries: the first argument is a node (WORD_COUNT / NODE_COUNT: the trie)
+  HAS_CHILD: 2,
+  GET_CHILD: 2,
+  CHILD_COUNT: 1,
+  CHILD_AT: 2,
+  WORD_COUNT: 1,
+  NODE_COUNT: 1,
 };
 
 function analyzeExpression(

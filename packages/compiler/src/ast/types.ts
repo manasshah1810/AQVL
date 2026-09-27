@@ -277,7 +277,10 @@ export type ExpressionNode = IdentifierNode | ArrayAccessNode | BinaryOpNode | L
 export interface MemberAccessNode extends ASTNode {
   type: 'MemberAccessNode';
   object: ExpressionNode;
+  /** The field name, lower-cased: fields are case-insensitive (`node.isEnd` is `isend`). */
   member: string;
+  /** The field name as written, for messages. */
+  memberText?: string;
 }
 
 export interface IdentifierNode extends ASTNode {

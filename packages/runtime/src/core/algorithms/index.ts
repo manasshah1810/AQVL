@@ -12,6 +12,7 @@ export * from './HeapEngine';
 export * from './HashMapVisualizer';
 export * from './HashMapProgramEngine';
 export * from './TrieVisualizer';
+export * from './TrieProgramEngine';
 export * from './ArrayEngine';
 export * from './StackEngine';
 export * from './QueueEngine';
