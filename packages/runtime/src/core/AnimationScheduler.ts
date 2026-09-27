@@ -1,4 +1,11 @@
 import { TimelineEngine } from './TimelineEngine';
+import type { EventDispatcher } from './EventDispatcher';
+
+/** Payload for the 'NARRATIVE_CUE' event — a caption ready to be spoken/displayed, plus which live elements it concerns (for a narrator to point at). */
+export interface NarrativeCuePayload {
+  text: string;
+  targets: unknown;
+}
 
 export interface AnimationTask {
   targets: any;
@@ -27,7 +34,7 @@ export class AnimationScheduler {
   private currentTasks: AnimationTask[] = [];
   private timelineCursor: number = 0;
 
-  constructor(private timelineEngine: TimelineEngine) {}
+  constructor(private timelineEngine: TimelineEngine, private eventDispatcher?: EventDispatcher) {}
 
   public init(onComplete?: () => void): void {
     console.log('[AnimationScheduler] init() called - Resetting timeline cursor to 0');
@@ -60,13 +67,14 @@ export class AnimationScheduler {
     this.currentTasks.forEach(task => {
       const { complete, priority, ...animeParams } = task;
       const duration = task.duration || 0;
-      
+
       if (complete) {
           animeParams.complete = complete;
       }
 
       this.timelineEngine.addKeyframe(animeParams, this.timelineCursor);
-      
+      this.emitNarrativeCue(task);
+
       if (duration > maxDuration) {
         maxDuration = duration;
       }
@@ -91,10 +99,23 @@ export class AnimationScheduler {
       }
 
       this.timelineEngine.addKeyframe(animeParams, this.timelineCursor);
+      this.emitNarrativeCue(task);
       this.timelineCursor += duration;
     });
 
     this.currentTasks = [];
+  }
+
+  /**
+   * Surfaces a task's `narrativeText` (populated at the start of its beat, per
+   * docs/design/array-narrative-ux-spec.md §1) as a 'NARRATIVE_CUE' event, so a
+   * narrator/caption UI can react without polling the animation internals. A
+   * no-op when this scheduler wasn't given an EventDispatcher (e.g. tests, or
+   * the headless dry run ExecutionEngine uses to count steps).
+   */
+  private emitNarrativeCue(task: AnimationTask): void {
+    if (!task.narrativeText || !this.eventDispatcher) return;
+    this.eventDispatcher.dispatch('NARRATIVE_CUE', { text: task.narrativeText, targets: task.targets } satisfies NarrativeCuePayload);
   }
 
   public advanceCursor(ms: number): void {

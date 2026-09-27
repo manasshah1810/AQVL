@@ -111,6 +111,8 @@ export interface BSTIndex {
   right: Map<string, any>;
   parent: Map<string, any>;
   edgeLabel: Map<string, 'L' | 'R'>;
+  /** Same node getRoot returns: the first node with no incoming edge. */
+  root: any | null;
 }
 
 export interface BSTHeightStep {
@@ -122,6 +124,9 @@ export interface BSTHeightStep {
 // ─────────────────────────────────────────────────────────────────────────────
 // Engine class
 // ─────────────────────────────────────────────────────────────────────────────
+
+/** Last index per scene manager and tree, reused until the scene's revision moves. */
+const indexCache = new WeakMap<SceneManager, Map<string, { revision: number; index: BSTIndex }>>();
 
 export class BSTEngine {
   /** Node color used for all BST sphere nodes */
@@ -215,16 +220,38 @@ export class BSTEngine {
    * O(n·depth). Build the index once per operation and look up in O(1).
    */
   static buildIndex(sceneManager: SceneManager, treeName: string): BSTIndex {
-    const edges = this.getEdges(sceneManager, treeName);
+    const revision = sceneManager.getRevision();
+    let perTree = indexCache.get(sceneManager);
+    if (!perTree) indexCache.set(sceneManager, (perTree = new Map()));
+    const cached = perTree.get(treeName);
+    if (cached && cached.revision === revision) return cached.index;
+    const index = this.scanIndex(sceneManager, treeName);
+    perTree.set(treeName, { revision, index });
+    return index;
+  }
+
+  private static scanIndex(sceneManager: SceneManager, treeName: string): BSTIndex {
+    // One pass over the scene graph for both nodes and edges; search/insert
+    // run once per step of a lesson, so extra full scans add up.
+    const nodes: any[] = [];
+    const edges: any[] = [];
+    for (const el of sceneManager.getSceneGraph() as any[]) {
+      if (el.logicalParent !== treeName) continue;
+      if (el.originalType === 'TREE_NODE') nodes.push(el);
+      else if (el.originalType === 'EDGE') edges.push(el);
+    }
     const left = new Map<string, any>();
     const right = new Map<string, any>();
     const parent = new Map<string, any>();
     const edgeLabel = new Map<string, 'L' | 'R'>();
+    const nodeById = new Map<string, any>(nodes.map((n) => [n.id, n]));
+    const hasParent = new Set<string>();
 
     edges.forEach((e: any) => {
+      if (nodeById.has(e.targetId)) hasParent.add(e.targetId);
       const label = e.properties?.label;
-      const targetEl = sceneManager.getElement(e.targetId);
-      const sourceEl = sceneManager.getElement(e.sourceId);
+      const targetEl = nodeById.get(e.targetId) ?? sceneManager.getElement(e.targetId);
+      const sourceEl = nodeById.get(e.sourceId) ?? sceneManager.getElement(e.sourceId);
       if (!targetEl || !sourceEl) return;
       if (label === 'L') left.set(e.sourceId, targetEl);
       if (label === 'R') right.set(e.sourceId, targetEl);
@@ -232,7 +259,8 @@ export class BSTEngine {
       if (label === 'L' || label === 'R') edgeLabel.set(e.targetId, label);
     });
 
-    return { left, right, parent, edgeLabel };
+    const root = nodes.find((n: any) => !hasParent.has(n.id)) || null;
+    return { left, right, parent, edgeLabel, root };
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -359,7 +387,8 @@ export class BSTEngine {
     treeName: string,
     value: number
   ): BSTInsertResult {
-    const root = this.getRoot(sceneManager, treeName);
+    const index = this.buildIndex(sceneManager, treeName);
+    const root = index.root;
     const traversalPath: BSTNodeRef[] = [];
     const directions: string[] = [];
 
@@ -368,7 +397,6 @@ export class BSTEngine {
       return { success: true, traversalPath, directions, newNode: undefined, parentNode: null, edgeLabel: null };
     }
 
-    const index = this.buildIndex(sceneManager, treeName);
 
     let current: any = root;
     while (current) {
@@ -440,6 +468,7 @@ export class BSTEngine {
       opacity: 1,
     };
 
+    const revisionBefore = sceneManager.getRevision();
     sceneManager.addElement(newEl);
 
     if (parentNode) {
@@ -467,7 +496,38 @@ export class BSTEngine {
       });
     }
 
+    this.patchIndexAfterInsert(sceneManager, treeName, revisionBefore, newEl, parentNode, edgeLabel);
     return newEl;
+  }
+
+  /**
+   * Inserting is a leaf add, so a still-current cached index can take the new
+   * node and edge directly instead of being rebuilt on the next operation.
+   * Only applies when exactly our own adds moved the revision.
+   */
+  private static patchIndexAfterInsert(
+    sceneManager: SceneManager,
+    treeName: string,
+    revisionBefore: number,
+    newEl: any,
+    parentNode: BSTNodeRef | null,
+    edgeLabel: 'L' | 'R' | null
+  ): void {
+    const cached = indexCache.get(sceneManager)?.get(treeName);
+    if (!cached || cached.revision !== revisionBefore) return;
+    const revision = sceneManager.getRevision();
+    const parentEl = parentNode ? sceneManager.getElement(parentNode.id) : null;
+    if (revision !== revisionBefore + (parentNode ? 2 : 1) || (parentNode && !parentEl)) return;
+    const { index } = cached;
+    if (parentEl) {
+      if (edgeLabel === 'L') index.left.set(parentNode!.id, newEl);
+      if (edgeLabel === 'R') index.right.set(parentNode!.id, newEl);
+      index.parent.set(newEl.id, parentEl);
+      if (edgeLabel) index.edgeLabel.set(newEl.id, edgeLabel);
+    } else if (!index.root) {
+      index.root = newEl;
+    }
+    cached.revision = revision;
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -483,7 +543,8 @@ export class BSTEngine {
     treeName: string,
     value: number
   ): BSTSearchResult {
-    const root = this.getRoot(sceneManager, treeName);
+    const index = this.buildIndex(sceneManager, treeName);
+    const root = index.root;
     const traversalPath: BSTNodeRef[] = [];
     const comparisons: string[] = [];
 
@@ -491,7 +552,6 @@ export class BSTEngine {
       return { found: false, traversalPath, comparisons };
     }
 
-    const index = this.buildIndex(sceneManager, treeName);
 
     let current: any = root;
     while (current) {

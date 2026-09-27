@@ -214,6 +214,8 @@ interface IDEEditorProps {
   onChange: (value: string) => void;
   readOnly?: boolean;
   errorMarkers?: EditorErrorMarker[];
+  /** 1-indexed source line the VM is currently executing, or null when nothing is running. Draws a playhead band over that line, in this same editor rather than a separate panel. */
+  activeLine?: number | null;
 }
 
 const INDENT = '  '; // 2 spaces
@@ -272,7 +274,7 @@ function measureEditorMetrics(textarea: HTMLTextAreaElement, measureEl: HTMLSpan
   return { lineHeight, charWidth, padTop, padLeft };
 }
 
-export function IDEEditor({ initialValue, onChange, readOnly = false, errorMarkers = [] }: IDEEditorProps) {
+export function IDEEditor({ initialValue, onChange, readOnly = false, errorMarkers = [], activeLine = null }: IDEEditorProps) {
   const textareaRef    = useRef<HTMLTextAreaElement>(null);
   const overlayRef     = useRef<HTMLDivElement>(null);
   const errorOverlayRef = useRef<HTMLDivElement>(null);     // squiggly-underline layer (scroll-synced)
@@ -342,6 +344,7 @@ export function IDEEditor({ initialValue, onChange, readOnly = false, errorMarke
     const ta = textareaRef.current;
     const ov = overlayRef.current;
     const eov = errorOverlayRef.current;
+    const ph = playheadRef.current;
     const gb = gutterBodyRef.current;
     if (!ta) return;
     if (ov) {
@@ -351,6 +354,10 @@ export function IDEEditor({ initialValue, onChange, readOnly = false, errorMarke
     if (eov) {
       eov.scrollTop  = ta.scrollTop;
       eov.scrollLeft = ta.scrollLeft;
+    }
+    if (ph) {
+      ph.scrollTop  = ta.scrollTop;
+      ph.scrollLeft = ta.scrollLeft;
     }
     if (gb) {
       gb.style.transform = `translateY(-${ta.scrollTop}px)`;
@@ -738,6 +745,30 @@ export function IDEEditor({ initialValue, onChange, readOnly = false, errorMarke
     layer.style.setProperty('--sq-pad-left', `${m.padLeft}px`);
   }, [errorSquiggles, getMetrics]);
 
+  // Live-execution playhead — same metrics-driven positioning as the error
+  // squiggle layer above, so it stays pixel-aligned with the real overlay
+  // text instead of drifting from hardcoded line-height assumptions.
+  const playheadRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const layer = playheadRef.current;
+    if (!layer) return;
+    const m = getMetrics();
+    layer.style.setProperty('--ph-line-height', `${m.lineHeight}px`);
+    layer.style.setProperty('--ph-pad-top', `${m.padTop}px`);
+  }, [activeLine, getMetrics]);
+
+  useEffect(() => {
+    if (activeLine == null) return;
+    const ta = textareaRef.current;
+    if (!ta) return;
+    const m = getMetrics();
+    const target = m.padTop + (activeLine - 1) * m.lineHeight;
+    // Only auto-scroll when the active line is out of view — avoids fighting the user's own scroll position.
+    if (target < ta.scrollTop || target > ta.scrollTop + ta.clientHeight - m.lineHeight) {
+      ta.scrollTop = Math.max(0, target - ta.clientHeight / 2);
+    }
+  }, [activeLine, getMetrics]);
+
   const [currentLine, setCurrentLine] = useState(1);
 
   const updateCurrentLine = useCallback(() => {
@@ -758,7 +789,7 @@ export function IDEEditor({ initialValue, onChange, readOnly = false, errorMarke
             return (
               <div
                 key={i + 1}
-                className={`aqvl-gutter-line${i + 1 === currentLine ? ' current' : ''}${lineErrors ? ' has-error' : ''}`}
+                className={`aqvl-gutter-line${i + 1 === currentLine ? ' current' : ''}${lineErrors ? ' has-error' : ''}${i + 1 === activeLine ? ' executing' : ''}`}
                 title={lineErrors ? lineErrors.join('\n') : undefined}
               >
                 {lineErrors && <span className="aqvl-gutter-error-dot" />}
@@ -785,6 +816,20 @@ export function IDEEditor({ initialValue, onChange, readOnly = false, errorMarke
         <span ref={measureRef} className="aqvl-editor-overlay aqvl-metrics-probe" aria-hidden="true">
           MMMMMMMMMM
         </span>
+
+        {/* Live-execution playhead — highlights the source line the VM is currently on.
+            Wrapper is the scroll-synced clip (see syncScroll), matching the error-overlay pattern. */}
+        {activeLine != null && (
+          <div ref={playheadRef} className="aqvl-playhead-clip" aria-hidden="true">
+            <div
+              className="aqvl-playhead-overlay"
+              style={{
+                top: `calc(var(--ph-pad-top, ${FALLBACK_PAD_TOP}px) + ${activeLine - 1} * var(--ph-line-height, ${FALLBACK_LINE_HEIGHT}px))`,
+                height: `var(--ph-line-height, ${FALLBACK_LINE_HEIGHT}px)`,
+              }}
+            />
+          </div>
+        )}
 
         {/* Diagnostic squiggles — scroll-synced layer above syntax, below caret */}
         {errorSquiggles.length > 0 && (

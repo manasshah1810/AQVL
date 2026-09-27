@@ -37,7 +37,7 @@ export interface PrimitiveEdgeProps {
 const ARC_SAMPLES = 28;
 
 /** Points along the edge's path, from source to target. */
-function buildPath(from: Vec3, to: Vec3, route: EdgeRoute | undefined): THREE.Vector3[] {
+export function buildPath(from: Vec3, to: Vec3, route: EdgeRoute | undefined): THREE.Vector3[] {
   const offset = route?.offset ?? 0;
   const p1 = new THREE.Vector3(from.x, from.y + offset, from.z);
   const p2 = new THREE.Vector3(to.x, to.y + offset, to.z);

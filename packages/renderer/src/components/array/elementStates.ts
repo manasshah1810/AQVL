@@ -1,8 +1,16 @@
+import { createTreatment, type VisualTreatment } from '@aqvl/shared';
+
 /**
  * Element state -> visual treatment mapping for array elements.
  * Values are taken directly from docs/design/array-visual-language-spec.md §1
  * (colors/emissive from the existing repo-wide semantic palette) and its
  * §1.9 redundant-cue table (scale, lift, pulse, lateral motion, persistence).
+ *
+ * This is the first consumer of `@aqvl/shared`'s cross-topic `VisualTreatment`
+ * shape (packages/shared/src/theme/visualTokens.ts) — array's states are more
+ * specific than the shared base-semantic set (e.g. 'swapping' vs plain
+ * 'active'), but every field still comes from the same shared contract so
+ * other topics can build their own tables against it.
  */
 
 export type ArrayElementState =
@@ -15,60 +23,19 @@ export type ArrayElementState =
   | 'confirmed-match'
   | 'out-of-range';
 
-export interface ArrayElementVisualTreatment {
+export interface ArrayElementVisualTreatment extends VisualTreatment {
   state: ArrayElementState;
-  /** Base (non-emissive) surface color. */
-  color: string;
-  /** Emissive glow color. */
-  emissiveColor: string;
-  /** Peak/steady emissive intensity for this state. */
-  emissiveIntensity: number;
-  /** Uniform scale multiplier (before any magnitude-scaling height adjustment). */
-  scale: number;
-  /** Vertical offset (world units) applied while this state is active. */
-  liftY: number;
-  /** Base opacity. */
-  opacity: number;
-  /** Sync pulse frequency in Hz, or null if this state never pulses. */
-  pulseHz: number | null;
-  /** Whether this state uses the fast scan-flicker cue (§1.6) instead of a pulse. */
-  flicker: boolean;
-  /** Whether this state involves net lateral (X/Z) displacement (§1.3). */
-  lateralMotion: boolean;
-  /** Whether this state persists until an explicit reset, rather than being transient. */
-  persistent: boolean;
-  /** Whether the lift is held statically rather than animated (§1.5). */
-  staticHold: boolean;
-  /** Whether a glowing floor strip should render beneath the element (§1.4). */
-  floorStrip: boolean;
-  /** Whether a one-shot double-ring burst should fire for this state (§1.7). */
-  ringBurst: boolean;
-  /** Whether this element should participate in interactions (comparisons, beams, etc). */
-  interactive: boolean;
 }
 
-type TreatmentOverrides = Partial<Omit<ArrayElementVisualTreatment, 'state' | 'color' | 'emissiveColor'>> & {
+type ArrayTreatmentOverrides = Partial<Omit<ArrayElementVisualTreatment, 'state' | 'color' | 'emissiveColor'>> & {
   state: ArrayElementState;
   color: string;
   emissiveColor: string;
 };
 
-function treatment(overrides: TreatmentOverrides): ArrayElementVisualTreatment {
-  return {
-    emissiveIntensity: 0.1,
-    scale: 1.0,
-    liftY: 0,
-    opacity: 1.0,
-    pulseHz: null,
-    flicker: false,
-    lateralMotion: false,
-    persistent: false,
-    staticHold: false,
-    floorStrip: false,
-    ringBurst: false,
-    interactive: true,
-    ...overrides,
-  };
+function treatment(overrides: ArrayTreatmentOverrides): ArrayElementVisualTreatment {
+  const { state, ...rest } = overrides;
+  return { state, ...createTreatment(rest) };
 }
 
 export const ARRAY_ELEMENT_STATES: Record<ArrayElementState, ArrayElementVisualTreatment> = {

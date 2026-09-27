@@ -1,7 +1,20 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Lexer, Parser, SemanticValidator, Optimizer, AQIRGenerator, analyzeFunctions } from '@aqvl/compiler';
 import { ExecutionEngine, type SceneState } from '@aqvl/runtime';
-import { AQVECanvas } from '@aqvl/renderer';
+import {
+  AQVECanvas,
+  ArrayCameraChoreographer,
+  Character,
+  CharacterAnchorBridge,
+  CharacterController,
+  IterationDirector,
+  LinearCameraChoreographer,
+  LinearDirector,
+  useLinearOverlay,
+  useActiveLine,
+  useIterationOverlay,
+  type IterationTopic,
+} from '@aqvl/renderer';
 
 import { IDEEditor, type EditorErrorMarker } from '../components/IDEEditor';
 import { ExampleExplorer } from '../components/ExampleExplorer';
@@ -137,6 +150,23 @@ export default function Playground() {
   // Runtime State
   const engineRef = useRef<ExecutionEngine | null>(null);
   const [sceneState, setSceneState] = useState<SceneState | null>(null);
+  const [activeEngine, setActiveEngine] = useState<ExecutionEngine | null>(null);
+  const activeLine = useActiveLine(activeEngine);
+  const characterController = useMemo(() => new CharacterController(), []);
+  // Loops & Searching: cursors the camera follows, a live search window, and narration (see IterationDirector).
+  const iterationCamera = useMemo(() => new ArrayCameraChoreographer(), []);
+  const [iterationDirector, setIterationDirector] = useState<IterationDirector | null>(null);
+  const iterationOverlay = useIterationOverlay(iterationDirector);
+  // Sticky across edits: tweaking a Loops example's numbers keeps it a Loops run.
+  const iterationTopicRef = useRef<IterationTopic | null>(null);
+  // Stacks, Queues & Linked Lists: roles, active-end markers, drawn pointers, a camera that follows the active end (see LinearDirector).
+  const linearCamera = useMemo(() => new LinearCameraChoreographer(), []);
+  const [linearDirector, setLinearDirector] = useState<LinearDirector | null>(null);
+  const linearOverlay = useLinearOverlay(linearDirector);
+  const linearTopicRef = useRef(false);
+  // Lets the character reach for the element its line is about.
+  const characterAnchor = useMemo(() => new CharacterAnchorBridge(), []);
+  const narratorAnchor = useMemo(() => ({ controller: characterController, bridge: characterAnchor }), [characterController, characterAnchor]);
   const [isPlaying, setIsPlaying] = useState(false);
   const [animatedStepCurrent, setAnimatedStepCurrent] = useState(0);
   const [animatedStepTotal, setAnimatedStepTotal] = useState(0);
@@ -209,6 +239,11 @@ export default function Playground() {
       engineRef.current.pause();
       engineRef.current = null;
     }
+    characterController.detach();
+    characterController.clear();
+    setActiveEngine(null);
+    setIterationDirector(null);
+    setLinearDirector(null);
 
     try {
       const lexer = new Lexer(sourceCode);
@@ -244,6 +279,20 @@ export default function Playground() {
       }
 
       const engine = new ExecutionEngine();
+      if (activeExample) {
+        iterationTopicRef.current =
+          activeExample.category === 'Loops & Control' ? 'loops' : activeExample.category === 'Searching' ? 'searching' : null;
+      }
+      if (activeExample) {
+        linearTopicRef.current = ['Stacks', 'Queues', 'Linked Lists'].includes(activeExample.category);
+      }
+      if (linearTopicRef.current) {
+        setLinearDirector(new LinearDirector(engine, characterController, linearCamera));
+      }
+      const iterationTopic = iterationTopicRef.current;
+      if (iterationTopic) {
+        setIterationDirector(new IterationDirector(engine, sourceCode, iterationTopic, characterController, iterationCamera));
+      }
       const runId = runIdRef.current;
       const isCurrentRun = () => runIdRef.current === runId;
       engine.eventDispatcher.on('SCENE_LOADED', () => {
@@ -290,6 +339,8 @@ export default function Playground() {
       engineRef.current = engine;
       // Apply current speed immediately to the fresh engine
       engine.setPlaybackRate(speedMultiplier[speed]);
+      characterController.attach(engine.eventDispatcher);
+      setActiveEngine(engine);
       setIsCompiling(false);
 
       setTimeout(() => { handlePlay(); }, 100);
@@ -314,6 +365,10 @@ export default function Playground() {
     return () => cancelAnimationFrame(frame);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => () => characterController.detach(), [characterController]);
+  useEffect(() => () => iterationDirector?.dispose(), [iterationDirector]);
+  useEffect(() => () => linearDirector?.dispose(), [linearDirector]);
 
   const handleStepPrev = () => {
     if (engineRef.current) {
@@ -465,6 +520,7 @@ export default function Playground() {
                   if (errorMarkers.length > 0) setErrorMarkers([]);
                 }}
                 errorMarkers={errorMarkers}
+                activeLine={isRuntimeReady ? activeLine : null}
               />
             </div>
           </div>
@@ -543,7 +599,19 @@ export default function Playground() {
 
             {/* Scene */}
             {isRuntimeReady && (
-              <AQVECanvas key={resetKey} sceneState={sceneState} />
+              <AQVECanvas
+                key={resetKey}
+                sceneState={sceneState}
+                arrayCameraChoreographer={iterationOverlay ? iterationCamera : linearOverlay ? linearCamera : undefined}
+                iterationOverlay={iterationOverlay}
+                linearOverlay={linearOverlay}
+                narratorAnchor={linearOverlay ? narratorAnchor : undefined}
+              />
+            )}
+
+            {/* Teaching character — speaks ArrayNarrativeGenerator's real narration */}
+            {isRuntimeReady && (
+              <Character controller={characterController} anchorSource={linearOverlay ? characterAnchor : undefined} dockPosition={{ x: 48, y: 48 }} />
             )}
           </div>
 

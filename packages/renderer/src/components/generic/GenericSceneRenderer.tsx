@@ -7,7 +7,12 @@ import { EdgeRoute, PrimitiveShape, RenderableConnection, RenderableElement, Vec
 import { CameraController, CameraControllerHandle } from '../camera/CameraController';
 import { PartitionBoundary } from '../array/PartitionBoundary';
 import { SortedRegionIndicator } from '../array/SortedRegionIndicator';
-import type { ArrayCameraChoreographer } from '../array/ArrayCameraChoreographer';
+import type { CameraChoreographer } from '../camera/BaseCameraChoreographer';
+import type { IterationOverlayState } from '../iteration/IterationDirector';
+import { IterationDecorations, LiftGroup, applyIterationTreatment } from '../iteration/IterationDecorations';
+import type { LinearOverlayState } from '../linear/LinearDirector';
+import { LinearDecorations, applyLinearTreatment } from '../linear/LinearDecorations';
+import { LinearPointerLayer } from '../linear/LinearPointerLayer';
 
 export interface GenericSceneRendererProps {
   sceneState: SceneState | null;
@@ -15,7 +20,11 @@ export interface GenericSceneRendererProps {
   cameraControllerRef?: React.Ref<CameraControllerHandle>;
   onAutoFollowChange?: (autoFollow: boolean) => void;
   /** Forwarded to CameraController's AUTO_FIT branch — see ArrayCameraChoreographer.ts. */
-  arrayCameraChoreographer?: ArrayCameraChoreographer;
+  arrayCameraChoreographer?: CameraChoreographer;
+  /** Loops / Searching only: cursors, search window and state treatments from an IterationDirector. Absent = unchanged rendering. */
+  iterationOverlay?: IterationOverlayState | null;
+  /** Stacks / Queues / Linked Lists only: element roles, active-end markers and drawn pointers from a LinearDirector. Absent = unchanged rendering. */
+  linearOverlay?: LinearOverlayState | null;
 }
 
 const NODE_SHAPES: PrimitiveShape[] = ['box', 'sphere', 'cylinder'];
@@ -325,6 +334,8 @@ export const GenericSceneRenderer: React.FC<GenericSceneRendererProps> = ({
   cameraControllerRef,
   onAutoFollowChange,
   arrayCameraChoreographer,
+  iterationOverlay,
+  linearOverlay,
 }) => {
   if (!sceneState || !sceneState.elements) {
     return (
@@ -339,12 +350,21 @@ export const GenericSceneRenderer: React.FC<GenericSceneRendererProps> = ({
 
   const elements = Array.from(sceneState.elements.values());
   const nodes = elements
-    .map(toRenderableElement)
-    .filter((n): n is RenderableElement => n !== null);
+    .map((el) => {
+      const node = toRenderableElement(el);
+      if (!node) return null;
+      if (iterationOverlay) return applyIterationTreatment(node, el, iterationOverlay);
+      if (linearOverlay) return applyLinearTreatment(node, el, linearOverlay);
+      return { node, liftY: 0 };
+    })
+    .filter((n): n is { node: RenderableElement; liftY: number } => n !== null);
   const connections = elements
     .map((el) => toRenderableConnection(el, sceneState.elements))
     .filter((c): c is RenderableConnection => c !== null);
   routePointerEdges(connections, sceneState.elements);
+  // With a linear overlay, list pointers are drawn by LinearPointerLayer (they draw / retract / re-aim visibly).
+  const drawnPointers = linearOverlay ? connections.filter((c) => c.pointer) : [];
+  const plainConnections = linearOverlay ? connections.filter((c) => !c.pointer) : connections;
 
   const partitionBoundaries = (sceneState.partitionBoundaries ?? [])
     .map((b: PartitionBoundaryRegion) => ({
@@ -392,7 +412,8 @@ export const GenericSceneRenderer: React.FC<GenericSceneRendererProps> = ({
           endPosition={endPosition}
         />
       ))}
-      {connections.map((c) => (
+      {linearOverlay && <LinearPointerLayer connections={drawnPointers} />}
+      {plainConnections.map((c) => (
         <PrimitiveEdge
           key={c.id}
           from={c.from}
@@ -409,24 +430,30 @@ export const GenericSceneRenderer: React.FC<GenericSceneRendererProps> = ({
       ))}
       <LinkedListDecorations elements={elements} />
       <TreeDecorations elements={elements} />
-      {nodes.map((n) => (
-        <PrimitiveNode
-          key={n.id}
-          position={n.position}
-          rotation={n.rotation}
-          scale={n.scale}
-          shape={n.shape}
-          color={n.color}
-          emissiveColor={n.emissiveColor}
-          emissiveIntensity={n.emissiveIntensity}
-          opacity={n.opacity}
-          label={n.label}
-          value={n.value}
-          highlightState={n.highlightState}
-          tags={n.tags}
-          tagPlacement={n.tagPlacement}
-        />
-      ))}
+      {iterationOverlay && <IterationDecorations elements={elements} overlay={iterationOverlay} />}
+      {linearOverlay && <LinearDecorations elements={sceneState.elements} overlay={linearOverlay} />}
+      {nodes.map(({ node: n, liftY }) => {
+        const primitive = (
+          <PrimitiveNode
+            key={n.id}
+            position={n.position}
+            rotation={n.rotation}
+            scale={n.scale}
+            shape={n.shape}
+            color={n.color}
+            emissiveColor={n.emissiveColor}
+            emissiveIntensity={n.emissiveIntensity}
+            opacity={n.opacity}
+            label={n.label}
+            value={n.value}
+            highlightState={n.highlightState}
+            tags={n.tags}
+            tagPlacement={n.tagPlacement}
+          />
+        );
+        // Only iteration / linear topics get the lift wrapper, so every other scene's tree is unchanged.
+        return iterationOverlay || linearOverlay ? <LiftGroup key={n.id} liftY={liftY}>{primitive}</LiftGroup> : primitive;
+      })}
     </>
   );
 };

@@ -19,6 +19,39 @@ vi.mock('@aqvl/renderer', () => ({
       data-element-count={sceneState ? sceneState.elements.size : -1}
     />
   ),
+  // Narrator, live-line and Loops/Searching overlay plumbing: inert stand-ins.
+  Character: () => null,
+  CharacterController: class {
+    attach() {}
+    detach() {}
+    clear() {}
+    say() {}
+  },
+  ArrayCameraChoreographer: class {},
+  IterationDirector: class {
+    getOverlay() {
+      return { cursors: [], windows: [] };
+    }
+    subscribe() {
+      return () => {};
+    }
+    dispose() {}
+  },
+  useActiveLine: () => null,
+  useIterationOverlay: () => null,
+  // Stacks / Queues / Linked Lists overlay plumbing.
+  CharacterAnchorBridge: class {},
+  LinearCameraChoreographer: class {},
+  LinearDirector: class {
+    getOverlay() {
+      return { roles: {}, ends: [] };
+    }
+    subscribe() {
+      return () => {};
+    }
+    dispose() {}
+  },
+  useLinearOverlay: () => null,
 }));
 
 import Playground from '../../src/pages/Playground';
@@ -91,7 +124,7 @@ describe('Playground compile & run flow', () => {
     await waitFor(
       () => {
         expect(editor.value).not.toBe('');
-        expect(editor.value).toMatch(/ArrayReversal/i);
+        expect(editor.value).toMatch(/SCENE ArrayReverse\b/);
       },
       { timeout: 2000 }
     );

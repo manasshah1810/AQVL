@@ -2,7 +2,7 @@ import React, { forwardRef, useImperativeHandle, useRef, useState, useEffect } f
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { SceneState, CameraFrameState } from '@aqvl/runtime';
-import type { ArrayCameraChoreographer } from '../array/ArrayCameraChoreographer';
+import type { CameraChoreographer } from './BaseCameraChoreographer';
 
 export interface CameraControllerProps {
   sceneState: SceneState | null;
@@ -14,7 +14,7 @@ export interface CameraControllerProps {
    * attention nudge instead of using the plain array-centroid/span framing directly. Absent by
    * default so every non-array structure (and every existing caller) is unaffected.
    */
-  arrayCameraChoreographer?: ArrayCameraChoreographer;
+  arrayCameraChoreographer?: CameraChoreographer;
 }
 
 export interface Vec3Like {

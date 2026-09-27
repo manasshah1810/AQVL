@@ -94,7 +94,7 @@ export class ExecutionEngine {
     this.relationshipManager = new RelationshipManager(this.eventDispatcher);
     this.layoutManager = new LayoutManager(this.sceneManager, this.relationshipManager);
     this.timelineEngine = this.headless ? new InstantTimelineEngine() : new TimelineEngine();
-    this.animationScheduler = new AnimationScheduler(this.timelineEngine);
+    this.animationScheduler = new AnimationScheduler(this.timelineEngine, this.eventDispatcher);
     this.lifecycleManager = new LifecycleManager(this.sceneManager);
     this.animationController = new AnimationController(
       this.animationScheduler,
@@ -284,6 +284,16 @@ export class ExecutionEngine {
   /** Current VM state (call stack, globals, resolved positions) for the loaded program, or null before `loadProgram`. */
   public getVMState() {
     return this.vm?.getState() ?? null;
+  }
+
+  /** Every user variable visible from the VM's current scope (loop counters included), innermost binding winning — {} before `loadProgram`. */
+  public getVisibleVariables(): Record<string, unknown> {
+    return this.vm?.getVisibleVariables() ?? {};
+  }
+
+  /** The loaded program's instruction list (e.g. for resolving a pc from `INSTRUCTION_START` to its source `lineNumber`), or null before `loadProgram`. */
+  public getProgramInstructions(): ReadonlyArray<VMInstruction> | null {
+    return this.program?.instructions ?? null;
   }
 
   public getProgress(): number {

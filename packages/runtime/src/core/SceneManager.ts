@@ -6,12 +6,14 @@ import { EventDispatcher } from './EventDispatcher';
 export class SceneManager {
   private elements: Map<string, SceneElement> = new Map();
   private sceneGraph: SceneElement[] = [];
+  private revision = 0;
 
   constructor(private eventDispatcher: EventDispatcher) {}
 
   public loadScene(objects: AQIRObject[]): void {
     this.elements.clear();
     this.sceneGraph = [];
+    this.revision++;
 
     const neutralToken = getSemanticColorToken('NEUTRAL');
 
@@ -204,6 +206,7 @@ export class SceneManager {
     if (!this.elements.has(element.id)) {
       this.elements.set(element.id, element);
       this.sceneGraph.push(element);
+      this.revision++;
     }
   }
 
@@ -211,6 +214,17 @@ export class SceneManager {
     if (this.elements.has(id)) {
       this.elements.delete(id);
       this.sceneGraph = this.sceneGraph.filter(el => el.id !== id);
+      this.revision++;
     }
+  }
+
+  /** Bumped on every add/remove/load; lets callers cache work derived from the graph's shape. */
+  public getRevision(): number {
+    return this.revision;
+  }
+
+  /** Call after mutating an element's structural fields in place (e.g. an edge's label), so derived caches rebuild. */
+  public markChanged(): void {
+    this.revision++;
   }
 }

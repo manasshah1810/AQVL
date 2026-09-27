@@ -33,6 +33,7 @@
  */
 import { AlgorithmContext } from './AlgorithmContext';
 import { GenericActionInstruction, getSemanticColorToken, RuntimeError } from '@aqvl/shared';
+import { AnticipationAnimation, MoveAnimation } from '../animations';
 
 /** A tree misuse at run time: NULL dereference, use after free, empty queue, ... */
 export class TreeError extends RuntimeError {
@@ -78,6 +79,14 @@ interface FrameOptions {
   temp?: Record<string, string | null>;
   /** Nodes a pointer write just cut out of the tree — they move to heap memory. */
   bypassed?: string[];
+  /**
+   * Newly pushed / enqueued container items: shown full size at their slot
+   * plus this offset (above a stack's top, past a queue's rear), and left
+   * there — the caller animates their arrival.
+   */
+  enter?: { ids: string[]; offset: { x: number; y: number; z: number } };
+  /** Easing for this frame's glide to the new layout (default easeInOutCubic). */
+  easing?: string;
   duration?: number;
 }
 
@@ -85,6 +94,10 @@ const EDGE_COLOR = '#cbd5e1';
 const LEAK_COLOR = '#ef4444';
 const TRANSIENT_STATES = new Set(['EVALUATING', 'TRAVERSING', 'MODIFYING', 'ACTIVE']);
 const STEP_MS = 480;
+/** How far a pushed / popped container item travels past the top / rear / front as it arrives or leaves. */
+const CONTAINER_TRAVEL = 1.9;
+/** How far it winds up (back the way it came) before moving. */
+const WIND_UP = 0.22;
 const MOVE_MS = 520;
 const LABEL: Record<Side, string> = { left: 'L', right: 'R' };
 
@@ -636,6 +649,14 @@ export class TreeEngine {
       const el = ctx.sceneManager.getElement(id) as any;
       if (el?.worldTarget) Object.assign(el.position, el.worldTarget);
     }
+    const entering = new Set(o.enter?.ids ?? []);
+    for (const id of entering) {
+      const el = ctx.sceneManager.getElement(id) as any;
+      if (!el?.worldTarget) continue;
+      const off = o.enter!.offset;
+      el.position = { x: el.worldTarget.x + off.x, y: el.worldTarget.y + off.y, z: el.worldTarget.z + off.z };
+      el.scale = { x: 1, y: 1, z: 1 };
+    }
 
     const snapshot = ctx.stateManager?.captureSnapshot(graph, 'Tree', ctx.scheduler.getCurrentTime());
     const logs = o.logs ?? [];
@@ -654,11 +675,11 @@ export class TreeEngine {
     const duration = o.duration ?? STEP_MS;
     let moved = false;
     for (const el of graph) {
-      if (!this.isTreeElement(el)) continue;
+      if (!this.isTreeElement(el) || entering.has(el.id)) continue;
       const t = el.worldTarget;
       if (!t) continue;
       if (Math.abs(t.x - el.position.x) + Math.abs(t.y - el.position.y) + Math.abs(t.z - el.position.z) < 1e-3) continue;
-      ctx.scheduler.enqueue({ targets: el.position, x: t.x, y: t.y, z: t.z, duration, easing: 'easeInOutCubic' });
+      ctx.scheduler.enqueue({ targets: el.position, x: t.x, y: t.y, z: t.z, duration, easing: o.easing ?? 'easeInOutCubic' });
       moved = true;
     }
     for (const id of o.grow ?? []) {
@@ -1035,8 +1056,9 @@ export class TreeEngine {
       opacity: 1,
     } as any);
     const where = op === 'ENQUEUE' ? 'joins the rear of' : 'goes on top of';
+    const entry = this.containerTravel(ctx, c, 'enter');
     this.frame(ctx, {
-      grow: [id],
+      enter: { ids: [id], offset: entry },
       nodes: { [id]: 'MODIFYING', ...(isRef ? { [value as string]: 'TRAVERSING' } : {}) },
       logs: [{
         keyword: op,
@@ -1044,6 +1066,62 @@ export class TreeEngine {
         kind: 'operation',
       }],
     });
+    this.landItem(ctx, id, entry);
+  }
+
+  /**
+   * Which way an item travels as it arrives or leaves: a stack's items drop
+   * onto / lift off its top (up the column, or past the right end of a row
+   * when a tree program draws stacks as rows); a queue's join past its rear
+   * (right) and leave past its front (left).
+   */
+  private containerTravel(ctx: AlgorithmContext, c: any, phase: 'enter' | 'leave'): { x: number; y: number; z: number } {
+    const column = c.kind === 'STACK' && !this.hasAnyTree(ctx);
+    if (column) return { x: 0, y: CONTAINER_TRAVEL, z: 0 };
+    if (c.kind === 'STACK' || phase === 'enter') return { x: CONTAINER_TRAVEL, y: 0, z: 0 };
+    return { x: -CONTAINER_TRAVEL, y: 0, z: 0 };
+  }
+
+  /**
+   * A pushed / enqueued item arriving with weight: a short wind-up (it rises
+   * a little further back the way it came, swelling slightly), then it
+   * falls into its slot with MoveAnimation's elastic settle, so it lands
+   * and bounces instead of appearing.
+   */
+  private landItem(ctx: TreeContext, id: string, from: { x: number; y: number; z: number }): void {
+    const el = ctx.sceneManager.getElement(id) as any;
+    const target = el?.worldTarget;
+    if (!el || !target) return;
+    const len = Math.hypot(from.x, from.y, from.z) || 1;
+    const nudge = { x: (from.x / len) * WIND_UP, y: (from.y / len) * WIND_UP, z: 0 };
+    AnticipationAnimation.applyAnticipation(ctx.scheduler, [el], 'INSERTION', { customNudge: nudge });
+    // The move starts where the wind-up ends (tweens read their start value when scheduled).
+    el.position = { x: el.position.x + nudge.x, y: el.position.y + nudge.y, z: el.position.z };
+    new MoveAnimation(ctx).execute({ targetIds: [id], position: { x: target.x, y: target.y, z: target.z } });
+    ctx.scheduler.enqueue({ targets: el.scale, x: 1, y: 1, z: 1, duration: 260, easing: 'easeOutBack' });
+    ctx.scheduler.commitGroup(true);
+    el.position = { ...target };
+  }
+
+  /**
+   * A popped / dequeued item leaving with weight: it winds up (sinks back
+   * into the stack / leans away from the exit), then is flung out past the
+   * top / front, shrinking and fading as it goes.
+   */
+  private launchItem(ctx: TreeContext, item: any, to: { x: number; y: number; z: number }): void {
+    const len = Math.hypot(to.x, to.y, to.z) || 1;
+    const nudge = { x: -(to.x / len) * WIND_UP, y: -(to.y / len) * WIND_UP, z: 0 };
+    AnticipationAnimation.applyAnticipation(ctx.scheduler, [item], 'DELETION', { customNudge: nudge });
+    item.position = { x: item.position.x + nudge.x, y: item.position.y + nudge.y, z: item.position.z };
+    new MoveAnimation(ctx).execute({
+      targetIds: [item.id],
+      position: { x: item.position.x - nudge.x + to.x, y: item.position.y - nudge.y + to.y, z: item.position.z },
+      duration: 340,
+      easing: 'easeInBack',
+    });
+    ctx.scheduler.enqueue({ targets: item.scale, x: 0.55, y: 0.55, z: 0.55, duration: 380, easing: 'easeInQuad' });
+    ctx.scheduler.enqueue({ targets: item, opacity: 0, duration: 380, easing: 'easeInQuad' });
+    ctx.scheduler.commitGroup(true);
   }
 
   /**
@@ -1092,10 +1170,15 @@ export class TreeEngine {
       }],
     });
     if (!removes) return;
-    ctx.scheduler.enqueue({ targets: item.scale, x: 0, y: 0, z: 0, duration: 300, easing: 'easeInBack' });
-    ctx.scheduler.commitGroup(true);
+    this.launchItem(ctx, item, this.containerTravel(ctx, c, 'leave'));
     ctx.sceneManager.removeElement(item.id);
-    this.frame(ctx, { nodes: refNode ? { [refNode]: 'TRAVERSING' } : {}, temp, duration: 320 });
+    // The rest of a queue shuffles forward and settles with the same elastic weight.
+    this.frame(ctx, {
+      nodes: refNode ? { [refNode]: 'TRAVERSING' } : {},
+      temp,
+      duration: isStack ? 320 : 560,
+      easing: isStack ? undefined : 'easeOutElastic(1, .8)',
+    });
   }
 
   /** `SIZE s` / `IS_EMPTY s` as statements: report to the console. */

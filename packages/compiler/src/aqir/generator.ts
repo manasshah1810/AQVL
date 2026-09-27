@@ -1615,7 +1615,23 @@ export class AQIRGenerator {
     return (decl as { initialElements?: unknown[] }).initialElements?.length ?? 0;
   }
 
+  /**
+   * Emits one statement's instructions. Anything it emits without its own
+   * line (PUSH, ENQUEUE, INSERT_TAIL, FREE, ...) is stamped with the
+   * statement's line, so the editor's playhead lands on every step.
+   */
   private generateInstruction(stmt: StatementNode): void {
+    const start = this.instructionList.length;
+    this.generateInstructionBody(stmt);
+    const line = (stmt as any).pos?.line;
+    if (typeof line !== 'number') return;
+    for (let pc = start; pc < this.instructionList.length; pc++) {
+      const instr = this.instructionList[pc] as any;
+      if (instr.lineNumber === undefined) instr.lineNumber = line;
+    }
+  }
+
+  private generateInstructionBody(stmt: StatementNode): void {
     switch (stmt.type) {
       case 'CompareNode': {
         const leftId = this.resolveExpressionId(stmt.left);
@@ -1661,6 +1677,8 @@ export class AQIRGenerator {
           action: 'HIGHLIGHT_OBJECT',
           targetId: this.resolveExpressionId((stmt as any).target),
           color: (stmt as any).color.value,
+          // So the editor playhead / live-line consumers land on the HIGHLIGHT line itself.
+          lineNumber: stmt.pos.line,
         } as HighlightObjectInstruction);
         break;
       case 'WaitNode':

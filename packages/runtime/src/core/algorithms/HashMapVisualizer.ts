@@ -259,7 +259,7 @@ export class HashMapVisualizer implements AlgorithmHandler {
     }
 
     const entryEl: any = {
-      id: `hashmap_entry_${name}_${key}_${Date.now()}`,
+      id: `hashmap_entry_${name}_${typeof key}_${key}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
       type: 'box',
       originalType: 'HASHMAP_ENTRY',
       logicalParent: name,

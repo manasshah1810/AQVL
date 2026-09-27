@@ -1,20 +1,35 @@
 import React, { useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
+import { Text } from '@react-three/drei';
 import { getUnifiedMaterialConfig } from '@aqvl/shared';
 import { Vec3 } from '../generic/types';
+
+/**
+ * 'strip' (default): Sorting's thin floor progress strip — unchanged.
+ * 'band': a wider translucent slab under a live index range, for regions that
+ * shrink rather than grow (binary search's [low .. high] window).
+ */
+export type RegionIndicatorVariant = 'strip' | 'band';
 
 export interface SortedRegionIndicatorProps {
   /** Live position of the array element at the sorted region's start index. */
   startPosition: Vec3;
   /** Live position of the array element at the sorted region's end index. */
   endPosition: Vec3;
+  /** Defaults to 'strip', Sorting's original look. */
+  variant?: RegionIndicatorVariant;
+  /** Semantic palette state for the colour. Defaults to 'SUCCESS' (sorted = green). */
+  tone?: string;
+  /** Optional caption under the region (e.g. "low = 2 … high = 5"). */
+  label?: string;
 }
 
-const STRIP_Y_OFFSET = -0.52;
-const STRIP_DEPTH = 0.15;
-const STRIP_HEIGHT = 0.03;
-const EDGE_MARGIN = 0.5;
+const VARIANT_GEOMETRY: Record<RegionIndicatorVariant, { yOffset: number; depth: number; height: number; margin: number; opacity: number; emissive: number }> = {
+  strip: { yOffset: -0.52, depth: 0.15, height: 0.03, margin: 0.5, opacity: 0.9, emissive: 0.8 },
+  band: { yOffset: -0.56, depth: 1.5, height: 0.06, margin: 0.62, opacity: 0.35, emissive: 1.1 },
+};
+
 const LERP_RATE = 4;
 
 /**
@@ -29,19 +44,24 @@ const LERP_RATE = 4;
 export const SortedRegionIndicator: React.FC<SortedRegionIndicatorProps> = ({
   startPosition,
   endPosition,
+  variant = 'strip',
+  tone = 'SUCCESS',
+  label,
 }) => {
+  const geometry = VARIANT_GEOMETRY[variant];
+  const labelRef = useRef<THREE.Group>(null);
   const meshRef = useRef<THREE.Mesh>(null);
   const currentLeft = useRef<number | null>(null);
   const currentRight = useRef<number | null>(null);
   const currentY = useRef<number | null>(null);
   const currentZ = useRef<number | null>(null);
 
-  const targetLeft = Math.min(startPosition.x, endPosition.x) - EDGE_MARGIN;
-  const targetRight = Math.max(startPosition.x, endPosition.x) + EDGE_MARGIN;
-  const targetY = startPosition.y + STRIP_Y_OFFSET;
+  const targetLeft = Math.min(startPosition.x, endPosition.x) - geometry.margin;
+  const targetRight = Math.max(startPosition.x, endPosition.x) + geometry.margin;
+  const targetY = startPosition.y + geometry.yOffset;
   const targetZ = startPosition.z;
 
-  const matConfig = getUnifiedMaterialConfig({ category: 'EDGE', state: 'SUCCESS', opacity: 0.9 });
+  const matConfig = getUnifiedMaterialConfig({ category: 'EDGE', state: tone, opacity: geometry.opacity });
   const color = `#${matConfig.color.getHexString()}`;
   const emissiveColor = `#${matConfig.emissive.getHexString()}`;
 
@@ -64,22 +84,34 @@ export const SortedRegionIndicator: React.FC<SortedRegionIndicatorProps> = ({
       meshRef.current.position.set(centerX, currentY.current, currentZ.current);
       meshRef.current.scale.set(width, 1, 1);
     }
+    if (labelRef.current) {
+      labelRef.current.position.set(centerX, currentY.current - 0.32, currentZ.current + geometry.depth / 2);
+    }
   });
 
   return (
     // No castShadow/receiveShadow — an informational floor strip, not scene geometry.
     // depthWrite disabled for the same reason as PartitionBoundary's planes: correct
     // translucent compositing regardless of draw order relative to the array elements above it.
-    <mesh ref={meshRef} position={[(targetLeft + targetRight) / 2, targetY, targetZ]} renderOrder={1}>
-      <boxGeometry args={[1, STRIP_HEIGHT, STRIP_DEPTH]} />
-      <meshStandardMaterial
-        color={color}
-        emissive={emissiveColor}
-        emissiveIntensity={0.8}
-        transparent
-        opacity={0.9}
-        depthWrite={false}
-      />
-    </mesh>
+    <>
+      <mesh ref={meshRef} position={[(targetLeft + targetRight) / 2, targetY, targetZ]} renderOrder={1}>
+        <boxGeometry args={[1, geometry.height, geometry.depth]} />
+        <meshStandardMaterial
+          color={color}
+          emissive={emissiveColor}
+          emissiveIntensity={geometry.emissive}
+          transparent
+          opacity={geometry.opacity}
+          depthWrite={false}
+        />
+      </mesh>
+      {label && (
+        <group ref={labelRef} position={[(targetLeft + targetRight) / 2, targetY - 0.32, targetZ + geometry.depth / 2]}>
+          <Text fontSize={0.26} color={color} outlineWidth={0.015} outlineColor="#0b1120" anchorX="center" anchorY="middle">
+            {label}
+          </Text>
+        </group>
+      )}
+    </>
   );
 };

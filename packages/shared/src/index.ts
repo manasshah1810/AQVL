@@ -59,6 +59,21 @@ export type {
 } from './theme/materialSystem';
 
 export {
+  BASE_SEMANTIC_TREATMENTS,
+  createTreatment,
+  getBaseSemanticTreatment,
+  NESTING_DEPTH_TOKENS,
+  getNestingDepthToken,
+} from './theme/visualTokens';
+
+export type {
+  BaseSemanticState,
+  VisualTreatment,
+  TreatmentOverrides,
+  NestingDepthToken,
+} from './theme/visualTokens';
+
+export {
   ANTICIPATION_DEFAULT_DURATION,
   ANTICIPATION_DEFAULT_EASING,
   ANTICIPATION_PALETTE,

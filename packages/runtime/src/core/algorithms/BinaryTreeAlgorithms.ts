@@ -76,6 +76,7 @@ export class BinaryTreeAlgorithms implements AlgorithmHandler {
           e.properties.label = 'L';
         }
       });
+      context.sceneManager.markChanged();
       
       // We also trigger a layout update because the structure changed
       context.scheduler.enqueue({ targets: {}, duration: 1, complete: () => {
