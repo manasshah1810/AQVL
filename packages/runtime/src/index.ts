@@ -12,7 +12,20 @@ export type {
   SetScaleInstruction,
   GeometryInstruction,
   CameraFrameState,
+  Operand,
+  Address,
+  PrimitiveOp,
+  MutateOp,
+  TransformOp,
+  RelateOp,
+  AnnotateOp,
+  EmitOp,
+  InvokeOp,
+  StepInstruction,
 } from './aqir/types';
+// --- AQIR primitives (docs/design/aqir-primitives-spec.md) and the Phase 2.1 legacy bridge ---
+export { PrimitiveKind, PRIMITIVE_VERBS, isStepInstruction } from './aqir/types';
+export { lowerStep, UnsupportedStepError } from './aqir/legacyBridge';
 export { SceneManager } from './core/SceneManager';
 export { StateManager } from './core/StateManager';
 export { ExecutionEngine, MaxIterationsExceededError, DEFAULT_MAX_EXECUTION_ITERATIONS } from './core/ExecutionEngine';

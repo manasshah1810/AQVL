@@ -12,7 +12,7 @@
  * enough to observe every frame it schedules.
  */
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { compile } from '../utils/testHelpers';
+import { compileLowered } from '../utils/testHelpers';
 import { TrieVisualizer } from '../../packages/runtime/src/core/algorithms/TrieVisualizer';
 import { SceneManager } from '../../packages/runtime/src/core/SceneManager';
 import { LayoutManager } from '../../packages/runtime/src/core/LayoutManager';
@@ -107,7 +107,7 @@ function wordEndLabels(sceneManager: SceneManager, name: string): string[] {
 
 describe('Trie built-ins: parsing to GENERIC_ACTION', () => {
   it('parses TRIE name = ["cat", "car"] into TRIE_INIT + one TRIE_INSERT per word', () => {
-    const instructions = compile(trieSource('t', ['cat', 'car'], []));
+    const instructions = compileLowered(trieSource('t', ['cat', 'car'], []));
     const actions = genericActions(instructions);
     expect(actions.map((a) => a.actionName)).toEqual(['TRIE_INIT', 'TRIE_INSERT', 'TRIE_INSERT']);
     expect(actions[0]).toMatchObject({ actionName: 'TRIE_INIT', args: ['t'] });
@@ -116,25 +116,25 @@ describe('Trie built-ins: parsing to GENERIC_ACTION', () => {
   });
 
   it('parses TRIE_SEARCH as a GENERIC_ACTION targeting the trie and word', () => {
-    const instructions = compile(trieSource('t', ['cat'], ['TRIE_SEARCH t cat']));
+    const instructions = compileLowered(trieSource('t', ['cat'], ['TRIE_SEARCH t cat']));
     const actions = genericActions(instructions);
     expect(actions[actions.length - 1]).toMatchObject({ actionName: 'TRIE_SEARCH', args: ['t', 'cat'] });
   });
 
   it('parses TRIE_AUTOCOMPLETE as a GENERIC_ACTION targeting the trie and prefix', () => {
-    const instructions = compile(trieSource('t', ['cat', 'car'], ['TRIE_AUTOCOMPLETE t ca']));
+    const instructions = compileLowered(trieSource('t', ['cat', 'car'], ['TRIE_AUTOCOMPLETE t ca']));
     const actions = genericActions(instructions);
     expect(actions[actions.length - 1]).toMatchObject({ actionName: 'TRIE_AUTOCOMPLETE', args: ['t', 'ca'] });
   });
 
   it('parses TRIE_DELETE and TRIE_STARTSWITH runtime ops in sequence', () => {
-    const instructions = compile(trieSource('t', ['cat'], ['TRIE_DELETE t cat', 'TRIE_STARTSWITH t ca']));
+    const instructions = compileLowered(trieSource('t', ['cat'], ['TRIE_DELETE t cat', 'TRIE_STARTSWITH t ca']));
     const actionNames = genericActions(instructions).map((a) => a.actionName);
     expect(actionNames).toEqual(['TRIE_INIT', 'TRIE_INSERT', 'TRIE_DELETE', 'TRIE_STARTSWITH']);
   });
 
   it('parses a TRIE declared with no initial words', () => {
-    const instructions = compile(trieSource('empty', [], ['TRIE_INSERT empty hello']));
+    const instructions = compileLowered(trieSource('empty', [], ['TRIE_INSERT empty hello']));
     const actionNames = genericActions(instructions).map((a) => a.actionName);
     expect(actionNames).toEqual(['TRIE_INIT', 'TRIE_INSERT']);
   });

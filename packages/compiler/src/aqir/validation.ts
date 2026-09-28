@@ -1,20 +1,24 @@
 /**
- * Static validation for VM-mode AQIR instruction streams.
+ * Static validation for AQIR instruction streams.
  *
- * These checks run over a flat `Instruction[]` (see ./InstructionSet) before
- * a program is handed to a runtime — they catch structurally invalid jumps,
- * calls to undeclared functions, and unbalanced scope/call nesting.
+ * These checks run over a flat instruction array (see ./InstructionSet)
+ * before a program is handed to a runtime — they catch structurally invalid
+ * jumps, calls to undeclared functions, unbalanced scope/call nesting, and
+ * malformed STEPs (docs/design/aqir-primitives-spec.md §3.3).
  *
- * Design-only: not yet called from the Optimizer or generator pipeline.
+ * Not called from the compile() pipeline itself; the test suite runs it over
+ * every compiled example.
  */
 
-import { AQIROpcode, Instruction } from './InstructionSet';
+import { AQIROpcode, PRIMITIVE_VERBS, Instruction } from './InstructionSet';
 import type {
   JumpInstruction,
   JumpIfFalseInstruction,
   CallInstruction,
   RetInstruction,
   PushScopeInstruction,
+  PrimitiveOp,
+  StepInstruction,
 } from './InstructionSet';
 
 /** Minimal function signature info needed to validate a CALL site. Parameter *type* checking is Phase 2. */
@@ -65,6 +69,73 @@ export function validateCallSignature(
   return args.length === signature.params.length;
 }
 
+/** Fields each op must carry, by `kind` and then `verb` ('*' = every verb of the kind). */
+const REQUIRED_FIELDS: Record<string, Record<string, string[]>> = {
+  MUTATE: { set: ['target', 'value'], exchange: ['target', 'with'], create: [], destroy: ['target'] },
+  TRANSFORM: { arrange: ['target', 'strategy', 'params'], reflow: [], place: ['target', 'x', 'y', 'z'], view: ['mode', 'params'], orient: ['target', 'x', 'y', 'z'], scale: ['target', 'x', 'y', 'z'] },
+  RELATE: { '*': [] },
+  ANNOTATE: { focus: ['targets'], contrast: ['targets'], state: ['targets', 'state'], boundary: ['collection'], region: ['collection', 'range', 'state'] },
+  EMIT: { log: ['parts'] },
+  INVOKE: { '*': ['procedure', 'args'] },
+};
+
+/** Addresses anywhere in `op` (targets, sources, ...) that refer to an op created in the same step. */
+function createdReferences(op: PrimitiveOp): number[] {
+  const refs: number[] = [];
+  const visit = (value: unknown) => {
+    if (value !== null && typeof value === 'object' && (value as { at?: unknown }).at === 'created') {
+      refs.push((value as { op: number }).op);
+    }
+  };
+  const any = op as unknown as Record<string, unknown>;
+  for (const key of ['target', 'with', 'source']) visit(any[key]);
+  if (Array.isArray(any.targets)) any.targets.forEach(visit);
+  return refs;
+}
+
+/**
+ * Checks one STEP against spec §3.3: known op kinds and verbs with their
+ * required fields, INVOKE and TRANSFORM each alone in their step, and every
+ * `{ at: 'created', op }` address naming an earlier MUTATE create of the
+ * same step. Returns an empty list for a well-formed step.
+ */
+export function validateStep(step: StepInstruction): string[] {
+  const problems: string[] = [];
+  if (!Array.isArray(step.ops)) return ['STEP has no ops array.'];
+
+  step.ops.forEach((op, n) => {
+    const kind = (op as { kind?: unknown }).kind;
+    const fields = typeof kind === 'string' ? REQUIRED_FIELDS[kind] : undefined;
+    if (!fields) {
+      problems.push(`op ${n} has unknown kind "${String(kind)}".`);
+      return;
+    }
+    if (kind === 'INVOKE' || kind === 'TRANSFORM') {
+      if (step.ops.length > 1) problems.push(`op ${n}: ${kind} must be the only op in its step.`);
+    }
+    let required = fields['*'];
+    if (kind !== 'INVOKE') {
+      const verb = (op as { verb?: unknown }).verb;
+      const verbs = PRIMITIVE_VERBS[kind as keyof typeof PRIMITIVE_VERBS] as readonly string[];
+      if (typeof verb !== 'string' || !verbs.includes(verb)) {
+        problems.push(`op ${n}: ${kind} has unknown verb "${String(verb)}" (expected one of ${verbs.join(', ')}).`);
+        return;
+      }
+      required = fields[verb] ?? fields['*'];
+    }
+    for (const field of required) {
+      if (!Object.prototype.hasOwnProperty.call(op, field)) problems.push(`op ${n}: ${kind} is missing "${field}".`);
+    }
+    for (const ref of createdReferences(op)) {
+      const creator = step.ops[ref] as { kind?: string; verb?: string } | undefined;
+      if (!(ref < n && creator?.kind === 'MUTATE' && creator.verb === 'create')) {
+        problems.push(`op ${n}: refers to created op ${ref}, which is not an earlier MUTATE create in this step.`);
+      }
+    }
+  });
+  return problems;
+}
+
 /**
  * Walks the full instruction stream and reports structural problems:
  *
@@ -78,6 +149,7 @@ export function validateCallSignature(
  * - Dead code: any instruction after an unconditional JUMP or RET that is
  *   not itself the target of some earlier/later jump (unreachable unless a
  *   jump lands on it).
+ * - Malformed STEPs (see `validateStep`).
  *
  * This is a static, single-pass structural check — it does not simulate
  * control flow (no cycle detection through JUMP targets), so it cannot
@@ -160,6 +232,13 @@ export function validateInstructionSequence(
           });
         } else {
           openScopes.pop();
+        }
+        break;
+      }
+
+      case AQIROpcode.STEP: {
+        for (const problem of validateStep(instr as unknown as StepInstruction)) {
+          issues.push({ severity: 'error', message: `STEP at index ${index}: ${problem}`, index });
         }
         break;
       }

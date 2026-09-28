@@ -8,6 +8,7 @@
  * covered by tests/integration/spatial-e2e.test.ts).
  */
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { legacyView } from '../utils/testHelpers';
 import { compile } from '../../packages/compiler/src';
 import { createVM } from '../../packages/runtime/src';
 import type { ResolvedPosition } from '../../packages/runtime/src';
@@ -221,7 +222,7 @@ SEQUENCE
 END
 `;
     const aqir = compile(source);
-    const layoutInstr = aqir.instructions.find((i: any) => i.action === 'SET_LAYOUT_STRATEGY' && i.targetId === 'tree1') as any;
+    const layoutInstr = legacyView(aqir.instructions).find((i: any) => i.action === 'SET_LAYOUT_STRATEGY' && i.targetId === 'tree1') as any;
     expect(layoutInstr).toBeDefined();
     expect(layoutInstr.strategy).toBe('HIERARCHY');
     expect(layoutInstr.params).toMatchObject({ levelGap: 2, siblingGap: 1 });
@@ -264,7 +265,7 @@ SEQUENCE
 END
 `;
     const aqir = compile(source);
-    const layoutInstr = aqir.instructions.find((i: any) => i.action === 'SET_LAYOUT_STRATEGY' && i.targetId === 'chain') as any;
+    const layoutInstr = legacyView(aqir.instructions).find((i: any) => i.action === 'SET_LAYOUT_STRATEGY' && i.targetId === 'chain') as any;
 
     const { elements, idForValue } = buildRealBST('chain', [1, 2, 3, 4, 5]);
     const engine = new LayoutEngine();
@@ -490,7 +491,7 @@ END
     // static compiled objects (see buildRealBST above), so verify the exact
     // compiled SET_LAYOUT_STRATEGY params against a real BST built the same
     // way the HIERARCHY-only tests above do.
-    const layoutInstr = aqir.instructions.find((i: any) => i.action === 'SET_LAYOUT_STRATEGY' && i.targetId === 'bstTree') as any;
+    const layoutInstr = legacyView(aqir.instructions).find((i: any) => i.action === 'SET_LAYOUT_STRATEGY' && i.targetId === 'bstTree') as any;
     expect(layoutInstr.strategy).toBe('HIERARCHY');
     const { elements, idForValue } = buildRealBST('bstTree', [50, 30, 70]);
     const engine = new LayoutEngine();

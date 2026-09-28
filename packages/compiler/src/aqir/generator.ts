@@ -34,17 +34,7 @@ import {
   PropertyNode,
   TupleLiteralNode,
 } from '../ast/types';
-import type {
-  AQIRObject,
-  AQIRInstruction,
-  CompareObjectsInstruction,
-  SwapObjectsInstruction,
-  HighlightObjectInstruction,
-  WaitInstruction,
-  LinkObjectsInstruction,
-  GenericActionInstruction,
-  SetStateInstruction,
-} from '@aqvl/shared';
+import type { AQIRObject } from '@aqvl/shared';
 import { getSemanticColorToken, OutOfBoundsError } from '@aqvl/shared';
 import type { AQIRProgram, VMInstruction, SourceLocation } from './types';
 import {
@@ -57,13 +47,13 @@ import {
   type PopScopeInstruction,
   type SetVarInstruction,
   type AQIRValue,
-  type SetLayoutStrategyInstruction,
-  type SetPositionInstruction,
-  type ComputeLayoutInstruction,
   type SetCameraInstruction,
   type LayoutStrategyName,
   type GeometryParamValue,
+  type PrimitiveOp,
+  type StepInstruction,
 } from './InstructionSet';
+import * as macro from './macros';
 import { FunctionTable } from '../codegen/functionTable';
 import { EnvironmentBuilder } from '../codegen/environment';
 import { LayoutTracker } from '../codegen/layoutTracker';
@@ -80,8 +70,8 @@ export class AQIRGenerator {
   // Maps logical identifier (e.g. "arr[0]") to physical object ID (e.g. "obj_001")
   private symbolMap = new Map<string, string>();
   private generatedObjects: AQIRObject[] = [];
-  // BST/Tree initial-value INSERT instructions to be prepended before the user sequence
-  private pendingInitInstructions: AQIRInstruction[] = [];
+  // Hash-map / trie builder steps (HASHMAP_INIT, TRIE_INSERT, ...) prepended before the user sequence
+  private pendingInitInstructions: StepInstruction[] = [];
 
   // --- VM-mode code generation state ---
   private instructionList: VMInstruction[] = [];
@@ -170,6 +160,15 @@ export class AQIRGenerator {
   private emit(instruction: VMInstruction): number {
     this.instructionList.push(instruction);
     return this.instructionList.length - 1;
+  }
+
+  /**
+   * Appends one STEP (a visible beat) of primitive ops — the expansion of a
+   * statement macro (./macros). A step without a `lineNumber` is stamped
+   * with its statement's line by `generateInstruction`.
+   */
+  private emitStep(ops: PrimitiveOp[], meta: macro.StepMeta = {}): number {
+    return this.emit(macro.step(ops, meta));
   }
 
   /** Generates a unique label name, e.g. for a branch target that isn't known yet. */
@@ -480,14 +479,10 @@ export class AQIRGenerator {
       // `curr.next = prev`, `list.head = node`, `node.left = n`, `node.val = 5`:
       // a pointer / field write, animated by the runtime's LinkedListEngine
       // or TreeEngine (whichever owns the target).
-      this.emit({
-        action: 'LL_SET',
-        target: this.compileValue(expr.left.object),
-        field: expr.left.member,
-        value: this.compileValue(expr.right),
-        sourceText: `${this.exprToString(expr.left)} = ${this.exprToString(expr.right)}`,
+      this.emitStep(macro.setField(this.compileValue(expr.left.object), expr.left.member, this.compileValue(expr.right)), {
         lineNumber: expr.pos.line,
-      } as any);
+        sourceText: `${this.exprToString(expr.left)} = ${this.exprToString(expr.right)}`,
+      });
       return true;
     }
     if (
@@ -919,17 +914,12 @@ export class AQIRGenerator {
       throw new Error(`NEW_NODE expects a linked list or tree as its first argument, e.g. NEW_NODE(list, 5) or NEW_NODE(tree, 5) (line ${node.pos.line}).`);
     }
     const resultVar = `__new_${this.tempCounter++}`;
-    this.emit({
-      action: 'LL_NEW',
-      list: listArg.name,
-      value: valueArg ? this.compileValue(valueArg) : 0,
-      resultVar,
-      // `newNode = NEW_NODE(...)`: the allocation step already shows the
-      // variable's tag, so the assignment that follows isn't a step of its own.
-      assignTo,
-      sourceText: assignTo ? `${assignTo} = ${this.exprToString(node)}` : this.exprToString(node),
+    // `newNode = NEW_NODE(...)`: the allocation step already shows the
+    // variable's tag (`assignTo`), so the assignment that follows isn't a step of its own.
+    this.emitStep(macro.create(listArg.name, valueArg ? this.compileValue(valueArg) : 0, resultVar, assignTo), {
       lineNumber: node.pos.line,
-    } as any);
+      sourceText: assignTo ? `${assignTo} = ${this.exprToString(node)}` : this.exprToString(node),
+    });
     return resultVar;
   }
 
@@ -1020,14 +1010,10 @@ export class AQIRGenerator {
   private emitMapPut(target: ArrayAccessNode, value: ExpressionNode | undefined, pos: { line: number }): void {
     const name = `${target.array.name}[${this.exprToString(target.index)}]`;
     if (!value) throw new Error(`Give ${name} a value, e.g. ${name} = 1 (line ${pos.line}).`);
-    this.emit({
-      action: 'MAP_PUT',
-      map: target.array.name,
-      key: this.compileMapOperand(target.index),
-      value: this.compileMapOperand(value),
-      sourceText: `${name} = ${this.exprToString(value)}`,
+    this.emitStep(macro.setKey(target.array.name, this.compileMapOperand(target.index), this.compileMapOperand(value)), {
       lineNumber: pos.line,
-    } as any);
+      sourceText: `${name} = ${this.exprToString(value)}`,
+    });
   }
 
   /** The queue / stack named by a built-in's single argument (`DEQUEUE(q)`). */
@@ -1048,15 +1034,10 @@ export class AQIRGenerator {
   private generateContainerRead(node: CallNode, assignTo?: string): AQIRValue {
     const container = this.containerArgName(node);
     const resultVar = `__take_${this.tempCounter++}`;
-    this.emit({
-      action: 'CONTAINER_READ',
-      op: node.callee.name.toUpperCase(),
-      container,
-      resultVar,
-      assignTo,
-      sourceText: assignTo ? `${assignTo} = ${this.exprToString(node)}` : this.exprToString(node),
+    this.emitStep(macro.containerRead(node.callee.name.toUpperCase(), container, resultVar, assignTo), {
       lineNumber: node.pos.line,
-    } as any);
+      sourceText: assignTo ? `${assignTo} = ${this.exprToString(node)}` : this.exprToString(node),
+    });
     return resultVar;
   }
 
@@ -1341,20 +1322,12 @@ export class AQIRGenerator {
         this.hashMapNames.add(hashMapName);
         const entries = hashMap.initialEntries || [];
 
-        this.pendingInitInstructions.push({
-          action: 'GENERIC_ACTION',
-          actionName: 'HASHMAP_INIT',
-          args: [hashMapName],
-          payload: { logicalParent: hashMapName },
-        } as any);
-
+        const scope = { collection: hashMapName };
+        this.pendingInitInstructions.push(macro.step(macro.invoke('HASHMAP_INIT', [hashMapName], { scope })));
         for (const entry of entries) {
-          this.pendingInitInstructions.push({
-            action: 'GENERIC_ACTION',
-            actionName: 'HASHMAP_INSERT',
-            args: [hashMapName, entry.key.value, entry.value.value],
-            payload: { logicalParent: hashMapName },
-          } as any);
+          this.pendingInitInstructions.push(
+            macro.step(macro.invoke('HASHMAP_INSERT', [hashMapName, entry.key.value, entry.value.value], { scope }))
+          );
         }
       } else if (v.type === 'TrieDeclNode') {
         // Like HashMap/Heap, a trie's shape depends on a real algorithm
@@ -1369,20 +1342,10 @@ export class AQIRGenerator {
           words = userInputs[trie.name.name];
         }
 
-        this.pendingInitInstructions.push({
-          action: 'GENERIC_ACTION',
-          actionName: 'TRIE_INIT',
-          args: [trie.name.name],
-          payload: { logicalParent: trie.name.name },
-        } as any);
-
+        const scope = { collection: trie.name.name };
+        this.pendingInitInstructions.push(macro.step(macro.invoke('TRIE_INIT', [trie.name.name], { scope })));
         for (const word of words) {
-          this.pendingInitInstructions.push({
-            action: 'GENERIC_ACTION',
-            actionName: 'TRIE_INSERT',
-            args: [trie.name.name, word],
-            payload: { logicalParent: trie.name.name },
-          } as any);
+          this.pendingInitInstructions.push(macro.step(macro.invoke('TRIE_INSERT', [trie.name.name, word], { scope })));
         }
       } else if (v.type === 'GraphDeclNode') {
         this.declareGraph(v as GraphDeclNode, userInputs);
@@ -1512,17 +1475,8 @@ export class AQIRGenerator {
     const targetId = node.target.name;
     this.layoutTracker.markExplicit(targetId);
 
-    this.emit({
-      action: 'SET_LAYOUT_STRATEGY',
-      targetId,
-      strategy: node.strategy as LayoutStrategyName,
-      params: this.paramsFromNamedArgs(node.args),
-    } as SetLayoutStrategyInstruction);
-
-    this.emit({
-      action: 'COMPUTE_LAYOUT',
-      targetId,
-    } as ComputeLayoutInstruction);
+    this.emitStep(macro.arrange(targetId, node.strategy as LayoutStrategyName, this.paramsFromNamedArgs(node.args)));
+    this.emitStep(macro.reflow(targetId));
   }
 
   /** `CAMERA FOCUS(...) | AUTO_FIT | ORBIT(...) | POSITION(...)` -> SET_CAMERA. */
@@ -1543,11 +1497,7 @@ export class AQIRGenerator {
       params.z = this.evaluateExpressionNumber(node.args[2]);
     }
 
-    this.emit({
-      action: 'SET_CAMERA',
-      mode: node.mode,
-      params,
-    } as SetCameraInstruction);
+    this.emitStep(macro.view(node.mode, params));
   }
 
   /**
@@ -1568,13 +1518,7 @@ export class AQIRGenerator {
       }
     }
 
-    this.emit({
-      action: 'SET_POSITION',
-      elementId,
-      x: axis.x,
-      y: axis.y,
-      z: axis.z,
-    } as SetPositionInstruction);
+    this.emitStep(macro.place(elementId, axis.x, axis.y, axis.z));
   }
 
   /**
@@ -1596,17 +1540,8 @@ export class AQIRGenerator {
     const defaultEntry = computeDefaultLayoutParams(kind, count);
     if (!defaultEntry) return;
 
-    this.emit({
-      action: 'SET_LAYOUT_STRATEGY',
-      targetId,
-      strategy: defaultEntry.strategy as LayoutStrategyName,
-      params: defaultEntry.params,
-    } as SetLayoutStrategyInstruction);
-
-    this.emit({
-      action: 'COMPUTE_LAYOUT',
-      targetId,
-    } as ComputeLayoutInstruction);
+    this.emitStep(macro.arrange(targetId, defaultEntry.strategy as LayoutStrategyName, defaultEntry.params));
+    this.emitStep(macro.reflow(targetId));
   }
 
   /** Initial element/entry count for a DECLARE node — the size input to computeDefaultLayoutParams. Dynamic growth after DECLARE (INSERT/PUSH/...) isn't reflected since the default is emitted once, at compile time. */
@@ -1636,21 +1571,13 @@ export class AQIRGenerator {
       case 'CompareNode': {
         const leftId = this.resolveExpressionId(stmt.left);
         const rightId = this.resolveExpressionId(stmt.right);
-        this.emit({
-          action: 'COMPARE_OBJECTS',
-          leftId,
-          rightId,
-        } as CompareObjectsInstruction);
+        this.emitStep(macro.compare(leftId, rightId));
         break;
       }
       case 'SwapNode': {
         const leftId = this.resolveExpressionId(stmt.left);
         const rightId = this.resolveExpressionId(stmt.right);
-        this.emit({
-          action: 'SWAP_OBJECTS',
-          leftId,
-          rightId,
-        } as SwapObjectsInstruction);
+        this.emitStep(macro.swap(leftId, rightId));
 
         // Update symbol map references so future reads see the new order in the array slots
         if (stmt.left.type === 'ArrayAccessNode' && stmt.right.type === 'ArrayAccessNode') {
@@ -1664,37 +1591,25 @@ export class AQIRGenerator {
       case 'HighlightNode':
         if ((stmt as any).target?.type === 'ArrayAccessNode' && this.hashMapNames.has((stmt as any).target.array.name)) {
           const target = (stmt as any).target as ArrayAccessNode;
-          this.emit({
-            action: 'MAP_HIGHLIGHT',
-            map: target.array.name,
-            key: this.compileMapOperand(target.index),
-            color: (stmt as any).color?.value,
+          this.emitStep(macro.highlightKey(target.array.name, this.compileMapOperand(target.index), (stmt as any).color?.value), {
             lineNumber: stmt.pos.line,
-          } as any);
+          });
           break;
         }
-        this.emit({
-          action: 'HIGHLIGHT_OBJECT',
-          targetId: this.resolveExpressionId((stmt as any).target),
-          color: (stmt as any).color.value,
+        this.emitStep(macro.highlight(this.resolveExpressionId((stmt as any).target), (stmt as any).color.value), {
           // So the editor playhead / live-line consumers land on the HIGHLIGHT line itself.
           lineNumber: stmt.pos.line,
-        } as HighlightObjectInstruction);
+        });
         break;
       case 'WaitNode':
-        this.emit({
-          action: 'WAIT',
-        } as WaitInstruction);
+        // A beat in which nothing changes.
+        this.emitStep([]);
         break;
       case 'RelationshipNode': {
         const rel = stmt as any;
-        this.emit({
-          action: 'LINK_OBJECTS',
-          sourceId: this.resolveStaticObjectId(rel.source),
-          targetId: this.resolveStaticObjectId(rel.target),
-          directed: rel.directed,
-          relationType: rel.relationType,
-        } as LinkObjectsInstruction);
+        this.emitStep(
+          macro.link(this.resolveStaticObjectId(rel.source), this.resolveStaticObjectId(rel.target), rel.directed, rel.relationType)
+        );
         break;
       }
       case 'GenericActionNode': {
@@ -1705,12 +1620,10 @@ export class AQIRGenerator {
           if (actionNode.args.length !== 1) {
             throw new Error(`FREE takes exactly one node, e.g. FREE temp (line ${actionNode.pos.line}).`);
           }
-          this.emit({
-            action: 'LL_FREE',
-            target: this.compileValue(actionNode.args[0]),
-            sourceText: this.exprToString(actionNode.args[0]),
+          this.emitStep(macro.destroy(this.compileValue(actionNode.args[0])), {
             lineNumber: actionNode.pos.line,
-          } as any);
+            sourceText: this.exprToString(actionNode.args[0]),
+          });
           break;
         }
         if (actionNode.args[0]?.type === 'ArrayAccessNode' && this.hashMapNames.has(actionNode.args[0].array.name)) {
@@ -1718,13 +1631,10 @@ export class AQIRGenerator {
           const map = target.array.name;
           const key = this.exprToString(target.index);
           if (actionNode.actionName === 'DELETE' && actionNode.args.length === 1) {
-            this.emit({
-              action: 'MAP_DELETE',
-              map,
-              key: this.compileMapOperand(target.index),
-              sourceText: `DELETE ${map}[${key}]`,
+            this.emitStep(macro.destroyKey(map, this.compileMapOperand(target.index)), {
               lineNumber: actionNode.pos.line,
-            } as any);
+              sourceText: `DELETE ${map}[${key}]`,
+            });
             break;
           }
           if ((actionNode.actionName === 'UPDATE' || actionNode.actionName === 'INSERT') && actionNode.args.length === 2) {
@@ -1754,15 +1664,11 @@ export class AQIRGenerator {
           if (node.type === 'IdentifierNode' && this.trieNames.has(node.name)) {
             throw new Error(`${op} needs a trie node, not the trie itself: start from its root, e.g. node = ${node.name}.root, then ${op} node "a" (line ${actionNode.pos.line}).`);
           }
-          this.emit({
-            action: 'TRIE_EDIT',
-            op,
-            node: this.compileValue(node),
-            ch: this.compileTrieOperand(ch),
-            nodeText: this.exprToString(node),
-            sourceText: `${op} ${actionNode.args.map((a: ExpressionNode) => this.exprToString(a)).join(' ')}`,
+          const edit = op === 'ADD_CHILD' ? macro.addChild : macro.removeChild;
+          this.emitStep(edit(this.compileValue(node), this.compileTrieOperand(ch), this.exprToString(node)), {
             lineNumber: actionNode.pos.line,
-          } as any);
+            sourceText: `${op} ${actionNode.args.map((a: ExpressionNode) => this.exprToString(a)).join(' ')}`,
+          });
           break;
         }
         if (
@@ -1780,14 +1686,13 @@ export class AQIRGenerator {
           if (!first || first.type !== 'IdentifierNode' || !this.graphNames.has(first.name)) {
             throw new Error(`${actionNode.actionName} needs a declared GRAPH first, e.g. ${actionNode.actionName} g "A"${actionNode.actionName.endsWith('EDGE') ? ' "B"' : ''} (line ${actionNode.pos.line}).`);
           }
-          this.emit({
-            action: 'GRAPH_EDIT',
-            op: actionNode.actionName,
-            graph: first.name,
-            args: actionNode.args.slice(1).map((a: ExpressionNode) => this.compileGraphOperand(a)),
-            sourceText: `${actionNode.actionName} ${actionNode.args.map((a: ExpressionNode) => this.exprToString(a)).join(' ')}`,
-            lineNumber: actionNode.pos.line,
-          } as any);
+          this.emitStep(
+            macro.graphEdit(actionNode.actionName, first.name, actionNode.args.slice(1).map((a: ExpressionNode) => this.compileGraphOperand(a))),
+            {
+              lineNumber: actionNode.pos.line,
+              sourceText: `${actionNode.actionName} ${actionNode.args.map((a: ExpressionNode) => this.exprToString(a)).join(' ')}`,
+            }
+          );
           break;
         }
         const targetsArraySlot =
@@ -1837,22 +1742,28 @@ export class AQIRGenerator {
           logicalParent = actionNode.args[0].name;
         }
 
-        this.emit({
-          action: 'GENERIC_ACTION',
-          actionName: actionNode.actionName,
-          targetId: typeof resolvedArgs[0] === 'string' && resolvedArgs[0].includes('obj_') ? resolvedArgs[0] : undefined,
-          args: resolvedArgs,
-          payload: { logicalParent, logicalIndex }
-        } as any);
+        if (
+          actionNode.actionName === 'UPDATE' && targetsArraySlot && resolvedArgs.length === 2 &&
+          macro.isSlotRef(resolvedArgs[0], logicalParent)
+        ) {
+          // `UPDATE arr[i] v` (and `arr[i] = v`, compiled through here): a value write into one slot.
+          this.emitStep(macro.setSlot(logicalParent, resolvedArgs[0], logicalIndex, resolvedArgs[1]));
+          break;
+        }
+
+        // Any other named action is a runtime library procedure (PUSH, INSERT,
+        // BUBBLE_SORT, INORDER, ...), expanded into primitives as it runs.
+        this.emitStep(
+          macro.invoke(actionNode.actionName, resolvedArgs, {
+            subject: typeof resolvedArgs[0] === 'string' && resolvedArgs[0].includes('obj_') ? resolvedArgs[0] : undefined,
+            scope: { collection: logicalParent, index: logicalIndex },
+          })
+        );
         break;
       }
       case 'SetStateNode': {
         const setStateNode = stmt as any;
-        this.emit({
-          action: 'SET_STATE',
-          targetId: this.resolveExpressionId(setStateNode.target),
-          stateName: setStateNode.stateName,
-        } as SetStateInstruction);
+        this.emitStep(macro.setState(this.resolveExpressionId(setStateNode.target), setStateNode.stateName));
         break;
       }
       case 'ReturnNode':
@@ -1869,10 +1780,9 @@ export class AQIRGenerator {
         this.generateWhile(stmt as WhileNode);
         break;
       case 'PrintNode':
-        this.emit({
-          action: 'PRINT',
+        this.emitStep(
           // A bare array name prints the whole array, e.g. `PRINT "Result:" arr`.
-          parts: (stmt as PrintNode).args.map((arg) =>
+          macro.print((stmt as PrintNode).args.map((arg) =>
             arg.type === 'IdentifierNode' && this.trieNames.has(arg.name)
               ? ({ trie: arg.name } as unknown as AQIRValue)
               : arg.type === 'IdentifierNode' && this.hashMapNames.has(arg.name)
@@ -1891,9 +1801,9 @@ export class AQIRGenerator {
                       // Printed as written, even when a variable has the same name (`PRINT "top" top`).
                       ? ({ text: arg.value } as unknown as AQIRValue)
                       : this.compileValue(arg)
-          ),
-          lineNumber: stmt.pos.line,
-        } as any);
+          )),
+          { lineNumber: stmt.pos.line }
+        );
         break;
       case 'LayoutStatementNode':
         this.generateLayoutStatement(stmt as LayoutStatementNode);

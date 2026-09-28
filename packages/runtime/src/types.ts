@@ -1,11 +1,12 @@
 /**
  * VM-mode runtime types.
  *
- * These are additive: the existing action-based `AQIRInstruction` model from
- * `@aqvl/shared` (COMPARE_OBJECTS, SWAP_OBJECTS, ...) keeps working exactly
- * as before. A `VMInstruction` is either one of those "legacy" instructions
- * (still animated by AnimationController.executeInstruction) or one of the
- * 6 new control-flow opcodes handled by AQVLVirtualMachine itself.
+ * A `VMInstruction` is one of the 7 kernel (control-flow) opcodes handled by
+ * AQVLVirtualMachine itself, a STEP of primitive ops (what the compiler
+ * emits, see docs/design/aqir-primitives-spec.md), or a hand-written legacy
+ * action-based `AQIRInstruction` from `@aqvl/shared` (COMPARE_OBJECTS,
+ * SWAP_OBJECTS, ...), which is still accepted and passed straight to the
+ * legacy handler (AnimationController.executeInstruction).
  *
  * This package intentionally does not depend on @aqvl/compiler, so the
  * opcode set is redeclared here rather than imported — the two are kept in
@@ -20,9 +21,9 @@
  */
 
 import type { AQIRInstruction } from '@aqvl/shared';
-import type { CameraFrameState } from './aqir/types';
+import type { CameraFrameState, StepInstruction } from './aqir/types';
 
-/** The 6 opcodes AQVLVirtualMachine executes directly (as opposed to delegating to animation). */
+/** The 7 kernel opcodes AQVLVirtualMachine executes directly (STEP is separate — see ./aqir/types). */
 export const AQIROpcode = {
   JUMP: 'JUMP',
   JUMP_IF_FALSE: 'JUMP_IF_FALSE',
@@ -95,7 +96,7 @@ export type ControlFlowInstruction =
   | SetVarInstruction;
 
 /** Any instruction the VM's instruction stream may contain. */
-export type VMInstruction = AQIRInstruction | ControlFlowInstruction;
+export type VMInstruction = AQIRInstruction | ControlFlowInstruction | StepInstruction;
 
 const CONTROL_FLOW_OPCODES: Set<string> = new Set(Object.values(AQIROpcode));
 
@@ -158,7 +159,14 @@ export interface VMState {
 export interface ExecutionFrame {
   /** Monotonically increasing step counter (not the same as `state.pc`, which can jump/repeat). */
   index: number;
+  /**
+   * The instruction as the host saw it. For a STEP this is its lowered,
+   * legacy action-based form (Phase 2.1 bridge), so step visibility and
+   * labels read exactly as before; the STEP itself is `programInstruction`.
+   */
   instruction: VMInstruction;
+  /** The instruction as it appears in the program, when that differs from `instruction` (a STEP). */
+  programInstruction?: VMInstruction;
   state: VMState;
   /**
    * True when a normally-invisible instruction produced an animation — a

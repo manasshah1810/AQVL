@@ -12,7 +12,7 @@
  * immediately is enough to observe every frame it schedules.
  */
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { compile } from '../utils/testHelpers';
+import { compileLowered } from '../utils/testHelpers';
 import { HashMap } from '../../packages/runtime/src/data-structures/HashMap';
 import { HashMapVisualizer } from '../../packages/runtime/src/core/algorithms/HashMapVisualizer';
 import { SceneManager } from '../../packages/runtime/src/core/SceneManager';
@@ -111,7 +111,7 @@ function bucketCount(sceneManager: SceneManager, name: string): number {
 
 describe('HashMap built-ins: parsing to GENERIC_ACTION', () => {
   it('parses HASH_MAP name = {k1:v1, k2:v2} into HASHMAP_INIT + one HASHMAP_INSERT per entry', () => {
-    const instructions = compile(hashMapSource('h', [['k1', 'v1'], ['k2', 'v2']], []));
+    const instructions = compileLowered(hashMapSource('h', [['k1', 'v1'], ['k2', 'v2']], []));
     const actions = genericActions(instructions);
     expect(actions.map((a) => a.actionName)).toEqual(['HASHMAP_INIT', 'HASHMAP_INSERT', 'HASHMAP_INSERT']);
     expect(actions[0]).toMatchObject({ actionName: 'HASHMAP_INIT', args: ['h'] });
@@ -120,26 +120,26 @@ describe('HashMap built-ins: parsing to GENERIC_ACTION', () => {
   });
 
   it('parses a HASH_MAP with numeric values', () => {
-    const instructions = compile(hashMapSource('scores', [['alice', 90], ['bob', 85]], []));
+    const instructions = compileLowered(hashMapSource('scores', [['alice', 90], ['bob', 85]], []));
     const actions = genericActions(instructions);
     expect(actions[1]).toMatchObject({ args: ['scores', 'alice', 90] });
     expect(actions[2]).toMatchObject({ args: ['scores', 'bob', 85] });
   });
 
   it('parses HASHMAP_LOOKUP and HASHMAP_DELETE runtime ops in SEQUENCE', () => {
-    const instructions = compile(hashMapSource('h', [['k1', 'v1']], ['HASHMAP_LOOKUP h k1', 'HASHMAP_DELETE h k1']));
+    const instructions = compileLowered(hashMapSource('h', [['k1', 'v1']], ['HASHMAP_LOOKUP h k1', 'HASHMAP_DELETE h k1']));
     const actions = genericActions(instructions).map((a) => a.actionName);
     expect(actions).toEqual(['HASHMAP_INIT', 'HASHMAP_INSERT', 'HASHMAP_LOOKUP', 'HASHMAP_DELETE']);
   });
 
   it('parses a HASH_MAP declared with no initial entries', () => {
-    const instructions = compile(hashMapSource('empty', [], ['HASHMAP_INSERT empty a 1']));
+    const instructions = compileLowered(hashMapSource('empty', [], ['HASHMAP_INSERT empty a 1']));
     const actions = genericActions(instructions).map((a) => a.actionName);
     expect(actions).toEqual(['HASHMAP_INIT', 'HASHMAP_INSERT']);
   });
 
   it('parses HASHMAP_INSERT with a quoted string key and numeric value', () => {
-    const instructions = compile(hashMapSource('h', [], ['HASHMAP_INSERT h "first name" 42']));
+    const instructions = compileLowered(hashMapSource('h', [], ['HASHMAP_INSERT h "first name" 42']));
     const actions = genericActions(instructions);
     expect(actions[1]).toMatchObject({ actionName: 'HASHMAP_INSERT', args: ['h', 'first name', 42] });
   });

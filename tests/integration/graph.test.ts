@@ -12,7 +12,7 @@
  * the scene at runtime).
  */
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { compile } from '../utils/testHelpers';
+import { compileLowered } from '../utils/testHelpers';
 import { Graph } from '../../packages/runtime/src/data-structures/Graph';
 import { GraphAlgorithm } from '../../packages/runtime/src/core/algorithms/GraphEngine';
 
@@ -69,7 +69,7 @@ function weightedGraphFromEdgeStrings(edges: string[]): Graph {
 
 describe('DFS / BFS: parsing to GENERIC_ACTION', () => {
   it('parses "DFS graph FROM A" into a GENERIC_ACTION with the graph and start vertex', () => {
-    const instructions = compile(graphSource('g', ['A-B', 'B-C'], 'DFS g FROM A'));
+    const instructions = compileLowered(graphSource('g', ['A-B', 'B-C'], 'DFS g FROM A'));
     const actions = genericActions(instructions);
     expect(actions).toHaveLength(1);
     expect(actions[0]).toMatchObject({
@@ -80,7 +80,7 @@ describe('DFS / BFS: parsing to GENERIC_ACTION', () => {
   });
 
   it('parses "BFS graph FROM A" into a GENERIC_ACTION with the graph and start vertex', () => {
-    const instructions = compile(graphSource('g', ['A-B', 'B-C'], 'BFS g FROM A'));
+    const instructions = compileLowered(graphSource('g', ['A-B', 'B-C'], 'BFS g FROM A'));
     const actions = genericActions(instructions);
     expect(actions).toHaveLength(1);
     expect(actions[0]).toMatchObject({
@@ -91,7 +91,7 @@ describe('DFS / BFS: parsing to GENERIC_ACTION', () => {
   });
 
   it('parses a traversal with no explicit start vertex', () => {
-    const instructions = compile(graphSource('g', ['A-B'], 'DFS g'));
+    const instructions = compileLowered(graphSource('g', ['A-B'], 'DFS g'));
     const actions = genericActions(instructions);
     expect(actions).toHaveLength(1);
     expect(actions[0]).toMatchObject({ actionName: 'DFS', args: ['g'] });
@@ -101,7 +101,7 @@ describe('DFS / BFS: parsing to GENERIC_ACTION', () => {
 describe('DFS / BFS: execution produces correct order and levels', () => {
   it('DFS visits a linear graph in depth-first order', () => {
     const edges = ['A-B', 'B-C', 'C-D'];
-    const instructions = compile(graphSource('g', edges, 'DFS g FROM A'));
+    const instructions = compileLowered(graphSource('g', edges, 'DFS g FROM A'));
     expect(genericActions(instructions)[0].actionName).toBe('DFS');
 
     const graph = graphFromEdgeStrings(edges);
@@ -111,7 +111,7 @@ describe('DFS / BFS: execution produces correct order and levels', () => {
 
   it('BFS visits a tree level by level with correct levels', () => {
     const edges = ['A-B', 'A-C', 'B-D', 'C-E'];
-    const instructions = compile(graphSource('g', edges, 'BFS g FROM A'));
+    const instructions = compileLowered(graphSource('g', edges, 'BFS g FROM A'));
     expect(genericActions(instructions)[0].actionName).toBe('BFS');
 
     const graph = graphFromEdgeStrings(edges);
@@ -137,7 +137,7 @@ describe('DFS / BFS: execution produces correct order and levels', () => {
 
   it('handles a cycle without looping and visits every reachable vertex exactly once', () => {
     const edges = ['A-B', 'B-C', 'C-A'];
-    const instructions = compile(graphSource('g', edges, 'DFS g FROM A'));
+    const instructions = compileLowered(graphSource('g', edges, 'DFS g FROM A'));
     expect(genericActions(instructions)[0].actionName).toBe('DFS');
 
     const graph = graphFromEdgeStrings(edges);
@@ -148,7 +148,7 @@ describe('DFS / BFS: execution produces correct order and levels', () => {
 
   it('a disconnected graph only reaches vertices in the start vertex\'s component', () => {
     const edges = ['A-B', 'C-D'];
-    const instructions = compile(graphSource('g', edges, 'BFS g FROM A'));
+    const instructions = compileLowered(graphSource('g', edges, 'BFS g FROM A'));
     expect(genericActions(instructions)[0].actionName).toBe('BFS');
 
     const graph = graphFromEdgeStrings(edges);
@@ -161,7 +161,7 @@ describe('DFS / BFS: execution produces correct order and levels', () => {
 
 describe('DIJKSTRA / BELLMAN_FORD / ASTAR: parsing to GENERIC_ACTION', () => {
   it('parses "DIJKSTRA graph FROM A" into a GENERIC_ACTION with the graph and source vertex', () => {
-    const instructions = compile(graphSource('g', ['A-B:1', 'B-C:2'], 'DIJKSTRA g FROM A'));
+    const instructions = compileLowered(graphSource('g', ['A-B:1', 'B-C:2'], 'DIJKSTRA g FROM A'));
     const actions = genericActions(instructions);
     expect(actions).toHaveLength(1);
     expect(actions[0]).toMatchObject({
@@ -172,7 +172,7 @@ describe('DIJKSTRA / BELLMAN_FORD / ASTAR: parsing to GENERIC_ACTION', () => {
   });
 
   it('parses "BELLMAN_FORD graph FROM A" into a GENERIC_ACTION with the graph and source vertex', () => {
-    const instructions = compile(graphSource('g', ['A-B:1', 'B-C:2'], 'BELLMAN_FORD g FROM A'));
+    const instructions = compileLowered(graphSource('g', ['A-B:1', 'B-C:2'], 'BELLMAN_FORD g FROM A'));
     const actions = genericActions(instructions);
     expect(actions).toHaveLength(1);
     expect(actions[0]).toMatchObject({
@@ -183,7 +183,7 @@ describe('DIJKSTRA / BELLMAN_FORD / ASTAR: parsing to GENERIC_ACTION', () => {
   });
 
   it('parses "ASTAR graph FROM A TO C" into a GENERIC_ACTION with source and goal vertices', () => {
-    const instructions = compile(graphSource('g', ['A-B:1', 'B-C:2'], 'ASTAR g FROM A TO C'));
+    const instructions = compileLowered(graphSource('g', ['A-B:1', 'B-C:2'], 'ASTAR g FROM A TO C'));
     const actions = genericActions(instructions);
     expect(actions).toHaveLength(1);
     expect(actions[0]).toMatchObject({
@@ -197,7 +197,7 @@ describe('DIJKSTRA / BELLMAN_FORD / ASTAR: parsing to GENERIC_ACTION', () => {
 describe('DIJKSTRA / BELLMAN_FORD / ASTAR: execution produces correct distances / paths', () => {
   it('DIJKSTRA finds correct shortest-path distances on a weighted graph', () => {
     const edges = ['A-B:1', 'B-C:2', 'A-C:10'];
-    const instructions = compile(graphSource('g', edges, 'DIJKSTRA g FROM A'));
+    const instructions = compileLowered(graphSource('g', edges, 'DIJKSTRA g FROM A'));
     expect(genericActions(instructions)[0].actionName).toBe('DIJKSTRA');
 
     const graph = weightedGraphFromEdgeStrings(edges);
@@ -209,7 +209,7 @@ describe('DIJKSTRA / BELLMAN_FORD / ASTAR: execution produces correct distances 
 
   it('BELLMAN_FORD finds correct shortest-path distances on a weighted graph', () => {
     const edges = ['A-B:1', 'B-C:2', 'A-C:10'];
-    const instructions = compile(graphSource('g', edges, 'BELLMAN_FORD g FROM A'));
+    const instructions = compileLowered(graphSource('g', edges, 'BELLMAN_FORD g FROM A'));
     expect(genericActions(instructions)[0].actionName).toBe('BELLMAN_FORD');
 
     const graph = weightedGraphFromEdgeStrings(edges);
@@ -225,7 +225,7 @@ describe('DIJKSTRA / BELLMAN_FORD / ASTAR: execution produces correct distances 
     graph.addEdge('B', 'C', -1);
     graph.addEdge('C', 'B', -1);
 
-    const instructions = compile(graphSource('g', edges, 'BELLMAN_FORD g FROM A'));
+    const instructions = compileLowered(graphSource('g', edges, 'BELLMAN_FORD g FROM A'));
     expect(genericActions(instructions)[0].actionName).toBe('BELLMAN_FORD');
 
     const result = new GraphAlgorithm(graph).bellmanFord('A');
@@ -234,7 +234,7 @@ describe('DIJKSTRA / BELLMAN_FORD / ASTAR: execution produces correct distances 
 
   it('ASTAR finds the shortest path between source and goal', () => {
     const edges = ['A-B:1', 'B-C:1', 'A-C:10'];
-    const instructions = compile(graphSource('g', edges, 'ASTAR g FROM A TO C'));
+    const instructions = compileLowered(graphSource('g', edges, 'ASTAR g FROM A TO C'));
     expect(genericActions(instructions)[0].actionName).toBe('ASTAR');
 
     const graph = weightedGraphFromEdgeStrings(edges);
@@ -257,7 +257,7 @@ describe('DIJKSTRA / BELLMAN_FORD / ASTAR: execution produces correct distances 
 
 describe('PRIM / KRUSKAL / TOPO_SORT: parsing to GENERIC_ACTION', () => {
   it('parses "PRIM graph FROM A" into a GENERIC_ACTION with the graph and start vertex', () => {
-    const instructions = compile(graphSource('g', ['A-B:1', 'B-C:2'], 'PRIM g FROM A'));
+    const instructions = compileLowered(graphSource('g', ['A-B:1', 'B-C:2'], 'PRIM g FROM A'));
     const actions = genericActions(instructions);
     expect(actions).toHaveLength(1);
     expect(actions[0]).toMatchObject({
@@ -268,7 +268,7 @@ describe('PRIM / KRUSKAL / TOPO_SORT: parsing to GENERIC_ACTION', () => {
   });
 
   it('parses "KRUSKAL graph" into a GENERIC_ACTION with the graph', () => {
-    const instructions = compile(graphSource('g', ['A-B:1', 'B-C:2'], 'KRUSKAL g'));
+    const instructions = compileLowered(graphSource('g', ['A-B:1', 'B-C:2'], 'KRUSKAL g'));
     const actions = genericActions(instructions);
     expect(actions).toHaveLength(1);
     expect(actions[0]).toMatchObject({
@@ -279,7 +279,7 @@ describe('PRIM / KRUSKAL / TOPO_SORT: parsing to GENERIC_ACTION', () => {
   });
 
   it('parses "TOPO_SORT graph" into a GENERIC_ACTION with the graph', () => {
-    const instructions = compile(graphSource('g', ['A>B', 'B>C'], 'TOPO_SORT g'));
+    const instructions = compileLowered(graphSource('g', ['A>B', 'B>C'], 'TOPO_SORT g'));
     const actions = genericActions(instructions);
     expect(actions).toHaveLength(1);
     expect(actions[0]).toMatchObject({
@@ -293,7 +293,7 @@ describe('PRIM / KRUSKAL / TOPO_SORT: parsing to GENERIC_ACTION', () => {
 describe('PRIM / KRUSKAL / TOPO_SORT: execution produces correct results', () => {
   it('PRIM finds the correct MST weight on a weighted graph', () => {
     const edges = ['A-B:1', 'A-C:3', 'B-C:2'];
-    const instructions = compile(graphSource('g', edges, 'PRIM g FROM A'));
+    const instructions = compileLowered(graphSource('g', edges, 'PRIM g FROM A'));
     expect(genericActions(instructions)[0].actionName).toBe('PRIM');
 
     const graph = weightedGraphFromEdgeStrings(edges);
@@ -304,7 +304,7 @@ describe('PRIM / KRUSKAL / TOPO_SORT: execution produces correct results', () =>
 
   it('KRUSKAL finds the correct MST weight on a weighted graph', () => {
     const edges = ['A-B:1', 'A-C:3', 'B-C:2'];
-    const instructions = compile(graphSource('g', edges, 'KRUSKAL g'));
+    const instructions = compileLowered(graphSource('g', edges, 'KRUSKAL g'));
     expect(genericActions(instructions)[0].actionName).toBe('KRUSKAL');
 
     const graph = weightedGraphFromEdgeStrings(edges);
@@ -328,7 +328,7 @@ describe('PRIM / KRUSKAL / TOPO_SORT: execution produces correct results', () =>
     graph.addEdge('B', 'D');
     graph.addEdge('C', 'D');
 
-    const instructions = compile(graphSource('g', edges, 'TOPO_SORT g'));
+    const instructions = compileLowered(graphSource('g', edges, 'TOPO_SORT g'));
     expect(genericActions(instructions)[0].actionName).toBe('TOPO_SORT');
 
     const result = new GraphAlgorithm(graph).topologicalSort();
@@ -342,7 +342,7 @@ describe('PRIM / KRUSKAL / TOPO_SORT: execution produces correct results', () =>
     graph.addEdge('B', 'C');
     graph.addEdge('C', 'A');
 
-    const instructions = compile(graphSource('g', ['A>B', 'B>C', 'C>A'], 'TOPO_SORT g'));
+    const instructions = compileLowered(graphSource('g', ['A>B', 'B>C', 'C>A'], 'TOPO_SORT g'));
     expect(genericActions(instructions)[0].actionName).toBe('TOPO_SORT');
 
     const result = new GraphAlgorithm(graph).topologicalSort();

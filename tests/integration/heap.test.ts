@@ -12,7 +12,7 @@
  * and only defers logging into `complete` callbacks.
  */
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { compile } from '../utils/testHelpers';
+import { compileLowered } from '../utils/testHelpers';
 import { MinHeap } from '../../packages/runtime/src/data-structures/Heap';
 import { HeapEngine } from '../../packages/runtime/src/core/algorithms/HeapEngine';
 import { SceneManager } from '../../packages/runtime/src/core/SceneManager';
@@ -121,35 +121,35 @@ function currentValues(sceneManager: SceneManager, heapName: string): number[] {
 
 describe('Heap built-ins: parsing to GENERIC_ACTION', () => {
   it('parses HEAP_INSERT into a GENERIC_ACTION targeting the heap and value', () => {
-    const instructions = compile(heapSource('h', [5, 3, 7], ['HEAP_INSERT h 10']));
+    const instructions = compileLowered(heapSource('h', [5, 3, 7], ['HEAP_INSERT h 10']));
     const actions = genericActions(instructions);
     expect(actions).toHaveLength(1);
     expect(actions[0]).toMatchObject({ actionName: 'HEAP_INSERT', args: ['h', 10] });
   });
 
   it('parses HEAP_EXTRACT into a GENERIC_ACTION targeting the heap', () => {
-    const instructions = compile(heapSource('h', [5, 3, 7], ['HEAP_EXTRACT h']));
+    const instructions = compileLowered(heapSource('h', [5, 3, 7], ['HEAP_EXTRACT h']));
     const actions = genericActions(instructions);
     expect(actions).toHaveLength(1);
     expect(actions[0]).toMatchObject({ actionName: 'HEAP_EXTRACT', args: ['h'] });
   });
 
   it('parses HEAP_DECREASE into a GENERIC_ACTION with index and new value', () => {
-    const instructions = compile(heapSource('h', [5, 3, 7], ['HEAP_DECREASE h 2 1']));
+    const instructions = compileLowered(heapSource('h', [5, 3, 7], ['HEAP_DECREASE h 2 1']));
     const actions = genericActions(instructions);
     expect(actions).toHaveLength(1);
     expect(actions[0]).toMatchObject({ actionName: 'HEAP_DECREASE', args: ['h', 2, 1] });
   });
 
   it('parses BUILD_HEAP into a GENERIC_ACTION targeting the heap', () => {
-    const instructions = compile(heapSource('h', [9, 4, 7, 1, 0], ['BUILD_HEAP h']));
+    const instructions = compileLowered(heapSource('h', [9, 4, 7, 1, 0], ['BUILD_HEAP h']));
     const actions = genericActions(instructions);
     expect(actions).toHaveLength(1);
     expect(actions[0]).toMatchObject({ actionName: 'BUILD_HEAP', args: ['h'] });
   });
 
   it('parses a sequence of heap operations in order', () => {
-    const instructions = compile(heapSource('h', [5, 3, 7], ['HEAP_INSERT h 1', 'HEAP_DECREASE h 0 1', 'HEAP_EXTRACT h']));
+    const instructions = compileLowered(heapSource('h', [5, 3, 7], ['HEAP_INSERT h 1', 'HEAP_DECREASE h 0 1', 'HEAP_EXTRACT h']));
     const actions = genericActions(instructions);
     expect(actions.map((a) => a.actionName)).toEqual(['HEAP_INSERT', 'HEAP_DECREASE', 'HEAP_EXTRACT']);
   });

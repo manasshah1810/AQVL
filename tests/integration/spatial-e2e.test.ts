@@ -8,6 +8,7 @@
  * ordering coverage in tests/integration/spatial-compilation.test.ts.
  */
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { legacyView } from '../utils/testHelpers';
 import {
   compile,
   SemanticError,
@@ -48,12 +49,12 @@ SEQUENCE
 END
 `;
       const aqir = compile(source);
-      const layout = actionsOf(aqir.instructions, 'SET_LAYOUT_STRATEGY').find((i) => i.targetId === 'arr');
+      const layout = actionsOf(legacyView(aqir.instructions), 'SET_LAYOUT_STRATEGY').find((i) => i.targetId === 'arr');
       expect(layout).toBeDefined();
       expect(layout.strategy).toBe('LINE');
       expect(layout.params).toMatchObject({ spacing: 1.5, axis: 'horizontal', origin: [0, 0, 0] });
-      const computeIdx = aqir.instructions.indexOf(layout);
-      expect(aqir.instructions[computeIdx + 1]).toMatchObject({ action: 'COMPUTE_LAYOUT', targetId: 'arr' });
+      const computeIdx = legacyView(aqir.instructions).indexOf(layout);
+      expect(legacyView(aqir.instructions)[computeIdx + 1]).toMatchObject({ action: 'COMPUTE_LAYOUT', targetId: 'arr' });
     });
 
     it('HIERARCHY: a BST laid out with tuned level/sibling gaps', () => {
@@ -67,7 +68,7 @@ SEQUENCE
 END
 `;
       const aqir = compile(source);
-      const layout = actionsOf(aqir.instructions, 'SET_LAYOUT_STRATEGY').find((i) => i.targetId === 'tree1');
+      const layout = actionsOf(legacyView(aqir.instructions), 'SET_LAYOUT_STRATEGY').find((i) => i.targetId === 'tree1');
       expect(layout).toBeDefined();
       expect(layout.strategy).toBe('HIERARCHY');
       expect(layout.params).toMatchObject({ levelGap: 2.5, siblingGap: 1.5, origin: [0, 2, 0] });
@@ -84,7 +85,7 @@ SEQUENCE
 END
 `;
       const aqir = compile(source);
-      const layout = actionsOf(aqir.instructions, 'SET_LAYOUT_STRATEGY').find((i) => i.targetId === 'ring');
+      const layout = actionsOf(legacyView(aqir.instructions), 'SET_LAYOUT_STRATEGY').find((i) => i.targetId === 'ring');
       expect(layout).toBeDefined();
       expect(layout.strategy).toBe('CIRCULAR');
       expect(layout.params).toMatchObject({ radius: 4, startAngle: 0, origin: [0, 0, 0] });
@@ -101,7 +102,7 @@ SEQUENCE
 END
 `;
       const aqir = compile(source);
-      const layout = actionsOf(aqir.instructions, 'SET_LAYOUT_STRATEGY').find((i) => i.targetId === 'g');
+      const layout = actionsOf(legacyView(aqir.instructions), 'SET_LAYOUT_STRATEGY').find((i) => i.targetId === 'g');
       expect(layout).toBeDefined();
       expect(layout.strategy).toBe('FORCE_DIRECTED');
       expect(layout.params).toMatchObject({
@@ -121,7 +122,7 @@ SEQUENCE
 END
 `;
       const aqir = compile(source);
-      const layout = actionsOf(aqir.instructions, 'SET_LAYOUT_STRATEGY').find((i) => i.targetId === 'matrix');
+      const layout = actionsOf(legacyView(aqir.instructions), 'SET_LAYOUT_STRATEGY').find((i) => i.targetId === 'matrix');
       expect(layout).toBeDefined();
       expect(layout.strategy).toBe('GRID');
       expect(layout.params).toMatchObject({ columns: 3, spacingX: 1.5, spacingY: 1.5, origin: [0, 0, 0] });
@@ -141,12 +142,12 @@ SEQUENCE
 END
 `;
       const aqir = compile(source);
-      const layout = actionsOf(aqir.instructions, 'SET_LAYOUT_STRATEGY').find((i) => i.targetId === 'pts');
+      const layout = actionsOf(legacyView(aqir.instructions), 'SET_LAYOUT_STRATEGY').find((i) => i.targetId === 'pts');
       expect(layout).toBeDefined();
       expect(layout.strategy).toBe('CUSTOM');
       expect(layout.params).toEqual({});
 
-      const positions = actionsOf(aqir.instructions, 'SET_POSITION');
+      const positions = actionsOf(legacyView(aqir.instructions), 'SET_POSITION');
       expect(positions).toHaveLength(3);
       expect(positions.map((p) => [p.x, p.y, p.z])).toEqual([
         [-3, 0, 0],
@@ -173,7 +174,7 @@ SEQUENCE
 END
 `;
       const aqir = compile(source);
-      const camera = actionsOf(aqir.instructions, 'SET_CAMERA')[0];
+      const camera = actionsOf(legacyView(aqir.instructions), 'SET_CAMERA')[0];
       const treeObject = aqir.objects.find((o: any) => o.type === 'BINARYTREE');
       expect(camera).toMatchObject({ mode: 'FOCUS' });
       expect(camera.params.targetId).toBe(treeObject!.id);
@@ -192,7 +193,7 @@ SEQUENCE
 END
 `;
       const aqir = compile(source);
-      const cameras = actionsOf(aqir.instructions, 'SET_CAMERA');
+      const cameras = actionsOf(legacyView(aqir.instructions), 'SET_CAMERA');
       expect(cameras).toHaveLength(2);
       expect(cameras[0].mode).toBe('FOCUS');
       expect(cameras[1]).toMatchObject({ mode: 'AUTO_FIT', params: {} });
@@ -209,7 +210,7 @@ SEQUENCE
 END
 `;
       const aqir = compile(source);
-      const camera = actionsOf(aqir.instructions, 'SET_CAMERA')[0];
+      const camera = actionsOf(legacyView(aqir.instructions), 'SET_CAMERA')[0];
       expect(camera).toMatchObject({ mode: 'ORBIT', params: { speed: 15 } });
     });
 
@@ -224,7 +225,7 @@ SEQUENCE
 END
 `;
       const aqir = compile(source);
-      const camera = actionsOf(aqir.instructions, 'SET_CAMERA')[0];
+      const camera = actionsOf(legacyView(aqir.instructions), 'SET_CAMERA')[0];
       expect(camera).toMatchObject({ mode: 'POSITION', params: { x: 0, y: 6, z: 14 } });
     });
   });
@@ -245,14 +246,14 @@ SEQUENCE
 END
 `;
       const aqir = compile(source);
-      const layoutIdx = aqir.instructions.findIndex((i: any) => i.action === 'SET_LAYOUT_STRATEGY' && i.targetId === 'arr');
-      const computeIdx = aqir.instructions.findIndex((i: any) => i.action === 'COMPUTE_LAYOUT' && i.targetId === 'arr');
-      const positionIdx = aqir.instructions.findIndex((i: any) => i.action === 'SET_POSITION');
+      const layoutIdx = legacyView(aqir.instructions).findIndex((i: any) => i.action === 'SET_LAYOUT_STRATEGY' && i.targetId === 'arr');
+      const computeIdx = legacyView(aqir.instructions).findIndex((i: any) => i.action === 'COMPUTE_LAYOUT' && i.targetId === 'arr');
+      const positionIdx = legacyView(aqir.instructions).findIndex((i: any) => i.action === 'SET_POSITION');
 
       expect(layoutIdx).toBeGreaterThanOrEqual(0);
       expect(computeIdx).toBe(layoutIdx + 1);
       expect(positionIdx).toBeGreaterThan(computeIdx);
-      expect(aqir.instructions[positionIdx]).toMatchObject({ x: 5, y: 2, z: 0 });
+      expect(legacyView(aqir.instructions)[positionIdx]).toMatchObject({ x: 5, y: 2, z: 0 });
     });
 
     it('POSITION only (no explicit LAYOUT): default layout is backfilled ahead of the override', () => {
@@ -266,15 +267,15 @@ SEQUENCE
 END
 `;
       const aqir = compile(source);
-      const layoutIdx = aqir.instructions.findIndex((i: any) => i.action === 'SET_LAYOUT_STRATEGY' && i.targetId === 'arr');
-      const computeIdx = aqir.instructions.findIndex((i: any) => i.action === 'COMPUTE_LAYOUT' && i.targetId === 'arr');
-      const positionIdx = aqir.instructions.findIndex((i: any) => i.action === 'SET_POSITION');
+      const layoutIdx = legacyView(aqir.instructions).findIndex((i: any) => i.action === 'SET_LAYOUT_STRATEGY' && i.targetId === 'arr');
+      const computeIdx = legacyView(aqir.instructions).findIndex((i: any) => i.action === 'COMPUTE_LAYOUT' && i.targetId === 'arr');
+      const positionIdx = legacyView(aqir.instructions).findIndex((i: any) => i.action === 'SET_POSITION');
 
       expect(layoutIdx).toBe(0); // backfilled immediately after DECLARE, ahead of everything else
       expect(computeIdx).toBe(1);
       expect(positionIdx).toBeGreaterThan(computeIdx);
-      expect(aqir.instructions[layoutIdx]).toMatchObject({ strategy: 'LINE', params: { spacing: 2.2, axis: 'horizontal' } });
-      expect(aqir.instructions[positionIdx]).toMatchObject({ x: null, y: 4, z: null });
+      expect(legacyView(aqir.instructions)[layoutIdx]).toMatchObject({ strategy: 'LINE', params: { spacing: 2.2, axis: 'horizontal' } });
+      expect(legacyView(aqir.instructions)[positionIdx]).toMatchObject({ x: null, y: 4, z: null });
     });
   });
 
@@ -297,11 +298,11 @@ END
       // Initial elements [50, 30, 70] are built at compile time (the tree
       // appears fully formed: 3 nodes, 2 child pointers); the user-written
       // sequence's own animation instructions are unchanged.
-      const genericActions = actionsOf(aqir.instructions, 'GENERIC_ACTION').map((i) => i.actionName);
+      const genericActions = actionsOf(legacyView(aqir.instructions), 'GENERIC_ACTION').map((i) => i.actionName);
       expect(genericActions).toEqual(['INORDER', 'CLEAR']);
       expect(aqir.objects.filter((o: any) => o.originalType === 'TREE_NODE').map((o: any) => o.value)).toEqual([50, 30, 70]);
       expect(aqir.objects.filter((o: any) => o.type === 'EDGE').map((o: any) => o.properties.label).sort()).toEqual(['L', 'R']);
-      const layout = actionsOf(aqir.instructions, 'SET_LAYOUT_STRATEGY').find((i) => i.targetId === 'myTree');
+      const layout = actionsOf(legacyView(aqir.instructions), 'SET_LAYOUT_STRATEGY').find((i) => i.targetId === 'myTree');
       expect(layout).toMatchObject({ strategy: 'HIERARCHY' });
     });
 
@@ -317,9 +318,9 @@ SEQUENCE
 END
 `;
       const aqir = compile(source);
-      const nonGeometry = aqir.instructions.filter((i: any) => !['SET_LAYOUT_STRATEGY', 'COMPUTE_LAYOUT'].includes(i.action));
+      const nonGeometry = legacyView(aqir.instructions).filter((i: any) => !['SET_LAYOUT_STRATEGY', 'COMPUTE_LAYOUT'].includes(i.action));
       expect(actionNames(nonGeometry)).toEqual(['COMPARE_OBJECTS', 'COMPARE_OBJECTS', 'HIGHLIGHT_OBJECT']);
-      expect(actionsOf(aqir.instructions, 'SET_LAYOUT_STRATEGY')).toHaveLength(1);
+      expect(actionsOf(legacyView(aqir.instructions), 'SET_LAYOUT_STRATEGY')).toHaveLength(1);
     });
 
     it('a stack push/pop program compiles unchanged plus a default vertical-LINE layout', () => {
@@ -333,9 +334,9 @@ SEQUENCE
 END
 `;
       const aqir = compile(source);
-      const nonGeometry = aqir.instructions.filter((i: any) => !['SET_LAYOUT_STRATEGY', 'COMPUTE_LAYOUT'].includes(i.action));
+      const nonGeometry = legacyView(aqir.instructions).filter((i: any) => !['SET_LAYOUT_STRATEGY', 'COMPUTE_LAYOUT'].includes(i.action));
       expect(actionNames(nonGeometry)).toEqual(['GENERIC_ACTION', 'GENERIC_ACTION']);
-      const layout = actionsOf(aqir.instructions, 'SET_LAYOUT_STRATEGY').find((i) => i.targetId === 's');
+      const layout = actionsOf(legacyView(aqir.instructions), 'SET_LAYOUT_STRATEGY').find((i) => i.targetId === 's');
       expect(layout).toMatchObject({ strategy: 'LINE', params: { spacing: 1.2, axis: 'vertical', origin: [0, -2, 0] } });
     });
 
@@ -349,9 +350,9 @@ SEQUENCE
 END
 `;
       const aqir = compile(source);
-      const layout = actionsOf(aqir.instructions, 'SET_LAYOUT_STRATEGY').find((i) => i.targetId === 'list1');
+      const layout = actionsOf(legacyView(aqir.instructions), 'SET_LAYOUT_STRATEGY').find((i) => i.targetId === 'list1');
       expect(layout).toMatchObject({ strategy: 'LINE', params: { spacing: 2.5, axis: 'horizontal', origin: [0, 0, 0] } });
-      const genericActions = actionsOf(aqir.instructions, 'GENERIC_ACTION').map((i) => i.actionName);
+      const genericActions = actionsOf(legacyView(aqir.instructions), 'GENERIC_ACTION').map((i) => i.actionName);
       expect(genericActions).toEqual(['INSERT_TAIL']);
     });
 
@@ -365,7 +366,7 @@ SEQUENCE
 END
 `;
       const aqir = compile(source);
-      const layout = actionsOf(aqir.instructions, 'SET_LAYOUT_STRATEGY').find((i) => i.targetId === 'h');
+      const layout = actionsOf(legacyView(aqir.instructions), 'SET_LAYOUT_STRATEGY').find((i) => i.targetId === 'h');
       expect(layout).toMatchObject({ strategy: 'LINE', params: { spacing: 2.2, axis: 'horizontal' } });
     });
   });
@@ -455,13 +456,13 @@ END
 
       // Exactly one explicit layout pass per structure, no default backfill duplicates.
       for (const targetId of ['nums', 'tree4', 'g']) {
-        const layouts = actionsOf(aqir.instructions, 'SET_LAYOUT_STRATEGY').filter((i) => i.targetId === targetId);
+        const layouts = actionsOf(legacyView(aqir.instructions), 'SET_LAYOUT_STRATEGY').filter((i) => i.targetId === targetId);
         expect(layouts).toHaveLength(1);
       }
 
-      const numsLayout = actionsOf(aqir.instructions, 'SET_LAYOUT_STRATEGY').find((i) => i.targetId === 'nums');
-      const treeLayout = actionsOf(aqir.instructions, 'SET_LAYOUT_STRATEGY').find((i) => i.targetId === 'tree4');
-      const graphLayout = actionsOf(aqir.instructions, 'SET_LAYOUT_STRATEGY').find((i) => i.targetId === 'g');
+      const numsLayout = actionsOf(legacyView(aqir.instructions), 'SET_LAYOUT_STRATEGY').find((i) => i.targetId === 'nums');
+      const treeLayout = actionsOf(legacyView(aqir.instructions), 'SET_LAYOUT_STRATEGY').find((i) => i.targetId === 'tree4');
+      const graphLayout = actionsOf(legacyView(aqir.instructions), 'SET_LAYOUT_STRATEGY').find((i) => i.targetId === 'g');
       expect(numsLayout.strategy).toBe('LINE');
       expect(treeLayout.strategy).toBe('HIERARCHY');
       expect(graphLayout.strategy).toBe('CIRCULAR');
@@ -470,14 +471,14 @@ END
       // COMPUTE_LAYOUT for the *same* target — no interleaving between
       // structures' layout passes.
       for (const layout of [numsLayout, treeLayout, graphLayout]) {
-        const idx = aqir.instructions.indexOf(layout);
-        expect(aqir.instructions[idx + 1]).toMatchObject({ action: 'COMPUTE_LAYOUT', targetId: layout.targetId });
+        const idx = legacyView(aqir.instructions).indexOf(layout);
+        expect(legacyView(aqir.instructions)[idx + 1]).toMatchObject({ action: 'COMPUTE_LAYOUT', targetId: layout.targetId });
       }
 
       // Full geometry-relevant + animation instruction sequence matches
       // source order exactly: CAMERA first, then the three LAYOUT/COMPUTE
       // pairs in declaration order, then the COMPARE.
-      const relevant = actionNames(aqir.instructions).filter((a) =>
+      const relevant = actionNames(legacyView(aqir.instructions)).filter((a) =>
         ['SET_CAMERA', 'SET_LAYOUT_STRATEGY', 'COMPUTE_LAYOUT', 'COMPARE_OBJECTS'].includes(a)
       );
       expect(relevant).toEqual([

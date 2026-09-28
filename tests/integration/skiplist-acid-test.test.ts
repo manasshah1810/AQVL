@@ -14,6 +14,7 @@ import { readFileSync, readdirSync, statSync } from 'fs';
 import { join, sep } from 'path';
 import { createHash } from 'crypto';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { legacyView } from '../utils/testHelpers';
 import { compile } from '../../packages/compiler/src';
 import { createVM } from '../../packages/runtime/src';
 
@@ -56,18 +57,18 @@ describe('Skip List acid test: AQIR contains geometry instructions from LAYOUT/P
   const aqir = compile(source);
 
   it('emits exactly one SET_LAYOUT_STRATEGY, strategy CUSTOM, targeting the "sl" structure', () => {
-    const layouts = actionsOf(aqir.instructions, 'SET_LAYOUT_STRATEGY');
+    const layouts = actionsOf(legacyView(aqir.instructions), 'SET_LAYOUT_STRATEGY');
     expect(layouts).toHaveLength(1);
     expect(layouts[0]).toMatchObject({ targetId: 'sl', strategy: 'CUSTOM', params: {} });
   });
 
   it('emits a matching COMPUTE_LAYOUT immediately after SET_LAYOUT_STRATEGY', () => {
-    const layoutIdx = aqir.instructions.findIndex((i: any) => i.action === 'SET_LAYOUT_STRATEGY');
-    expect(aqir.instructions[layoutIdx + 1]).toMatchObject({ action: 'COMPUTE_LAYOUT', targetId: 'sl' });
+    const layoutIdx = legacyView(aqir.instructions).findIndex((i: any) => i.action === 'SET_LAYOUT_STRATEGY');
+    expect(legacyView(aqir.instructions)[layoutIdx + 1]).toMatchObject({ action: 'COMPUTE_LAYOUT', targetId: 'sl' });
   });
 
   it('emits one SET_POSITION per declared skip-list NODE (22 rungs)', () => {
-    const positions = actionsOf(aqir.instructions, 'SET_POSITION');
+    const positions = actionsOf(legacyView(aqir.instructions), 'SET_POSITION');
     expect(positions).toHaveLength(22);
     // Every axis was given a literal, not left to strategy inference (CUSTOM requires this).
     for (const p of positions) {
@@ -78,13 +79,13 @@ describe('Skip List acid test: AQIR contains geometry instructions from LAYOUT/P
   });
 
   it('SET_CAMERA is present (absolute POSITION, framing the whole multi-level grid)', () => {
-    const cameras = actionsOf(aqir.instructions, 'SET_CAMERA');
+    const cameras = actionsOf(legacyView(aqir.instructions), 'SET_CAMERA');
     expect(cameras).toHaveLength(1);
     expect(cameras[0]).toMatchObject({ mode: 'POSITION', params: { x: 0, y: 4, z: 26 } });
   });
 
   it('emits exactly 29 LINK_OBJECTS instructions (11 tower + 18 forward pointers)', () => {
-    const links = actionsOf(aqir.instructions, 'LINK_OBJECTS');
+    const links = actionsOf(legacyView(aqir.instructions), 'LINK_OBJECTS');
     expect(links).toHaveLength(29);
     expect(links.every((l: any) => l.relationType === 'LINK' && l.directed === true)).toBe(true);
   });
@@ -157,7 +158,7 @@ describe('Skip List acid test: algorithmic correctness of the level assignment (
     expect(g.lvl26).toBe(1);
 
     // Real recursion, not unrolled: more execution frames than source AQIR instructions.
-    expect(result.executionSteps.length).toBeGreaterThan(aqir.instructions.length);
+    expect(result.executionSteps.length).toBeGreaterThan(legacyView(aqir.instructions).length);
   });
 });
 
@@ -170,7 +171,7 @@ describe('Skip List acid test: structural (graph) correctness — insert/search/
 
   it('level-0 forward chain visits every key in sorted order (the built structure is a valid, fully-linked skip list base level)', () => {
     const aqir = compile(source);
-    const edges = edgeSet(aqir.instructions);
+    const edges = edgeSet(legacyView(aqir.instructions));
     const order = ['head0', 'k3_0', 'k6_0', 'k7_0', 'k9_0', 'k12_0', 'k17_0', 'k19_0', 'k21_0', 'k25_0', 'k26_0'];
     for (let i = 0; i < order.length - 1; i++) {
       const from = idForNode(aqir.objects, order[i]);
@@ -181,7 +182,7 @@ describe('Skip List acid test: structural (graph) correctness — insert/search/
 
   it('higher levels only contain keys whose tower reaches that level (level 3 has exactly key 21)', () => {
     const aqir = compile(source);
-    const edges = edgeSet(aqir.instructions);
+    const edges = edgeSet(legacyView(aqir.instructions));
     const head3 = idForNode(aqir.objects, 'head3');
     const k21_3 = idForNode(aqir.objects, 'k21_3');
     expect(edges.has(`${head3}->${k21_3}`)).toBe(true);
@@ -191,7 +192,7 @@ describe('Skip List acid test: structural (graph) correctness — insert/search/
 
   it('search HIGHLIGHT order matches the real skip-list search path for key 19 (top level down, right while safe)', () => {
     const aqir = compile(source);
-    const highlights = actionsOf(aqir.instructions, 'HIGHLIGHT_OBJECT').map((h: any) => h.targetId);
+    const highlights = actionsOf(legacyView(aqir.instructions), 'HIGHLIGHT_OBJECT').map((h: any) => h.targetId);
     const expectedOrder = [
       'head3', 'k21_3', 'head2', 'k9_2', 'k21_2', 'head1', 'k6_1', 'k9_1', 'k17_1', 'k21_1',
       'head0', 'k3_0', 'k6_0', 'k7_0', 'k9_0', 'k12_0', 'k17_0', 'k19_0',
@@ -201,7 +202,7 @@ describe('Skip List acid test: structural (graph) correctness — insert/search/
 
   it('DELETE marks the found node removed via SET ... STATE (documented gap: no generic UNLINK exists to splice it out of the pointer chain)', () => {
     const aqir = compile(source);
-    const setState = actionsOf(aqir.instructions, 'SET_STATE');
+    const setState = actionsOf(legacyView(aqir.instructions), 'SET_STATE');
     const k19 = idForNode(aqir.objects, 'k19_0');
     expect(setState.some((s: any) => s.targetId === k19 && s.stateName === 'removed')).toBe(true);
   });

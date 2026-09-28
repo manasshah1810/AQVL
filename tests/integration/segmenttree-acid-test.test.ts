@@ -13,6 +13,7 @@ import { readFileSync, readdirSync, statSync } from 'fs';
 import { join, sep } from 'path';
 import { createHash } from 'crypto';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { legacyView } from '../utils/testHelpers';
 import { compile } from '../../packages/compiler/src';
 import { createVM } from '../../packages/runtime/src';
 
@@ -54,18 +55,18 @@ describe('Segment Tree acid test: AQIR contains geometry instructions from LAYOU
   const aqir = compile(source);
 
   it('emits exactly one SET_LAYOUT_STRATEGY, strategy CUSTOM, targeting the "st" structure', () => {
-    const layouts = actionsOf(aqir.instructions, 'SET_LAYOUT_STRATEGY');
+    const layouts = actionsOf(legacyView(aqir.instructions), 'SET_LAYOUT_STRATEGY');
     expect(layouts).toHaveLength(1);
     expect(layouts[0]).toMatchObject({ targetId: 'st', strategy: 'CUSTOM', params: {} });
   });
 
   it('emits a matching COMPUTE_LAYOUT immediately after SET_LAYOUT_STRATEGY', () => {
-    const layoutIdx = aqir.instructions.findIndex((i: any) => i.action === 'SET_LAYOUT_STRATEGY');
-    expect(aqir.instructions[layoutIdx + 1]).toMatchObject({ action: 'COMPUTE_LAYOUT', targetId: 'st' });
+    const layoutIdx = legacyView(aqir.instructions).findIndex((i: any) => i.action === 'SET_LAYOUT_STRATEGY');
+    expect(legacyView(aqir.instructions)[layoutIdx + 1]).toMatchObject({ action: 'COMPUTE_LAYOUT', targetId: 'st' });
   });
 
   it('emits one SET_POSITION per declared tree NODE (11: 5 internal + 6 leaves)', () => {
-    const positions = actionsOf(aqir.instructions, 'SET_POSITION');
+    const positions = actionsOf(legacyView(aqir.instructions), 'SET_POSITION');
     expect(positions).toHaveLength(11);
     for (const p of positions) {
       expect(p.x).not.toBeNull();
@@ -75,13 +76,13 @@ describe('Segment Tree acid test: AQIR contains geometry instructions from LAYOU
   });
 
   it('SET_CAMERA is present (absolute POSITION, framing the whole tree)', () => {
-    const cameras = actionsOf(aqir.instructions, 'SET_CAMERA');
+    const cameras = actionsOf(legacyView(aqir.instructions), 'SET_CAMERA');
     expect(cameras).toHaveLength(1);
     expect(cameras[0]).toMatchObject({ mode: 'POSITION', params: { x: 0, y: 0, z: 22 } });
   });
 
   it('emits exactly 10 LINK_OBJECTS instructions (n-1 edges for 11 nodes, a valid tree)', () => {
-    const links = actionsOf(aqir.instructions, 'LINK_OBJECTS');
+    const links = actionsOf(legacyView(aqir.instructions), 'LINK_OBJECTS');
     expect(links).toHaveLength(10);
     expect(links.every((l: any) => l.relationType === 'LINK' && l.directed === true)).toBe(true);
   });
@@ -161,7 +162,7 @@ describe('Segment Tree acid test: algorithmic correctness of the range-sum query
     expect(g.qSingle).toBe(9); // [4,4], a single leaf
 
     // Real recursion, not unrolled.
-    expect(result.executionSteps.length).toBeGreaterThan(aqir.instructions.length);
+    expect(result.executionSteps.length).toBeGreaterThan(legacyView(aqir.instructions).length);
   });
 
   it('query() early-exits via nodeSum on full containment instead of always re-summing leaves (the actual O(log n) behavior a segment tree exists to provide)', () => {
@@ -171,7 +172,7 @@ describe('Segment Tree acid test: algorithmic correctness of the range-sum query
     // this test's description asserts, since AQVL functions have no
     // observable "did I recurse further" signal beyond their return value.
     const aqir = compile(source);
-    const highlights = actionsOf(aqir.instructions, 'HIGHLIGHT_OBJECT').map((h: any) => h.targetId);
+    const highlights = actionsOf(legacyView(aqir.instructions), 'HIGHLIGHT_OBJECT').map((h: any) => h.targetId);
     const leaf3Id = idForNode(aqir.objects, 'leaf3');
     const leaf4Id = idForNode(aqir.objects, 'leaf4');
     expect(highlights).not.toContain(leaf3Id);
@@ -186,7 +187,7 @@ describe('Segment Tree acid test: structural correctness — the built tree matc
 
   it('every internal node links to exactly its two real children', () => {
     const aqir = compile(source);
-    const edges = edgeSet(aqir.instructions);
+    const edges = edgeSet(legacyView(aqir.instructions));
     const expectedEdges: Array<[string, string]> = [
       ['seg_0_5', 'seg_0_2'], ['seg_0_5', 'seg_3_5'],
       ['seg_0_2', 'seg_0_1'], ['seg_0_2', 'leaf2'],
@@ -203,13 +204,13 @@ describe('Segment Tree acid test: structural correctness — the built tree matc
 
   it('animated query(1,4) HIGHLIGHT order matches the real recursive traversal path, and excluded leaves are marked via SET ... STATE rather than skipped silently', () => {
     const aqir = compile(source);
-    const highlights = actionsOf(aqir.instructions, 'HIGHLIGHT_OBJECT').map((h: any) => h.targetId);
+    const highlights = actionsOf(legacyView(aqir.instructions), 'HIGHLIGHT_OBJECT').map((h: any) => h.targetId);
     const expectedOrder = ['seg_0_5', 'seg_0_2', 'seg_0_1', 'leaf1', 'leaf2', 'seg_3_5', 'seg_3_4'].map((n) =>
       idForNode(aqir.objects, n)
     );
     expect(highlights).toEqual(expectedOrder);
 
-    const setState = actionsOf(aqir.instructions, 'SET_STATE');
+    const setState = actionsOf(legacyView(aqir.instructions), 'SET_STATE');
     const leaf0 = idForNode(aqir.objects, 'leaf0');
     const leaf5 = idForNode(aqir.objects, 'leaf5');
     expect(setState.some((s: any) => s.targetId === leaf0 && s.stateName === 'excluded')).toBe(true);

@@ -3,14 +3,18 @@
  * program counter, call stack, and lexical scopes, instead of the
  * compile-time-unrolled sequential model.
  *
- * Legacy action-based instructions (COMPARE_OBJECTS, SWAP_OBJECTS, ...) are
- * not interpreted by the VM itself — they're handed off to an injected
- * `legacyHandler` (in practice, `AnimationController.executeInstruction`)
- * so existing animations keep working unchanged. The 6 control-flow opcodes
- * (JUMP, JUMP_IF_FALSE, CALL, RET, PUSH_SCOPE, POP_SCOPE) and the 4 geometry
- * opcodes (SET_LAYOUT_STRATEGY, COMPUTE_LAYOUT, SET_POSITION, SET_CAMERA —
- * see docs/design/aqir-geometry-spec.md) are interpreted directly here,
- * the latter via `LayoutEngine`.
+ * The stream holds kernel opcodes (JUMP, JUMP_IF_FALSE, CALL, RET,
+ * PUSH_SCOPE, POP_SCOPE, SET_VAR), interpreted here, and STEPs of primitive
+ * ops (docs/design/aqir-primitives-spec.md). Of a STEP's ops the VM owns
+ * geometry — TRANSFORM arrange / reflow <structure> / place / view resolve
+ * into VM state via `LayoutEngine` (see docs/design/aqir-geometry-spec.md) —
+ * and hands everything else to the host: in Phase 2.1 through the legacy
+ * bridge (./aqir/legacyBridge), which lowers the STEP to the action-based
+ * instruction the injected `legacyHandler` (in practice
+ * `AnimationController.executeInstruction`) has always received.
+ *
+ * Hand-written legacy action-based instructions (COMPARE_OBJECTS,
+ * SWAP_OBJECTS, SET_LAYOUT_STRATEGY, ...) are still accepted as-is.
  */
 
 import type { AQIRInstruction, AQIRObject } from '@aqvl/shared';
@@ -42,8 +46,12 @@ import type {
   SetPositionInstruction,
   ComputeLayoutInstruction,
   SetCameraInstruction,
+  StepInstruction,
+  TransformOp,
 } from './aqir/types';
 import type { CameraFrameState } from './aqir/types';
+import { isStepInstruction } from './aqir/types';
+import { lowerStep } from './aqir/legacyBridge';
 
 /**
  * Deep-clones plain JSON-like data (numbers/strings/booleans/null/arrays/
@@ -71,7 +79,7 @@ export function deepClonePlain<T>(value: T): T {
   return out as T;
 }
 
-/** The 4 geometry opcodes the VM resolves directly (see docs/design/aqir-geometry-spec.md §1). */
+/** The 4 legacy geometry actions the VM resolves directly (see docs/design/aqir-geometry-spec.md §1) — a STEP's TRANSFORM arrange / reflow <structure> / place / view lower to these. */
 export const GEOMETRY_ACTIONS: ReadonlySet<string> = new Set([
   'SET_LAYOUT_STRATEGY',
   'COMPUTE_LAYOUT',
@@ -568,57 +576,92 @@ export class AQVLVirtualMachine {
     return record;
   }
 
-  /** Resolves SET_LAYOUT_STRATEGY / COMPUTE_LAYOUT / SET_POSITION / SET_CAMERA against VM-owned geometry state. */
-  private executeGeometryInstruction(instr: AQIRInstruction): void {
+  /**
+   * The TRANSFORM op a hand-written legacy geometry instruction stands for,
+   * so both forms run through `applyTransform`.
+   */
+  private static legacyGeometryOp(instr: AQIRInstruction): TransformOp | null {
     switch (instr.action) {
       case 'SET_LAYOUT_STRATEGY': {
         const i = instr as SetLayoutStrategyInstruction;
-        this.structureStrategies.set(i.targetId, { strategy: i.strategy, params: i.params ?? {} });
+        return { kind: 'TRANSFORM', verb: 'arrange', target: i.targetId, strategy: i.strategy, params: i.params };
+      }
+      case 'COMPUTE_LAYOUT':
+        return { kind: 'TRANSFORM', verb: 'reflow', target: (instr as ComputeLayoutInstruction).targetId };
+      case 'SET_POSITION': {
+        const i = instr as SetPositionInstruction;
+        return { kind: 'TRANSFORM', verb: 'place', target: i.elementId, x: i.x, y: i.y, z: i.z };
+      }
+      case 'SET_CAMERA': {
+        const i = instr as SetCameraInstruction;
+        return { kind: 'TRANSFORM', verb: 'view', mode: i.mode, params: i.params };
+      }
+    }
+    return null;
+  }
+
+  /**
+   * The TRANSFORM op the VM resolves itself, if `step` is one: arrange,
+   * reflow of a named structure, place and view. (orient / scale / a
+   * whole-scene reflow are the host's, like every other op.)
+   */
+  private static vmOwnedTransform(step: StepInstruction): TransformOp | null {
+    if (step.ops.length !== 1 || step.ops[0].kind !== 'TRANSFORM') return null;
+    const op = step.ops[0];
+    if (op.verb === 'arrange' || op.verb === 'place' || op.verb === 'view') return op;
+    if (op.verb === 'reflow' && op.target !== undefined) return op;
+    return null;
+  }
+
+  /** Applies a TRANSFORM op to VM-owned geometry state (layout strategies, resolved positions, pins, camera). */
+  private applyTransform(op: TransformOp): void {
+    switch (op.verb) {
+      case 'arrange': {
+        this.structureStrategies.set(op.target, { strategy: op.strategy, params: op.params ?? {} });
         return;
       }
 
-      case 'COMPUTE_LAYOUT': {
-        const i = instr as ComputeLayoutInstruction;
-        const record = this.structureStrategies.get(i.targetId);
-        if (!record) return; // no SET_LAYOUT_STRATEGY seen yet for this structure — nothing to materialize.
+      case 'reflow': {
+        if (op.target === undefined) return;
+        const record = this.structureStrategies.get(op.target);
+        if (!record) return; // no strategy arranged yet for this structure — nothing to materialize.
 
-        const elementIds = this.structureElements.get(i.targetId) ?? [];
+        const elementIds = this.structureElements.get(op.target) ?? [];
         const elements: LayoutElementInput[] = elementIds
           .filter((id) => !this.pinnedElements.has(id))
           .map((id, logicalIndex) => ({ id, logicalIndex }));
 
-        const edges = this.structureEdges.get(i.targetId);
-        const computed = this.layoutEngine.computeLayout(i.targetId, record.strategy, record.params, elements, edges);
+        const edges = this.structureEdges.get(op.target);
+        const computed = this.layoutEngine.computeLayout(op.target, record.strategy, record.params, elements, edges);
         computed.forEach((pos, id) => this.positions.set(id, pos));
         return;
       }
 
-      case 'SET_POSITION': {
-        const i = instr as SetPositionInstruction;
-        if (i.x === null && i.y === null && i.z === null) {
-          // POSITION ... AT () — release the pin; rejoins the structure's next COMPUTE_LAYOUT.
-          this.pinnedElements.delete(i.elementId);
+      case 'place': {
+        if (op.x === null && op.y === null && op.z === null) {
+          // POSITION ... AT () — release the pin; rejoins the structure's next reflow.
+          this.pinnedElements.delete(op.target);
           return;
         }
-        const current = this.positions.get(i.elementId) ?? { x: 0, y: 0, z: 0 };
-        this.positions.set(i.elementId, {
-          x: i.x ?? current.x,
-          y: i.y ?? current.y,
-          z: i.z ?? current.z,
+        const current = this.positions.get(op.target) ?? { x: 0, y: 0, z: 0 };
+        this.positions.set(op.target, {
+          x: op.x ?? current.x,
+          y: op.y ?? current.y,
+          z: op.z ?? current.z,
         });
-        this.pinnedElements.add(i.elementId);
+        this.pinnedElements.add(op.target);
         return;
       }
 
-      case 'SET_CAMERA': {
-        const i = instr as SetCameraInstruction;
-        const hasPosition = i.params.x !== undefined || i.params.y !== undefined || i.params.z !== undefined;
+      case 'view': {
+        const params = op.params;
+        const hasPosition = params.x !== undefined || params.y !== undefined || params.z !== undefined;
         this.cameraState = {
-          mode: i.mode,
-          ...(i.params.targetId !== undefined ? { targetId: i.params.targetId } : {}),
-          ...(i.params.speed !== undefined ? { speed: i.params.speed } : {}),
+          mode: op.mode,
+          ...(params.targetId !== undefined ? { targetId: params.targetId } : {}),
+          ...(params.speed !== undefined ? { speed: params.speed } : {}),
           ...(hasPosition
-            ? { position: { x: i.params.x ?? 0, y: i.params.y ?? 0, z: i.params.z ?? 0 } }
+            ? { position: { x: params.x ?? 0, y: params.y ?? 0, z: params.z ?? 0 } }
             : {}),
         };
         return;
@@ -787,6 +830,7 @@ export class AQVLVirtualMachine {
     // so once captured, only `pc` (advanced right after) can still differ.
     let stateBody: Omit<VMState, 'pc'> | undefined;
     let animated = false;
+    let lowered: AQIRInstruction | undefined;
 
     if (isControlFlowInstruction(instr)) {
       const setVar = instr.opcode === AQIROpcode.SET_VAR && this.variableObserver && !instr.name.startsWith('__') ? instr : null;
@@ -820,8 +864,20 @@ export class AQVLVirtualMachine {
       } else if (instr.opcode === AQIROpcode.POP_SCOPE || instr.opcode === AQIROpcode.RET) {
         this.scopeObserver?.();
       }
+    } else if (isStepInstruction(instr)) {
+      // The host sees the step's lowered, action-based form (Phase 2.1
+      // bridge), and so does the emitted frame — see ExecutionFrame.instruction.
+      lowered = lowerStep(instr);
+      const transform = AQVLVirtualMachine.vmOwnedTransform(instr);
+      if (transform) {
+        this.applyTransform(transform);
+      } else if (this.legacyHandler) {
+        stateBody = this.captureStateBody();
+        await this.legacyHandler(lowered, { pc: this.pc, ...stateBody });
+      }
+      this.pc++;
     } else if (GEOMETRY_ACTIONS.has((instr as AQIRInstruction).action)) {
-      this.executeGeometryInstruction(instr as AQIRInstruction);
+      this.applyTransform(AQVLVirtualMachine.legacyGeometryOp(instr as AQIRInstruction)!);
       this.pc++;
     } else {
       if (this.legacyHandler) {
@@ -832,7 +888,8 @@ export class AQVLVirtualMachine {
     }
 
     const finalState: VMState = stateBody ? { pc: this.pc, ...stateBody } : this.getState();
-    const frame = this.emitExecutionFrame(instr, finalState);
+    const frame = this.emitExecutionFrame(lowered ?? instr, finalState);
+    if (lowered) frame.programInstruction = instr;
     if (animated) frame.animated = true;
     const done = this.pc >= this.instructions.length;
     return { done, frame };

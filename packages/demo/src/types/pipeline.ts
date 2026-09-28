@@ -3,6 +3,7 @@
  * shared by App and its panels.
  */
 import type { AQIRGenerator, Lexer, ProgramNode } from '@aqvl/compiler';
+import { isStepInstruction, lowerStep } from '@aqvl/runtime';
 
 export type { ProgramNode };
 
@@ -42,7 +43,13 @@ export interface InstructionView {
   args?: unknown[];
 }
 
-/** The program's instructions, in the shape the instruction lists read. */
+/**
+ * The program's instructions, in the shape the instruction lists read: a
+ * STEP of primitive ops is shown as the action-based instruction it lowers
+ * to (the form AnimationController runs, see
+ * docs/design/aqir-primitives-spec.md §6), so each row keeps its familiar
+ * name (SWAP_OBJECTS, PUSH, ...) and operands.
+ */
 export function instructionViews(aqir: AQIRProgram | null): InstructionView[] {
-  return (aqir?.instructions ?? []) as InstructionView[];
+  return (aqir?.instructions ?? []).map((i) => (isStepInstruction(i) ? lowerStep(i) : i)) as InstructionView[];
 }

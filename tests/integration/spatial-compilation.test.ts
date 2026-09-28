@@ -5,7 +5,7 @@
  * ordered instruction sequence — see docs/design/aqir-geometry-spec.md §5.
  */
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { compile } from '../utils/testHelpers';
+import { compileLowered } from '../utils/testHelpers';
 
 beforeAll(() => {
   vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -32,7 +32,7 @@ SEQUENCE
   WAIT
 END
 `;
-    const instructions = compile(source) as any[];
+    const instructions = compileLowered(source) as any[];
 
     // Exactly one layout pass for "arr" (the explicit one — no default backfill).
     const layoutInstrs = instructions.filter((i) => i.action === 'SET_LAYOUT_STRATEGY' && i.targetId === 'arr');
@@ -72,7 +72,7 @@ SEQUENCE
   CLEAR myTree
 END
 `;
-    const instructions = compile(source) as any[];
+    const instructions = compileLowered(source) as any[];
 
     // No explicit CAMERA statement anywhere -> no SET_CAMERA at all (the
     // deliverable scope here is explicit CAMERA emission only; the "no
@@ -103,7 +103,7 @@ SEQUENCE
   WAIT
 END
 `;
-    const instructions = compile(source) as any[];
+    const instructions = compileLowered(source) as any[];
 
     // Exactly two explicit layout passes for "t" (no default backfill, since
     // the pre-scan sees the first LAYOUT statement before DECLARE runs).

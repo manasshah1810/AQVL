@@ -12,7 +12,7 @@
  * directly against the same literal values the compiled source declares.
  */
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { compile } from '../utils/testHelpers';
+import { compileLowered } from '../utils/testHelpers';
 import { SortAlgorithm } from '../../packages/runtime/src/core/algorithms/SortEngine';
 
 beforeAll(() => {
@@ -39,7 +39,7 @@ END
 
 describe('Sorting built-ins: parsing to GENERIC_ACTION', () => {
   it('parses BUBBLE_SORT into a GENERIC_ACTION targeting the array', () => {
-    const instructions = compile(arraySource('arr', [5, 2, 8, 1, 9], 'BUBBLE_SORT'));
+    const instructions = compileLowered(arraySource('arr', [5, 2, 8, 1, 9], 'BUBBLE_SORT'));
     const actions = genericActions(instructions);
     expect(actions).toHaveLength(1);
     expect(actions[0]).toMatchObject({
@@ -50,7 +50,7 @@ describe('Sorting built-ins: parsing to GENERIC_ACTION', () => {
   });
 
   it('parses SELECTION_SORT into a GENERIC_ACTION targeting the array', () => {
-    const instructions = compile(arraySource('nums', [3, 1, 2], 'SELECTION_SORT'));
+    const instructions = compileLowered(arraySource('nums', [3, 1, 2], 'SELECTION_SORT'));
     const actions = genericActions(instructions);
     expect(actions).toHaveLength(1);
     expect(actions[0]).toMatchObject({
@@ -61,7 +61,7 @@ describe('Sorting built-ins: parsing to GENERIC_ACTION', () => {
   });
 
   it('parses INSERTION_SORT into a GENERIC_ACTION targeting the array', () => {
-    const instructions = compile(arraySource('data', [9, 8, 7], 'INSERTION_SORT'));
+    const instructions = compileLowered(arraySource('data', [9, 8, 7], 'INSERTION_SORT'));
     const actions = genericActions(instructions);
     expect(actions).toHaveLength(1);
     expect(actions[0]).toMatchObject({
@@ -73,7 +73,7 @@ describe('Sorting built-ins: parsing to GENERIC_ACTION', () => {
 
   it.each([5, 10, 100])('compiles a BUBBLE_SORT over an array of size %i', (size) => {
     const values = Array.from({ length: size }, (_, i) => size - i);
-    const instructions = compile(arraySource('arr', values, 'BUBBLE_SORT'));
+    const instructions = compileLowered(arraySource('arr', values, 'BUBBLE_SORT'));
     const actions = genericActions(instructions);
     expect(actions).toHaveLength(1);
     expect(actions[0].actionName).toBe('BUBBLE_SORT');
@@ -81,7 +81,7 @@ describe('Sorting built-ins: parsing to GENERIC_ACTION', () => {
 
   it('compiles a sort over an array of random values', () => {
     const values = Array.from({ length: 30 }, () => Math.floor(Math.random() * 1000));
-    const instructions = compile(arraySource('randomArr', values, 'SELECTION_SORT'));
+    const instructions = compileLowered(arraySource('randomArr', values, 'SELECTION_SORT'));
     const actions = genericActions(instructions);
     expect(actions).toHaveLength(1);
     expect(actions[0]).toMatchObject({ actionName: 'SELECTION_SORT', args: ['randomArr'] });
@@ -98,7 +98,7 @@ SEQUENCE
   INSERTION_SORT b
 END
 `;
-    const actions = genericActions(compile(source));
+    const actions = genericActions(compileLowered(source));
     expect(actions.map((a) => a.actionName)).toEqual(['BUBBLE_SORT', 'INSERTION_SORT']);
     expect(actions.map((a) => a.payload.logicalParent)).toEqual(['a', 'b']);
   });
@@ -106,7 +106,7 @@ END
 
 describe('MERGE_SORT / QUICK_SORT: parsing to GENERIC_ACTION', () => {
   it('parses MERGE_SORT into a GENERIC_ACTION targeting the array', () => {
-    const instructions = compile(arraySource('arr', [5, 2, 8, 1, 9], 'MERGE_SORT'));
+    const instructions = compileLowered(arraySource('arr', [5, 2, 8, 1, 9], 'MERGE_SORT'));
     const actions = genericActions(instructions);
     expect(actions).toHaveLength(1);
     expect(actions[0]).toMatchObject({
@@ -117,7 +117,7 @@ describe('MERGE_SORT / QUICK_SORT: parsing to GENERIC_ACTION', () => {
   });
 
   it('parses QUICK_SORT into a GENERIC_ACTION targeting the array', () => {
-    const instructions = compile(arraySource('arr', [5, 2, 8, 1, 9], 'QUICK_SORT'));
+    const instructions = compileLowered(arraySource('arr', [5, 2, 8, 1, 9], 'QUICK_SORT'));
     const actions = genericActions(instructions);
     expect(actions).toHaveLength(1);
     expect(actions[0]).toMatchObject({
@@ -132,11 +132,11 @@ describe('MERGE_SORT / QUICK_SORT: parsing to GENERIC_ACTION', () => {
     (size) => {
       const values = Array.from({ length: size }, (_, i) => size - i);
 
-      const mergeActions = genericActions(compile(arraySource('arr', values, 'MERGE_SORT')));
+      const mergeActions = genericActions(compileLowered(arraySource('arr', values, 'MERGE_SORT')));
       expect(mergeActions).toHaveLength(1);
       expect(mergeActions[0].actionName).toBe('MERGE_SORT');
 
-      const quickActions = genericActions(compile(arraySource('arr', values, 'QUICK_SORT')));
+      const quickActions = genericActions(compileLowered(arraySource('arr', values, 'QUICK_SORT')));
       expect(quickActions).toHaveLength(1);
       expect(quickActions[0].actionName).toBe('QUICK_SORT');
     }
@@ -147,8 +147,8 @@ describe('MERGE_SORT / QUICK_SORT: parsing to GENERIC_ACTION', () => {
     const expected = [...values].sort((a, b) => a - b);
 
     // Confirms the source compiles cleanly (the array literal is valid AQVL)...
-    expect(genericActions(compile(arraySource('arr', values, 'MERGE_SORT')))[0].actionName).toBe('MERGE_SORT');
-    expect(genericActions(compile(arraySource('arr', values, 'QUICK_SORT')))[0].actionName).toBe('QUICK_SORT');
+    expect(genericActions(compileLowered(arraySource('arr', values, 'MERGE_SORT')))[0].actionName).toBe('MERGE_SORT');
+    expect(genericActions(compileLowered(arraySource('arr', values, 'QUICK_SORT')))[0].actionName).toBe('QUICK_SORT');
 
     // ...and that the engine backing those instructions actually sorts those exact values.
     expect(SortAlgorithm.mergeSort([...values]).array).toEqual(expected);
@@ -158,7 +158,7 @@ describe('MERGE_SORT / QUICK_SORT: parsing to GENERIC_ACTION', () => {
   it('emits PIVOT frames for QUICK_SORT and OVERWRITE (merge-write) frames for MERGE_SORT over the compiled array', () => {
     const values = [40, 10, 30, 20, 90, 60, 70, 80, 50];
     // Same array the compiled QUICK_SORT/MERGE_SORT instruction below targets.
-    expect(genericActions(compile(arraySource('arr', values, 'QUICK_SORT')))[0].payload.logicalParent).toBe('arr');
+    expect(genericActions(compileLowered(arraySource('arr', values, 'QUICK_SORT')))[0].payload.logicalParent).toBe('arr');
 
     const quickResult = SortAlgorithm.quickSort([...values]);
     expect(quickResult.steps.some((s) => s.type === 'PIVOT')).toBe(true);

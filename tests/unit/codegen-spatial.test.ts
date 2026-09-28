@@ -7,8 +7,9 @@
  * `vitest run` output stays readable.
  */
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { compile } from '../utils/testHelpers';
+import { compileLowered } from '../utils/testHelpers';
 import { compile as compileAQVL } from '../../packages/compiler/src';
+import { legacyView } from '../utils/testHelpers';
 
 beforeAll(() => {
   vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -32,7 +33,7 @@ SEQUENCE
   WAIT
 END
 `;
-      const instructions = compile(source);
+      const instructions = compileLowered(source);
       const idx = instructions.findIndex((i: any) => i.action === 'SET_LAYOUT_STRATEGY' && i.targetId === 'arr');
       expect(idx).toBeGreaterThanOrEqual(0);
 
@@ -59,7 +60,7 @@ SEQUENCE
   WAIT
 END
 `;
-      const instructions = compile(source);
+      const instructions = compileLowered(source);
       const instr = actionsOf(instructions, 'SET_LAYOUT_STRATEGY').find((i) => i.targetId === 'x');
       expect(instr).toBeDefined();
       expect(instr.strategy).toBe(strategy);
@@ -75,7 +76,7 @@ SEQUENCE
   WAIT
 END
 `;
-      const instructions = compile(source);
+      const instructions = compileLowered(source);
       const layoutInstrs = actionsOf(instructions, 'SET_LAYOUT_STRATEGY').filter((i) => i.targetId === 'arr');
       expect(layoutInstrs).toHaveLength(1);
       expect(layoutInstrs[0].strategy).toBe('GRID');
@@ -91,7 +92,7 @@ SEQUENCE
   WAIT
 END
 `;
-      const instructions = compile(source);
+      const instructions = compileLowered(source);
       const idx = instructions.findIndex((i: any) => i.action === 'SET_LAYOUT_STRATEGY' && i.targetId === 'arr');
       expect(idx).toBeGreaterThanOrEqual(0);
 
@@ -109,7 +110,7 @@ SEQUENCE
   WAIT
 END
 `;
-      const instructions = compile(source);
+      const instructions = compileLowered(source);
       const instr = actionsOf(instructions, 'SET_LAYOUT_STRATEGY').find((i) => i.targetId === 's');
       expect(instr).toBeDefined();
       expect(instr.strategy).toBe('LINE');
@@ -124,7 +125,7 @@ SEQUENCE
   WAIT
 END
 `;
-      const instructions = compile(source);
+      const instructions = compileLowered(source);
       const instr = actionsOf(instructions, 'SET_LAYOUT_STRATEGY').find((i) => i.targetId === 'g');
       expect(instr).toBeDefined();
       expect(instr.strategy).toBe('FORCE_DIRECTED');
@@ -142,7 +143,7 @@ SEQUENCE
   WAIT
 END
 `;
-      const instructions = compile(source);
+      const instructions = compileLowered(source);
       const instr = actionsOf(instructions, 'SET_LAYOUT_STRATEGY').find((i) => i.targetId === 't');
       expect(instr).toBeDefined();
       expect(instr.strategy).toBe('HIERARCHY');
@@ -161,7 +162,7 @@ SEQUENCE
 END
 `;
       const aqir = compileAQVL(source);
-      const instr = actionsOf(aqir.instructions, 'SET_CAMERA')[0];
+      const instr = actionsOf(legacyView(aqir.instructions), 'SET_CAMERA')[0];
       const treeObject = aqir.objects.find((o: any) => o.type === 'BINARYTREE');
       expect(instr).toBeDefined();
       expect(instr.mode).toBe('FOCUS');
@@ -176,7 +177,7 @@ SEQUENCE
   WAIT
 END
 `;
-      const instructions = compile(source);
+      const instructions = compileLowered(source);
       const instr = actionsOf(instructions, 'SET_CAMERA')[0];
       expect(instr).toBeDefined();
       expect(instr.mode).toBe('AUTO_FIT');
@@ -190,7 +191,7 @@ SEQUENCE
   WAIT
 END
 `;
-      const instructions = compile(source);
+      const instructions = compileLowered(source);
       const instr = actionsOf(instructions, 'SET_CAMERA')[0];
       expect(instr).toBeDefined();
       expect(instr.mode).toBe('ORBIT');
@@ -204,7 +205,7 @@ SEQUENCE
   WAIT
 END
 `;
-      const instructions = compile(source);
+      const instructions = compileLowered(source);
       const instr = actionsOf(instructions, 'SET_CAMERA')[0];
       expect(instr).toBeDefined();
       expect(instr.mode).toBe('POSITION');
@@ -223,7 +224,7 @@ SEQUENCE
   WAIT
 END
 `;
-      const instructions = compile(source);
+      const instructions = compileLowered(source);
       const instr = actionsOf(instructions, 'SET_POSITION')[0];
       expect(instr).toBeDefined();
       expect(instr).toMatchObject({ x: 5, y: 2, z: 0 });
@@ -238,7 +239,7 @@ SEQUENCE
   WAIT
 END
 `;
-      const instructions = compile(source);
+      const instructions = compileLowered(source);
       const instr = actionsOf(instructions, 'SET_POSITION')[0];
       expect(instr).toBeDefined();
       expect(instr).toMatchObject({ x: null, y: 4, z: null });
@@ -254,7 +255,7 @@ SEQUENCE
   WAIT
 END
 `;
-      const instructions = compile(source);
+      const instructions = compileLowered(source);
       const positionInstrs = actionsOf(instructions, 'SET_POSITION');
       expect(positionInstrs).toHaveLength(2);
       expect(positionInstrs[1]).toMatchObject({ x: null, y: null, z: null });
@@ -270,7 +271,7 @@ SEQUENCE
   WAIT
 END
 `;
-      const instructions = compile(source);
+      const instructions = compileLowered(source);
       const computeIdx = instructions.findIndex((i: any) => i.action === 'COMPUTE_LAYOUT' && i.targetId === 'arr');
       const positionIdx = instructions.findIndex((i: any) => i.action === 'SET_POSITION');
       expect(computeIdx).toBeGreaterThanOrEqual(0);

@@ -1,20 +1,15 @@
 /**
- * AQIR types — VM Mode extension.
+ * AQIR types.
  *
- * Re-exports the existing (compile-time) AQIR types from `@aqvl/shared`
- * unchanged for backward compatibility, and adds the new VM-mode
- * instruction types plus the runtime data shapes (`FrameInfo`,
- * `RuntimeEnvironment`) needed to execute them.
- *
- * Design-only: nothing here is consumed by the Optimizer or
- * AnimationController yet.
+ * The instruction set (kernel opcodes + STEP of primitive ops, see
+ * docs/design/aqir-primitives-spec.md), the program shape the generator
+ * returns, and the runtime data shapes (`FrameInfo`, `RuntimeEnvironment`).
+ * The legacy action-based types from `@aqvl/shared` are re-exported
+ * unchanged: they are the form the runtime's legacy bridge lowers a STEP to.
  */
 
 // --- Backward compatibility: re-export the existing action-based AQIR types unchanged. ---
-import type {
-  AQIRObject,
-  AQIRInstruction,
-} from '@aqvl/shared';
+import type { AQIRObject } from '@aqvl/shared';
 export type {
   AQIRObject,
   AQIRInstruction,
@@ -29,10 +24,13 @@ export type {
   UpdateLayoutInstruction,
 } from '@aqvl/shared';
 
-// --- New: VM-mode instruction set (control flow). ---
-import type { ControlFlowInstruction, GeometryInstruction } from './InstructionSet';
+// --- Instruction set: kernel opcodes + STEP of primitive ops. ---
+import type { ControlFlowInstruction, StepInstruction } from './InstructionSet';
 export {
   AQIROpcode,
+  LegacyAction,
+  PrimitiveKind,
+  PRIMITIVE_VERBS,
 } from './InstructionSet';
 export type {
   SourceLocation,
@@ -56,21 +54,43 @@ export type {
   SetRotationInstruction,
   SetScaleInstruction,
   GeometryInstruction,
+  Operand,
+  Address,
+  SlotAddress,
+  KeyAddress,
+  ViaAddress,
+  CreatedAddress,
+  MutateOp,
+  MutateSetOp,
+  MutateExchangeOp,
+  MutateCreateOp,
+  MutateDestroyOp,
+  TransformOp,
+  TransformArrangeOp,
+  TransformReflowOp,
+  TransformPlaceOp,
+  TransformViewOp,
+  TransformOrientOp,
+  RelateOp,
+  AnnotateOp,
+  EmitOp,
+  InvokeOp,
+  PrimitiveOp,
+  StepInstruction,
 } from './InstructionSet';
 
 /**
- * Any instruction the generator may emit under VM mode: a "legacy"
- * action-based instruction (COMPARE_OBJECTS, SWAP_OBJECTS, ...), one of the
- * 6 control-flow opcodes, or one of the 6 geometry opcodes (LAYOUT/CAMERA/
- * POSITION) from ./InstructionSet. Mirrors the runtime package's
- * `VMInstruction` (packages/runtime/src/types.ts) — kept in sync by
- * convention since the runtime does not depend on @aqvl/compiler.
+ * Any instruction the generator emits: one of the 7 kernel (control-flow)
+ * opcodes, or a STEP of primitive ops (docs/design/aqir-primitives-spec.md).
+ * Assignable to the runtime package's `VMInstruction`
+ * (packages/runtime/src/types.ts), which additionally still accepts
+ * hand-written legacy action instructions.
  */
-export type VMInstruction = AQIRInstruction | ControlFlowInstruction | GeometryInstruction;
+export type VMInstruction = ControlFlowInstruction | StepInstruction;
 
 /**
- * VM-mode replacement for `@aqvl/shared`'s `AQIRProgram`: identical except
- * `instructions` now accepts control-flow opcodes alongside legacy
+ * Replacement for `@aqvl/shared`'s `AQIRProgram`: identical except
+ * `instructions` holds kernel opcodes and STEPs instead of legacy
  * action-based instructions.
  */
 export interface AQIRProgram {

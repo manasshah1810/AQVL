@@ -4,7 +4,7 @@ import { Parser } from '../../packages/compiler/src/parser';
 import type { ProgramNode } from '../../packages/compiler/src/ast/types';
 import { compile as compileAQVL } from '../../packages/compiler/src';
 import type { VMInstruction } from '../../packages/compiler/src/aqir/types';
-import { createVM } from '../../packages/runtime/src';
+import { createVM, isStepInstruction, lowerStep } from '../../packages/runtime/src';
 import type { ExecutionResult } from '../../packages/runtime/src';
 
 export { TokenType };
@@ -28,6 +28,29 @@ export function parseSource(source: string): ProgramNode {
 /** Runs the full compiler pipeline (lex -> parse -> validate -> optimize -> generate) and returns the AQIR instruction list. */
 export function compile(source: string): VMInstruction[] {
   return compileAQVL(source).instructions;
+}
+
+const legacyViews = new WeakMap<readonly unknown[], any[]>();
+
+/**
+ * A program's instructions as AnimationController receives them: every STEP
+ * lowered by the Phase 2.1 legacy bridge to its action-based form, kernel
+ * opcodes unchanged (docs/design/aqir-primitives-spec.md §6). The index of
+ * each instruction is its pc, as in the program. Memoized per array, so
+ * repeated calls return the same array and the same instruction objects.
+ */
+export function legacyView(instructions: readonly unknown[]): any[] {
+  let view = legacyViews.get(instructions);
+  if (!view) {
+    view = instructions.map((i) => (isStepInstruction(i) ? lowerStep(i) : i));
+    legacyViews.set(instructions, view);
+  }
+  return view;
+}
+
+/** `compile`, viewed as AnimationController receives the instructions (see `legacyView`). */
+export function compileLowered(source: string): any[] {
+  return legacyView(compile(source));
 }
 
 /** Compiles and runs `source` on a real VM, returning the final execution result. */

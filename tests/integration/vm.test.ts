@@ -17,6 +17,7 @@
  *    legacy top-level SEQUENCE/LOOP IF is END-delimited with no ELSE.
  */
 import { beforeAll, afterAll, describe, expect, it, vi } from 'vitest';
+import { legacyView } from '../utils/testHelpers';
 import {
   compile,
   UndeclaredFunctionError,
@@ -599,7 +600,7 @@ SEQUENCE
 END
 `;
     const aqir = compile(source);
-    const actionNames = aqir.instructions
+    const actionNames = legacyView(aqir.instructions)
       .filter((i: any) => i.action === 'GENERIC_ACTION')
       .map((i: any) => i.actionName);
     expect(actionNames).toEqual(['INSERT', 'INSERT', 'INSERT', 'SEARCH']);
@@ -620,7 +621,7 @@ SEQUENCE
 END
 `;
     const aqir = compile(source);
-    const actionTypes = aqir.instructions.map((i: any) => i.action);
+    const actionTypes = legacyView(aqir.instructions).map((i: any) => i.action);
     // No LAYOUT statement anywhere in source -> the generator backfills
     // "arr"'s default layout (spatial-syntax-spec.md §4) immediately after
     // its DECLARE, ahead of the animation instructions below — see

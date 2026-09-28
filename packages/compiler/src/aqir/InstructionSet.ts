@@ -1,21 +1,23 @@
 /**
- * AQIR Instruction Set — VM Mode extension.
+ * AQIR Instruction Set.
  *
- * Phase 1 design surface for dynamic execution. This file introduces a
- * discriminated-union instruction model (`AQIROpcode` + per-opcode
- * interfaces) alongside the existing string-`action`-based instructions in
- * `@aqvl/shared` (packages/shared/src/aqir/types.ts).
+ * An AQIR instruction stream holds two families (see
+ * docs/design/aqir-primitives-spec.md):
  *
- * IMPORTANT: this is a design-only addition. Nothing here is wired into the
- * Optimizer, AQIRGenerator, or AnimationController yet — see Phase 2/1.4.
- * The `AQIROpcode` enum mirrors every existing `action` string so a future
- * migration can move instructions onto this model without renaming them,
- * plus the 6 new opcodes needed for runtime control flow.
+ * - Kernel opcodes — JUMP, JUMP_IF_FALSE, CALL, RET, PUSH_SCOPE, POP_SCOPE,
+ *   SET_VAR — executed by the VM itself.
+ * - STEP — one visible beat, carrying an ordered list of domain-neutral
+ *   primitive ops (MUTATE, TRANSFORM, RELATE, ANNOTATE, EMIT) or a single
+ *   INVOKE of a runtime library procedure.
+ *
+ * The former per-structure opcodes (SWAP_OBJECTS, LL_SET, MAP_PUT, ...) are
+ * no longer emitted: each is a compiler macro (./macros) expanding to a STEP.
+ * Their shapes survive below and in `@aqvl/shared` only as the form the
+ * runtime's legacy bridge lowers a STEP to for AnimationController (Phase 2.1).
  */
 
 /**
- * Every opcode AQIR can emit, existing (compile-time-unrolled) actions
- * first, then the new VM-mode opcodes.
+ * Every opcode the generator emits.
  *
  * Deliberately a `const` object + derived literal-union type rather than a
  * TS `enum`: string enums are nominally typed, so a value built from an
@@ -27,12 +29,32 @@
  * without a cast.
  */
 export const AQIROpcode = {
-  // --- Existing opcodes (mirror of AQIRInstruction['action'] in @aqvl/shared) ---
+  // --- Kernel: runtime control flow ---
+  JUMP: 'JUMP',
+  JUMP_IF_FALSE: 'JUMP_IF_FALSE',
+  CALL: 'CALL',
+  RET: 'RET',
+  PUSH_SCOPE: 'PUSH_SCOPE',
+  POP_SCOPE: 'POP_SCOPE',
+  SET_VAR: 'SET_VAR',
+
+  // --- Effect: one visible beat of primitive ops ---
+  STEP: 'STEP',
+} as const;
+export type AQIROpcode = (typeof AQIROpcode)[keyof typeof AQIROpcode];
+
+/**
+ * The former action-based opcodes, each now a macro in ./macros. Listed so
+ * tooling can name them; the generator never emits an instruction with one
+ * of these as its `action`.
+ */
+export const LegacyAction = {
   COMPARE_OBJECTS: 'COMPARE_OBJECTS',
   SWAP_OBJECTS: 'SWAP_OBJECTS',
   HIGHLIGHT_OBJECT: 'HIGHLIGHT_OBJECT',
   WAIT: 'WAIT',
   LINK_OBJECTS: 'LINK_OBJECTS',
+  /** Retired: loops compile to kernel JUMP / JUMP_IF_FALSE. */
   LOOP: 'LOOP',
   GENERIC_ACTION: 'GENERIC_ACTION',
   SET_STATE: 'SET_STATE',
@@ -42,17 +64,24 @@ export const AQIROpcode = {
   SET_PARTITION_BOUNDARY: 'SET_PARTITION_BOUNDARY',
   CLEAR_PARTITION_BOUNDARY: 'CLEAR_PARTITION_BOUNDARY',
   MARK_SORTED_REGION: 'MARK_SORTED_REGION',
-
-  // --- New opcodes: runtime control flow (VM mode) ---
-  JUMP: 'JUMP',
-  JUMP_IF_FALSE: 'JUMP_IF_FALSE',
-  CALL: 'CALL',
-  RET: 'RET',
-  PUSH_SCOPE: 'PUSH_SCOPE',
-  POP_SCOPE: 'POP_SCOPE',
-  SET_VAR: 'SET_VAR',
+  PRINT: 'PRINT',
+  LL_SET: 'LL_SET',
+  LL_NEW: 'LL_NEW',
+  LL_FREE: 'LL_FREE',
+  MAP_PUT: 'MAP_PUT',
+  MAP_DELETE: 'MAP_DELETE',
+  MAP_HIGHLIGHT: 'MAP_HIGHLIGHT',
+  CONTAINER_READ: 'CONTAINER_READ',
+  TRIE_EDIT: 'TRIE_EDIT',
+  GRAPH_EDIT: 'GRAPH_EDIT',
+  SET_LAYOUT_STRATEGY: 'SET_LAYOUT_STRATEGY',
+  COMPUTE_LAYOUT: 'COMPUTE_LAYOUT',
+  SET_POSITION: 'SET_POSITION',
+  SET_CAMERA: 'SET_CAMERA',
+  SET_ROTATION: 'SET_ROTATION',
+  SET_SCALE: 'SET_SCALE',
 } as const;
-export type AQIROpcode = (typeof AQIROpcode)[keyof typeof AQIROpcode];
+export type LegacyAction = (typeof LegacyAction)[keyof typeof LegacyAction];
 
 /** Where an instruction came from in the original .aqvl source, for error messages and debugging. */
 export interface SourceLocation {
@@ -62,9 +91,10 @@ export interface SourceLocation {
 }
 
 /**
- * Base shape every AQIR instruction carries under the VM-mode model.
- * Existing action-based instructions do not implement this yet — it applies
- * only to instructions authored against `AQIROpcode`.
+ * Base shape of the kernel (control-flow) instructions. A STEP has its own
+ * shape (`StepInstruction`, below): its `lineNumber` is optional, since
+ * declaration-time steps (default layouts, hash-map / trie builders) have no
+ * source line of their own.
  */
 export interface Instruction {
   opcode: AQIROpcode;
@@ -179,7 +209,7 @@ export interface SetVarInstruction extends Instruction {
   sourceText?: string;
 }
 
-/** Union of the 7 new VM-mode instructions. */
+/** Union of the 7 kernel (control-flow) instructions. */
 export type ControlFlowInstruction =
   | JumpInstruction
   | JumpIfFalseInstruction
@@ -305,3 +335,218 @@ export type GeometryInstruction =
   | SetCameraInstruction
   | SetRotationInstruction
   | SetScaleInstruction;
+
+// ---------------------------------------------------------------------
+// STEP and the primitive ops — see docs/design/aqir-primitives-spec.md.
+//
+// Redeclared (kept in sync by convention, checked by
+// tests/unit/aqir-primitives.test.ts) in packages/runtime/src/aqir/types.ts.
+// ---------------------------------------------------------------------
+
+/** The five effect kinds plus INVOKE (a call into the runtime's procedure library). */
+export const PrimitiveKind = {
+  MUTATE: 'MUTATE',
+  TRANSFORM: 'TRANSFORM',
+  RELATE: 'RELATE',
+  ANNOTATE: 'ANNOTATE',
+  EMIT: 'EMIT',
+  INVOKE: 'INVOKE',
+} as const;
+export type PrimitiveKind = (typeof PrimitiveKind)[keyof typeof PrimitiveKind];
+
+/** The closed verb list of each kind (INVOKE names a procedure instead). */
+export const PRIMITIVE_VERBS = {
+  MUTATE: ['set', 'exchange', 'create', 'destroy'],
+  TRANSFORM: ['arrange', 'reflow', 'place', 'view', 'orient', 'scale'],
+  RELATE: ['link', 'unlink'],
+  ANNOTATE: ['focus', 'contrast', 'state', 'boundary', 'region'],
+  EMIT: ['log'],
+} as const;
+
+/**
+ * A compiled AQIR value (literal, variable name, `{ text }`, `{ op, left,
+ * right }`, `{ member, object }`, `{ elem, index }`, `{ gfn, args }`,
+ * `{ len }`) or a resolved entity reference (`obj_003`, `arr#i`,
+ * `@expr:...`), evaluated by the host when the step runs.
+ */
+export type Operand = AQIRValue;
+
+/** Position `index` of ordered collection `collection` (`arr[i]`); `ref` is the resolved slot reference. */
+export interface SlotAddress {
+  at: 'slot';
+  collection: string;
+  ref: Operand;
+  /** The index when it is a literal in source; `undefined` when computed at run time from `ref`. */
+  index: unknown;
+}
+
+/** The member of keyed collection `collection` stored under `key` (`m[k]`, a graph vertex by name). */
+export interface KeyAddress {
+  at: 'key';
+  collection: string;
+  key?: Operand;
+}
+
+/** The entity reached from `from` along the relation labelled `label` (a trie child). */
+export interface ViaAddress {
+  at: 'via';
+  from: Operand;
+  label: Operand;
+}
+
+/** The entity created by op number `op` of the same STEP. */
+export interface CreatedAddress {
+  at: 'created';
+  op: number;
+}
+
+/** What an op acts on: an entity operand, or a tagged address. */
+export type Address = Operand | SlotAddress | KeyAddress | ViaAddress | CreatedAddress;
+
+interface OpBase {
+  /** How operands were written in source (e.g. `{ source: 'curr' }`), for error messages. */
+  texts?: Record<string, string>;
+  /** User-supplied operands beyond the verb's arity, passed through for the host to reject. */
+  extra?: Operand[];
+}
+
+export interface MutateSetOp extends OpBase {
+  kind: 'MUTATE';
+  verb: 'set';
+  target: Address;
+  /** A named property of the target (`node.next`); omitted = the target's own value. */
+  field?: string;
+  value: Operand;
+}
+
+export interface MutateExchangeOp extends OpBase {
+  kind: 'MUTATE';
+  verb: 'exchange';
+  target: Address;
+  with: Address;
+}
+
+export interface MutateCreateOp extends OpBase {
+  kind: 'MUTATE';
+  verb: 'create';
+  /** The collection gaining the member; omitted = the structure of the entity it is linked from. */
+  collection?: string;
+  key?: Operand;
+  value?: Operand;
+  /** Variable receiving the new entity's reference. */
+  bind?: string;
+  /** Display hint: the user variable `bind` is assigned to next. */
+  assignTo?: string;
+}
+
+export interface MutateDestroyOp extends OpBase {
+  kind: 'MUTATE';
+  verb: 'destroy';
+  target: Address;
+}
+
+export type MutateOp = MutateSetOp | MutateExchangeOp | MutateCreateOp | MutateDestroyOp;
+
+export interface TransformArrangeOp extends OpBase {
+  kind: 'TRANSFORM';
+  verb: 'arrange';
+  target: string;
+  strategy: LayoutStrategyName;
+  params: Record<string, GeometryParamValue>;
+}
+
+export interface TransformReflowOp extends OpBase {
+  kind: 'TRANSFORM';
+  verb: 'reflow';
+  /** The structure to lay out; omitted = the whole scene. */
+  target?: string;
+}
+
+export interface TransformPlaceOp extends OpBase {
+  kind: 'TRANSFORM';
+  verb: 'place';
+  target: string;
+  x: number | null;
+  y: number | null;
+  z: number | null;
+}
+
+export interface TransformViewOp extends OpBase {
+  kind: 'TRANSFORM';
+  verb: 'view';
+  mode: CameraMode;
+  params: SetCameraInstruction['params'];
+}
+
+export interface TransformOrientOp extends OpBase {
+  kind: 'TRANSFORM';
+  verb: 'orient' | 'scale';
+  target: string;
+  x: number;
+  y: number;
+  z: number;
+}
+
+export type TransformOp = TransformArrangeOp | TransformReflowOp | TransformPlaceOp | TransformViewOp | TransformOrientOp;
+
+export interface RelateOp extends OpBase {
+  kind: 'RELATE';
+  verb: 'link' | 'unlink';
+  source?: Address;
+  target?: Address;
+  /** `unlink` only: every relation of `source` (in `collection`), not one to `target`. */
+  all?: boolean;
+  /** The relation belongs to this collection's own edge set (a graph). */
+  collection?: string;
+  label?: Operand;
+  directed?: boolean;
+  weight?: Operand;
+}
+
+export interface AnnotateOp extends OpBase {
+  kind: 'ANNOTATE';
+  verb: 'focus' | 'contrast' | 'state' | 'boundary' | 'region';
+  targets?: Address[];
+  color?: string;
+  state?: string;
+  /** contrast: stays shown until cleared. */
+  persist?: boolean;
+  /** contrast / boundary: removes an earlier persistent mark. */
+  clear?: boolean;
+  style?: string;
+  /** boundary / region: the collection the range indexes. */
+  collection?: string;
+  range?: [number, number];
+  label?: string;
+}
+
+export interface EmitOp extends OpBase {
+  kind: 'EMIT';
+  verb: 'log';
+  parts: Operand[];
+}
+
+/** Runs a named runtime library procedure (BUBBLE_SORT, PUSH, HASHMAP_INSERT, ...). */
+export interface InvokeOp extends OpBase {
+  kind: 'INVOKE';
+  procedure: string;
+  args: Operand[];
+  /** Variable receiving the procedure's result (reads such as POP(s) in an expression). */
+  bind?: string;
+  assignTo?: string;
+  /** The static object the call is about, when known at compile time. */
+  subject?: string;
+  /** The collection (and literal index) the call is scoped to. */
+  scope?: { collection?: string; index?: unknown };
+}
+
+export type PrimitiveOp = MutateOp | TransformOp | RelateOp | AnnotateOp | EmitOp | InvokeOp;
+
+/** One visible beat: `ops` applied in order. `ops: []` is a beat where nothing changes (WAIT). */
+export interface StepInstruction {
+  opcode: 'STEP';
+  ops: PrimitiveOp[];
+  lineNumber?: number;
+  /** The statement as written, for console narration. */
+  sourceText?: string;
+}
