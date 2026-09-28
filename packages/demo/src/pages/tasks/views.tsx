@@ -532,6 +532,7 @@ export function MemberView({ id }: { id: Exclude<MemberId, 'manas'> }) {
       </Section>
 
       {id === 'yash' && <YashPipeline tasks={s.tasks} />}
+      {id === 'yash' && <Groups tasks={s.tasks.filter((t) => t.area?.startsWith('RS'))} title="RS mini-project (deletable)" />}
       {id === 'tirrth' && <Groups tasks={s.tasks} title="Visual surfaces" />}
       {id === 'pranav' && <Groups tasks={s.tasks} title="Work streams" />}
 

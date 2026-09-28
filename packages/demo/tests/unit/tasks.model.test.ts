@@ -36,11 +36,11 @@ describe('task seed', () => {
     expect(unverified).toEqual(['R2.5']);
   });
 
-  it('gives each team member 5-10 tasks with complete fields', () => {
+  it('gives each team member 5-14 tasks with complete fields', () => {
     for (const owner of ['yash', 'tirrth', 'pranav'] as const) {
       const tasks = SEEDS.filter((s) => s.owner === owner);
       expect(tasks.length).toBeGreaterThanOrEqual(5);
-      expect(tasks.length).toBeLessThanOrEqual(10);
+      expect(tasks.length).toBeLessThanOrEqual(14);
       for (const t of tasks) {
         for (const f of ['title', 'objective', 'scope', 'expectedOutcome', 'definitionOfDone', 'verification'] as const) {
           expect(t[f].length, `${t.id}.${f}`).toBeGreaterThan(10);
@@ -85,7 +85,7 @@ describe('selectors', () => {
     state = reducer(state, { type: 'setStatus', id: 'Y1', status: 'completed', now: NOW });
     state = reducer(state, { type: 'setStatus', id: 'Y2', status: 'completed', now: NOW });
     const yash = byOwner(mergeTasks(SEEDS, state), 'yash');
-    expect(progress(yash)).toEqual({ done: 2, total: 8, pct: 25 });
+    expect(progress(yash)).toEqual({ done: 2, total: 12, pct: 17 });
   });
 
   it('flags overdue only for unfinished tasks past their deadline', () => {

@@ -123,6 +123,7 @@ export function sessionStreak(sessions: Session[], today: string): number {
 
 export const DOMAINS: { id: string; label: string; phases: number[] }[] = [
   { id: 'core', label: 'DSA & core', phases: [1, 2, 3] },
+  { id: 'coach', label: 'Error coaching', phases: [3.5] },
   { id: 'aiml', label: 'AI/ML', phases: [4, 6] },
   { id: 'chain', label: 'Blockchain', phases: [5, 7] },
   { id: 'stress', label: 'System stress', phases: [8] },

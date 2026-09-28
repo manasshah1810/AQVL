@@ -374,6 +374,7 @@ body:has(.tk-root[data-theme='light']) { background: #f5f0e8; }
 .tk-dom--chain .tk-ring__fill { stroke: var(--green); }
 .tk-dom--stress .tk-ring__fill { stroke: var(--yellow); }
 .tk-dom--lang .tk-ring__fill { stroke: var(--pink); }
+.tk-dom--coach .tk-ring__fill { stroke: var(--orange); }
 .tk-mini-donuts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; justify-items: center; padding-top: 10px; border-top: 2px dashed var(--line-soft); }
 .tk-mini-donuts > div { display: flex; flex-direction: column; align-items: center; gap: 6px; }
 .tk-mini-donuts .tkc-donut__center strong { font-size: 14px; }
@@ -418,11 +419,13 @@ body:has(.tk-root[data-theme='light']) { background: #f5f0e8; }
 .tk-dom--chain .tk-phase-row__num { background: var(--green); }
 .tk-dom--stress .tk-phase-row__num { background: var(--yellow); }
 .tk-dom--lang .tk-phase-row__num { background: var(--pink); }
+.tk-dom--coach .tk-phase-row__num { background: var(--orange); }
 .tk-dom--core .tk-bar__fill { background: var(--purple); }
 .tk-dom--aiml .tk-bar__fill { background: var(--blue); }
 .tk-dom--chain .tk-bar__fill { background: var(--green); }
 .tk-dom--stress .tk-bar__fill { background: var(--yellow); }
 .tk-dom--lang .tk-bar__fill { background: var(--pink); }
+.tk-dom--coach .tk-bar__fill { background: var(--orange); }
 
 /* ── Roadmap accordion ───────────────────────────────────── */
 .tk-roadmap { display: flex; flex-direction: column; gap: 14px; }
@@ -432,6 +435,7 @@ body:has(.tk-root[data-theme='light']) { background: #f5f0e8; }
 .tk-phase.tk-dom--chain { border-left-color: var(--green); }
 .tk-phase.tk-dom--stress { border-left-color: var(--yellow); }
 .tk-phase.tk-dom--lang { border-left-color: var(--pink); }
+.tk-phase.tk-dom--coach { border-left-color: var(--orange); }
 .tk-phase.is-current { box-shadow: var(--shadow-lg); }
 .tk-phase__head { width: 100%; display: flex; align-items: center; gap: 12px; padding: 13px 16px; background: none; border: 0; cursor: pointer; text-align: left; }
 .tk-phase__head:hover { background: var(--surface-2); }

@@ -51,12 +51,12 @@ describe('/tasks command center', () => {
     const row = screen.getByTestId('task-Y1');
     fireEvent.click(within(row).getByRole('checkbox'));
     expect(stored().overrides.Y1.status).toBe('completed');
-    expect(screen.getAllByText('1/8').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('1/12').length).toBeGreaterThan(0);
     unmount();
 
     render(<TasksPage />);
     go('#/tasks');
-    expect(within(screen.getByTestId('member-yash')).getByText('13% · 1/8')).toBeInTheDocument();
+    expect(within(screen.getByTestId('member-yash')).getByText('8% · 1/12')).toBeInTheDocument();
   });
 
   it('changes status and priority from task details and records a blocker', () => {
@@ -111,7 +111,7 @@ describe('/tasks command center', () => {
     go('#/tasks/report');
     expect(screen.getByRole('heading', { level: 1, name: 'AQVL project status' })).toBeInTheDocument();
     const kpi = (label: string) => screen.getAllByText(label).find((el) => el.classList.contains('tk-kpi__label'))!.closest('.tk-kpi') as HTMLElement;
-    expect(within(kpi('Team tasks')).getByText('2/25')).toBeInTheDocument();
+    expect(within(kpi('Team tasks')).getByText('2/29')).toBeInTheDocument();
     expect(within(kpi('Done, last 7 days')).getByText('2')).toBeInTheDocument();
     expect(within(kpi('Blocked')).getByText('0')).toBeInTheDocument();
     expect(screen.getByText('Roadmap burn-up')).toBeInTheDocument();

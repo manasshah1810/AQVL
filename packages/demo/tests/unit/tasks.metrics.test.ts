@@ -37,8 +37,8 @@ describe('metrics', () => {
   it('burn-up: planned follows deadlines, actual follows completion dates', () => {
     const tasks = withCompletions([['Y1', '2026-09-29'], ['Y2', '2026-10-01']]).filter((t) => t.owner === 'yash');
     const b = burnUp(tasks, '2026-10-02', '2026-09-27')!;
-    expect(b.total).toBe(8);
-    expect(b.planned.at(-1)!.value).toBe(8);
+    expect(b.total).toBe(12);
+    expect(b.planned.at(-1)!.value).toBe(12);
     const p = (d: string) => b.planned.find((x) => x.date === d)?.value;
     const a = (d: string) => b.actual.find((x) => x.date === d)?.value;
     expect(p('2026-09-30')).toBe(1);
