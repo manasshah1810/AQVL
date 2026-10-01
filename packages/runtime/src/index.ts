@@ -119,3 +119,21 @@ export function runVM(
 ): Promise<ExecutionResult> {
   return createVM(instructions, functionTable, globals, legacyHandler, objects).run();
 }
+
+// --- Execution trace: a run recorded step by step, for deterministic scrubbable playback ---
+export { recordTrace } from './trace/recordTrace';
+export type { RecordTraceOptions } from './trace/recordTrace';
+export { SnapTimelineEngine } from './trace/SnapTimelineEngine';
+export { classifyStep } from './trace/classify';
+export type {
+  ExecutionTrace,
+  TraceFrame,
+  TraceNode,
+  TraceEdge,
+  TraceStructure,
+  TraceRegions,
+  TraceEvent,
+  TraceEventKind,
+  TraceLog,
+  TraceShape,
+} from './trace/types';
