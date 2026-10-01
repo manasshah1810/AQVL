@@ -51,7 +51,7 @@ export const Words: React.FC<{ text: string; f: number; at: number; out?: number
 export const Label: React.FC<{ f: number; idx: string; text: string; at?: number }> = ({ f, idx, text, at = 0 }) => {
   const a = ip(f, at, at + 6, 0, 1);
   return (
-    <div style={{ position: 'absolute', left: 96, bottom: 84, display: 'flex', alignItems: 'center', gap: 18, fontFamily: MONO, fontSize: 22, letterSpacing: '0.18em', color: 'rgba(236,240,248,0.85)', opacity: a }}>
+    <div style={{ position: 'absolute', left: 96, bottom: 84, display: 'flex', alignItems: 'center', gap: 18, fontFamily: MONO, fontSize: 28, letterSpacing: '0.16em', color: 'rgba(236,240,248,0.92)', opacity: a }}>
       <span style={{ color: '#FF5B2E' }}>{idx}</span>
       <span style={{ width: 40 * clamp(a), height: 2, background: 'rgba(236,240,248,0.5)' }} />
       <span>{text}</span>

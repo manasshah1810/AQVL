@@ -80,9 +80,9 @@ export const Slide: React.FC<{ kind: 'lecture' | 'code' | 'aqvl'; f: number }> =
 const ROWS = (() => {
   const out: { x: number; y: number; s: number; seed: number; row: number }[] = [];
   const rows = [
-    { y: 830, s: 0.62, n: 9, x0: 140, dx: 205 },
-    { y: 930, s: 0.85, n: 7, x0: 60, dx: 290 },
-    { y: 1080, s: 1.25, n: 5, x0: -40, dx: 470 },
+    { y: 800, s: 0.7, n: 9, x0: 120, dx: 215 },
+    { y: 920, s: 1.0, n: 7, x0: 40, dx: 300 },
+    { y: 1090, s: 1.5, n: 5, x0: -60, dx: 490 },
   ];
   rows.forEach((r, ri) => {
     for (let i = 0; i < r.n; i++) out.push({ x: r.x0 + i * r.dx + (hash(ri * 10 + i) - 0.5) * 40, y: r.y, s: r.s, seed: ri * 100 + i, row: ri });
@@ -110,7 +110,7 @@ export const Room: React.FC<{ slide: 'lecture' | 'code' | 'aqvl'; dur: number; c
   const kind = switchAt >= 0 && f < switchAt ? 'lecture' : slide;
   const sw = switchAt >= 0 ? clamp(1 - Math.abs(f - switchAt) / 3) : 0; // projector clunk dip
   const beam = lit > 0 ? `rgba(150,180,255,${0.1 + 0.05 * lit})` : 'rgba(255,214,160,0.16)';
-  const rim = lit > 0.5 ? 'rgba(170,195,255,0.65)' : 'rgba(255,214,160,0.55)';
+  const rim = lit > 0.5 ? 'rgba(175,200,255,0.95)' : 'rgba(255,205,150,0.85)';
   const motes = [];
   const R = rng(4);
   for (let i = 0; i < 70; i++) {
@@ -143,6 +143,8 @@ export const Room: React.FC<{ slide: 'lecture' | 'code' | 'aqvl'; dur: number; c
             <Slide kind={kind} f={f} />
           </div>
         </div>
+        {/* haze behind the audience so silhouettes read */}
+        <AbsoluteFill style={{ background: `radial-gradient(ellipse 70% 30% at 50% 72%, ${lit > 0.5 ? 'rgba(90,110,170,0.35)' : 'rgba(150,95,55,0.45)'}, rgba(0,0,0,0) 75%)` }} />
         {/* projector beam + motes */}
         <svg viewBox="0 0 1920 1080" width={1920} height={1080} style={{ position: 'absolute', inset: 0, mixBlendMode: 'screen' }}>
           <defs>

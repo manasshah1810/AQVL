@@ -17,8 +17,8 @@ export const Resolve: React.FC = () => {
   const left = 960 - wmW / 2, top = 470 - wmH / 2;
   const qCx = left + (89 + 50) * scaleWM, qCy = top + 50 * scaleWM;
   const move = ip(f, 30, 58, 0, 1, E.inOut);
-  const size = lerp(420, 100 * scaleWM, move);
-  const cx = lerp(960, qCx, move), cy = lerp(500, qCy, move);
+  const size = lerp(500, 100 * scaleWM, move);
+  const cx = lerp(960, qCx, move), cy = lerp(575, qCy, move);
   const S = symbol(cx, cy, size);
   const settle = ip(f, 0, 26, 1.04, 1, E.out);
   const glow = 0.5 + 0.5 * ip(f, 0, 10, 1, 0) + 0.3 * Math.exp(-Math.max(0, f - 58) / 6) * (f > 58 ? 1 : 0);

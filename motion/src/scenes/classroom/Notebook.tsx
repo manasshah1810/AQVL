@@ -91,15 +91,26 @@ export const Notebook: React.FC<NotebookState & { dur: number }> = (st) => {
   const S = symbol(960, 450, 460);
   // morph polyline: ? -> ring arc
   const qPts = QR;
-  const mPts: Pt[] = qPts.map((p, i) => {
-    const a = lerp(S.a0, S.a1, i / (qPts.length - 1));
-    const q = S.at(a);
-    const e = clamp(morph * 1.25 - (i / qPts.length) * 0.25);
-    const ee = e * e * (3 - 2 * e);
-    return [lerp(p[0], q[0], ee), lerp(p[1], q[1], ee)];
+  // polar morph around the ring centre: the question unfurls into the ring
+  let prevA = 0;
+  const pol = qPts.map((p, i) => {
+    let a = (Math.atan2(p[1] - 450, p[0] - 960) * 180) / Math.PI;
+    if (i > 0) {
+      while (a - prevA > 180) a -= 360;
+      while (a - prevA < -180) a += 360;
+    }
+    prevA = a;
+    return [a, Math.hypot(p[0] - 960, p[1] - 450)];
+  });
+  const off = Math.round((S.a0 - pol[0][0]) / 360) * 360;
+  const ee = morph * morph * (3 - 2 * morph);
+  const mPts: Pt[] = pol.map(([a, r], i) => {
+    const ta = lerp(S.a0, S.a1, i / (pol.length - 1)) - off;
+    const A = lerp(a, ta, ee), Rr = lerp(r, S.rc, ee);
+    return [960 + Math.cos((A * Math.PI) / 180) * Rr, 450 + Math.sin((A * Math.PI) / 180) * Rr];
   });
   const mDot: Pt = [lerp(BIGQ.dot[0], S.dot[0], morph), lerp(BIGQ.dot[1], S.dot[1], morph)];
-  const sw = lerp(15, S.W, morph);
+  const sw = lerp(15, S.W, Math.pow(morph, 2.2));
   const dim = st.dimOthers ?? 0;
   // scribble tip
   if ((st.scribble ?? 0) > 0 && (st.scribble ?? 0) < 1) penTip = partial(SCRIB, st.scribble!).tip;
@@ -169,7 +180,7 @@ export const Notebook: React.FC<NotebookState & { dur: number }> = (st) => {
                   strokeLinejoin="round"
                 />
                 {st.bigQ! * 1.15 >= 1 && (
-                  <circle cx={mDot[0]} cy={mDot[1]} r={lerp(15, S.dotR, morph)} fill={(st.orange ?? 0) > 0 ? C.hot : ink} style={{ transform: `scale(${1 + 0.25 * Math.sin(clamp(st.orange ?? 0) * Math.PI)})`, transformOrigin: `${mDot[0]}px ${mDot[1]}px`, transformBox: 'view-box' }} />
+                  <circle cx={mDot[0]} cy={mDot[1]} r={lerp(15, S.dotR, Math.pow(morph, 2.2))} fill={(st.orange ?? 0) > 0 ? C.hot : ink} style={{ transform: `scale(${1 + 0.25 * Math.sin(clamp(st.orange ?? 0) * Math.PI)})`, transformOrigin: `${mDot[0]}px ${mDot[1]}px`, transformBox: 'view-box' }} />
                 )}
               </g>
             )}

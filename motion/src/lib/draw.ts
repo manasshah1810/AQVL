@@ -99,7 +99,7 @@ export const questionMark = (cx: number, cy: number, s: number, seed: number): {
     const t = i / 6;
     pts.push([lerp(last[0], cx + (R() - 0.5) * s * 0.03, t), lerp(last[1], cy + s * 0.16, t)]);
   }
-  return { pts, dot: [cx + (R() - 0.5) * s * 0.03, cy + s * 0.42] };
+  return { pts, dot: [cx + (R() - 0.5) * s * 0.03, cy + s * 0.31] };
 };
 export const toD = (pts: Pt[]) => pts.map((p, i) => `${i ? 'L' : 'M'}${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join('');
 

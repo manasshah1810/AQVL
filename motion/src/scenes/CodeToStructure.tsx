@@ -67,7 +67,7 @@ export const CodeToStructure: React.FC = () => {
           for (let i = 0; i < GLYPHS.length; i++) {
             const g = GLYPHS[i];
             const arrive = E.out(clamp((f - g.seed * 14 - (g.line / SRC.length) * 8) / 14));
-            const wx = (g.col - 22) * CW, wz = (g.line - 6) * LH + 1.5;
+            const wx = (g.col - 22) * CW + 3.2, wz = (g.line - 6) * LH + 1.5;
             // flying in from the tear
             const fx = lerp((g.seed - 0.5) * 30, wx, arrive), fz = lerp(10 + g.seed * 8, wz, arrive), fy = lerp(4 + g.seed * 6, 0, arrive);
             if (g.num >= 0 && lift > 0) continue; // numbers become bars
@@ -87,7 +87,7 @@ export const CodeToStructure: React.FC = () => {
           if (lift > 0) {
             for (let k = 0; k < README_ARR.length; k++) {
               const g = GLYPHS.filter((x) => x.num === k);
-              const sx = ((g[0].col + g.length / 2 - 22) * CW), sz = (2 - 6) * LH + 1.5;
+              const sx = ((g[0].col + g.length / 2 - 22) * CW + 3.2), sz = (2 - 6) * LH + 1.5;
               const bx = (k - 3) * 1.6, bz = 0;
               const e = E.inOut(clamp(lift * 1.4 - k * 0.06));
               const p = cam([lerp(sx, bx, e), lerp(0, (README_ARR[k] / 90) * 6 + 0.6, e), lerp(sz, bz, e)]);

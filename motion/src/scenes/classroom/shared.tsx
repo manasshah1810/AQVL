@@ -41,7 +41,7 @@ export const Student: React.FC<{ x: number; y: number; s: number; seed: number; 
       <defs>
         <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
           <stop offset="0" stopColor={rim} />
-          <stop offset="0.12" stopColor={body} />
+          <stop offset="0.2" stopColor={body} />
           <stop offset="1" stopColor={body} />
         </linearGradient>
       </defs>

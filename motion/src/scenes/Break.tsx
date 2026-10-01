@@ -60,7 +60,7 @@ export const Break: React.FC = () => {
     return { dx, dy, shards };
   }, [img]);
   // aperture radius: the dot opens into a ring that tears the page
-  const R = f < 6 ? 0 : 18 * Math.exp((f - 6) * 0.23);
+  const R = f < 6 ? 0 : 30 * Math.exp((f - 6) * 0.25);
   const shake = f < 7 ? noise1(f * 3, 1) * f * 1.4 : 0;
   return (
     <AbsoluteFill style={{ background: C.void }}>
@@ -81,19 +81,23 @@ export const Break: React.FC = () => {
           ctx.beginPath();
           ctx.rect(-50, -50, 2020, 1180);
           for (const s of shards) {
-            if (s.d < R) {
+            if (s.d < R * 0.95) {
               ctx.moveTo(s.pts[0][0], s.pts[0][1]);
               for (let i = 3; i >= 1; i--) ctx.lineTo(s.pts[i][0], s.pts[i][1]);
               ctx.closePath();
             }
+          }
+          if (R > 28) {
+            ctx.moveTo(dx + 27, dy);
+            ctx.arc(dx, dy, 27, 0, Math.PI * 2);
           }
           ctx.clip('evenodd');
           ctx.drawImage(img, 0, 0, 1920, 1080);
           ctx.restore();
           // 3. flying shards (towards camera, outward, spinning)
           for (const s of shards) {
-            if (s.d >= R) continue;
-            const relT = Math.log(Math.max(R, 1) / Math.max(s.d, 18)) / 0.23; // frames since release
+            if (s.d >= R * 0.95) continue;
+            const relT = Math.log(Math.max(R * 0.95, 1) / Math.max(s.d, 18)) / 0.23; // frames since release
             if (relT > 12) continue;
             const k = relT / 12;
             const sc = 1 + k * k * 4;
@@ -119,21 +123,23 @@ export const Break: React.FC = () => {
           }
           // 4. the aperture: the AQVL ring of light at the tear's edge, its point still burning
           if (R > 0) {
-            const S = symbol(dx, dy, R * 2);
+            // the symbol itself is the aperture: its outer edge rides the tear
+            const S = symbol(dx, dy, R * 2.05);
+            const a = clamp(1 - (R - 900) / 2200);
             ctx.save();
             ctx.lineCap = 'round';
-            ctx.strokeStyle = 'rgba(243,241,236,0.95)';
-            ctx.lineWidth = Math.max(3, S.W * 0.5);
-            ctx.shadowColor = 'rgba(255,200,170,0.9)';
-            ctx.shadowBlur = 30;
+            ctx.shadowColor = 'rgba(255,190,150,0.9)';
+            ctx.shadowBlur = 60;
+            ctx.strokeStyle = `rgba(246,243,238,${a})`;
+            ctx.lineWidth = S.W;
             ctx.beginPath();
-            ctx.arc(dx, dy, S.rc + S.W * 0.25, (S.a0 * Math.PI) / 180, (S.a1 * Math.PI) / 180);
+            ctx.arc(dx, dy, S.rc, (S.a0 * Math.PI) / 180, (S.a1 * Math.PI) / 180);
             ctx.stroke();
-            ctx.restore();
-            ctx.fillStyle = C.hot;
+            ctx.fillStyle = `rgba(255,91,46,${a})`;
             ctx.beginPath();
-            ctx.arc(S.dot[0], S.dot[1], Math.max(10, S.dotR * 0.6), 0, Math.PI * 2);
+            ctx.arc(S.dot[0], S.dot[1], S.dotR, 0, Math.PI * 2);
             ctx.fill();
+            ctx.restore();
           } else {
             // pre-break heartbeat on the dot
             const p = 1 + 0.35 * Math.max(0, Math.sin((f / 6) * Math.PI));
@@ -142,11 +148,10 @@ export const Break: React.FC = () => {
             ctx.arc(dx, dy, 15 * p, 0, Math.PI * 2);
             ctx.fill();
           }
-          bloom(ctx, 0.9 * clamp((f - 12) / 10), 6);
-          // flash at the rupture
+                    // flash at the rupture
           const fl = ip(f, 6, 7, 0, 1) * ip(f, 7, 12, 1, 0);
           if (fl > 0) {
-            ctx.fillStyle = `rgba(255,245,235,${0.3 * fl})`;
+            ctx.fillStyle = `rgba(255,236,225,${0.18 * fl})`;
             ctx.fillRect(0, 0, 1920, 1080);
           }
         }}

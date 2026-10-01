@@ -12,6 +12,7 @@ const Lf: React.FC<{ render: (f: number) => React.ReactNode }> = ({ render }) =>
   return <>{render(f)}</>;
 };
 export const WALL_DUR = 210;
+const FINAL_CAM = { x: 0, y: -262, z: 1.25, r: 0 };
 const STOP = Math.round(COPY_END * 0.72);
 const shots: [number, number, React.ReactNode][] = [
   [0, 45, <Lf key="a" render={(f) => <Room slide="code" dur={45} switchAt={4} confusion={ip(f, 12, 45, 0, 0.8)} push={[1.0, 1.12]} />} />],
@@ -29,7 +30,7 @@ const shots: [number, number, React.ReactNode][] = [
   [144, 6, <Lf key="m" render={(f) => <NB dur={6} copyF={STOP} scribble={1} questions={ip(f, 0, 6, 4.6, 6)} cam={{ x: 0, y: 0, z: 1.0 }} />} />],
   [150, 2, <CodeCrop key="n" dur={2} zoom={6} rot={-14} intensity={1} focusLine={1} layers={8} />],
   // the big question, drawn over everything — then stillness, and the dot turns
-  [152, 58, <Lf key="o" render={(f) => <NB dur={58} copyF={STOP} scribble={1} questions={6} bigQ={ip(f, 0, 16, 0, 1, E.soft)} dimOthers={ip(f, 18, 40, 0, 0.6)} orange={ip(f, 30, 40, 0, 1)} cam={{ x: 0, y: 40 + ip(f, 0, 58, 0, 60), z: ip(f, 0, 58, 1.0, 1.22, E.soft) }} pen={f < 17} />} />],
+  [152, 58, <Lf key="o" render={(f) => <NB dur={58} copyF={STOP} scribble={1} questions={6} bigQ={ip(f, 0, 16, 0, 1, E.soft)} dimOthers={ip(f, 18, 40, 0, 0.6)} orange={ip(f, 30, 40, 0, 1)} cam={{ x: 0, y: ip(f, 0, 58, 0, FINAL_CAM.y, E.inOut), z: ip(f, 0, 58, 1.0, FINAL_CAM.z, E.inOut), r: ip(f, 0, 58, -3, 0, E.inOut) }} pen={f < 17} />} />],
 ];
 export const Wall: React.FC = () => (
   <AbsoluteFill>
@@ -41,6 +42,6 @@ export const Wall: React.FC = () => (
   </AbsoluteFill>
 );
 export const WallLastFrame: React.FC = () => (
-  <Notebook dur={58} copyF={STOP} scribble={1} questions={6} bigQ={1} dimOthers={0.6} orange={1} cam={{ x: 0, y: 100, z: 1.22 }} pen={false} />
+  <Notebook dur={58} copyF={STOP} scribble={1} questions={6} bigQ={1} dimOthers={0.6} orange={1} cam={FINAL_CAM} pen={false} />
 );
 export { BIGQ };
