@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import {useCurrentFrame, useVideoConfig} from 'remotion';
 import {fontFamily} from '../lib/fonts';
 import {clamp, SETTLE, SNAP, spring} from '../lib/motion';
@@ -53,7 +53,7 @@ const CodeLine: React.FC<{text: string; active: boolean}> = ({text, active}) => 
         } else if (/^['"]/.test(p) || /^\d+$/.test(p)) o = 0.62;
         else if (/^[()[\],=+\-<>%*/]$/.test(p)) o = 0.5;
         return (
-          <span key={i} style={{opacity: active ? Math.min(1, o + 0.2) : o * 0.75, fontWeight: w}}>
+          <span key={i} style={{opacity: active ? 1 : o * 0.72, fontWeight: active ? Math.max(w, 600) : w}}>
             {p}
           </span>
         );
@@ -86,7 +86,7 @@ export const Editor: React.FC = () => {
         position: 'absolute',
         left: 76 * s,
         top: 196 * s,
-        width: 640 * s,
+        width: 610 * s,
         transformOrigin: 'left center',
         transform: `perspective(${1900 * s}px) rotateY(${rotY}deg) translateY(${(1 - inS) * 40 * s - outS * 20 * s}px) scale(${0.96 + 0.04 * inS})`,
         opacity,
@@ -152,7 +152,7 @@ export const Editor: React.FC = () => {
                   right: 0,
                   display: 'flex',
                   alignItems: 'center',
-                  fontSize: 17 * s,
+                  fontSize: 18 * s,
                   color: PEACH,
                   whiteSpace: 'pre',
                   transform: `translateX(${(1 - ln) * 26 * s}px)`,

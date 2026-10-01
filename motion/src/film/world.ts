@@ -42,6 +42,7 @@ class Label {
     this.h = h;
     this.sprite = new THREE.Sprite(new THREE.SpriteMaterial({transparent: true, depthWrite: false}));
     this.sprite.renderOrder = 20;
+    this.sprite.layers.set(3); // labels are never mirrored into the floor
   }
   set(text: string, color: string, opacity: number) {
     if (text !== this.text || color !== this.color) {
@@ -408,7 +409,7 @@ class DijkstraHero {
     // dist labels over time
     const dist: string[] = DJ_NODES.map(() => '');
     const src = evOf(h, 'source')[0];
-    if (t >= src.t) DJ_NODES.forEach((_, i) => (dist[i] = i === 0 ? '0' : 'âˆž'));
+    if (t >= src.t) DJ_NODES.forEach((_, i) => (dist[i] = i === 0 ? '0' : '∞'));
     const relax = evOf(h, 'relax');
     for (const e of relax) if (t >= e.t + 0.18) dist[e.b!] = String(e.v);
     const pathEdges = evOf(h, 'path');

@@ -1,4 +1,4 @@
-// Procedural analog drawing kit: paper, chalkboard, ink, chalk, marker.
+﻿// Procedural analog drawing kit: paper, chalkboard, ink, chalk, marker.
 // Every stroke is a polyline drawn up to a progress value, so lines draw on
 // in real time and every frame is a pure function of time.
 import {hash, noise1, rng} from '../lib/motion';
@@ -130,7 +130,7 @@ export const pointAt = (pts: Pt[], p: number): Pt => {
 };
 
 // Ink pen: pressure-varying line with a faint bleed underneath.
-export const ink = (ctx: Ctx, pts: Pt[], p: number, width: number, color: string, seed = 1, alpha = 1) => {
+export const ink = (ctx: Ctx, pts: Pt[], p: number, width: number, color: string, seed = 1, alpha = 1, bleed = 0.12) => {
   if (p <= 0 || pts.length < 2) return;
   const L = lengths(pts);
   const end = Math.min(1, p) * L[L.length - 1];
@@ -138,8 +138,8 @@ export const ink = (ctx: Ctx, pts: Pt[], p: number, width: number, color: string
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
   ctx.strokeStyle = color;
-  ctx.globalAlpha = 0.12 * alpha;
-  ctx.lineWidth = width * 2.4;
+  ctx.globalAlpha = bleed * alpha;
+  ctx.lineWidth = width * 1.8;
   ctx.beginPath();
   ctx.moveTo(pts[0][0], pts[0][1]);
   for (let i = 1; i < pts.length && L[i - 1] < end; i++) ctx.lineTo(pts[i][0], pts[i][1]);

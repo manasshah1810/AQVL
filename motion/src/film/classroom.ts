@@ -36,17 +36,17 @@ export type CamPose = {pos: THREE.Vector3; look: THREE.Vector3; fov: number; rol
 
 const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
 
-const drawStrokes = (ctx: CanvasRenderingContext2D, strokes: Stroke[], t: number, kind: 'chalk' | 'ink', color: string, seed = 1, alpha = 1) => {
+const drawStrokes = (ctx: CanvasRenderingContext2D, strokes: Stroke[], t: number, kind: 'chalk' | 'ink', color: string, seed = 1, alpha = 1, bleed = 0.12) => {
   strokes.forEach((s, i) => {
     const p = progress(s, t);
     if (p <= 0) return;
     if (kind === 'chalk') chalk(ctx, s.pts, p, s.w, s.color ?? color, seed + i, alpha);
-    else ink(ctx, s.pts, p, s.w, s.color ?? color, seed + i, alpha);
+    else ink(ctx, s.pts, p, s.w, s.color ?? color, seed + i, alpha, bleed);
   });
 };
 
-const staticLines = (ctx: CanvasRenderingContext2D, lines: Pt[][], kind: 'chalk' | 'ink', w: number, color: string, seed: number, alpha = 1) => {
-  lines.forEach((l, i) => (kind === 'chalk' ? chalk(ctx, l, 1, w, color, seed + i, alpha) : ink(ctx, l, 1, w, color, seed + i, alpha)));
+const staticLines = (ctx: CanvasRenderingContext2D, lines: Pt[][], kind: 'chalk' | 'ink', w: number, color: string, seed: number, alpha = 1, bleed = 0.12) => {
+  lines.forEach((l, i) => (kind === 'chalk' ? chalk(ctx, l, 1, w, color, seed + i, alpha) : ink(ctx, l, 1, w, color, seed + i, alpha, bleed)));
 };
 
 // Tip of the currently drawing stroke (for pens and chalk).
@@ -133,7 +133,7 @@ export class Classroom {
       this.live = boardLive(T.boardTree + 0.02, T.boardTree + 0.58);
     }
 
-    // ---- notebook A (hook) â€” also the "easy" page
+    // ---- notebook A (hook), also the "easy" page
     {
       const g = mkSet('nbA', -300);
       const desk = this.desk();
@@ -142,7 +142,7 @@ export class Classroom {
       g.add(this.nbA.mesh);
       this.lights.nbA = warmLights(g, 2.6, V(-2.5, 2, 2.2), 0.32);
       const easyKey = new THREE.PointLight('#ebc0a3', 0, 6, 1.4);
-      easyKey.position.set(1.4, -0.4, 1.0);
+      easyKey.position.set(1.0, -1.1, 0.75);
       const easyAmb = new THREE.HemisphereLight('#4a3d68', '#100c18', 0);
       g.add(easyKey, easyAmb);
       this.lights.easy = [easyKey, easyAmb];
@@ -272,8 +272,8 @@ export class Classroom {
         ctx.fillStyle = gr;
         ctx.fillRect(x - rad, y - rad, rad * 2, rad * 2);
       }
-      staticLines(ctx, whiteboard.ghosts, 'ink', 16, '#5c5466', 1230, 0.18);
-      staticLines(ctx, whiteboard.lines, 'ink', 15, MARKER, 1200, 0.95);
+      staticLines(ctx, whiteboard.ghosts, 'ink', 16, '#5c5466', 1230, 0.18, 0.03);
+      staticLines(ctx, whiteboard.lines, 'ink', 15, MARKER, 1200, 0.95, 0.03);
       this.wb = new Sheet(c, 4.8, 2.7, {rough: 0.28});
       g.add(this.wb.mesh, this.backdrop('#1b1613'));
       this.lights.whiteboard = warmLights(g, 2.2, V(-2.5, 3, 3), 0.35, '#fff0e0');
@@ -620,7 +620,7 @@ export class Classroom {
     this.show('whiteboard');
     const g = this.sets.whiteboard;
     const lt = t - T.whiteboard;
-    this.wb.draw(`W${t.toFixed(3)}`, (ctx) => drawStrokes(ctx, this.wbStrokes, t, 'ink', MARKER, 20, 0.95));
+    this.wb.draw(`W${t.toFixed(3)}`, (ctx) => drawStrokes(ctx, this.wbStrokes, t, 'ink', MARKER, 20, 0.95, 0.03));
     const tp = activeTip(this.wbStrokes, t);
     if (tp) {
       this.pens.whiteboard.visible = true;
@@ -811,11 +811,11 @@ export class Classroom {
       p.intensity = 0;
       a.intensity = 0;
     } else {
-      d.intensity = 2.6 * (1 - k) + 0.35 * k;
+      d.intensity = 2.6 * (1 - k) + 0.12 * k;
       d.color.set('#ffdcbc');
       h.intensity = 0.32 * (1 - k);
-      p.intensity = 9 * k;
-      a.intensity = 2.2 * k;
+      p.intensity = 11 * k;
+      a.intensity = 3.2 * k;
     }
   }
 
@@ -832,12 +832,12 @@ export class Classroom {
       this.pens.nbA.visible = true;
       this.tip(this.pens.nbA, this.nbA, tp.pt, tp.down ? 0 : 0.05, V(0.4, 0.45, 1));
     }
-    const look = this.nbA.local(1000, 2050 - lt * 30);
-    const dist = 1.7 - lt * 0.18;
+    const look = this.nbA.local(1080, 2040 - lt * 20);
+    const dist = 2.25 - lt * 0.15;
     const pos = look.clone().add(V(-0.25, -0.55, 1).normalize().multiplyScalar(dist)).add(hand(0.008, 21));
     return {
       pose: {pos: pos.add(g.position), look: look.add(g.position), fov: 30, roll: 0.02},
-      post: {focus: dist, aperture: 12, warm: 0.15 * (1 - k), exposure: 1.0, ca: 0.015, bloom: 0.5, threshold: 1.0},
+      post: {focus: dist, aperture: 12, warm: 0.4 * (1 - k), exposure: 1.0, ca: 0.015, bloom: 0.5, threshold: 1.0},
     };
   }
 }

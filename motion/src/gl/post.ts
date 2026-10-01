@@ -242,7 +242,9 @@ export class Post {
       r.setClearColor(0x000000, 1);
       r.setRenderTarget(this.rtRefl);
       r.clear();
+      camera.layers.disable(3);
       r.render(scene, camera);
+      camera.layers.enable(3);
       r.setClearColor(fog, 1);
       shared.uReflect.value = 0;
       world.scale.y = 1;

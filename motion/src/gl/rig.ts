@@ -38,6 +38,7 @@ export class Rig {
     this.renderer.autoClear = false;
     this.camera = new THREE.PerspectiveCamera(26, w / h, 0.1, 400);
     this.camera.layers.enable(2);
+    this.camera.layers.enable(3);
     this.floor = new THREE.Mesh(new THREE.PlaneGeometry(400, 400).rotateX(-Math.PI / 2), makeFloor());
     this.floor.renderOrder = -10;
     this.floor.layers.enable(2);

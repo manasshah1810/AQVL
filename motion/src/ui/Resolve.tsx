@@ -1,8 +1,8 @@
-import React, {useLayoutEffect, useMemo, useRef} from 'react';
+﻿import React, {useLayoutEffect, useMemo, useRef} from 'react';
 import {useCurrentFrame, useVideoConfig} from 'remotion';
-import {MARK, markPath, markPoints, STROKE, wordmark, WM} from '../brand/geometry';
+import {glyphs, MARK, markPath, markPoints, STROKE, wordmark, WM} from '../brand/geometry';
 import {chalk, pointAt, Pt} from '../film/draw2d';
-import {hookScribble} from '../film/content';
+import {HOOK_C, hookScribble} from '../film/content';
 import {T} from '../film/timeline';
 import {clamp, easeIn, lerp, SETTLE, SNAP, spring} from '../lib/motion';
 import {PEACH} from '../lib/palette';
@@ -67,7 +67,7 @@ export const Resolve: React.FC = () => {
     const toPx = ([x, y]: Pt): Pt => [ox + x * S, oy + y * S];
     // scribble in "board" space mapped around the mark circle
     const k = 0.125;
-    const scrPx = (p: Pt): Pt => toPx([MARK.cx + (p[0] - 560) * k, MARK.cy + (p[1] - 900) * k * 1.1]);
+    const scrPx = (p: Pt): Pt => toPx([MARK.cx + (p[0] - HOOK_C[0]) * k, MARK.cy + (p[1] - HOOK_C[1]) * k * 1.1]);
 
     const drawP = easeIn(clamp((t - R.draw0) / (R.draw1 - R.draw0))) * 0.85 + clamp((t - R.draw0) / (R.draw1 - R.draw0)) * 0.15;
     const m = clamp((t - R.morph) / 0.9);
@@ -119,12 +119,13 @@ export const Resolve: React.FC = () => {
       lc.save();
       const gx = ox + (130 + p.x * 0.62) * S;
       const gy = oy + (74 - WM.cap * 0.62) * S;
-      const cxL = gx + 25 * 0.62 * S;
+      const gw = glyphs()[i].w / 2;
+      const cxL = gx + gw * 0.62 * S;
       const cyL = gy + 30 * 0.62 * S;
       lc.globalAlpha = clamp(a * 1.5);
       lc.translate(cxL, cyL + (1 - a) * 26 * s);
       lc.scale(0.62 * S * (0.75 + 0.25 * a), 0.62 * S * (0.75 + 0.25 * a));
-      lc.translate(-25, -30);
+      lc.translate(-gw, -30);
       lc.lineWidth = WM.stroke;
       lc.lineCap = 'butt';
       lc.lineJoin = 'miter';

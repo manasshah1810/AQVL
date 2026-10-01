@@ -78,8 +78,9 @@ void main(){
     float mid = q.x + q.y + q.z - mx - mn;
     edge = smoothstep(0.82, 0.97, mid);
   }
-  vec3 body = uPurple * (0.07 + 0.30 * key + 0.10 * fill);
-  vec3 glow = uPurple * 0.22 * pow(ndv, 1.5);
+  vec3 body = uPurple * (0.09 + 0.32 * key + 0.12 * fill);
+  // frosted scattering: a soft inner glow strongest face-on
+  vec3 glow = uPurple * 0.36 * pow(ndv, 1.5) + uPeach * 0.035 * pow(ndv, 3.0);
   vec3 rim = uPeach * (fres * (0.45 + 1.7 * rimL) + edge * (0.22 + 0.9 * fres + 0.7 * rimL + 0.25 * key));
   vec3 H = normalize(uKeyDir + V);
   float spec = pow(max(dot(N, H), 0.0), 70.0) * 0.55;
@@ -186,8 +187,8 @@ export const makeFloor = () =>
       uRes: {value: new THREE.Vector2(1, 1)},
       uPool: {value: new THREE.Vector3(0, 0, 40)},
       uBase: {value: v3(lin('#0d0a14'))},
-      uLift: {value: v3(lin('#1a1225'))},
-      uGrid: {value: 0.05},
+      uLift: {value: v3(lin('#21182e'))},
+      uGrid: {value: 0.09},
       uVis: {value: 1},
     },
     vertexShader: floorVert,
