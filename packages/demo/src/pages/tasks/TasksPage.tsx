@@ -1,8 +1,8 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import './tasks.css';
 import { TasksCtx } from './context';
-import { emptyState, indexTasks, isPersistedState, memberSummary } from './model';
-import { exportState, useTaskStore, useToday } from './store';
+import { indexTasks, memberSummary } from './model';
+import { useLedger, useToday } from './store';
 import { MEMBERS } from './teamData';
 import type { MemberId } from './types';
 import { ManasView, MemberView, OverviewView } from './views';
@@ -17,7 +17,7 @@ function readRoute(): Route {
 }
 
 export default function TasksPage() {
-  const { state, tasks, dispatch, saveError } = useTaskStore();
+  const { tasks, sessions, integrity } = useLedger();
   const today = useToday();
   const [route, setRoute] = useState<Route>(readRoute);
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
@@ -27,8 +27,6 @@ export default function TasksPage() {
       return 'dark';
     }
   });
-  const [importMsg, setImportMsg] = useState<string | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const onHash = () => {
@@ -44,8 +42,8 @@ export default function TasksPage() {
   }, []);
 
   const ctx = useMemo(
-    () => ({ tasks, index: indexTasks(tasks), sessions: state.sessions, today, dispatch }),
-    [tasks, state.sessions, today, dispatch],
+    () => ({ tasks, index: indexTasks(tasks), sessions, today, integrity }),
+    [tasks, sessions, today, integrity],
   );
 
   const toggleTheme = () => {
@@ -55,18 +53,6 @@ export default function TasksPage() {
       localStorage.setItem('aqvl-docs-theme', next);
     } catch {
       /* theme just won't persist */
-    }
-  };
-
-  const onImport = async (file: File) => {
-    try {
-      const parsed = JSON.parse(await file.text());
-      if (!isPersistedState(parsed)) throw new Error('not an AQVL tasks export');
-      if (!window.confirm('Replace the task state in this browser with the imported file?')) return;
-      dispatch({ type: 'replace', state: parsed });
-      setImportMsg(`Imported ${Object.keys(parsed.overrides).length} task updates and ${parsed.sessions.length} sessions.`);
-    } catch (e) {
-      setImportMsg(`Import failed: ${(e as Error).message}`);
     }
   };
 
@@ -99,19 +85,6 @@ export default function TasksPage() {
             </nav>
             <div className="tk-top__tools">
               <span className="tk-today-chip">{new Date().toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}</span>
-              <button type="button" className="tk-btn" onClick={() => exportState(state)}>Export</button>
-              <button type="button" className="tk-btn" onClick={() => fileRef.current?.click()}>Import</button>
-              <input
-                ref={fileRef}
-                type="file"
-                accept="application/json"
-                hidden
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) onImport(f);
-                  e.target.value = '';
-                }}
-              />
               <button type="button" className="tk-btn" onClick={toggleTheme} aria-label="Toggle theme">
                 {theme === 'dark' ? 'Light' : 'Dark'}
               </button>
@@ -120,10 +93,10 @@ export default function TasksPage() {
         </header>
 
         <main className="tk-main">
-          {saveError && <div className="tk-alert tk-alert--bad" role="alert">{saveError}</div>}
-          {importMsg && (
-            <div className="tk-alert" role="status">
-              {importMsg} <button type="button" className="tk-link" onClick={() => setImportMsg(null)}>Dismiss</button>
+          {!integrity.ok && (
+            <div className="tk-alert tk-alert--bad" role="alert">
+              <strong>Ledger integrity failure.</strong> Only the first {integrity.trusted} of {integrity.total} entries verify, so progress after that point is not counted.{' '}
+              {integrity.errors[0]}
             </div>
           )}
 
@@ -134,19 +107,8 @@ export default function TasksPage() {
 
           <footer className="tk-foot">
             <p>
-              State is saved in this browser. The site has no backend, so use Export and Import to share progress across machines or with the team.
+              Progress is read from a hash-chained ledger committed to the repo ({integrity.trusted} verified entr{integrity.trusted === 1 ? 'y' : 'ies'}). It cannot be changed from this page, and a task only counts once the work behind it checks out against git.
             </p>
-            <button
-              type="button"
-              className="tk-link tk-link--bad"
-              onClick={() => {
-                if (window.confirm('Reset ALL task statuses, notes and sessions in this browser? Export first if you want a backup.')) {
-                  dispatch({ type: 'replace', state: emptyState() });
-                }
-              }}
-            >
-              Reset all progress
-            </button>
           </footer>
         </main>
       </div>

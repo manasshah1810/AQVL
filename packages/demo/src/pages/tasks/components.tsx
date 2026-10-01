@@ -3,10 +3,9 @@ import { useTasks } from './context';
 import { copyText } from './store';
 import { daysBetween, formatDate, depsMet, isOverdue } from './model';
 import { MEMBER_BY_ID } from './teamData';
-import { PRIORITIES, STATUSES, STATUS_LABEL } from './types';
+import { STATUS_LABEL } from './types';
+import { formatDuration } from './ledger';
 import type { MemberId, Priority, Session, Status, Task } from './types';
-
-const nowIso = () => new Date().toISOString();
 
 // ─── Small atoms ─────────────────────────────────────────────────────────
 
@@ -104,7 +103,7 @@ export function Empty({ children }: { children: React.ReactNode }) {
 // ─── Task row + detail ───────────────────────────────────────────────────
 
 export function TaskRow({ task, showOwner = false, defaultOpen = false }: { task: Task; showOwner?: boolean; defaultOpen?: boolean }) {
-  const { dispatch, index, today } = useTasks();
+  const { index, today } = useTasks();
   const [open, setOpen] = useState(defaultOpen);
   const done = task.status === 'completed';
   const waiting = !done && !depsMet(task, index);
@@ -113,13 +112,9 @@ export function TaskRow({ task, showOwner = false, defaultOpen = false }: { task
   return (
     <div className={`tk-row tk-row--${task.status} ${open ? 'is-open' : ''} ${overdue ? 'is-overdue' : ''}`} data-testid={`task-${task.id}`}>
       <div className="tk-row__head">
-        <input
-          type="checkbox"
-          className="tk-check"
-          checked={done}
-          aria-label={`Mark ${task.title} ${done ? 'incomplete' : 'complete'}`}
-          onChange={() => dispatch({ type: 'setStatus', id: task.id, status: done ? 'planned' : 'completed', now: nowIso() })}
-        />
+        <span className={`tk-check tk-check--locked ${done ? 'is-done' : ''}`} role="img" aria-label={done ? 'Verified complete' : 'Not verified complete'} title={done ? 'Verified complete in the ledger' : 'Set only by the ledger CLI after verification'}>
+          {done ? '✓' : ''}
+        </span>
         <button type="button" className="tk-row__toggle" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
           <span className="tk-row__id">{task.id}</span>
           <span className="tk-row__title">{task.title}</span>
@@ -132,7 +127,7 @@ export function TaskRow({ task, showOwner = false, defaultOpen = false }: { task
             </span>
           )}
           {task.model && <span className="tk-model">{task.model.replace('Claude ', '')}</span>}
-          {task.prompt && <CopyButton text={task.prompt} label="Copy" />}
+          {task.copyPrompt && <CopyButton text={task.copyPrompt} label="Copy" />}
           <PriorityBadge priority={task.priority} />
           <StatusBadge status={task.status} />
           <DeadlineChip task={task} />
@@ -154,36 +149,17 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 export function TaskDetail({ task }: { task: Task }) {
-  const { dispatch, index } = useTasks();
-  const [notes, setNotes] = useState(task.notes);
-  const [blocker, setBlocker] = useState(task.blocker);
-  const now = nowIso;
+  const { index } = useTasks();
 
   return (
     <div className="tk-detail">
       <div className="tk-detail__controls">
-        <label>
-          Status
-          <select value={task.status} onChange={(e) => dispatch({ type: 'setStatus', id: task.id, status: e.target.value as Status, now: now() })}>
-            {STATUSES.map((s) => (
-              <option key={s} value={s}>
-                {STATUS_LABEL[s]}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Priority
-          <select value={task.priority} onChange={(e) => dispatch({ type: 'setPriority', id: task.id, priority: e.target.value as Priority, now: now() })}>
-            {PRIORITIES.map((p) => (
-              <option key={p} value={p}>
-                {p}
-              </option>
-            ))}
-          </select>
-        </label>
+        <span className="tk-detail__owner">Status: <StatusBadge status={task.status} /></span>
+        <span className="tk-detail__owner">Priority: {task.priority}</span>
         <span className="tk-detail__owner">Owner: {MEMBER_BY_ID[task.owner].name}</span>
-        {task.completedAt && <span className="tk-detail__owner">Completed {new Date(task.completedAt).toLocaleString()}</span>}
+        {task.startedAt && <span className="tk-detail__owner">Started {new Date(task.startedAt).toLocaleString()}</span>}
+        {task.completedAt && <span className="tk-detail__owner">Verified {new Date(task.completedAt).toLocaleString()}{task.elapsedMin !== null ? ` · ${formatDuration(task.elapsedMin)} elapsed` : ''}{task.doneBy ? ` · by ${task.doneBy}` : ''}</span>}
+        {!task.completedAt && task.startedAt && <span className="tk-detail__owner">Clock running since start</span>}
       </div>
 
       <dl className="tk-fields">
@@ -212,50 +188,15 @@ export function TaskDetail({ task }: { task: Task }) {
         <div className="tk-prompt">
           <div className="tk-prompt__head">
             <span>Claude Code prompt</span>
-            <CopyButton text={task.prompt} />
+            <CopyButton text={task.copyPrompt ?? task.prompt} />
           </div>
           <pre>{task.prompt}</pre>
         </div>
       )}
 
-      <div className="tk-detail__edit">
-        <label className="tk-grow">
-          Notes
-          <textarea
-            rows={3}
-            value={notes}
-            placeholder="Anything worth remembering next session"
-            onChange={(e) => setNotes(e.target.value)}
-            onBlur={() => notes !== task.notes && dispatch({ type: 'setNotes', id: task.id, notes, now: now() })}
-          />
-        </label>
-        <label className="tk-grow">
-          Blocker
-          <div className="tk-inline">
-            <input value={blocker} placeholder="What is stopping this task?" onChange={(e) => setBlocker(e.target.value)} />
-            <button
-              type="button"
-              className="tk-btn tk-btn--danger"
-              disabled={!blocker.trim()}
-              onClick={() => dispatch({ type: 'setBlocker', id: task.id, blocker, now: now() })}
-            >
-              Record blocker
-            </button>
-            {task.status === 'blocked' && (
-              <button
-                type="button"
-                className="tk-btn"
-                onClick={() => {
-                  setBlocker('');
-                  dispatch({ type: 'setStatus', id: task.id, status: 'in_progress', now: now() });
-                }}
-              >
-                Unblock
-              </button>
-            )}
-          </div>
-        </label>
-      </div>
+      {task.flags > 0 && <p className="tk-bad">{task.flags} completion attempt{task.flags === 1 ? '' : 's'} refused. Latest: {task.lastFlag}</p>}
+      {task.notes && <p className="tk-muted">{task.notes}</p>}
+      {task.blocker && <p className="tk-bad">Blocked: {task.blocker}</p>}
     </div>
   );
 }
@@ -263,96 +204,27 @@ export function TaskDetail({ task }: { task: Task }) {
 // ─── Session log ─────────────────────────────────────────────────────────
 
 export function SessionLog({ owner }: { owner: MemberId }) {
-  const { sessions, tasks, dispatch } = useTasks();
+  const { sessions } = useTasks();
   const mine = useMemo(() => sessions.filter((s) => s.owner === owner), [sessions, owner]);
-  const ownTasks = useMemo(() => tasks.filter((t) => t.owner === owner && t.status !== 'completed'), [tasks, owner]);
-  const blank = { workedOn: '', completed: '', remaining: '', blockers: '', note: '', taskIds: [] as string[] };
-  const [draft, setDraft] = useState(blank);
   const [showAll, setShowAll] = useState(false);
-  const canSave = draft.workedOn.trim().length > 0;
-
-  const save = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!canSave) return;
-    dispatch({
-      type: 'addSession',
-      session: { id: `s-${Date.now()}`, date: new Date().toISOString(), owner, ...draft },
-    });
-    setDraft(blank);
-  };
-
-  const shown = showAll ? mine : mine.slice(0, 5);
+  const shown = showAll ? mine : mine.slice(0, 8);
 
   return (
     <div className="tk-sessions">
-      <form className="tk-session-form" onSubmit={save}>
-        <h4>Record this session</h4>
-        <label>
-          Worked on <span className="tk-req">required</span>
-          <textarea rows={2} value={draft.workedOn} onChange={(e) => setDraft({ ...draft, workedOn: e.target.value })} />
-        </label>
-        <div className="tk-grid-2">
-          <label>
-            Completed
-            <textarea rows={2} value={draft.completed} onChange={(e) => setDraft({ ...draft, completed: e.target.value })} />
-          </label>
-          <label>
-            Remaining
-            <textarea rows={2} value={draft.remaining} onChange={(e) => setDraft({ ...draft, remaining: e.target.value })} />
-          </label>
-          <label>
-            Blockers
-            <textarea rows={2} value={draft.blockers} onChange={(e) => setDraft({ ...draft, blockers: e.target.value })} />
-          </label>
-          <label>
-            Note
-            <textarea rows={2} value={draft.note} onChange={(e) => setDraft({ ...draft, note: e.target.value })} />
-          </label>
-        </div>
-        <fieldset className="tk-chips">
-          <legend>Related tasks</legend>
-          {ownTasks.length === 0 && <span className="tk-muted">No open tasks.</span>}
-          {ownTasks.map((t) => {
-            const on = draft.taskIds.includes(t.id);
-            return (
-              <button
-                key={t.id}
-                type="button"
-                aria-pressed={on}
-                className={`tk-chip ${on ? 'is-on' : ''}`}
-                title={t.title}
-                onClick={() => setDraft({ ...draft, taskIds: on ? draft.taskIds.filter((x) => x !== t.id) : [...draft.taskIds, t.id] })}
-              >
-                {t.id}
-              </button>
-            );
-          })}
-        </fieldset>
-        <button type="submit" className="tk-btn tk-btn--primary" disabled={!canSave}>
-          Save session
-        </button>
-      </form>
-
       <div className="tk-session-list">
         <h4>History</h4>
-        {mine.length === 0 && <Empty>No sessions recorded yet. The first one you save will show up in “Last session”.</Empty>}
+        {mine.length === 0 && <Empty>Nothing logged yet. Entries appear here only when the ledger CLI records them.</Empty>}
         {shown.map((s) => (
           <article key={s.id} className="tk-session">
             <header>
               <time dateTime={s.date}>{new Date(s.date).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}</time>
               {s.taskIds.length > 0 && <span className="tk-session__tasks">{s.taskIds.join(', ')}</span>}
-              <button
-                type="button"
-                className="tk-link"
-                onClick={() => window.confirm('Delete this session entry?') && dispatch({ type: 'deleteSession', id: s.id })}
-              >
-                Delete
-              </button>
+              {s.durationMin !== undefined && <span className="tk-session__tasks">{formatDuration(s.durationMin)}</span>}
             </header>
             <SessionBody session={s} />
           </article>
         ))}
-        {mine.length > 5 && (
+        {mine.length > 8 && (
           <button type="button" className="tk-link" onClick={() => setShowAll((v) => !v)}>
             {showAll ? 'Show fewer' : `Show all ${mine.length}`}
           </button>
@@ -369,7 +241,7 @@ export function SessionBody({ session }: { session: Session }) {
       <Field label="Completed">{session.completed}</Field>
       <Field label="Remaining">{session.remaining}</Field>
       <Field label="Blockers">{session.blockers}</Field>
-      <Field label="Note">{session.note}</Field>
+      <Field label="Recorded by">{session.note}</Field>
     </dl>
   );
 }

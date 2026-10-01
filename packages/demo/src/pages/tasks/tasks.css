@@ -459,6 +459,8 @@ body:has(.tk-root[data-theme='light']) { background: #f5f0e8; }
 .tk-row--unverified { border-style: dashed; }
 .tk-row__head { display: flex; align-items: center; gap: 10px; padding: 9px 12px; flex-wrap: wrap; }
 .tk-check { width: 20px; height: 20px; accent-color: var(--green); cursor: pointer; flex-shrink: 0; }
+.tk-check--locked { display: inline-grid; place-items: center; border: 2px solid var(--line); border-radius: 5px; font-size: 13px; font-weight: 800; color: var(--ink-3); cursor: not-allowed; }
+.tk-check--locked.is-done { background: var(--green); border-color: var(--green); color: #fff; }
 .tk-row__toggle { flex: 1 1 280px; display: flex; align-items: baseline; gap: 10px; background: none; border: 0; padding: 2px 0; text-align: left; cursor: pointer; min-width: 0; }
 .tk-row__id { font-family: var(--mono); font-size: 12px; font-weight: 600; color: var(--ink-3); flex-shrink: 0; }
 .tk-row__title { font-weight: 600; color: var(--ink); }

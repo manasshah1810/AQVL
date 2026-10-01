@@ -34,7 +34,9 @@ pnpm-debug.log*
 temp/
 
 # Local tooling / scratch
-.claude/
+.claude/*
+!.claude/settings.json
+!.claude/hooks/
 scratch/
 packages/compiler/probe_*.ts
 packages/compiler/smoke*.ts

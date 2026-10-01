@@ -1,0 +1,44 @@
+name: Task ledger
+
+# The server-side check. Local hooks can be skipped with --no-verify; this cannot.
+# Make it a required status check on main (branch protection) so a failing or
+# missing run blocks the merge.
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v3
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: Resolve comparison base
+        id: base
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "ref=origin/${{ github.base_ref }}" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]; then
+            echo "ref=${{ github.event.before }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "ref=origin/main" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Ledger is append-only and every entry re-derives from git
+        run: pnpm task verify --base "${{ steps.base.outputs.ref }}"
+
+      - name: Only the maintainer may change the tracker itself
+        run: pnpm task protected --base "${{ steps.base.outputs.ref }}" --actor "${{ github.actor }}"

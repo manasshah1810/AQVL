@@ -1,5 +1,5 @@
 import { createContext, useContext } from 'react';
-import type { Action } from './model';
+import type { LedgerView } from './store';
 import type { Session, Task } from './types';
 
 export interface TasksContextValue {
@@ -7,7 +7,7 @@ export interface TasksContextValue {
   index: Map<string, Task>;
   sessions: Session[];
   today: string;
-  dispatch: (a: Action) => void;
+  integrity: LedgerView['integrity'];
 }
 
 export const TasksCtx = createContext<TasksContextValue | null>(null);

@@ -1,60 +1,37 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { SEEDS, STORAGE_KEY, emptyState, isPersistedState, mergeTasks, reducer, toDateKey } from './model';
-import type { Action } from './model';
-import type { PersistedState } from './types';
+import { useEffect, useMemo, useState } from 'react';
+import ledgerRaw from './ledger/ledger.jsonl?raw';
+import { parseLedger, replay, verifyChain } from './ledger';
+import type { ChainReport, LedgerEntry } from './ledger';
+import { SEEDS, mergeTasks, sessionsFromLedger, toDateKey } from './model';
+import type { Session, Task } from './types';
 
-export function loadState(): PersistedState {
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return emptyState();
-    const parsed = JSON.parse(raw);
-    return isPersistedState(parsed) ? parsed : emptyState();
-  } catch {
-    return emptyState();
-  }
+export interface LedgerView {
+  tasks: Task[];
+  sessions: Session[];
+  entries: LedgerEntry[];
+  integrity: { ok: boolean; errors: string[]; total: number; trusted: number };
 }
 
-function persist(state: PersistedState): string | null {
-  try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    return null;
-  } catch {
-    return 'Changes could not be saved in this browser (storage blocked or full). Export a backup.';
-  }
+const KNOWN = new Set(SEEDS.map((s) => s.id));
+
+/**
+ * Build the whole view from the committed ledger. Nothing here is writable:
+ * if the chain is broken, only the verified prefix counts and the page says so.
+ */
+export function buildLedgerView(raw: string, now = Date.now()): LedgerView {
+  const { entries, errors: parseErrors } = parseLedger(raw);
+  const report: ChainReport = verifyChain(entries, KNOWN, now);
+  const tasks = mergeTasks(SEEDS, replay(report.trusted));
+  return {
+    tasks,
+    sessions: sessionsFromLedger(report.trusted, tasks),
+    entries: report.trusted,
+    integrity: { ok: report.ok && parseErrors.length === 0, errors: [...parseErrors, ...report.errors], total: entries.length, trusted: report.trusted.length },
+  };
 }
 
-export function useTaskStore() {
-  const [state, setState] = useState<PersistedState>(loadState);
-  const [saveError, setSaveError] = useState<string | null>(null);
-  const stateRef = useRef(state);
-
-  const dispatch = useCallback((action: Action) => {
-    const next = reducer(stateRef.current, action);
-    stateRef.current = next;
-    setState(next);
-    setSaveError(persist(next));
-  }, []);
-
-  // Keep several open tabs in sync (the other tab already wrote storage).
-  useEffect(() => {
-    const onStorage = (e: StorageEvent) => {
-      if (e.key !== STORAGE_KEY || !e.newValue) return;
-      try {
-        const next = JSON.parse(e.newValue);
-        if (isPersistedState(next)) {
-          stateRef.current = next;
-          setState(next);
-        }
-      } catch {
-        /* ignore malformed writes from elsewhere */
-      }
-    };
-    window.addEventListener('storage', onStorage);
-    return () => window.removeEventListener('storage', onStorage);
-  }, []);
-
-  const tasks = useMemo(() => mergeTasks(SEEDS, state), [state]);
-  return { state, tasks, dispatch, saveError };
+export function useLedger(): LedgerView {
+  return useMemo(() => buildLedgerView(ledgerRaw), []);
 }
 
 /** Today's date key; rolls over at midnight so overdue flags stay correct in a tab left open. */
@@ -68,16 +45,6 @@ export function useToday(): string {
     return () => window.clearInterval(id);
   }, []);
   return today;
-}
-
-export function exportState(state: PersistedState) {
-  const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `aqvl-tasks-${toDateKey(new Date())}.json`;
-  a.click();
-  URL.revokeObjectURL(url);
 }
 
 export async function copyText(text: string): Promise<boolean> {

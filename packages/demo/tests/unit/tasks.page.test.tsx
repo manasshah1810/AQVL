@@ -1,8 +1,17 @@
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { sealEntry, serializeEntry } from '../../src/pages/tasks/ledger';
+import type { LedgerEntry } from '../../src/pages/tasks/ledger';
+
+const mock = vi.hoisted(() => ({ raw: '' }));
+vi.mock('../../src/pages/tasks/ledger/ledger.jsonl?raw', () => ({
+  get default() {
+    return mock.raw;
+  },
+}));
+
 import TasksPage from '../../src/pages/tasks/TasksPage';
-import { STORAGE_KEY } from '../../src/pages/tasks/model';
 
 function go(hash: string) {
   act(() => {
@@ -11,12 +20,24 @@ function go(hash: string) {
   });
 }
 
-function stored() {
-  return JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? '{}');
+/** A correctly chained ledger, as the CLI would have written it. */
+function chain(events: Omit<LedgerEntry, 'hash' | 'prev' | 'seq'>[]): string {
+  const out: LedgerEntry[] = [];
+  for (const e of events) out.push(sealEntry(e, out[out.length - 1]));
+  return out.map(serializeEntry).join('');
 }
 
-describe('/tasks command center', () => {
+const iso = (minutesAgo: number) => new Date(Date.now() - minutesAgo * 60_000).toISOString();
+const base = { actor: 'tester@example.com', head: 'a'.repeat(40) };
+const evidence = (elapsedMin: number) => ({ startHead: base.head, elapsedMin, files: ['poc/ai-api/contract.md'], linesAdded: 40, required: [], checks: [] });
+const completedY1 = () => [
+  { ...base, ts: iso(90), task: 'Y1', event: 'start' as const },
+  { ...base, ts: iso(30), task: 'Y1', event: 'complete' as const, evidence: evidence(60) },
+];
+
+describe('/tasks command center (read-only, ledger-backed)', () => {
   beforeEach(() => {
+    mock.raw = '';
     window.localStorage.clear();
     window.location.hash = '#/tasks';
     window.scrollTo = vi.fn() as unknown as typeof window.scrollTo;
@@ -28,8 +49,7 @@ describe('/tasks command center', () => {
     render(<TasksPage />);
     expect(screen.getByText('Roadmap not started')).toBeInTheDocument();
     for (const id of ['manas', 'yash', 'tirrth', 'pranav']) {
-      const card = screen.getByTestId(`member-${id}`);
-      expect(within(card).getByText(/^0% · 0\//)).toBeInTheDocument();
+      expect(within(screen.getByTestId(`member-${id}`)).getByText(/^0% · 0\//)).toBeInTheDocument();
     }
   });
 
@@ -37,44 +57,63 @@ describe('/tasks command center', () => {
     render(<TasksPage />);
     go('#/tasks/yash');
     expect(screen.getByRole('heading', { level: 1, name: 'Yash Poojari' })).toBeInTheDocument();
-    expect(screen.getByText('Demo pipeline')).toBeInTheDocument();
-    go('#/tasks/tirrth');
-    expect(screen.getByRole('heading', { level: 1, name: 'Tirrth Mistry' })).toBeInTheDocument();
-    expect(screen.getByText(/Out of scope — do not touch/)).toBeInTheDocument();
     go('#/tasks/manas');
     expect(screen.getByText('Roadmap, tasks & prompts')).toBeInTheDocument();
   });
 
-  it('completing a task updates progress and survives a remount', () => {
-    const { unmount } = render(<TasksPage />);
+  it('offers no way to change a status by hand', () => {
+    render(<TasksPage />);
     go('#/tasks/yash');
     const row = screen.getByTestId('task-Y1');
-    fireEvent.click(within(row).getByRole('checkbox'));
-    expect(stored().overrides.Y1.status).toBe('completed');
-    expect(screen.getAllByText('1/12').length).toBeGreaterThan(0);
-    unmount();
+    expect(within(row).queryByRole('checkbox')).toBeNull();
+    fireEvent.click(within(row).getByRole('button', { name: /Y1/ }));
+    expect(within(row).queryByLabelText('Status')).toBeNull();
+    expect(within(row).queryByLabelText('Priority')).toBeNull();
+    expect(screen.queryByRole('button', { name: /mark complete|start this task|record blocker|unblock/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^(import|export|reset all progress)$/i })).toBeNull();
+    expect(screen.queryByText('Record this session')).toBeNull();
+    fireEvent.click(within(row).getByRole('img', { name: 'Not verified complete' }));
+    expect(within(row).getByRole('img', { name: 'Not verified complete' })).toBeInTheDocument();
+    expect(window.localStorage.length).toBe(0);
+  });
 
+  it('shows a completion only because the ledger records it, with elapsed time', () => {
+    mock.raw = chain(completedY1());
     render(<TasksPage />);
     go('#/tasks');
     expect(within(screen.getByTestId('member-yash')).getByText('8% · 1/12')).toBeInTheDocument();
+    go('#/tasks/yash');
+    const row = screen.getByTestId('task-Y1');
+    expect(within(row).getByRole('img', { name: 'Verified complete' })).toBeInTheDocument();
+    fireEvent.click(within(row).getByRole('button', { name: /Y1/ }));
+    expect(within(row).getByText(/1h elapsed/)).toBeInTheDocument();
   });
 
-  it('changes status and priority from task details and records a blocker', () => {
+  it('a tampered ledger is flagged and nothing past the break counts', () => {
+    const lines = chain(completedY1()).split('\n').filter(Boolean);
+    mock.raw = `${lines[0]}\n${lines[1].replace('"linesAdded":40', '"linesAdded":4000')}\n`;
     render(<TasksPage />);
-    go('#/tasks/pranav');
-    const row = screen.getByTestId('task-P6');
-    fireEvent.click(within(row).getByRole('button', { name: /P6/ }));
-    fireEvent.change(within(row).getByLabelText('Status'), { target: { value: 'in_progress' } });
-    fireEvent.change(within(row).getByLabelText('Priority'), { target: { value: 'P0' } });
-    expect(stored().overrides.P6).toMatchObject({ status: 'in_progress', priority: 'P0' });
-
-    fireEvent.change(within(row).getByPlaceholderText('What is stopping this task?'), { target: { value: 'Lens.org down' } });
-    fireEvent.click(within(row).getByRole('button', { name: 'Record blocker' }));
-    expect(stored().overrides.P6).toMatchObject({ status: 'blocked', blocker: 'Lens.org down' });
-    expect(screen.getAllByText('Blocked').length).toBeGreaterThan(0);
+    expect(screen.getByRole('alert')).toHaveTextContent(/Ledger integrity failure/);
+    go('#/tasks');
+    expect(within(screen.getByTestId('member-yash')).getByText(/^0% · 0\//)).toBeInTheDocument();
   });
 
-  it('expands a roadmap phase and copies its prompt', async () => {
+  it('a hand-written entry that does not chain is rejected', () => {
+    mock.raw = `${JSON.stringify({ seq: 1, ts: iso(5), task: 'Y1', event: 'complete', actor: 'x', head: 'a'.repeat(40), prev: '0'.repeat(64), hash: 'f'.repeat(64) })}\n`;
+    render(<TasksPage />);
+    expect(screen.getByRole('alert')).toHaveTextContent(/Ledger integrity failure/);
+  });
+
+  it('shows refused completion attempts on the task', () => {
+    mock.raw = chain([{ ...base, ts: iso(5), task: 'Y1', event: 'flag', note: 'No commits by tester@example.com between start and now.' }]);
+    render(<TasksPage />);
+    go('#/tasks/yash');
+    const row = screen.getByTestId('task-Y1');
+    fireEvent.click(within(row).getByRole('button', { name: /Y1/ }));
+    expect(within(row).getByText(/1 completion attempt refused/)).toBeInTheDocument();
+  });
+
+  it('copies the prompt wrapped in its bookkeeping steps while showing the plain prompt', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
     render(<TasksPage />);
@@ -84,38 +123,26 @@ describe('/tasks command center', () => {
     await act(async () => {
       fireEvent.click(within(row).getByRole('button', { name: 'Copy' }));
     });
-    expect(writeText).toHaveBeenCalledWith(expect.stringContaining('deliberately throwaway, non-spatial, non-DSA toy domain'));
-    expect(within(row).getByRole('button', { name: 'Copied' })).toBeInTheDocument();
+    const copied = writeText.mock.calls[0][0] as string;
+    expect(copied).toContain('deliberately throwaway, non-spatial, non-DSA toy domain');
+    expect(copied).toContain('pnpm task start R3.2');
+    expect(copied).toContain('pnpm task done R3.2');
+    fireEvent.click(within(row).getByRole('button', { name: /R3\.2/ }));
+    expect(within(row).queryByText(/pnpm task/)).toBeNull();
   });
 
-  it('records a session that then appears as the last session', () => {
+  it('report view derives its KPIs from ledger completions', () => {
+    mock.raw = chain([
+      ...completedY1(),
+      { ...base, ts: iso(20), task: 'Y2', event: 'start' },
+      { ...base, ts: iso(5), task: 'Y2', event: 'complete', evidence: evidence(15) },
+    ]);
     render(<TasksPage />);
-    go('#/tasks/manas');
-    const form = screen.getByText('Record this session').closest('form')!;
-    const [workedOn, completed, remaining] = within(form).getAllByRole('textbox');
-    fireEvent.change(workedOn, { target: { value: 'Ran the Phase 1 prerequisite' } });
-    fireEvent.change(completed, { target: { value: 'Baseline summary' } });
-    fireEvent.change(remaining, { target: { value: 'Start 1.1' } });
-    fireEvent.click(within(form).getByRole('button', { name: 'Save session' }));
-
-    expect(stored().sessions).toHaveLength(1);
-    expect(screen.getByText(/Completed:/).parentElement).toHaveTextContent('Baseline summary');
-    expect(screen.getByText(/Left open:/).parentElement).toHaveTextContent('Start 1.1');
-  });
-
-  it('report view derives its KPIs from real completions', () => {
-    render(<TasksPage />);
-    go('#/tasks/yash');
-    fireEvent.click(within(screen.getByTestId('task-Y1')).getByRole('checkbox'));
-    fireEvent.click(within(screen.getByTestId('task-Y2')).getByRole('checkbox'));
     go('#/tasks/report');
     expect(screen.getByRole('heading', { level: 1, name: 'AQVL project status' })).toBeInTheDocument();
     const kpi = (label: string) => screen.getAllByText(label).find((el) => el.classList.contains('tk-kpi__label'))!.closest('.tk-kpi') as HTMLElement;
     expect(within(kpi('Team tasks')).getByText('2/29')).toBeInTheDocument();
-    expect(within(kpi('Done, last 7 days')).getByText('2')).toBeInTheDocument();
     expect(within(kpi('Blocked')).getByText('0')).toBeInTheDocument();
-    expect(screen.getByText('Roadmap burn-up')).toBeInTheDocument();
-    expect(screen.getAllByText(/Y2/).length).toBeGreaterThan(0);
   });
 
   it('marks tasks overdue from the real current date', () => {

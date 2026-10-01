@@ -24,6 +24,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       
       - name: Install pnpm
         uses: pnpm/action-setup@v3
@@ -39,6 +41,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install
       
+      - name: Verify task ledger
+        run: pnpm task verify
+
       - name: Build demo
         run: pnpm --filter demo build
       

@@ -6,7 +6,6 @@ import {
   byOwner,
   currentPhase,
   daysBetween,
-  emptyState,
   health,
   indexTasks,
   isOverdue,
@@ -15,8 +14,8 @@ import {
   nextDeadline,
   nextTask,
   progress,
-  reducer,
 } from '../../src/pages/tasks/model';
+import { done, entry, factsOf } from './tasksFixture';
 import { ROADMAP } from '../../src/pages/tasks/roadmapData';
 
 const NOW = '2026-09-27T10:00:00.000Z';
@@ -77,13 +76,11 @@ describe('dates', () => {
 });
 
 describe('selectors', () => {
-  const base = mergeTasks(SEEDS, emptyState());
+  const base = mergeTasks(SEEDS, factsOf([]));
 
   it('reports 0% for the honest seed and recomputes after completions', () => {
     expect(progress(byOwner(base, 'manas')).pct).toBe(0);
-    let state = emptyState();
-    state = reducer(state, { type: 'setStatus', id: 'Y1', status: 'completed', now: NOW });
-    state = reducer(state, { type: 'setStatus', id: 'Y2', status: 'completed', now: NOW });
+    const state = factsOf([...done('Y1', NOW), ...done('Y2', NOW)]);
     const yash = byOwner(mergeTasks(SEEDS, state), 'yash');
     expect(progress(yash)).toEqual({ done: 2, total: 12, pct: 17 });
   });
@@ -99,14 +96,14 @@ describe('selectors', () => {
     const idx = indexTasks(base);
     expect(nextTask(byOwner(base, 'manas'), idx)?.id).toBe('R1.0');
     expect(nextTask(byOwner(base, 'yash'), idx)?.id).toBe('Y1');
-    const state = reducer(emptyState(), { type: 'setStatus', id: 'Y1', status: 'completed', now: NOW });
+    const state = factsOf(done('Y1', NOW));
     const merged = mergeTasks(SEEDS, state);
     expect(nextTask(byOwner(merged, 'yash'), indexTasks(merged))?.id).toBe('Y2');
   });
 
   it('derives current phase, active task and next deadline', () => {
     expect(currentPhase(byOwner(base, 'manas'))).toBe(1);
-    const state = reducer(emptyState(), { type: 'setStatus', id: 'T2', status: 'in_progress', now: NOW });
+    const state = factsOf([entry('T2', 'start', NOW)]);
     const merged = mergeTasks(SEEDS, state);
     expect(activeTask(byOwner(merged, 'tirrth'))?.id).toBe('T2');
     expect(nextDeadline(byOwner(base, 'pranav'), '2026-09-27')?.id).toBe('P1');
@@ -115,34 +112,39 @@ describe('selectors', () => {
   it('member health reflects blocked and overdue work', () => {
     expect(health(byOwner(base, 'yash'), '2026-09-27')).toBe('not_started');
     expect(health(byOwner(base, 'yash'), '2026-10-05')).toBe('at_risk');
-    const state = reducer(emptyState(), { type: 'setBlocker', id: 'Y1', blocker: 'No API key', now: NOW });
+    const state = factsOf([entry('Y1', 'start', NOW), entry('Y1', 'block', NOW, { note: 'No API key' })]);
     const s = memberSummary(mergeTasks(SEEDS, state), 'yash', '2026-09-27');
     expect(s.health).toBe('blocked');
     expect(s.blocked.map((t) => t.id)).toEqual(['Y1']);
   });
 });
 
-describe('reducer', () => {
-  it('records completion time and clears it when reopened', () => {
-    let s = reducer(emptyState(), { type: 'setStatus', id: 'R1.1', status: 'completed', now: NOW });
-    expect(s.overrides['R1.1'].completedAt).toBe(NOW);
-    s = reducer(s, { type: 'setStatus', id: 'R1.1', status: 'planned', now: NOW });
-    expect(s.overrides['R1.1'].completedAt).toBeNull();
+describe('ledger replay', () => {
+  it('records completion time, elapsed minutes and the person who finished it', () => {
+    const t = mergeTasks(SEEDS, factsOf(done('R1.0', NOW, 42))).find((x) => x.id === 'R1.0')!;
+    expect(t).toMatchObject({ status: 'completed', completedAt: NOW, elapsedMin: 42, doneBy: 'tester@example.com' });
   });
 
-  it('recording a blocker blocks the task; leaving blocked clears it', () => {
-    let s = reducer(emptyState(), { type: 'setBlocker', id: 'T1', blocker: 'Waiting on screenshots', now: NOW });
-    expect(s.overrides.T1).toMatchObject({ status: 'blocked', blocker: 'Waiting on screenshots' });
-    s = reducer(s, { type: 'setStatus', id: 'T1', status: 'in_progress', now: NOW });
-    expect(s.overrides.T1).toMatchObject({ status: 'in_progress', blocker: '' });
+  it('a blocker blocks the task and unblocking resumes it', () => {
+    const blocked = factsOf([entry('T1', 'start', NOW), entry('T1', 'block', NOW, { note: 'Waiting on screenshots' })]);
+    expect(mergeTasks(SEEDS, blocked).find((t) => t.id === 'T1')).toMatchObject({ status: 'blocked', blocker: 'Waiting on screenshots' });
+    const resumed = factsOf([entry('T1', 'start', NOW), entry('T1', 'block', NOW, { note: 'x' }), entry('T1', 'unblock', NOW)]);
+    expect(mergeTasks(SEEDS, resumed).find((t) => t.id === 'T1')).toMatchObject({ status: 'in_progress', blocker: '' });
   });
 
-  it('adds sessions newest first and deletes them', () => {
-    const mk = (id: string) => ({ id, date: NOW, owner: 'manas' as const, workedOn: 'x', completed: '', remaining: '', blockers: '', note: '', taskIds: [] });
-    let s = reducer(emptyState(), { type: 'addSession', session: mk('a') });
-    s = reducer(s, { type: 'addSession', session: mk('b') });
-    expect(s.sessions.map((x) => x.id)).toEqual(['b', 'a']);
-    s = reducer(s, { type: 'deleteSession', id: 'b' });
-    expect(s.sessions.map((x) => x.id)).toEqual(['a']);
+  it('refused attempts are counted against the task but never change its status', () => {
+    const f = factsOf([entry('Y1', 'flag', NOW, { note: 'No commits' })]);
+    expect(mergeTasks(SEEDS, f).find((t) => t.id === 'Y1')).toMatchObject({ status: 'planned', flags: 1, lastFlag: 'No commits' });
+  });
+});
+
+describe('tracked prompts', () => {
+  it('every roadmap and team task gets a copy prompt that starts and finishes through the CLI', () => {
+    const tasks = mergeTasks(SEEDS, factsOf([]));
+    expect(tasks.every((t) => t.copyPrompt)).toBe(true);
+    const r = tasks.find((t) => t.id === 'R1.1')!;
+    expect(r.copyPrompt!.startsWith('Housekeeping before you begin: run `pnpm task start R1.1`')).toBe(true);
+    expect(r.copyPrompt).toContain('`pnpm task done R1.1`');
+    expect(r.prompt).not.toContain('pnpm task');
   });
 });

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { SEEDS, emptyState, mergeTasks, reducer } from '../../src/pages/tasks/model';
+import { SEEDS, mergeTasks } from '../../src/pages/tasks/model';
+import { done, factsOf } from './tasksFixture';
 import {
   burnUp,
   scheduleAdherence,
@@ -15,9 +16,7 @@ import type { Session } from '../../src/pages/tasks/types';
 const at = (day: string) => `${day}T10:00:00`;
 
 function withCompletions(ids: [string, string][]) {
-  let s = emptyState();
-  for (const [id, day] of ids) s = reducer(s, { type: 'setStatus', id, status: 'completed', now: new Date(at(day)).toISOString() });
-  return mergeTasks(SEEDS, s);
+  return mergeTasks(SEEDS, factsOf(ids.flatMap(([id, day]) => done(id, new Date(at(day)).toISOString()))));
 }
 
 describe('metrics', () => {
@@ -27,7 +26,7 @@ describe('metrics', () => {
   });
 
   it('status counts cover every task', () => {
-    const tasks = mergeTasks(SEEDS, emptyState());
+    const tasks = mergeTasks(SEEDS, factsOf([]));
     const c = statusCounts(tasks);
     expect(Object.values(c).reduce((a, b) => a + b, 0)).toBe(tasks.length);
     expect(c.completed).toBe(0);
@@ -50,7 +49,7 @@ describe('metrics', () => {
   });
 
   it('schedule adherence only counts work already due', () => {
-    const none = scheduleAdherence(mergeTasks(SEEDS, emptyState()).filter((t) => t.owner === 'yash'), '2026-09-27');
+    const none = scheduleAdherence(mergeTasks(SEEDS, factsOf([])).filter((t) => t.owner === 'yash'), '2026-09-27');
     expect(none).toEqual({ due: 0, done: 0, pct: null });
     const tasks = withCompletions([['Y1', '2026-09-29']]).filter((t) => t.owner === 'yash');
     expect(scheduleAdherence(tasks, '2026-10-02')).toEqual({ due: 2, done: 1, pct: 50 });
@@ -64,14 +63,14 @@ describe('metrics', () => {
   });
 
   it('upcoming load separates overdue from future weeks', () => {
-    const tasks = mergeTasks(SEEDS, emptyState()).filter((t) => t.owner === 'tirrth');
+    const tasks = mergeTasks(SEEDS, factsOf([])).filter((t) => t.owner === 'tirrth');
     const l = upcomingLoad(tasks, '2026-10-01', 2);
     expect(l.overdue).toBe(1); // T1 due 30 Sep
     expect(l.buckets[0].value).toBe(1); // T2 due 3 Oct, week of 28 Sep
   });
 
   it('velocity projects a finish date only with real completions', () => {
-    const empty = velocity(mergeTasks(SEEDS, emptyState()), '2026-10-10');
+    const empty = velocity(mergeTasks(SEEDS, factsOf([])), '2026-10-10');
     expect(empty.projected).toBeNull();
     const tasks = withCompletions([['Y1', '2026-10-01'], ['Y2', '2026-10-05'], ['T1', '2026-10-08'], ['P1', '2026-10-09']]);
     const v = velocity(tasks, '2026-10-10');

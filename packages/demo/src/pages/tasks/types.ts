@@ -45,19 +45,19 @@ export interface TaskSeed {
   model?: ModelName;
 }
 
-export interface TaskOverride {
-  status?: Status;
-  priority?: Priority;
-  notes?: string;
-  blocker?: string;
-  completedAt?: string | null;
-  updatedAt: string;
-}
-
 export interface Task extends TaskSeed {
   blocker: string;
   completedAt: string | null;
+  startedAt: string | null;
+  /** Minutes from start to verified completion, as measured by the ledger CLI. */
+  elapsedMin: number | null;
+  doneBy: string | null;
+  /** Refused completion attempts recorded against this task. */
+  flags: number;
+  lastFlag: string;
   updatedAt: string | null;
+  /** Prompt as copied: the visible prompt plus its bookkeeping steps. */
+  copyPrompt?: string;
 }
 
 export interface Session {
@@ -71,12 +71,8 @@ export interface Session {
   blockers: string;
   note: string;
   taskIds: string[];
-}
-
-export interface PersistedState {
-  version: 1;
-  overrides: Record<string, TaskOverride>;
-  sessions: Session[];
+  /** Minutes the task took, from the ledger. */
+  durationMin?: number;
 }
 
 export interface Member {

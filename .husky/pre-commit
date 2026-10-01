@@ -1,1 +1,3 @@
+pnpm task verify --base HEAD || exit 1
+pnpm task protected --staged || exit 1
 pnpm --filter demo run lint

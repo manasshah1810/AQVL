@@ -1,6 +1,7 @@
 import { ROADMAP } from './roadmapData';
-import { TEAM_TASKS } from './teamData';
-import type { MemberId, PersistedState, Priority, Session, Status, Task, TaskSeed } from './types';
+import { GUARDRAILS, TEAM_TASKS } from './teamData';
+import type { LedgerEntry, TaskFacts } from './ledger';
+import type { MemberId, Priority, Session, Task, TaskSeed } from './types';
 
 // ─── Dates (local calendar days, YYYY-MM-DD) ─────────────────────────────
 
@@ -115,82 +116,92 @@ export function buildRoadmapSeeds(): TaskSeed[] {
   return seeds;
 }
 
-export const SEEDS: TaskSeed[] = [...buildRoadmapSeeds(), ...TEAM_TASKS];
-
-// ─── Persisted overlay ───────────────────────────────────────────────────
-
-export const STORAGE_KEY = 'aqvl-tasks-v1';
-
-export function emptyState(): PersistedState {
-  return { version: 1, overrides: {}, sessions: [] };
+/** Team tasks carry no hand-written prompt, so build one from the task's own fields and its owner's guardrails. */
+function withTeamPrompt(seed: TaskSeed): TaskSeed {
+  if (seed.prompt || seed.owner === 'manas') return seed;
+  const g = GUARDRAILS[seed.owner];
+  const lines = [
+    `You are working on task ${seed.id} (${seed.title}) of the AQVL project.`,
+    `Mission: ${g.mission}`,
+    `Objective: ${seed.objective}`,
+    `Scope: ${seed.scope}`,
+    ...(seed.outOfScope ? [`Do NOT: ${seed.outOfScope}`] : []),
+    ...g.outOfScope.map((o) => `Do NOT touch: ${o}`),
+    `Expected outcome: ${seed.expectedOutcome}`,
+    `Definition of done: ${seed.definitionOfDone}`,
+    `What to test/verify: ${seed.verification}`,
+  ];
+  return { ...seed, prompt: lines.join('\n') };
 }
 
-export function isPersistedState(v: unknown): v is PersistedState {
-  if (!v || typeof v !== 'object') return false;
-  const s = v as PersistedState;
-  return s.version === 1 && typeof s.overrides === 'object' && s.overrides !== null && Array.isArray(s.sessions);
+export const SEEDS: TaskSeed[] = [...buildRoadmapSeeds(), ...TEAM_TASKS.map(withTeamPrompt)];
+
+// ─── Ledger overlay ──────────────────────────────────────────────────────
+// Progress is never stored in the browser or editable in the UI. Status,
+// timestamps and durations are replayed from the hash-chained ledger that only
+// scripts/task-ledger.ts can append to (see ledger.ts).
+
+export const LEDGER_DIR = 'packages/demo/src/pages/tasks/ledger';
+export const LEDGER_FILE = `${LEDGER_DIR}/ledger.jsonl`;
+
+/** Concrete file paths a task promises to deliver; the CLI refuses completion if any is missing. */
+export function requiredFiles(seed: TaskSeed): string[] {
+  const source = seed.kind === 'team' ? seed.expectedOutcome : (seed.prompt ?? '').split('\n').filter((l) => l.startsWith('Deliverable:')).join(' ');
+  const found = source.match(/\b(?:docs|scripts|poc|packages)\/[\w./-]*[\w-]\.[a-z]{1,5}\b/g) ?? [];
+  return [...new Set(found)];
 }
 
-export function mergeTasks(seeds: TaskSeed[], state: PersistedState): Task[] {
+const START_LINE = (id: string) =>
+  `Housekeeping before you begin: run \`pnpm task start ${id}\` once from the repo root. It only stamps the session, and it prints nothing you need to act on.`;
+const DONE_LINE = (id: string) =>
+  `When, and only when, the definition of done above is genuinely met and your work is committed, finish with \`pnpm task done ${id}\` and paste its output in your final message. It re-checks the work itself, so running it early only gets you a refusal; if it refuses, fix what it names instead of retrying or working around it.`;
+
+/** The prompt that is copied: the visible prompt, wrapped in the bookkeeping steps. */
+export function trackedPrompt(id: string, prompt: string): string {
+  return `${START_LINE(id)}\n\n${prompt}\n\n${DONE_LINE(id)}`;
+}
+
+export function mergeTasks(seeds: TaskSeed[], facts: Map<string, TaskFacts>): Task[] {
   return seeds.map((seed) => {
-    const o = state.overrides[seed.id];
+    const f = facts.get(seed.id);
     return {
       ...seed,
-      status: o?.status ?? seed.status,
-      priority: o?.priority ?? seed.priority,
-      notes: o?.notes ?? seed.notes,
-      blocker: o?.blocker ?? '',
-      completedAt: o?.completedAt ?? null,
-      updatedAt: o?.updatedAt ?? null,
+      status: f ? f.status : seed.status,
+      blocker: f?.blocker ?? '',
+      completedAt: f?.completedAt ?? null,
+      startedAt: f?.startedAt ?? null,
+      elapsedMin: f?.elapsedMin ?? null,
+      doneBy: f?.actor && f.status === 'completed' ? f.actor : null,
+      flags: f?.flags.length ?? 0,
+      lastFlag: f?.flags.length ? (f.flags[f.flags.length - 1].note ?? '') : '',
+      updatedAt: f ? f.history[f.history.length - 1].ts : null,
+      copyPrompt: seed.prompt ? trackedPrompt(seed.id, seed.prompt) : undefined,
     };
   });
 }
 
-// ─── Reducer ─────────────────────────────────────────────────────────────
-
-export type Action =
-  | { type: 'setStatus'; id: string; status: Status; now: string }
-  | { type: 'setPriority'; id: string; priority: Priority; now: string }
-  | { type: 'setNotes'; id: string; notes: string; now: string }
-  | { type: 'setBlocker'; id: string; blocker: string; now: string }
-  | { type: 'addSession'; session: Session }
-  | { type: 'deleteSession'; id: string }
-  | { type: 'replace'; state: PersistedState };
-
-export function reducer(state: PersistedState, action: Action): PersistedState {
-  const patch = (id: string, fields: Partial<PersistedState['overrides'][string]>, now: string): PersistedState => ({
-    ...state,
-    overrides: { ...state.overrides, [id]: { ...state.overrides[id], ...fields, updatedAt: now } },
-  });
-
-  switch (action.type) {
-    case 'setStatus':
-      return patch(
-        action.id,
-        {
-          status: action.status,
-          completedAt: action.status === 'completed' ? action.now : null,
-          ...(action.status !== 'blocked' ? { blocker: '' } : {}),
-        },
-        action.now,
-      );
-    case 'setPriority':
-      return patch(action.id, { priority: action.priority }, action.now);
-    case 'setNotes':
-      return patch(action.id, { notes: action.notes }, action.now);
-    case 'setBlocker':
-      return patch(
-        action.id,
-        action.blocker.trim() ? { blocker: action.blocker, status: 'blocked', completedAt: null } : { blocker: '' },
-        action.now,
-      );
-    case 'addSession':
-      return { ...state, sessions: [action.session, ...state.sessions] };
-    case 'deleteSession':
-      return { ...state, sessions: state.sessions.filter((s) => s.id !== action.id) };
-    case 'replace':
-      return action.state;
+/** Read-only work log: one entry per verified completion or recorded blocker. */
+export function sessionsFromLedger(entries: LedgerEntry[], tasks: Task[]): Session[] {
+  const byId = new Map(tasks.map((t) => [t.id, t]));
+  const out: Session[] = [];
+  for (const e of entries) {
+    const t = byId.get(e.task);
+    if (!t || (e.event !== 'complete' && e.event !== 'block')) continue;
+    const ev = e.evidence;
+    out.push({
+      id: `l-${e.seq}`,
+      date: e.ts,
+      owner: t.owner,
+      workedOn: `${t.id} ${t.title}`,
+      completed: e.event === 'complete' && ev ? `Verified: ${ev.files.length} file${ev.files.length === 1 ? '' : 's'} changed, +${ev.linesAdded} lines, ${ev.checks.length} check${ev.checks.length === 1 ? '' : 's'} passed` : '',
+      remaining: '',
+      blockers: e.event === 'block' ? (e.note ?? '') : '',
+      note: e.actor,
+      taskIds: [t.id],
+      durationMin: ev?.elapsedMin,
+    });
   }
+  return out.reverse();
 }
 
 // ─── Selectors ───────────────────────────────────────────────────────────

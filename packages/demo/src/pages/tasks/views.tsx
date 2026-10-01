@@ -20,8 +20,6 @@ import { IPD_DEADLINE, ROADMAP } from './roadmapData';
 import { GUARDRAILS, MEMBERS, MEMBER_BY_ID } from './teamData';
 import type { MemberId, Status, Task } from './types';
 
-const nowIso = () => new Date().toISOString();
-
 function Section({ title, sub, children, id }: { title: string; sub?: React.ReactNode; children: React.ReactNode; id?: string }) {
   return (
     <section className="tk-section" id={id}>
@@ -31,24 +29,6 @@ function Section({ title, sub, children, id }: { title: string; sub?: React.Reac
       </header>
       {children}
     </section>
-  );
-}
-
-function StartButton({ task, label = 'Start' }: { task: Task; label?: string }) {
-  const { dispatch } = useTasks();
-  return (
-    <button type="button" className="tk-btn tk-btn--primary" onClick={() => dispatch({ type: 'setStatus', id: task.id, status: 'in_progress', now: nowIso() })}>
-      {label}
-    </button>
-  );
-}
-
-function CompleteButton({ task }: { task: Task }) {
-  const { dispatch } = useTasks();
-  return (
-    <button type="button" className="tk-btn tk-btn--good" onClick={() => dispatch({ type: 'setStatus', id: task.id, status: 'completed', now: nowIso() })}>
-      Mark complete
-    </button>
   );
 }
 
@@ -214,7 +194,7 @@ export function ManasView() {
                 <p><strong>Completed:</strong> {lastSession.completed || '—'}</p>
                 <p><strong>Left open:</strong> {lastSession.remaining || '—'}</p>
               </>
-            ) : <Empty>No session recorded yet. Record one at the bottom when you finish today.</Empty>}
+            ) : <Empty>No session recorded yet. Entries appear when a task is verified in the ledger.</Empty>}
           </div>
           <div className="tk-today__cell tk-today__cell--now">
             <span className="tk-eyebrow">Working on now</span>
@@ -223,11 +203,10 @@ export function ManasView() {
                 <p className="tk-today__task">{s.active.title}</p>
                 <DeadlineChip task={s.active} />
                 <div className="tk-inline">
-                  {s.active.prompt && <CopyButton text={s.active.prompt} />}
-                  <CompleteButton task={s.active} />
+                  {s.active.copyPrompt && <CopyButton text={s.active.copyPrompt} />}
                 </div>
               </>
-            ) : <Empty>Nothing is marked In progress.</Empty>}
+            ) : <Empty>No task has been started in the ledger.</Empty>}
           </div>
           <div className="tk-today__cell">
             <span className="tk-eyebrow">Do next</span>
@@ -236,8 +215,7 @@ export function ManasView() {
                 <p className="tk-today__task">{s.next.title}</p>
                 <span className="tk-muted">Model: {s.next.model}</span>
                 <div className="tk-inline">
-                  {s.next.prompt && <CopyButton text={s.next.prompt} />}
-                  <StartButton task={s.next} />
+                  {s.next.copyPrompt && <CopyButton text={s.next.copyPrompt} />}
                 </div>
               </>
             ) : <Empty>No task is ready (dependencies incomplete or roadmap finished).</Empty>}
@@ -349,7 +327,7 @@ export function ManasView() {
         </div>
       </Section>
 
-      <Section title="Session log" sub="Saved sessions drive the “Last session” card above.">
+      <Section title="Session log" sub="Written by the ledger CLI on verified completions. Read-only.">
         <SessionLog owner="manas" />
       </Section>
     </>
@@ -525,7 +503,7 @@ export function MemberView({ id }: { id: Exclude<MemberId, 'manas'> }) {
               {focus.blocker && <div className="tk-field is-bad"><dt>Blocker</dt><dd>{focus.blocker}</dd></div>}
             </dl>
             <div className="tk-inline">
-              {focus.status === 'in_progress' ? <CompleteButton task={focus} /> : <StartButton task={focus} label="Start this task" />}
+              {focus.copyPrompt && <CopyButton text={focus.copyPrompt} />}
             </div>
           </div>
         ) : <Empty>{s.progress.done === s.progress.total ? 'All tasks complete.' : 'No task is ready — check blocked tasks and dependencies.'}</Empty>}

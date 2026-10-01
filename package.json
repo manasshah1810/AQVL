@@ -7,6 +7,7 @@
     "test": "pnpm --filter @aqvl/tests test",
     "test:watch": "pnpm --filter @aqvl/tests test:watch",
     "test:coverage": "pnpm --filter @aqvl/tests test:coverage",
+    "task": "npx --yes tsx scripts/task-ledger.ts",
     "inspect-aqir": "npx --yes tsx scripts/inspect-aqir.ts",
     "prepare": "husky"
   },
