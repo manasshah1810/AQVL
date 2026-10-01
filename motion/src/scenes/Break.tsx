@@ -7,7 +7,7 @@ import { symbol } from '../lib/brand';
 import { bg, floor } from './viz/kit';
 import { lookAt } from '../lib/core';
 
-export const BREAK_DUR = 36;
+export const BREAK_DUR = 30;
 type Shard = { pts: [number, number][]; cx: number; cy: number; d: number; vx: number; vy: number; rot: number; seed: number };
 
 /** find the orange dot in the frozen wall frame (it's the only orange thing) */

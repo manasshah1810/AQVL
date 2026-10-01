@@ -66,8 +66,8 @@ export const CodeToStructure: React.FC = () => {
           ctx.textBaseline = 'alphabetic';
           for (let i = 0; i < GLYPHS.length; i++) {
             const g = GLYPHS[i];
-            const arrive = E.out(clamp((f - g.seed * 14 - (g.line / SRC.length) * 8) / 14));
-            const wx = (g.col - 22) * CW + 3.2, wz = (g.line - 6) * LH + 1.5;
+            const arrive = E.out(clamp((f + 4 - g.seed * 12 - (g.line / SRC.length) * 6) / 13));
+            const wx = (g.col - 22) * CW + 4.9, wz = (g.line - 6) * LH + 1.5;
             // flying in from the tear
             const fx = lerp((g.seed - 0.5) * 30, wx, arrive), fz = lerp(10 + g.seed * 8, wz, arrive), fy = lerp(4 + g.seed * 6, 0, arrive);
             if (g.num >= 0 && lift > 0) continue; // numbers become bars
@@ -87,7 +87,7 @@ export const CodeToStructure: React.FC = () => {
           if (lift > 0) {
             for (let k = 0; k < README_ARR.length; k++) {
               const g = GLYPHS.filter((x) => x.num === k);
-              const sx = ((g[0].col + g.length / 2 - 22) * CW + 3.2), sz = (2 - 6) * LH + 1.5;
+              const sx = ((g[0].col + g.length / 2 - 22) * CW + 4.9), sz = (2 - 6) * LH + 1.5;
               const bx = (k - 3) * 1.6, bz = 0;
               const e = E.inOut(clamp(lift * 1.4 - k * 0.06));
               const p = cam([lerp(sx, bx, e), lerp(0, (README_ARR[k] / 90) * 6 + 0.6, e), lerp(sz, bz, e)]);
@@ -103,7 +103,8 @@ export const CodeToStructure: React.FC = () => {
           bloom(ctx, 0.75, 5);
         }}
       />
-      <Words text="Write the algorithm." f={f} at={16} out={58} x={120} y={110} size={92} />
+      <Words text="Write the" f={f} at={14} out={58} x={120} y={340} size={96} />
+      <Words text="algorithm." f={f} at={19} out={60} x={120} y={450} size={96} />
       <Words text="Watch it think." f={f} at={74} out={C2S_DUR - 6} x={120} y={110} size={92} />
       <Vignette strength={0.5} />
       <Grain opacity={0.1} blend="screen" />

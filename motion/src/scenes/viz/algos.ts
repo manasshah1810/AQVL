@@ -383,7 +383,8 @@ export const drawBinarySearch = (ctx: Ctx, f: number, dur: number) => {
   bg(ctx);
   const t = f / dur;
   const sp = t * BS_STEPS.length * 1.05;
-  const cam = lookAt([BS_T * 0.4 - 12.8 + 6, 6, 20 - t * 9], [lerp(0, (BS_T - BS_N / 2) * 0.4, t), 0, 0], 50);
+  const tx = lerp(0, (BS_T - BS_N / 2) * 0.4, E.inOut(t));
+  const cam = lookAt([tx + 5 - t * 3, 3.2, 11 - t * 5], [tx, 0.6, 0], 50);
   floor(ctx, cam, -0.01, 16, 0.8, 0.08);
   for (let i = 0; i < BS_N; i++) {
     // when was i eliminated?
@@ -441,13 +442,13 @@ const hsh = (s: string) => [...s].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) 
 export const drawHash = (ctx: Ctx, f: number, dur: number) => {
   bg(ctx);
   const t = f / dur;
-  const cam = lookAt([3, 7, 16], [0, 1.5, 0], 50);
+  const cam = lookAt([2.5, 5, 11.5], [0, 2.2, 0], 50);
   floor(ctx, cam, 0, 12, 1, 0.1);
   const counts = new Array(8).fill(0);
   for (let b = 0; b < 8; b++) box(ctx, cam, (b - 3.5) * 1.8, 0, 0, 1.4, 0.15, 1.4, WHITE, 0.1);
   KEYS.forEach((k, i) => {
     const b = hsh(k);
-    const st = clamp(t * 1.4 * KEYS.length - i * 1.1, 0, 3) / 3;
+    const st = clamp(t * 1.25 * KEYS.length + 3 - i * 1.0, 0, 3) / 3;
     if (st <= 0) return;
     const lvl = counts[b]++;
     const y = lerp(9, 0.2 + lvl * 0.9, E.in(st)) ;
