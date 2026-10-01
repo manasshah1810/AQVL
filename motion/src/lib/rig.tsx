@@ -169,7 +169,7 @@ void main(){
   float graze = pow(1.0 - clamp(V.y, 0.0, 1.0), 3.0);
   col += vec3(0.20, 0.34, 0.52) * graze * 0.14;
   col = mix(col, uFogColor, f);
-  gl_FragColor = vec4(col, 0.74 * uFade);
+  gl_FragColor = vec4(col, 0.74 * uFade * (1.0 - f));
 }`;
 export const Floor: React.FC<{fade?: number; pool?: [number, number]}> = ({fade = 1, pool = [0, 0]}) => {
   const mat = useMemo(

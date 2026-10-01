@@ -90,21 +90,21 @@ const dijkstraBuild = (t: number): Built => {
 // ───────────────────────── 2 · Recursion: fib(4) call tree + stack ─────────────────────────
 type FN = {id: string; n: number; parent: string | null; p: V3; val: number};
 const FT: FN[] = [
-  {id: 'f4', n: 4, parent: null, p: [0, 6.0, 0], val: 3},
-  {id: 'f3', n: 3, parent: 'f4', p: [-3.4, 4.5, 0], val: 2},
-  {id: 'f2a', n: 2, parent: 'f3', p: [-5.4, 3.0, 0], val: 1},
-  {id: 'f1a', n: 1, parent: 'f2a', p: [-6.5, 1.5, 0], val: 1},
-  {id: 'f0a', n: 0, parent: 'f2a', p: [-4.2, 1.5, 0], val: 0},
-  {id: 'f1c', n: 1, parent: 'f3', p: [-1.8, 3.0, 0], val: 1},
-  {id: 'f2b', n: 2, parent: 'f4', p: [3.4, 4.5, 0], val: 1},
-  {id: 'f1d', n: 1, parent: 'f2b', p: [1.9, 3.0, 0], val: 1},
-  {id: 'f0d', n: 0, parent: 'f2b', p: [4.9, 3.0, 0], val: 0},
+  {id: 'f4', n: 4, parent: null, p: [0.00, 6.0, 0], val: 3},
+  {id: 'f3', n: 3, parent: 'f4', p: [-2.75, 4.5, 0], val: 2},
+  {id: 'f2a', n: 2, parent: 'f3', p: [-4.64, 3.0, 0], val: 1},
+  {id: 'f1a', n: 1, parent: 'f2a', p: [-5.59, 1.5, 0], val: 1},
+  {id: 'f0a', n: 0, parent: 'f2a', p: [-3.61, 1.5, 0], val: 0},
+  {id: 'f1c', n: 1, parent: 'f3', p: [-1.55, 3.0, 0], val: 1},
+  {id: 'f2b', n: 2, parent: 'f4', p: [2.92, 4.5, 0], val: 1},
+  {id: 'f1d', n: 1, parent: 'f2b', p: [1.63, 3.0, 0], val: 1},
+  {id: 'f0d', n: 0, parent: 'f2b', p: [4.21, 3.0, 0], val: 0},
 ];
 const callOrder = ['f4', 'f3', 'f2a', 'f1a', 'f0a', 'f1c', 'f2b', 'f1d', 'f0d'];
 type Op = {id: string; call: number; ret: number; slot: number};
 const OPS: Op[] = (() => {
   const ops: Op[] = [];
-  let t = 0.85, k = 0;
+  let t = 0.6, k = 0;
   const stack: string[] = [];
   const retOf: Record<string, number> = {};
   const byId = Object.fromEntries(FT.map((f) => [f.id, f]));
@@ -134,7 +134,7 @@ for (const o of OPS) {
 }
 fibLines.push([F_END + 0.5, 10]);
 fibLines.sort((a, b) => a[0] - b[0]);
-const SLAB_X = 10.2;
+const SLAB_X = 7.0;
 
 const fibBuild = (t: number): Built => {
   const nodes: SpecNode[] = [], edges: SpecEdge[] = [], labels: SpecLabel[] = [];
@@ -307,7 +307,7 @@ export const HEROES: Hero[] = [
     events: [{t: 1.78, p: [-2.3, 1.4, 0], s: 1}, {t: 3.44, p: [4.5, 1.5, 1.5], s: 1}, {t: 4.1, p: [0.3, 1.5, 1.4], s: 0.8}],
   },
   {
-    id: 'fib', file: 'fibonacci.aqvl', anchor: [19, 0, -4], t0: 20.6, dur: 5.5,
+    id: 'fib', file: 'fibonacci.aqvl', anchor: [14.5, 0, -4], t0: 20.6, dur: 5.5,
     code: ['SCENE Fibonacci', 'DECLARE', '  FUNCTION fib(n)', '    IF n <= 1', '      RETURN n', '    END', '    RETURN fib(n - 1) + fib(n - 2)', '  END', 'SEQUENCE', '  result = fib(4)', 'END'],
     lines: fibLines, ticks: OPS.map((o) => o.call), build: fibBuild,
     events: [
@@ -315,13 +315,13 @@ export const HEROES: Hero[] = [
     ],
   },
   {
-    id: 'heap', file: 'minheap.aqvl', anchor: [38, 0, 2], t0: 26.2, dur: 4.9,
+    id: 'heap', file: 'minheap.aqvl', anchor: [31, 0, 2], t0: 26.2, dur: 4.9,
     code: ['SCENE MinHeapInsert', 'DECLARE', '  HEAP h = [14, 19, 27, 35, 33, 42, 44]', '  FUNCTION siftUp(start)', '    IF h[child] < h[parent]', '      SWAP h[child] h[parent]', '      child = parent', '    END', '  END', 'SEQUENCE', '  INSERT h 10', '  siftUp(LENGTH(h) - 1)', 'END'],
     lines: heapLines, ticks: [H_T.ins, H_T.s1, H_T.s2, H_T.s3], build: heapBuild,
     events: [{t: H_T.s1, p: [-5.3, 2.4, 0], s: 1}, {t: H_T.s2, p: [-3.6, 3.9, 0], s: 1}, {t: H_T.s3, p: [0, 6.0, 0], s: 1.3}],
   },
   {
-    id: 'merge', file: 'mergesort.aqvl', anchor: [56, 0, 0], t0: 31.2, dur: 4.6,
+    id: 'merge', file: 'mergesort.aqvl', anchor: [47, 0, 0], t0: 31.2, dur: 4.6,
     code: ['SCENE MergeSort', 'DECLARE', '  ARRAY arr = [5, 2, 8, 1, 7, 3, 6, 4]', '  FUNCTION mergeSort(low, high)', '    IF low < high', '      mergeSort(low, mid)', '      mergeSort(mid + 1, high)', '      merge(low, mid, high)', '    END', '  END', 'SEQUENCE', '  mergeSort(0, LENGTH(arr) - 1)', 'END'],
     lines: mergeLines, ticks: MT, build: mergeBuild,
     events: [{t: MT[2], p: [0, 0.5, -6], s: 1}, {t: MT[5], p: [0, 1, 0], s: 1}, {t: MEND, p: [0, 1.2, 0], s: 1.2}],

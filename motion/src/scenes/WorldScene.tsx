@@ -11,22 +11,22 @@ const O = (c: V3, az: number, el: number, d: number): V3 => {
   const A = (az * Math.PI) / 180, E = (el * Math.PI) / 180;
   return [c[0] + d * Math.sin(A) * Math.cos(E), c[1] + d * Math.sin(E), c[2] + d * Math.cos(A) * Math.cos(E)];
 };
-const C1: V3 = [0.3, 1.6, 0], C2: V3 = [21, 3.2, -4], C3: V3 = [38, 3.2, 3], C4: V3 = [56, 1.5, -4.5], CB: V3 = [35, -2.5, -10];
+const C1: V3 = [0.3, 1.6, 0], C2: V3 = [16, 3.2, -4], C3: V3 = [31, 2.1, 3], C4: V3 = [47, 1.5, -4.5], CB: V3 = [26, -2.5, -9];
 const KEYS: CamKey[] = [
   K(14.5, O(C1, -44, 17, 22), C1),
   K(15.5, O(C1, -40, 18, 21), C1),
   K(18.0, O(C1, -14, 26, 19), C1),
-  K(20.0, O(C1, 28, 20, 17), [3, 1.6, 0.5]),
-  K(21.6, O(C2, -34, 16, 21), C2),
-  K(23.6, O(C2, -8, 22, 20), C2),
-  K(25.8, O(C2, 30, 22, 21), C2),
-  K(27.4, O(C3, -24, 14, 21), C3),
-  K(29.6, O(C3, -2, 20, 19), C3),
-  K(31.0, O(C3, 22, 18, 20), [42, 3, 2]),
-  K(32.0, O(C4, -32, 20, 21), C4),
-  K(33.6, O(C4, -8, 24, 19), C4),
-  K(35.2, O(C4, 22, 22, 18), C4),
-  K(36.8, O([46, -1, -8], 16, 28, 34), [46, -1, -8], 44),
+  K(20.0, O(C1, 12, 20, 17), [2.5, 1.6, 0.5]),
+  K(21.4, O(C2, -16, 17, 21), C2),
+  K(23.6, O(C2, -2, 22, 19.5), C2),
+  K(25.8, O(C2, 22, 22, 20), C2),
+  K(27.5, O(C3, -18, 15, 20), C3),
+  K(29.6, O(C3, 2, 20, 18.5), C3),
+  K(31.0, O(C3, 22, 18, 19.5), [34, 3, 2]),
+  K(32.0, O(C4, -20, 20, 21), C4),
+  K(33.6, O(C4, -4, 24, 19), C4),
+  K(35.2, O(C4, 20, 22, 18), C4),
+  K(36.8, O([38, -1, -8], 14, 28, 34), [38, -1, -8], 44),
   K(38.9, O(CB, 0, 38, 36), CB, 46),
   K(41.0, O(CB, -4, 40, 36), CB, 46),
 ];
@@ -130,22 +130,23 @@ const mkExtras = (): Extra[] => {
 };
 const EXTRAS = mkExtras();
 const BX0 = BREADTH_START - 0.4;
+const XK = 0.76, ZK = 4;
 
 const extrasBuild = (t: number): Built => {
   const nodes: SpecNode[] = [], edges: SpecEdge[] = [];
   let gi = 0;
   for (const ex of EXTRAS) {
     for (const n of ex.nodes) {
-      const dx = (n.p[0] - 34) / 70;
+      const dx = (n.p[0] * 0.76 - 26) / 52;
       const t0 = BX0 + Math.abs(dx) * 1.4 + stag(gi++ % 9, 0.02);
       const a = spring(t - t0, PRESETS.pop);
       const sweep = pulse(t - (BX0 + 0.8 + (n.p[0] + 10) * 0.035), 0.08, 0.45);
-      nodes.push({...n, appear: a, active: sweep * 0.8, p: [n.p[0], n.p[1] + (1 - spring(t - t0, PRESETS.heavy)) * 2.5, n.p[2]]});
+      nodes.push({...n, size: typeof n.size === 'number' ? n.size * 1.25 : [n.size![0] * 1.2, n.size![1] * 1.2, n.size![2] * 1.2], appear: a, active: sweep * 0.9, p: [n.p[0] * XK, n.p[1] + (1 - spring(t - t0, PRESETS.heavy)) * 2.5, n.p[2] + ZK]});
     }
     for (const e of ex.edges) {
-      const t0 = BX0 + 0.25 + Math.abs((e.a[0] - 34) / 70) * 1.4;
+      const t0 = BX0 + 0.25 + Math.abs((e.a[0] * 0.76 - 26) / 52) * 1.4;
       const sweep = pulse(t - (BX0 + 0.8 + (e.a[0] + 10) * 0.035), 0.08, 0.45);
-      edges.push({...e, grow: clamp(spring(t - t0, PRESETS.snap), 0, 1), active: sweep * 0.7});
+      edges.push({...e, a: [e.a[0] * XK, e.a[1], e.a[2] + ZK], b: [e.b[0] * XK, e.b[1], e.b[2] + ZK], r: 0.06, grow: clamp(spring(t - t0, PRESETS.snap), 0, 1), active: sweep * 0.8});
     }
   }
   return {nodes, edges, labels: [] as SpecLabel[]};

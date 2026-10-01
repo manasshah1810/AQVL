@@ -148,7 +148,7 @@ export const Labels: React.FC<{items: {id: string; p: [number, number, number]; 
       const q = proj(l.p);
       if (!q.visible) return null;
       const fs = clamp(l.size * (16 / q.depth), 5, 60);
-      const fog = 1 - clamp((q.depth - 22) / 26);
+      const fog = (1 - clamp((q.depth - 22) / 26)) * clamp((q.depth - 6) / 5);
       const op = (l.opacity ?? 1) * fog;
       if (op < 0.02) return null;
       return (
