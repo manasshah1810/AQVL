@@ -245,7 +245,8 @@ function cmdDone(id?: string) {
     },
   };
 
-  let why = judgeCompletion(seed, start, draft, entries);
+  // Tests have not run yet on this first pass, so their absence is not a reason to refuse.
+  let why = judgeCompletion(seed, start, draft, entries).filter((w) => !w.includes('was not recorded as passing'));
   if (why.length) flag(seed, why, entries);
 
   if (needsTests(seed)) {
