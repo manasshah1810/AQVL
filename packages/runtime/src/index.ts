@@ -29,6 +29,7 @@ export { lowerStep, UnsupportedStepError } from './aqir/legacyBridge';
 export { SceneManager } from './core/SceneManager';
 export { StateManager } from './core/StateManager';
 export { ExecutionEngine, MaxIterationsExceededError, DEFAULT_MAX_EXECUTION_ITERATIONS } from './core/ExecutionEngine';
+export type { AQIRProgram, ExecutionEngineOptions } from './core/ExecutionEngine';
 export { LayoutManager } from './core/LayoutManager';
 export { TimelineEngine } from './core/TimelineEngine';
 export { AnimationController } from './core/AnimationController';

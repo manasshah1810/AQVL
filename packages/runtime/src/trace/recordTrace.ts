@@ -317,6 +317,7 @@ export async function recordTrace(program: AQIRProgram, options: RecordTraceOpti
     return {
       index: frames.length,
       line: kind === 'initial' ? null : currentLine,
+      pc: kind === 'initial' || startedPc < 0 ? null : startedPc,
       event,
       caption,
       logs,
@@ -340,7 +341,7 @@ export async function recordTrace(program: AQIRProgram, options: RecordTraceOpti
   };
 
   const commit = (frame: TraceFrame, replaceInitial = false) => {
-    if (replaceInitial) frames[0] = { ...frame, index: 0, line: null, event: INIT_EVENT, caption: '', logs: [] };
+    if (replaceInitial) frames[0] = { ...frame, index: 0, line: null, pc: null, event: INIT_EVENT, caption: '', logs: [] };
     else frames.push(frame);
     const last = frames[frames.length - 1];
     prevNodes = new Map(last.nodes.map((n) => [n.id, n]));

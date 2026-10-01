@@ -129,6 +129,8 @@ export interface TraceFrame {
   index: number;
   /** Source line the step came from (1-based), if known. */
   line: number | null;
+  /** Index of the program instruction that produced the step (null for the starting picture). */
+  pc: number | null;
   event: TraceEvent;
   /** One sentence saying what just happened. */
   caption: string;
