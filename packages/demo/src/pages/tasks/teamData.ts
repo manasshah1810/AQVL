@@ -67,6 +67,8 @@ const t = (seed: Omit<TaskSeed, 'kind' | 'status'> & Partial<Pick<TaskSeed, 'sta
   kind: 'team',
   status: 'planned',
   ...seed,
+  // Team tasks are deliberately undated: the page logs when each one is finished, nothing more.
+  deadline: null,
 });
 
 export const TEAM_TASKS: TaskSeed[] = [

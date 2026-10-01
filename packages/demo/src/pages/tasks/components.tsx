@@ -19,6 +19,7 @@ export function PriorityBadge({ priority }: { priority: Priority }) {
 
 export function DeadlineChip({ task }: { task: Task }) {
   const { today } = useTasks();
+  if (task.owner !== 'manas') return task.completedAt ? <span className="tk-due tk-due--done">Done {formatIST(task.completedAt)}</span> : null;
   if (!task.deadline) return <span className="tk-due tk-due--none">No date · post-IPD</span>;
   if (task.status === 'completed') return <span className="tk-due tk-due--done">Due {formatDate(task.deadline)}</span>;
   const d = daysBetween(today, task.deadline);

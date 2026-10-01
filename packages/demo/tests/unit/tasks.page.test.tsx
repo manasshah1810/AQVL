@@ -145,12 +145,18 @@ describe('/tasks command center (read-only, ledger-backed)', () => {
     expect(within(kpi('Blocked')).getByText('0')).toBeInTheDocument();
   });
 
-  it('marks tasks overdue from the real current date', () => {
+  it('marks roadmap tasks overdue by date but never gives the team a deadline', () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(new Date(2026, 9, 5, 9));
     render(<TasksPage />);
     go('#/tasks/yash');
-    expect(within(screen.getByTestId('task-Y1')).getByText(/5d overdue/)).toBeInTheDocument();
+    const y1 = screen.getByTestId('task-Y1');
+    expect(within(y1).queryByText(/overdue|due/i)).toBeNull();
+    expect(screen.queryByText('Overdue')).toBeNull();
+    expect(screen.queryByText('Next deadline')).toBeNull();
+    expect(screen.getByText('Completion log')).toBeInTheDocument();
+    go('#/tasks/manas');
+    expect(within(screen.getByTestId('task-R1.0')).getByText(/overdue/)).toBeInTheDocument();
     vi.useRealTimers();
   });
 });

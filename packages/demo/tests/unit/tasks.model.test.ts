@@ -35,7 +35,7 @@ describe('task seed', () => {
     expect(unverified).toEqual(['R2.5']);
   });
 
-  it('gives each team member 5-14 tasks with complete fields', () => {
+  it('gives each team member 5-14 undated tasks with complete fields', () => {
     for (const owner of ['yash', 'tirrth', 'pranav'] as const) {
       const tasks = SEEDS.filter((s) => s.owner === owner);
       expect(tasks.length).toBeGreaterThanOrEqual(5);
@@ -44,9 +44,8 @@ describe('task seed', () => {
         for (const f of ['title', 'objective', 'scope', 'expectedOutcome', 'definitionOfDone', 'verification'] as const) {
           expect(t[f].length, `${t.id}.${f}`).toBeGreaterThan(10);
         }
-        expect(t.deadline).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+        expect(t.deadline).toBeNull();
       }
-      expect(new Set(tasks.map((t) => t.deadline)).size).toBeGreaterThan(1);
     }
   });
 
@@ -61,7 +60,7 @@ describe('task seed', () => {
     }
   });
 
-  it('has unique ids and all team deadlines on or after 2026-09-27', () => {
+  it('has unique ids and no roadmap deadline before 2026-09-27', () => {
     expect(new Set(SEEDS.map((s) => s.id)).size).toBe(SEEDS.length);
     for (const t of SEEDS) if (t.deadline) expect(t.deadline >= '2026-09-27').toBe(true);
   });
@@ -86,7 +85,7 @@ describe('selectors', () => {
   });
 
   it('flags overdue only for unfinished tasks past their deadline', () => {
-    const y1 = base.find((t) => t.id === 'Y1')!;
+    const y1 = { ...base.find((t) => t.id === 'Y1')!, deadline: '2026-09-30' };
     expect(isOverdue(y1, '2026-09-30')).toBe(false);
     expect(isOverdue(y1, '2026-10-01')).toBe(true);
     expect(isOverdue({ ...y1, status: 'completed' }, '2026-12-01')).toBe(false);
@@ -106,12 +105,14 @@ describe('selectors', () => {
     const state = factsOf([entry('T2', 'start', NOW)]);
     const merged = mergeTasks(SEEDS, state);
     expect(activeTask(byOwner(merged, 'tirrth'))?.id).toBe('T2');
-    expect(nextDeadline(byOwner(base, 'pranav'), '2026-09-27')?.id).toBe('P1');
+    expect(nextDeadline(byOwner(base, 'manas'), '2026-09-27')?.id).toBe('R1.0');
+    expect(nextDeadline(byOwner(base, 'pranav'), '2026-09-27')).toBeNull();
   });
 
   it('member health reflects blocked and overdue work', () => {
     expect(health(byOwner(base, 'yash'), '2026-09-27')).toBe('not_started');
-    expect(health(byOwner(base, 'yash'), '2026-10-05')).toBe('at_risk');
+    expect(health(byOwner(base, 'yash'), '2026-10-05')).toBe('not_started');
+    expect(health(byOwner(base, 'manas'), '2026-10-05')).toBe('at_risk');
     const state = factsOf([entry('Y1', 'start', NOW), entry('Y1', 'block', NOW, { note: 'No API key' })]);
     const s = memberSummary(mergeTasks(SEEDS, state), 'yash', '2026-09-27');
     expect(s.health).toBe('blocked');

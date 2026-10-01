@@ -12,7 +12,7 @@ import {
   TaskRow,
 } from './components';
 import { useTasks } from './context';
-import { formatIST } from './ledger';
+import { formatDuration, formatIST } from './ledger';
 import { BurnUp, Columns, Donut } from './charts';
 import { burnUp, domainOf, statusCounts, statusSegments, weeklyThroughput } from './metrics';
 import { Panel, StatusLegend } from './report';
@@ -119,8 +119,14 @@ export function OverviewView() {
                   <span>{s.progress.pct}% · {s.progress.done}/{s.progress.total}</span>
                 </div>
                 <dl className="tk-member__stats">
-                  <div><dt>Next deadline</dt><dd>{s.nextDeadline ? formatDate(s.nextDeadline.deadline!) : '—'}</dd></div>
-                  <div className={s.overdue.length ? 'is-bad' : ''}><dt>Overdue</dt><dd>{s.overdue.length}</dd></div>
+                  {m.id === 'manas' ? (
+                    <>
+                      <div><dt>Next deadline</dt><dd>{s.nextDeadline ? formatDate(s.nextDeadline.deadline!) : '—'}</dd></div>
+                      <div className={s.overdue.length ? 'is-bad' : ''}><dt>Overdue</dt><dd>{s.overdue.length}</dd></div>
+                    </>
+                  ) : (
+                    <div><dt>Last completed</dt><dd>{lastDone(s.tasks)}</dd></div>
+                  )}
                   <div className={s.blocked.length ? 'is-bad' : ''}><dt>Blocked</dt><dd>{s.blocked.length}</dd></div>
                 </dl>
               </a>
@@ -350,38 +356,9 @@ function MemberHeader({ id }: { id: MemberId }) {
   );
 }
 
-function Timeline({ tasks }: { tasks: Task[] }) {
-  const { today } = useTasks();
-  const dated = tasks.filter((t) => t.deadline);
-  if (!dated.length) return null;
-  const start = [today, ...dated.map((t) => t.deadline!)].sort()[0];
-  const end = dated.map((t) => t.deadline!).sort().at(-1)!;
-  const span = Math.max(1, daysBetween(start, end));
-  const pos = (k: string) => `${(daysBetween(start, k) / span) * 100}%`;
-  const todayIn = daysBetween(start, today) >= 0 && daysBetween(today, end) >= 0;
-
-  return (
-    <div className="tk-timeline" role="list" aria-label="Deadline timeline">
-      <div className="tk-timeline__axis">
-        <span>{formatDate(start)}</span>
-        <span>{formatDate(end)}</span>
-      </div>
-      {dated.map((t) => (
-        <div key={t.id} className="tk-timeline__row" role="listitem">
-          <span className="tk-timeline__label">{t.id} <em>{t.title}</em></span>
-          <div className="tk-timeline__track">
-            {todayIn && <span className="tk-timeline__today" style={{ left: pos(today) }} title="Today" />}
-            <span
-              className={`tk-timeline__mark tk-timeline__mark--${isOverdue(t, today) ? 'overdue' : t.status}`}
-              style={{ left: pos(t.deadline!) }}
-              title={`${t.id} · ${formatDate(t.deadline!)}`}
-            />
-          </div>
-          <span className="tk-timeline__date">{formatDate(t.deadline!)}</span>
-        </div>
-      ))}
-    </div>
-  );
+function lastDone(tasks: Task[]): string {
+  const d = tasks.map((t) => t.completedAt).filter((x): x is string => !!x).sort().at(-1);
+  return d ? formatIST(d) : '—';
 }
 
 function Groups({ tasks, title }: { tasks: Task[]; title: string }) {
@@ -463,15 +440,11 @@ export function MemberView({ id }: { id: Exclude<MemberId, 'manas'> }) {
       <div className="tk-kpis">
         <div className="tk-kpi tk-kpi--ring"><ProgressRing pct={s.progress.pct} size={96} caption="done" /></div>
         <Kpi label="Completed" value={`${s.progress.done}/${s.progress.total}`} />
-        <Kpi label="Overdue" value={s.overdue.length} tone={s.overdue.length ? 'bad' : undefined} />
         <Kpi label="Blocked" value={s.blocked.length} tone={s.blocked.length ? 'bad' : undefined} />
-        <Kpi label="Next deadline" value={s.nextDeadline ? formatDate(s.nextDeadline.deadline!) : '—'} sub={s.nextDeadline?.id} />
+        <Kpi label="Last completed" value={lastDone(s.tasks)} />
       </div>
 
       <div className="tk-panels">
-        <Panel title="Plan vs. actual" sub="Completed against tasks due by each date" span={2} accent={id === 'yash' ? 'blue' : id === 'tirrth' ? 'pink' : 'green'}>
-          {burnUp(s.tasks, today, '2026-09-27') && <BurnUp data={burnUp(s.tasks, today, '2026-09-27')!} today={today} height={200} />}
-        </Panel>
         <Panel title="By status" accent="yellow">
           <div className="tk-donut-wrap">
             <Donut segments={statusSegments(statusCounts(s.tasks))} center={`${s.progress.pct}%`} sub={`${s.progress.done}/${s.progress.total}`} size={140} />
@@ -515,8 +488,13 @@ export function MemberView({ id }: { id: Exclude<MemberId, 'manas'> }) {
       {id === 'tirrth' && <Groups tasks={s.tasks} title="Visual surfaces" />}
       {id === 'pranav' && <Groups tasks={s.tasks} title="Work streams" />}
 
-      <Section title="Sequence & deadlines" sub="Markers sit on each deadline; the dashed line is today.">
-        <Timeline tasks={s.tasks} />
+      <Section title="Completion log" sub="Each task is stamped when the ledger verifies it. There are no target dates.">
+        <ul className="tk-log">
+          {s.tasks.filter((t) => t.completedAt).sort((x, y) => y.completedAt!.localeCompare(x.completedAt!)).map((t) => (
+            <li key={t.id}><span className="tk-row__id">{t.id}</span> {t.title} <span className="tk-muted">· {formatIST(t.completedAt!)}{t.elapsedMin !== null ? ` · ${formatDuration(t.elapsedMin)} elapsed` : ''}</span></li>
+          ))}
+        </ul>
+        {!s.tasks.some((t) => t.completedAt) && <Empty>Nothing completed yet.</Empty>}
       </Section>
 
       <Section title="All tasks" sub="Open a task for full scope, dependencies and verification.">

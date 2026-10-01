@@ -19,6 +19,10 @@ function withCompletions(ids: [string, string][]) {
   return mergeTasks(SEEDS, factsOf(ids.flatMap(([id, day]) => done(id, new Date(at(day)).toISOString()))));
 }
 
+/** Team tasks are undated in the product; the metric functions are generic, so give a few dates for them here. */
+const DATES: Record<string, string> = { Y1: '2026-09-30', Y2: '2026-10-02', T1: '2026-09-30', T2: '2026-10-03' };
+const dated = <T extends { id: string; deadline: string | null }>(tasks: T[]): T[] => tasks.map((t) => ({ ...t, deadline: DATES[t.id] ?? '2026-11-01' }));
+
 describe('metrics', () => {
   it('weekStart returns the Monday of the week', () => {
     expect(weekStart('2026-09-27')).toBe('2026-09-21'); // Sunday
@@ -35,7 +39,7 @@ describe('metrics', () => {
 
   it('burn-up: planned follows deadlines, actual follows completion dates', () => {
     const tasks = withCompletions([['Y1', '2026-09-29'], ['Y2', '2026-10-01']]).filter((t) => t.owner === 'yash');
-    const b = burnUp(tasks, '2026-10-02', '2026-09-27')!;
+    const b = burnUp(dated(tasks), '2026-10-02', '2026-09-27')!;
     expect(b.total).toBe(12);
     expect(b.planned.at(-1)!.value).toBe(12);
     const p = (d: string) => b.planned.find((x) => x.date === d)?.value;
@@ -49,10 +53,10 @@ describe('metrics', () => {
   });
 
   it('schedule adherence only counts work already due', () => {
-    const none = scheduleAdherence(mergeTasks(SEEDS, factsOf([])).filter((t) => t.owner === 'yash'), '2026-09-27');
+    const none = scheduleAdherence(dated(mergeTasks(SEEDS, factsOf([])).filter((t) => t.owner === 'yash')), '2026-09-27');
     expect(none).toEqual({ due: 0, done: 0, pct: null });
     const tasks = withCompletions([['Y1', '2026-09-29']]).filter((t) => t.owner === 'yash');
-    expect(scheduleAdherence(tasks, '2026-10-02')).toEqual({ due: 2, done: 1, pct: 50 });
+    expect(scheduleAdherence(dated(tasks), '2026-10-02')).toEqual({ due: 2, done: 1, pct: 50 });
   });
 
   it('weekly throughput buckets completions by week', () => {
@@ -64,7 +68,7 @@ describe('metrics', () => {
 
   it('upcoming load separates overdue from future weeks', () => {
     const tasks = mergeTasks(SEEDS, factsOf([])).filter((t) => t.owner === 'tirrth');
-    const l = upcomingLoad(tasks, '2026-10-01', 2);
+    const l = upcomingLoad(dated(tasks), '2026-10-01', 2);
     expect(l.overdue).toBe(1); // T1 due 30 Sep
     expect(l.buckets[0].value).toBe(1); // T2 due 3 Oct, week of 28 Sep
   });

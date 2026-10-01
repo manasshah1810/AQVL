@@ -234,8 +234,8 @@ export function ReportView() {
                       <td>{formatIST(t.completedAt!)}</td>
                       <td><span className="tk-row__id">{t.id}</span> {t.title}</td>
                       <td><span className={`tk-who tk-who--${t.owner}`}>{MEMBER_BY_ID[t.owner].name.split(' ')[0]}</span></td>
-                      <td>{t.deadline ? formatDate(t.deadline) : '—'}</td>
-                      <td className={onTime ? 'tk-good' : 'tk-bad'} title={doneDay}>{onTime ? 'Yes' : 'Late'}</td>
+                      <td>{t.deadline ? formatDate(t.deadline) : 'none'}</td>
+                      <td className={onTime ? 'tk-good' : 'tk-bad'} title={doneDay}>{t.deadline ? (onTime ? 'Yes' : 'Late') : '—'}</td>
                     </tr>
                   );
                 })}
