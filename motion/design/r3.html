@@ -1,0 +1,28 @@
+<html><head><style>
+@font-face{font-family:IT;src:url(../public/fonts/inter-tight-latin-600-normal.woff2)}
+@font-face{font-family:IT5;src:url(../public/fonts/inter-tight-latin-500-normal.woff2)}
+body{margin:0;background:#0b0c10;display:grid;grid-template-columns:repeat(4,300px);width:1200px;font-family:IT;color:#888}
+.c{height:230px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;border:1px solid #1a1b22}
+.l{background:#efeae0}.row{display:flex;gap:14px;align-items:center}
+.wm{grid-column:span 2;height:170px;flex-direction:row;gap:22px}
+.t{font-size:84px;letter-spacing:-0.02em;color:#F3F1EC;line-height:1}
+</style></head><body>
+<script>
+const W='#F3F1EC', A='#FF5B2E';
+const d2r=Math.PI/180;
+function pt(cx,cy,r,a){return [cx+r*Math.cos(a*d2r), cy+r*Math.sin(a*d2r)]}
+const M={
+ outside:(f,a2)=>`<circle cx="44" cy="44" r="${40-8}" fill="none" stroke="${f}" stroke-width="16"/><circle cx="${44+50*Math.cos(45*d2r)}" cy="${44+50*Math.sin(45*d2r)}" r="9" fill="${a2||f}"/>`,
+ merged:(f,a2)=>`<circle cx="46" cy="46" r="32" fill="none" stroke="${f}" stroke-width="16"/><circle cx="${46+40*Math.cos(45*d2r)}" cy="${46+40*Math.sin(45*d2r)}" r="11" fill="${a2||f}"/>`,
+ inside:(f,a2)=>`<circle cx="50" cy="50" r="32" fill="none" stroke="${f}" stroke-width="16"/><circle cx="${50+12*Math.cos(45*d2r)}" cy="${50+12*Math.sin(45*d2r)}" r="8" fill="${a2||f}"/>`,
+ completed:(f,a2,sw=18,gapDeg=19)=>{const rc=40-sw/2;const a0=45+gapDeg+ (sw/2)/rc/d2r*0, a1=45-gapDeg;const p0=pt(50,50,rc,a0),p1=pt(50,50,rc,a1);const dp=pt(50,50,rc,45);
+   return `<path d="M${p0[0]} ${p0[1]} A${rc} ${rc} 0 1 1 ${p1[0]} ${p1[1]}" fill="none" stroke="${f}" stroke-width="${sw}" stroke-linecap="round"/><circle cx="${dp[0]}" cy="${dp[1]}" r="${sw/2}" fill="${a2||f}"/>`},
+};
+const names=['outside','merged','inside','completed'];
+let html='';
+for(const n of names){html+=`<div class="c"><svg width="130" height="130" viewBox="0 0 100 100">${M[n](W,A)}</svg><div class="row"><svg width="32" height="32" viewBox="0 0 100 100">${M[n](W)}</svg><svg width="16" height="16" viewBox="0 0 100 100">${M[n](W)}</svg><span>${n}</span></div></div>`}
+for(const n of names){html+=`<div class="c l"><svg width="130" height="130" viewBox="0 0 100 100">${M[n]('#111')}</svg><div class="row"><svg width="32" height="32" viewBox="0 0 100 100">${M[n]('#111')}</svg><svg width="32" height="32" viewBox="0 0 100 100">${M[n](A)}</svg></div></div>`}
+html+=`<div class="c wm"><svg width="84" height="84" viewBox="0 0 100 100">${M.completed(W,A)}</svg><span class="t">AQVL</span></div>`;
+html+=`<div class="c wm"><span class="t">A</span><svg width="74" height="74" viewBox="0 0 100 100" style="margin:0 -8px">${M.completed(W,A,20,19)}</svg><span class="t">VL</span></div>`;
+document.write(html);
+</script></body></html>
