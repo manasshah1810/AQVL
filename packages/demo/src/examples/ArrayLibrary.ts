@@ -17,28 +17,22 @@ DECLARE
   ARRAY arr = [10, 20, 30, 40, 50]
 
 SEQUENCE
-  // 1. Traversal: visit every index from 0 to LENGTH(arr) - 1
   LOOP i FROM 0 TO LENGTH(arr) - 1
     HIGHLIGHT arr[i]
   END
 
-  // 2. Insertion: 25 goes in at index 2, everything after it shifts right
   INSERT arr[2] 25
   PRINT "After INSERT:" arr
 
-  // 3. Deletion: remove index 4, everything after it shifts left
   DELETE arr[4]
   PRINT "After DELETE:" arr
 
-  // 4. Update: overwrite the value at index 0
   UPDATE arr[0] 15
   PRINT "After UPDATE:" arr
 
-  // 5. Swap: exchange the values at index 1 and index 3
   SWAP arr[1] arr[3]
   PRINT "After SWAP:" arr
 
-  // 6. Linear search: scan left to right until the target is found
   target = 30
   foundAt = -1
   i = 0
@@ -65,8 +59,6 @@ DECLARE
   ARRAY arr = [1, 2, 3, 4, 5, 6]
 
 SEQUENCE
-  // Two pointers start at opposite ends and walk towards each other,
-  // swapping as they go. Green cells are already in their final place.
   left = 0
   right = LENGTH(arr) - 1
 
@@ -78,7 +70,6 @@ SEQUENCE
     right = right - 1
   END
 
-  // With an odd length the middle element never moves
   IF left == right
     HIGHLIGHT arr[left] 'SUCCESS'
   END
@@ -93,12 +84,8 @@ DECLARE
   ARRAY arr = [2, 1, 5, 1, 3, 2]
 
 SEQUENCE
-  // Goal: the largest sum of k consecutive elements.
-  // Instead of re-adding k numbers for every position, slide the window
-  // one step right: add the element that enters, subtract the one that leaves.
   k = 3
 
-  // Build the first window arr[0 .. k-1]
   windowSum = 0
   LOOP i FROM 0 TO k - 1
     HIGHLIGHT arr[i] 'WINDOW'
@@ -108,7 +95,6 @@ SEQUENCE
   bestStart = 0
   PRINT "Window [0.." + (k - 1) + "] sum = " + windowSum
 
-  // Slide the window until its right edge reaches the last element
   LOOP i FROM k TO LENGTH(arr) - 1
     HIGHLIGHT arr[i - k] 'NEUTRAL'
     HIGHLIGHT arr[i] 'WINDOW'
@@ -120,7 +106,6 @@ SEQUENCE
     END
   END
 
-  // Show the best window in green
   LOOP i FROM 0 TO LENGTH(arr) - 1
     IF i >= bestStart AND i < bestStart + k
       HIGHLIGHT arr[i] 'SUCCESS'
@@ -138,9 +123,6 @@ DECLARE
   ARRAY arr = [1, 3, 4, 6, 8, 10]
 
 SEQUENCE
-  // The array is sorted. Find two elements that add up to target.
-  // If the sum is too small, only moving left forward can increase it;
-  // if it is too large, only moving right back can decrease it.
   target = 12
   left = 0
   right = LENGTH(arr) - 1
@@ -181,8 +163,6 @@ DECLARE
   ARRAY arr = [7, 2, 9, 4, 1, 6]
 
 SEQUENCE
-  // Scan once, remembering the largest and smallest values seen so far.
-  // Green = current maximum, purple = current minimum.
   largest = arr[0]
   smallest = arr[0]
   maxIndex = 0
@@ -192,7 +172,6 @@ SEQUENCE
   LOOP i FROM 1 TO LENGTH(arr) - 1
     HIGHLIGHT arr[i]
     IF arr[i] > largest
-      // The old maximum loses its colour (unless it is still the minimum)
       IF maxIndex == minIndex
         HIGHLIGHT arr[maxIndex] 'MARKED'
       ELSE
@@ -224,11 +203,9 @@ DECLARE
   ARRAY arr = [1, 2, 3, 4, 5]
 
 SEQUENCE
-  // Rotate right by k places. One rotation = remember the last element,
-  // shift every other element one place right, put the saved one at index 0.
   k = 2
   n = LENGTH(arr)
-  k = k % n          // rotating by n (or a multiple of n) changes nothing
+  k = k % n
 
   r = 0
   WHILE r < k
@@ -254,8 +231,6 @@ DECLARE
   ARRAY arr = [4, 2, 7, 5, 2, 9]
 
 SEQUENCE
-  // Fix one element (purple) and compare it with every element after it.
-  // Stop at the first pair of equal values.
   found = 0
   i = 0
   WHILE i < LENGTH(arr) - 1 AND found == 0
@@ -291,8 +266,6 @@ DECLARE
   ARRAY merged = []
 
 SEQUENCE
-  // Both inputs are sorted. Compare the front elements, append the smaller
-  // one to merged, and move past it (it turns grey once used).
   i = 0
   j = 0
   k = 0
@@ -311,7 +284,6 @@ SEQUENCE
     k = k + 1
   END
 
-  // One array is used up; copy whatever is left in the other
   WHILE i < LENGTH(first)
     INSERT merged[k] first[i]
     HIGHLIGHT first[i] 'DISCARDED'
@@ -336,9 +308,6 @@ DECLARE
   ARRAY prefix = []
 
 SEQUENCE
-  // prefix[i] = arr[0] + arr[1] + ... + arr[i]
-  //           = prefix[i - 1] + arr[i]
-  // prefix starts empty and grows by one element per step.
   INSERT prefix[0] arr[0]
   LOOP i FROM 1 TO LENGTH(arr) - 1
     HIGHLIGHT arr[i]
@@ -347,7 +316,6 @@ SEQUENCE
   END
   PRINT "Prefix sums:" prefix
 
-  // Any range sum arr[lo..hi] is now one subtraction
   lo = 1
   hi = 3
   rangeTotal = 0
@@ -371,8 +339,6 @@ DECLARE
   ARRAY arr = [0, 1, 0, 3, 12]
 
 SEQUENCE
-  // 'write' is where the next non-zero value belongs. Scan with 'read';
-  // each non-zero value is swapped forward to 'write', keeping its order.
   write = 0
   LOOP read FROM 0 TO LENGTH(arr) - 1
     HIGHLIGHT arr[read]
@@ -385,7 +351,6 @@ SEQUENCE
     END
   END
 
-  // Everything from 'write' to the end is now zero
   WHILE write < LENGTH(arr)
     HIGHLIGHT arr[write] 'DISCARDED'
     write = write + 1
@@ -401,11 +366,6 @@ DECLARE
   ARRAY arr = [2, 0, 2, 1, 1, 0]
 
 SEQUENCE
-  // Sort an array of 0s, 1s and 2s in one pass with three pointers:
-  //   arr[0 .. low-1]    are 0s   (purple)
-  //   arr[low .. mid-1]  are 1s
-  //   arr[high+1 .. end] are 2s   (green)
-  //   arr[mid .. high]   not looked at yet
   low = 0
   mid = 0
   high = LENGTH(arr) - 1

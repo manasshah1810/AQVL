@@ -7,41 +7,32 @@
  */
 export const TreeScripts = {
   BinaryTreeBasics: `SCENE BinaryTreeBasics
-// A binary tree is built from nodes. Each node holds a value (val) and two
-// pointers: left and right. NULL means "no child here".
-// t.root points to the top node.
 
 DECLARE
   BINARY_TREE t = []
 
 SEQUENCE
-  // 1. Create the root. NEW_NODE allocates it in heap memory (unlinked).
   root = NEW_NODE(t, 10)
   t.root = root
 
-  // 2. Create two children and link them under the root.
   a = NEW_NODE(t, 20)
   b = NEW_NODE(t, 30)
   root.left = a
   root.right = b
 
-  // 3. The next level: 40 and 50 under 20, and 60 under 30.
   a.left = NEW_NODE(t, 40)
   a.right = NEW_NODE(t, 50)
   b.right = NEW_NODE(t, 60)
   PRINT "Tree by levels:" t
 
-  // 4. Read values through a chain of pointers.
   PRINT "root.left.right.val =" root.left.right.val
 
-  // 5. Leftmost path: keep following .left until it is NULL.
   curr = t.root
   WHILE curr.left != NULL
     curr = curr.left
   END
   PRINT "Leftmost node:" curr.val
 
-  // 6. Rightmost path: keep following .right.
   curr = t.root
   WHILE curr.right != NULL
     curr = curr.right
@@ -51,8 +42,6 @@ SEQUENCE
     PRINT curr.val "is a leaf (both children are NULL)"
   END
 
-  // 7. Remove the leaf 60: unlink it (it moves to heap memory),
-  //    then FREE releases its memory.
   leaf = b.right
   b.right = NULL
   FREE leaf
@@ -61,9 +50,6 @@ END
 `,
 
   Traversals: `SCENE RecursiveTraversals
-// The three depth-first orders differ only in WHEN the node itself is
-// visited: before its subtrees (preorder), between them (inorder) or after
-// them (postorder). Watch the call stack grow and shrink on the left.
 
 DECLARE
   BINARY_TREE t = [1, 2, 3, 4, 5]
@@ -99,14 +85,10 @@ SEQUENCE
   preorder(t.root)
   inorder(t.root)
   postorder(t.root)
-  // Expected: preorder 1 2 4 5 3, inorder 4 2 5 1 3, postorder 4 5 2 3 1
 END
 `,
 
   LevelOrder: `SCENE LevelOrderTraversal
-// Breadth-first search: visit the tree level by level. A queue holds the
-// nodes waiting to be visited — children join at the rear, and we always
-// take the next node from the front.
 
 DECLARE
   BINARY_TREE t = [8, 3, 10, 1, 6, NULL, 14, NULL, NULL, 4, 7]
@@ -116,7 +98,6 @@ SEQUENCE
   ENQUEUE q t.root
   level = 0
   WHILE LENGTH(q) > 0
-    // Everything in the queue right now is on the same level.
     count = LENGTH(q)
     line = ""
     sum = 0
@@ -139,10 +120,6 @@ END
 `,
 
   IterativeInorder: `SCENE IterativeInorder
-// Inorder traversal without recursion: a stack remembers the path back up.
-// Go left as far as possible (pushing every node), then pop one, visit it,
-// and continue with its right subtree. For a BST this visits the keys in
-// sorted order.
 
 DECLARE
   BST t = [50, 30, 70, 20, 40, 60, 80]
@@ -152,16 +129,13 @@ SEQUENCE
   sorted = ""
   curr = t.root
   WHILE curr != NULL OR LENGTH(s) > 0
-    // Walk down the left spine, saving each node on the stack.
     WHILE curr != NULL
       PUSH s curr
       curr = curr.left
     END
-    // The top of the stack is the next node in inorder.
     curr = POP(s)
     PRINT "Visit" curr.val
     sorted = sorted + " " + curr.val
-    // Then handle its right subtree.
     curr = curr.right
   END
   PRINT "Keys in sorted order:" sorted
@@ -169,14 +143,10 @@ END
 `,
 
   HeightSizeLeaves: `SCENE HeightSizeAndLeaves
-// Recursive functions that RETURN a value: each call asks its two subtrees
-// for their answers and combines them. The console shows every call and
-// what it returns.
 
 DECLARE
   BINARY_TREE t = [1, 2, 3, 4, 5, NULL, 6]
 
-  // Height = number of levels on the longest root-to-leaf path.
   FUNCTION height(node)
     IF node == NULL
       RETURN 0
@@ -186,7 +156,6 @@ DECLARE
     RETURN 1 + MAX(leftHeight, rightHeight)
   END
 
-  // Size = this node + everything in both subtrees.
   FUNCTION countNodes(node)
     IF node == NULL
       RETURN 0
@@ -194,7 +163,6 @@ DECLARE
     RETURN 1 + countNodes(node.left) + countNodes(node.right)
   END
 
-  // A leaf has no children.
   FUNCTION countLeaves(node)
     IF node == NULL
       RETURN 0
@@ -216,14 +184,10 @@ END
 `,
 
   BSTSearchInsert: `SCENE BSTSearchAndInsert
-// In a binary search tree every key in a node's left subtree is smaller and
-// every key in its right subtree is larger. So a search only follows ONE
-// path from the root: compare, then go left or right.
 
 DECLARE
   BST t = [50, 30, 70, 20, 40, 60, 80]
 
-  // Returns the node holding key, or NULL.
   FUNCTION search(key)
     curr = t.root
     WHILE curr != NULL AND curr.val != key
@@ -236,7 +200,6 @@ DECLARE
     RETURN curr
   END
 
-  // Walk down remembering the parent; the new node hangs where we fall off.
   FUNCTION insert(key)
     parent = NULL
     curr = t.root
@@ -278,25 +241,17 @@ SEQUENCE
   insert(10)
   PRINT "Tree by levels:" t
 
-  // The same operations as one-line built-ins (they animate the same walk):
   INSERT t 35
   SEARCH t 35
 END
 `,
 
   BSTDelete: `SCENE BSTDeleteAllCases
-// Deleting from a BST has three cases:
-//   1. a leaf           -> just unlink it
-//   2. one child        -> the parent adopts that child
-//   3. two children     -> copy the inorder successor's key into the node,
-//                          then delete the successor (which has no left child)
-// An unlinked node waits in heap memory until FREE releases it.
 
 DECLARE
   BST t = [50, 30, 70, 20, 40, 60, 80, 65]
 
   FUNCTION deleteKey(key)
-    // Find the node and its parent.
     parent = NULL
     curr = t.root
     WHILE curr != NULL AND curr.val != key
@@ -312,7 +267,6 @@ DECLARE
       RETURN
     END
 
-    // Case 3: two children -> reduce it to deleting the successor.
     IF curr.left != NULL AND curr.right != NULL
       succParent = curr
       succ = curr.right
@@ -326,7 +280,6 @@ DECLARE
       curr = succ
     END
 
-    // Now curr has at most one child: link its parent to that child.
     child = curr.left
     IF child == NULL
       child = curr.right
@@ -343,20 +296,16 @@ DECLARE
   END
 
 SEQUENCE
-  deleteKey(20)   // case 1: leaf
-  deleteKey(30)   // case 2: one child (40)
-  deleteKey(50)   // case 3: two children (successor 60)
-  deleteKey(99)   // not in the tree
+  deleteKey(20)
+  deleteKey(30)
+  deleteKey(50)
+  deleteKey(99)
 
-  // The one-line built-in walks the same three cases:
   DELETE t 70
 END
 `,
 
   ValidateBST: `SCENE ValidateBST
-// Checking only "left child < node < right child" is not enough: EVERY key
-// in the left subtree must be smaller than the node. So each call carries
-// the range (low, high) its node must lie in, and narrows it for its children.
 
 DECLARE
   BINARY_TREE good = [50, 30, 70, 20, 40, 60, 80]
@@ -388,10 +337,6 @@ END
 `,
 
   LowestCommonAncestor: `SCENE LowestCommonAncestor
-// In a BST, the lowest common ancestor of a and b is the first node on the
-// way down where a and b split: one goes left and the other goes right
-// (or one of them IS the node). While both are smaller, go left; while
-// both are larger, go right.
 
 DECLARE
   BST t = [50, 30, 70, 20, 40, 60, 80, 35, 45]
@@ -425,9 +370,6 @@ END
 `,
 
   MirrorTree: `SCENE MirrorBinaryTree
-// Mirror (invert) a tree: swap the left and right pointers of every node.
-// temp holds one subtree while the pointers are exchanged — watch that
-// subtree wait in place, then the whole level flip around.
 
 DECLARE
   BINARY_TREE t = [4, 2, 7, 1, 3, 6, 9]
@@ -451,9 +393,6 @@ END
 `,
 
   TreeViews: `SCENE LeftAndRightViews
-// Looking at the tree from the left you see the FIRST node of every level;
-// from the right, the LAST one. A level-order walk that processes one whole
-// level at a time finds both.
 
 DECLARE
   BINARY_TREE t = [1, 2, 3, NULL, 5, NULL, 4, NULL, NULL, 6]
@@ -488,9 +427,6 @@ END
 `,
 
   PathSum: `SCENE RootToLeafPathSum
-// Is there a path from the root down to a LEAF whose values add up to the
-// target? Each call subtracts its node's value from what is still needed;
-// a leaf that brings it to exactly 0 completes the path.
 
 DECLARE
   BINARY_TREE t = [5, 4, 8, 11, NULL, 13, 4, 7, 2, NULL, NULL, NULL, 1]

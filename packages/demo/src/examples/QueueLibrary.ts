@@ -17,35 +17,27 @@
  */
 export const QueueScripts = {
   QueueFoundation: `SCENE QueueFoundation
-// A queue is like the line at a ticket window: people JOIN at the REAR
-// (ENQUEUE) and are SERVED from the FRONT (DEQUEUE).
-// First In, First Out (FIFO): whoever came first is served first.
 
 DECLARE
   QUEUE ticketLine = []
   ARRAY arriving = [10, 20, 30, 40]
 
 SEQUENCE
-  // 1. ENQUEUE every value, one at a time, at the rear of the queue
   LOOP i FROM 0 TO LENGTH(arriving) - 1
     value = arriving[i]
     ENQUEUE ticketLine value
     PRINT "Enqueued" value "- size is now" LENGTH(ticketLine)
   END
 
-  // 2. FRONT and REAR: look at both ends WITHOUT removing anything
   firstValue = FRONT(ticketLine)
   lastValue = REAR(ticketLine)
   PRINT "Front:" firstValue "- Rear:" lastValue "- size is still" LENGTH(ticketLine)
 
-  // 3. DEQUEUE until the queue is empty: values come out in the SAME order they went in
   WHILE LENGTH(ticketLine) > 0
     removed = DEQUEUE(ticketLine)
     PRINT "Dequeued" removed "- size is now" LENGTH(ticketLine)
   END
 
-  // 4. A safe DEQUEUE always checks IS_EMPTY first.
-  //    Dequeuing an empty queue is an error called QUEUE UNDERFLOW.
   IF IS_EMPTY(ticketLine)
     PRINT "The queue is empty: dequeuing now would be a QUEUE UNDERFLOW, so we stop."
   ELSE
@@ -55,14 +47,6 @@ END
 `,
 
   QueueUsingArray: `SCENE QueueUsingArray
-// How a simple (linear) queue is built inside a computer: a fixed-size
-// array plus two integers.
-//   front = index of the element that will be dequeued next
-//   rear  = index of the element that was enqueued last
-//   rear == capacity - 1   -> no room left at the end: QUEUE OVERFLOW
-//   front > rear           -> nothing left in between: QUEUE UNDERFLOW
-// Watch the last step: slots freed at the front can NEVER be reused.
-// That wasted space is why the Circular Queue exists (see the next example).
 
 DECLARE
   ARRAY slots = [0, 0, 0, 0, 0]
@@ -74,7 +58,6 @@ SEQUENCE
   rear = -1
   PRINT "Empty queue: front =" front "rear =" rear "capacity =" capacity
 
-  // ENQUEUE six values into five slots: the sixth one must be refused
   LOOP i FROM 0 TO LENGTH(toEnqueue) - 1
     value = toEnqueue[i]
     IF rear == capacity - 1
@@ -87,7 +70,6 @@ SEQUENCE
     END
   END
 
-  // DEQUEUE two values: read slots[front], then move front forward
   LOOP k FROM 1 TO 2
     IF front > rear
       PRINT "QUEUE UNDERFLOW: nothing to dequeue"
@@ -100,7 +82,6 @@ SEQUENCE
     END
   END
 
-  // Two slots are free again (indexes 0 and 1) - but a linear queue cannot use them
   usedSlots = rear - front + 1
   freeSlots = capacity - usedSlots
   PRINT "Elements in the queue:" usedSlots "- free slots:" freeSlots
@@ -115,13 +96,6 @@ END
 `,
 
   CircularQueue: `SCENE CircularQueue
-// A circular queue fixes the linear queue's wasted space: when 'rear'
-// reaches the end of the array it WRAPS AROUND to index 0, reusing the
-// slots that dequeues freed at the front.
-//   next index = (index + 1) % capacity      <- the wrap-around
-//   count      = how many elements are stored right now
-//   count == 0         -> empty  (QUEUE UNDERFLOW on dequeue)
-//   count == capacity  -> full   (QUEUE OVERFLOW on enqueue)
 
 DECLARE
   ARRAY slots = [0, 0, 0, 0, 0]
@@ -134,7 +108,6 @@ SEQUENCE
   rear = -1
   count = 0
 
-  // 1. Fill the queue: the sixth value does not fit
   LOOP i FROM 0 TO LENGTH(firstBatch) - 1
     value = firstBatch[i]
     IF count == capacity
@@ -148,7 +121,6 @@ SEQUENCE
     END
   END
 
-  // 2. Serve two values from the front
   LOOP k FROM 1 TO 2
     IF count == 0
       PRINT "QUEUE UNDERFLOW: nothing to dequeue"
@@ -162,7 +134,6 @@ SEQUENCE
     END
   END
 
-  // 3. Enqueue again: rear wraps around to index 0 and 1
   LOOP i FROM 0 TO LENGTH(secondBatch) - 1
     value = secondBatch[i]
     IF count == capacity
@@ -176,7 +147,6 @@ SEQUENCE
     END
   END
 
-  // 4. Empty it: values still come out in FIFO order, then one more try underflows
   total = count + 1
   LOOP k FROM 1 TO total
     IF count == 0
@@ -194,13 +164,6 @@ END
 `,
 
   BankTellerSimulation: `SCENE BankTellerSimulation
-// A bank with ONE teller. Customers walk in at different minutes and join
-// the waiting line (a queue). Whenever the teller is free, the customer at
-// the FRONT of the line is served. We measure how long everyone waited.
-//   arrival[i] = minute customer i walks in (in increasing order)
-//   service[i] = minutes the teller needs for customer i
-// Because a queue is FIFO, customers are served in the order they arrived:
-// the k-th person dequeued is always customer number k.
 
 DECLARE
   ARRAY names = ["Asha", "Ben", "Chen", "Dia", "Eli"]
@@ -218,14 +181,12 @@ SEQUENCE
   minute = 0
 
   WHILE served < customers
-    // Everyone arriving this minute joins the rear of the line
     WHILE nextToArrive < customers AND arrival[nextToArrive] == minute
       ENQUEUE waitingLine names[nextToArrive]
       PRINT "Minute" minute ":" names[nextToArrive] "joins the line"
       nextToArrive = nextToArrive + 1
     END
 
-    // A free teller calls the person at the front of the line
     IF minute >= tellerFreeAt AND LENGTH(waitingLine) > 0
       person = DEQUEUE(waitingLine)
       c = served
@@ -248,11 +209,6 @@ END
 `,
 
   RoundRobinScheduling: `SCENE RoundRobinScheduling
-// How an operating system shares ONE CPU between several programs.
-// The ready queue holds the processes. The process at the FRONT runs for at
-// most 'quantum' time units. If it still has work left, it goes to the
-// REAR of the queue and waits for its next turn; otherwise it is finished.
-//   waiting time = completion time - burst time    (all arrive at time 0)
 
 DECLARE
   ARRAY names = ["P1", "P2", "P3", "P4"]
@@ -265,7 +221,6 @@ SEQUENCE
   quantum = 2
   clock = 0
 
-  // Every process is ready at time 0
   LOOP i FROM 0 TO LENGTH(names) - 1
     ENQUEUE readyQueue names[i]
   END
@@ -273,7 +228,6 @@ SEQUENCE
   WHILE LENGTH(readyQueue) > 0
     current = DEQUEUE(readyQueue)
 
-    // Find which process this is (its index in the arrays)
     p = -1
     LOOP k FROM 0 TO LENGTH(names) - 1
       IF names[k] == current
@@ -281,7 +235,6 @@ SEQUENCE
       END
     END
 
-    // Run it for one time slice (shorter if it needs less)
     slice = MIN(quantum, remaining[p])
     clock = clock + slice
     leftOver = remaining[p] - slice
@@ -298,7 +251,6 @@ SEQUENCE
     END
   END
 
-  // Waiting time of each process, and the average
   totalWait = 0
   LOOP i FROM 0 TO LENGTH(names) - 1
     waitTime = completion[i] - burst[i]
@@ -311,11 +263,6 @@ END
 `,
 
   GenerateBinaryNumbers: `SCENE GenerateBinaryNumbers
-// Print the binary numbers from 1 to n, in order, using a queue.
-// Start with "1". Each time, dequeue a number, print it, and enqueue the
-// two numbers that come from it: itself + "0" and itself + "1".
-//   "1" -> "10", "11"    "10" -> "100", "101"    "11" -> "110", "111" ...
-// The queue hands them back in exactly increasing order.
 
 DECLARE
   QUEUE pending = []
@@ -339,9 +286,6 @@ END
 `,
 
   ReverseQueueWithStack: `SCENE ReverseQueueWithStack
-// Reverse the order of a queue using a stack.
-// A queue gives elements back in the SAME order (FIFO); a stack gives them
-// back in the OPPOSITE order (LIFO). So: queue -> stack -> queue reverses it.
 
 DECLARE
   QUEUE q = [1, 2, 3, 4, 5]
@@ -350,13 +294,11 @@ DECLARE
 SEQUENCE
   PRINT "Before:" q
 
-  // Step 1: move every element from the front of the queue onto the stack
   WHILE LENGTH(q) > 0
     value = DEQUEUE(q)
     PUSH helper value
   END
 
-  // Step 2: pop every element back into the queue (the last one comes first)
   WHILE LENGTH(helper) > 0
     value = POP(helper)
     ENQUEUE q value
@@ -367,12 +309,6 @@ END
 `,
 
   ReverseFirstK: `SCENE ReverseFirstK
-// Reverse only the first k elements of a queue, keep the rest in order.
-//   q = [10, 20, 30, 40, 50], k = 3   ->   [30, 20, 10, 40, 50]
-// 1. Dequeue the first k elements onto a stack.
-// 2. Pop them back into the queue: they join the rear, reversed.
-// 3. The other (size - k) elements are now in front of them, so move each
-//    one from the front to the rear once.
 
 DECLARE
   QUEUE q = [10, 20, 30, 40, 50]
@@ -386,8 +322,6 @@ SEQUENCE
   IF k < 0 OR k > size
     PRINT "Invalid k: it must be between 0 and" size
   ELSE
-    // Step 1 (a WHILE with a counter runs zero times when k is 0;
-    // LOOP i FROM 1 TO 0 would count DOWN and run twice)
     moved = 0
     WHILE moved < k
       value = DEQUEUE(q)
@@ -395,13 +329,11 @@ SEQUENCE
       moved = moved + 1
     END
 
-    // Step 2
     WHILE LENGTH(helper) > 0
       value = POP(helper)
       ENQUEUE q value
     END
 
-    // Step 3
     others = size - k
     rotated = 0
     WHILE rotated < others
@@ -416,11 +348,6 @@ END
 `,
 
   InterleaveHalves: `SCENE InterleaveHalves
-// Interleave the first half of a queue with its second half, like
-// shuffling a deck of cards:
-//   [1, 2, 3, 4, 5, 6, 7, 8]   ->   [1, 5, 2, 6, 3, 7, 4, 8]
-// Move the first half into a second queue, then take one from each queue
-// in turn. (The queue must have an even number of elements.)
 
 DECLARE
   QUEUE deck = [1, 2, 3, 4, 5, 6, 7, 8]
@@ -433,7 +360,6 @@ SEQUENCE
   ELSE
     half = size / 2
 
-    // The first half moves to its own queue, keeping its order
     moved = 0
     WHILE moved < half
       card = DEQUEUE(deck)
@@ -441,7 +367,6 @@ SEQUENCE
       moved = moved + 1
     END
 
-    // Alternate: one card from the first half, then one from the second half
     WHILE LENGTH(firstHalf) > 0
       card = DEQUEUE(firstHalf)
       ENQUEUE deck card
@@ -455,12 +380,6 @@ END
 `,
 
   QueueUsingTwoStacks: `SCENE QueueUsingTwoStacks
-// Build a FIFO queue from two LIFO stacks.
-//   enqueue x : PUSH x onto 'inbox'
-//   dequeue   : if 'outbox' is empty, POP everything from inbox and PUSH it
-//               onto outbox (this reverses the order, so the OLDEST value
-//               ends up on top); then POP from outbox.
-// Each value is moved at most once, so every operation is O(1) on average.
 
 DECLARE
   ARRAY operations = ["ENQUEUE", "ENQUEUE", "ENQUEUE", "DEQUEUE", "ENQUEUE", "DEQUEUE", "DEQUEUE", "DEQUEUE", "DEQUEUE"]
@@ -475,7 +394,6 @@ SEQUENCE
       PUSH inbox values[i]
       PRINT "enqueue" values[i]
     ELSE
-      // Refill the outbox only when it has run dry
       IF IS_EMPTY(outbox)
         WHILE LENGTH(inbox) > 0
           moved = POP(inbox)
@@ -495,11 +413,6 @@ END
 `,
 
   HotPotato: `SCENE HotPotato
-// The Hot Potato game (the Josephus problem). Players stand in a circle
-// and pass a potato. After 'passes' passes, whoever holds it is out.
-// The last player left wins.
-// A queue is the circle: passing the potato = the player at the FRONT
-// goes to the REAR. The player at the front after the passes is out.
 
 DECLARE
   QUEUE circle = ["Ana", "Bo", "Cy", "Dev", "Eva", "Fay"]
@@ -511,13 +424,11 @@ SEQUENCE
   outCount = 0
 
   WHILE LENGTH(circle) > 1
-    // Pass the potato 'passes' times
     LOOP p FROM 1 TO passes
       holder = DEQUEUE(circle)
       ENQUEUE circle holder
     END
 
-    // Whoever holds it now is out of the game
     out = DEQUEUE(circle)
     INSERT eliminated[outCount] out
     outCount = outCount + 1
@@ -532,12 +443,6 @@ END
 `,
 
   MovingAverage: `SCENE MovingAverage
-// A temperature sensor sends one reading per minute. We want the average
-// of only the LAST 'windowSize' readings (a moving average), to smooth out
-// noise. The queue holds exactly that window:
-//   new reading    -> ENQUEUE it and add it to the sum
-//   window too big -> DEQUEUE the oldest reading and subtract it
-// So each update costs O(1), no matter how long the stream is.
 
 DECLARE
   ARRAY readings = [10, 20, 30, 40, 50, 60]
@@ -571,11 +476,6 @@ END
 `,
 
   FirstNonRepeating: `SCENE FirstNonRepeating
-// Characters arrive one by one (a stream). After each one, report the
-// FIRST character so far that has appeared only ONCE, or "none".
-//   a a b c b  ->  a, none, b, b, c
-// The queue keeps candidates in arrival order. A candidate at the front
-// that has repeated can never be the answer again, so it is dequeued.
 
 DECLARE
   ARRAY stream = ["a", "a", "b", "c", "b", "d", "c"]
@@ -588,12 +488,10 @@ SEQUENCE
     HIGHLIGHT stream[i]
     ENQUEUE candidates ch
 
-    // Drop repeated characters from the front of the queue
     searching = 1
     WHILE searching == 1 AND LENGTH(candidates) > 0
       candidate = FRONT(candidates)
 
-      // How many times has 'candidate' appeared in stream[0..i]?
       count = 0
       LOOP j FROM 0 TO i
         IF stream[j] == candidate

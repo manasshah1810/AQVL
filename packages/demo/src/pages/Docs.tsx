@@ -3558,19 +3558,14 @@ UPDATE counter[0] counter[0] + 1    // count the calls to measure the cost`} />
                   <CodeBlock code={`SCENE FunctionBasics
 
 DECLARE
-  // A canteen order: price of each item and how many were ordered
   ARRAY price = [40, 25, 60, 50]
   ARRAY qty = [2, 4, 2, 4]
 
-  // A FUNCTION is a named piece of work. It takes PARAMETERS (the inputs in
-  // brackets), does its job and hands back ONE answer with RETURN.
-  // Write it once, call it as many times as you like.
   FUNCTION lineTotal(i)
     total = price[i] * qty[i]
     RETURN total
   END
 
-  // 10% off when the bill reaches 300, otherwise no discount
   FUNCTION discountOn(amount)
     IF amount >= 300
       RETURN amount * 10 / 100
@@ -3579,12 +3574,10 @@ DECLARE
     END
   END
 
-  // 5% GST on the amount after the discount
   FUNCTION gstOn(amount)
     RETURN amount * 5 / 100
   END
 
-  // A function can call other functions: this one uses the two above
   FUNCTION finalBill(subtotal)
     afterDiscount = subtotal - discountOn(subtotal)
     RETURN afterDiscount + gstOn(afterDiscount)
@@ -3594,7 +3587,6 @@ SEQUENCE
   subtotal = 0
   LOOP i FROM 0 TO LENGTH(price) - 1
     HIGHLIGHT price[i]
-    // lineTotal(i) is an expression: its RETURN value is used right here
     line = lineTotal(i)
     PRINT "Item " + i + ": " + qty[i] + " x " + price[i] + " = " + line
     subtotal = subtotal + line
@@ -3606,7 +3598,6 @@ SEQUENCE
   PRINT "GST: " + gstOn(subtotal - discountOn(subtotal))
   PRINT "Amount to pay: " + finalBill(subtotal)
 
-  // The same functions work for any amount, e.g. a small order of 120
   PRINT "A bill of 120 pays " + finalBill(120) + " (no discount below 300)"
 END`} />
                   <p className="docs-p">
@@ -3620,7 +3611,6 @@ END`} />
 DECLARE
   ARRAY score = [10, 20]
 
-  // Tries to swap two numbers. It swaps its OWN copies a and b only.
   FUNCTION trySwap(a, b)
     temp = a
     a = b
@@ -3628,14 +3618,12 @@ DECLARE
     PRINT "  inside trySwap: a=" + a + " b=" + b
   END
 
-  // Arrays in DECLARE are shared, so swapping two CELLS is seen by everyone
   FUNCTION swapCells(i, j)
     temp = score[i]
     UPDATE score[i] score[j]
     UPDATE score[j] temp
   END
 
-  // Changing a parameter never changes the caller's variable ...
   FUNCTION addBonus(points)
     points = points + 5
     RETURN points
@@ -3656,7 +3644,6 @@ SEQUENCE
   marksNow = 70
   addBonus(marksNow)
   PRINT "addBonus(marksNow) alone: marksNow is still " + marksNow
-  // ... so the answer must be RETURNed and stored by the caller
   marksNow = addBonus(marksNow)
   PRINT "marksNow = addBonus(marksNow): marksNow is now " + marksNow
 END`} />
@@ -3670,11 +3657,8 @@ END`} />
                   <CodeBlock code={`SCENE FactorialRecursion
 
 DECLARE
-  // The call stack drawn as a real STACK: PUSH when a call starts,
-  // POP when it returns
   STACK calls = []
 
-  // Two spaces per level of depth. A WHILE loop, because depth can be 0.
   FUNCTION pad(depth)
     s = ""
     k = 0
@@ -3685,10 +3669,6 @@ DECLARE
     RETURN s
   END
 
-  // n! = n * (n-1)!   and   1! = 0! = 1
-  // Every recursion has two parts:
-  //   BASE CASE:      a small input answered directly, with no more calls
-  //   RECURSIVE CASE: the same problem on a SMALLER input, then one more step
   FUNCTION factorial(n, depth)
     PUSH calls n
     PRINT pad(depth) + "factorial(" + n + ") called"
@@ -3704,7 +3684,6 @@ DECLARE
     RETURN result
   END
 
-  // The same answer with a loop, for comparison
   FUNCTION factorialLoop(n)
     result = 1
     k = 2
@@ -3716,12 +3695,9 @@ DECLARE
   END
 
 SEQUENCE
-  // Going DOWN (winding): 5 waits for 4, 4 waits for 3, ... until the base case.
-  // Coming UP (unwinding): each waiting call finishes its multiplication.
   answer = factorial(5, 0)
   PRINT "factorial(5) = " + answer + ", the loop version gives " + factorialLoop(5)
 
-  // 0! is a base case straight away: one call, nothing to wait for
   zero = factorial(0, 0)
   PRINT "factorial(0) = " + zero
 END`} />
@@ -3734,12 +3710,9 @@ END`} />
                   <CodeBlock code={`SCENE FibonacciThreeWays
 
 DECLARE
-  // memo[i] = fib(i) once it is known, -1 while it is still unknown
   ARRAY memo = [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1]
-  // calls[0]: naive calls, calls[1]: memo calls
   ARRAY calls = [0, 0]
 
-  // Naive: two calls per call, and the same fib(k) is recomputed many times
   FUNCTION fibNaive(n)
     UPDATE calls[0] calls[0] + 1
     IF n <= 1
@@ -3748,14 +3721,11 @@ DECLARE
     RETURN fibNaive(n - 1) + fibNaive(n - 2)
   END
 
-  // Memoised: look the answer up first, compute it only once, remember it
   FUNCTION fibMemo(n)
     UPDATE calls[1] calls[1] + 1
     IF memo[n] != -1
       RETURN memo[n]
     END
-    // value must exist BEFORE the IF: a variable first set inside a branch
-    // is not known after the END
     value = n
     IF n > 1
       value = fibMemo(n - 1) + fibMemo(n - 2)
@@ -3765,7 +3735,6 @@ DECLARE
     RETURN value
   END
 
-  // Iterative: keep only the last two numbers
   FUNCTION fibLoop(n)
     IF n <= 1
       RETURN n
@@ -3807,8 +3776,6 @@ END`} />
                   <CodeBlock code={`SCENE TowerOfHanoi
 
 DECLARE
-  // Three pegs; the bottom of each stack is the bottom of the peg.
-  // Disk 3 is the biggest, disk 1 the smallest.
   STACK pegA = [3, 2, 1]
   STACK pegB = []
   STACK pegC = []
@@ -3824,7 +3791,6 @@ DECLARE
     END
   END
 
-  // Take the top disk off one peg ...
   FUNCTION takeFrom(peg)
     IF peg == 1
       RETURN POP(pegA)
@@ -3835,7 +3801,6 @@ DECLARE
     END
   END
 
-  // ... and put it on another
   FUNCTION putOn(peg, disk)
     IF peg == 1
       PUSH pegA disk
@@ -3846,7 +3811,6 @@ DECLARE
     END
   END
 
-  // (FROM and TO are AQVL keywords, so the pegs are called src and dst)
   FUNCTION moveDisk(src, dst)
     disk = takeFrom(src)
     putOn(dst, disk)
@@ -3854,11 +3818,6 @@ DECLARE
     PRINT "Move " + moveCount[0] + ": disk " + disk + " from " + nameOf(src) + " to " + nameOf(dst)
   END
 
-  // To move n disks from src to dst:
-  //   1. move the top n - 1 disks out of the way, onto spare
-  //   2. move the biggest disk to dst
-  //   3. move the n - 1 disks from spare on top of it
-  // Base case: 0 disks need no moves.
   FUNCTION hanoi(n, src, dst, spare)
     IF n == 0
       RETURN 0
@@ -3883,9 +3842,7 @@ END`} />
                   <CodeBlock code={`SCENE SubsetsWithinBudget
 
 DECLARE
-  // Pizza toppings and their prices; the budget for toppings is 100
   ARRAY cost = [40, 30, 50, 20]
-  // chosen[i] is 1 when topping i is in the current combination
   ARRAY chosen = [0, 0, 0, 0]
   ARRAY counts = [0, 0]
 
@@ -3904,11 +3861,8 @@ DECLARE
     RETURN text + "(" + total + ")"
   END
 
-  // BACKTRACKING: at item i there are two choices, leave it out or take it.
-  // Try one, come back, UNDO it, try the other. spent is the cost so far.
   FUNCTION explore(i, spent, budget)
     IF spent > budget
-      // Already over budget: no point looking further down this branch
       RETURN 0
     END
     IF i == LENGTH(cost)
@@ -3916,13 +3870,10 @@ DECLARE
       PRINT "  " + describe()
       RETURN 0
     END
-    // Choice 1: skip item i
     explore(i + 1, spent, budget)
-    // Choice 2: take item i ...
     UPDATE chosen[i] 1
     HIGHLIGHT cost[i] 'MARKED'
     explore(i + 1, spent + cost[i], budget)
-    // ... and undo the choice before going back up
     UPDATE chosen[i] 0
     HIGHLIGHT cost[i] 'NEUTRAL'
   END
@@ -4127,11 +4078,6 @@ DECLARE
   ARRAY arr = [64, 34, 25, 12, 22, 11, 90]
 
 SEQUENCE
-  // Walk through the array comparing neighbours; if the left one is larger,
-  // swap them. After each pass the largest remaining value has "bubbled" to
-  // the end of the unsorted part, so that cell turns green and the next pass
-  // can stop one cell earlier.
-  // If a whole pass makes no swap, the array is already sorted: stop early.
   n = LENGTH(arr)
   pass = 0
   swapped = 1
@@ -4154,7 +4100,6 @@ SEQUENCE
     PRINT "Pass " + pass + " made no swaps, so the array is already sorted"
   END
 
-  // Whatever is left in front of the green cells is already in order
   k = 0
   WHILE k < n - pass
     HIGHLIGHT arr[k] 'SUCCESS'
@@ -4173,9 +4118,6 @@ DECLARE
   ARRAY arr = [64, 25, 12, 22, 11]
 
 SEQUENCE
-  // For each position i, scan the unsorted part arr[i .. n-1] for the
-  // smallest value (purple), then swap it into position i. Exactly one swap
-  // per pass, so selection sort makes at most n - 1 swaps in total.
   n = LENGTH(arr)
   swaps = 0
 
@@ -4186,8 +4128,6 @@ SEQUENCE
     LOOP j FROM i + 1 TO n - 1
       COMPARE arr[minIndex] arr[j]
       IF arr[j] < arr[minIndex]
-        // A new smallest value: the old candidate loses its colour
-        // (unless it is position i, which we are filling)
         IF minIndex != i
           HIGHLIGHT arr[minIndex] 'NEUTRAL'
         END
@@ -4207,7 +4147,6 @@ SEQUENCE
     HIGHLIGHT arr[i] 'SUCCESS'
   END
 
-  // The last element is the only one left, so it is in place too
   HIGHLIGHT arr[n - 1] 'SUCCESS'
   PRINT "Sorted with " + swaps + " swaps:" arr
 END`} />
@@ -4222,9 +4161,6 @@ DECLARE
   ARRAY arr = [12, 11, 13, 5, 6]
 
 SEQUENCE
-  // Like sorting playing cards in your hand: arr[0 .. i-1] is already sorted.
-  // Pick up the next card (key = arr[i]), shift every larger card one place
-  // right to open a gap, then drop the key into the gap.
   n = LENGTH(arr)
   shifts = 0
 
@@ -4234,7 +4170,6 @@ SEQUENCE
     PRINT "Insert key " + key
     j = i - 1
 
-    // Keep shifting while there is a card to the left AND it is bigger than key
     keepShifting = 1
     WHILE keepShifting == 1
       IF j < 0
@@ -4251,8 +4186,6 @@ SEQUENCE
       END
     END
 
-    // j + 1 is the gap where key belongs
-    // Cells are only final once every key is inserted, so no green yet
     UPDATE arr[j + 1] key
     HIGHLIGHT arr[i] 'NEUTRAL'
     HIGHLIGHT arr[j + 1]
@@ -4274,10 +4207,6 @@ END`} />
 DECLARE
   ARRAY arr = [10, 80, 30, 90, 40, 50, 70]
 
-  // Lomuto partition: the last element of the range is the pivot (purple).
-  // 'wall' marks the end of the "smaller than pivot" zone. Every element
-  // smaller than the pivot is swapped to just after the wall. Finally the
-  // pivot is swapped in after the wall: that is its final sorted position.
   FUNCTION partition(low, high)
     pivot = arr[high]
     HIGHLIGHT arr[high] 'MARKED'
@@ -4304,8 +4233,6 @@ DECLARE
     RETURN pivotIndex
   END
 
-  // Sort arr[low .. high]: partition it, then sort the part left of the
-  // pivot and the part right of it. A range of one element is already sorted.
   FUNCTION quickSort(low, high)
     IF low < high
       p = partition(low, high)
@@ -4476,18 +4403,14 @@ mid = low + (size - size % 2) / 2   // same as (low + high) / 2 in C or Java`} /
                   <CodeBlock code={`SCENE LinearSearch
 
 DECLARE
-  // Roll numbers in the order students entered the exam hall (NOT sorted)
   ARRAY rollNo = [104, 117, 109, 123, 131, 112, 140]
 
-  // Check every cell from left to right until the target turns up.
-  // Returns the index of the first match, or -1 when it is not there.
   FUNCTION linearSearch(target)
     n = LENGTH(rollNo)
     foundAt = -1
     comparisons = 0
     i = 0
 
-    // Two reasons to stop: we ran out of cells, or we already found it
     WHILE i < n AND foundAt == -1
       HIGHLIGHT rollNo[i]
       comparisons = comparisons + 1
@@ -4508,7 +4431,6 @@ DECLARE
     RETURN foundAt
   END
 
-  // Paint every cell blue again before the next search
   FUNCTION resetColours()
     LOOP k FROM 0 TO LENGTH(rollNo) - 1
       HIGHLIGHT rollNo[k] 'NEUTRAL'
@@ -4516,8 +4438,6 @@ DECLARE
   END
 
 SEQUENCE
-  // Linear search works on ANY array, sorted or not, because it simply
-  // looks at every cell. The cost is that a miss checks all n cells.
   present = linearSearch(123)
   resetColours()
   absent = linearSearch(150)
@@ -4536,14 +4456,8 @@ END`} />
                   <CodeBlock code={`SCENE BinarySearch
 
 DECLARE
-  // Prices in a sorted price list. Binary search NEEDS sorted input.
   ARRAY price = [11, 12, 22, 25, 34, 64, 90, 105, 120]
 
-  // Look at the middle of the window [low .. high]:
-  //   equal   -> found
-  //   smaller -> the target can only be to the RIGHT, so low = mid + 1
-  //   bigger  -> the target can only be to the LEFT,  so high = mid - 1
-  // Every step throws away half of the window.
   FUNCTION binarySearch(target)
     low = 0
     high = LENGTH(price) - 1
@@ -4561,7 +4475,6 @@ DECLARE
         PRINT "Found " + target + " at index " + mid + " in " + step + " steps"
         RETURN mid
       ELSE IF price[mid] < target
-        // Everything from low to mid is too small: grey it out
         k = low
         WHILE k <= mid
           HIGHLIGHT price[k] 'DISCARDED'
@@ -4569,7 +4482,6 @@ DECLARE
         END
         low = mid + 1
       ELSE
-        // Everything from mid to high is too big
         k = mid
         WHILE k <= high
           HIGHLIGHT price[k] 'DISCARDED'
@@ -4579,7 +4491,6 @@ DECLARE
       END
     END
 
-    // The window became empty (low > high): the target is not there
     PRINT target + " is not in the list (window empty after " + step + " steps)"
     RETURN -1
   END
@@ -4597,7 +4508,6 @@ SEQUENCE
   resetColours()
   binarySearch(50)
 
-  // Worst case: how many times can the window be halved before it is empty?
   size = LENGTH(price)
   maxSteps = 0
   WHILE size > 0
@@ -4615,12 +4525,8 @@ END`} />
                   <CodeBlock code={`SCENE BinarySearchRecursive
 
 DECLARE
-  // Page numbers where chapters start in a textbook (sorted)
   ARRAY chapterStart = [1, 15, 32, 47, 60, 78, 95, 110, 126, 140]
 
-  // The same idea as the loop version, written as a recursive FUNCTION.
-  // Each call handles one window [low .. high] and calls itself on the
-  // half that can still contain the target. 'depth' is only for printing.
   FUNCTION search(target, low, high, depth)
     IF low > high
       PRINT "  depth " + depth + ": empty window, " + target + " is not a chapter start"
@@ -4673,12 +4579,8 @@ END`} />
                   <CodeBlock code={`SCENE DeliveryTruckCapacity
 
 DECLARE
-  // Parcel weights (kg), to be shipped IN THIS ORDER within 'days' days.
-  // Each day the truck loads parcels from the front until the next one
-  // would exceed its capacity. What is the SMALLEST capacity that works?
   ARRAY parcels = [3, 2, 2, 4, 1, 4]
 
-  // How many days does a truck of this capacity need?
   FUNCTION daysNeeded(capacity)
     days = 1
     load = 0
@@ -4695,7 +4597,6 @@ DECLARE
 SEQUENCE
   allowedDays = 3
 
-  // The capacity is at least the heaviest parcel and at most all of them.
   heaviest = 0
   total = 0
   LOOP i FROM 0 TO LENGTH(parcels) - 1
@@ -4705,7 +4606,6 @@ SEQUENCE
     END
   END
 
-  // A bigger truck never needs MORE days, so binary search the capacity.
   low = heaviest
   high = total
   best = total
@@ -4733,12 +4633,10 @@ END`} />
                   <CodeBlock code={`SCENE NearestHospitalBFS
 
 DECLARE
-  // City areas joined by roads of equal length
   GRAPH city = ["Home-Market", "Home-School", "Market-Station", "School-Park", "Park-Lake", "Station-Fort", "Lake-Fort", "Station-Airport"]
   QUEUE q = []
 
 SEQUENCE
-  // Which areas have a hospital? Every vertex gets a value first.
   LOOP k FROM 0 TO VERTEX_COUNT(city) - 1
     area = VERTEX_AT(city, k)
     area.hospital = FALSE
@@ -4748,8 +4646,6 @@ SEQUENCE
   park = VERTEX(city, "Park")
   park.hospital = TRUE
 
-  // Breadth-first search explores areas in rings of 1 road, 2 roads, ...
-  // so the FIRST hospital taken out of the queue is the nearest one.
   home = VERTEX(city, "Home")
   home.visited = TRUE
   home.dist = 0
@@ -4780,7 +4676,6 @@ SEQUENCE
   IF nearest == NULL
     PRINT "No hospital can be reached from Home"
   ELSE
-    // Walk the parents back to Home, adding each name to the FRONT
     route = nearest.name
     curr = nearest.parent
     WHILE curr != NULL

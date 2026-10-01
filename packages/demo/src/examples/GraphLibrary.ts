@@ -18,20 +18,14 @@
  */
 export const GraphScripts = {
   GraphBasics: `SCENE GraphBasics
-// A graph is a set of VERTICES (here: people) joined by EDGES (friendships).
-// "Asha-Ben" is an UNDIRECTED edge: the friendship goes both ways.
-// Every vertex keeps an ADJACENCY LIST — the vertices it is directly
-// connected to. DEGREE(v) is the length of that list.
 
 DECLARE
   GRAPH friends = ["Asha-Ben", "Asha-Chen", "Ben-Dev", "Chen-Dev", "Dev-Esha", "Ravi"]
 
 SEQUENCE
-  // 1. The whole graph, printed as adjacency lists.
   PRINT "Adjacency list:" friends
   PRINT "People:" VERTEX_COUNT(friends) "  Friendships:" EDGE_COUNT(friends)
 
-  // 2. Visit every vertex by its index and list its neighbours.
   LOOP i FROM 0 TO VERTEX_COUNT(friends) - 1
     person = VERTEX_AT(friends, i)
     names = ""
@@ -48,7 +42,6 @@ SEQUENCE
     END
   END
 
-  // 3. The most connected person = the vertex with the highest degree.
   best = VERTEX_AT(friends, 0)
   LOOP i FROM 1 TO VERTEX_COUNT(friends) - 1
     person = VERTEX_AT(friends, i)
@@ -58,7 +51,6 @@ SEQUENCE
   END
   PRINT "Most connected:" best.name "with" DEGREE(best) "friends"
 
-  // 4. Is there a direct edge between two people?
   asha = VERTEX(friends, "Asha")
   dev = VERTEX(friends, "Dev")
   IF HAS_EDGE(asha, dev)
@@ -67,15 +59,12 @@ SEQUENCE
     PRINT "Asha and Dev are NOT direct friends (they share friends Ben and Chen)"
   END
 
-  // 5. Graphs change: Ravi joins in, Chen and Dev fall out.
   ADD_EDGE friends "Ravi" "Esha"
   ADD_VERTEX friends "Gita"
   ADD_EDGE friends "Gita" "Asha"
   REMOVE_EDGE friends "Chen" "Dev"
   PRINT "After the changes:" friends
 
-  // 6. Handshake lemma: every edge adds 1 to the degree of BOTH its ends,
-  //    so the degrees always add up to twice the number of edges.
   total = 0
   LOOP i FROM 0 TO VERTEX_COUNT(friends) - 1
     person = VERTEX_AT(friends, i)
@@ -86,9 +75,6 @@ END
 `,
 
   DirectedWeighted: `SCENE FlightRoutes
-// A DIRECTED graph: "DEL->BOM:2" is a one-way flight from Delhi to Mumbai
-// that takes 2 hours (the edge WEIGHT). Flights out of an airport are its
-// OUT-degree, flights into it its IN-degree.
 
 DECLARE
   GRAPH flights = ["DEL->BOM:2", "DEL->CCU:2", "BOM->GOI:1", "BOM->BLR:2", "GOI->BLR:1", "CCU->BLR:2", "CCU->MAA:3", "BLR->MAA:1", "MAA->DEL:3"]
@@ -96,7 +82,6 @@ DECLARE
 SEQUENCE
   PRINT "Routes:" flights
 
-  // 1. Departures from every airport, with their durations.
   LOOP i FROM 0 TO VERTEX_COUNT(flights) - 1
     airport = VERTEX_AT(flights, i)
     departures = ""
@@ -109,7 +94,6 @@ SEQUENCE
     PRINT airport.name ": out" DEGREE(airport) " in" IN_DEGREE(airport) " ->" departures
   END
 
-  // 2. The busiest airport: most flights in and out together.
   busiest = VERTEX_AT(flights, 0)
   LOOP i FROM 1 TO VERTEX_COUNT(flights) - 1
     airport = VERTEX_AT(flights, i)
@@ -119,7 +103,6 @@ SEQUENCE
   END
   PRINT "Busiest airport:" busiest.name
 
-  // 3. Direction matters: DEL -> BOM exists, BOM -> DEL does not.
   del = VERTEX(flights, "DEL")
   bom = VERTEX(flights, "BOM")
   IF HAS_EDGE(del, bom)
@@ -129,7 +112,6 @@ SEQUENCE
     PRINT "No direct flight BOM -> DEL (edges are one-way)"
   END
 
-  // 4. Walk the edge list itself: longest flight and total flying hours.
   longest = EDGE_AT(flights, 0)
   hours = 0
   LOOP k FROM 0 TO EDGE_COUNT(flights) - 1
@@ -141,17 +123,12 @@ SEQUENCE
   END
   PRINT "Longest flight:" longest "  Total hours on the timetable:" hours
 
-  // 5. A new route opens.
   ADD_EDGE flights "GOI" "DEL" 2
   PRINT "GOI now has" DEGREE(VERTEX(flights, "GOI")) "departures"
 END
 `,
 
   AdjacencyMatrix: `SCENE AdjacencyMatrix
-// The same graph stored two ways:
-//  - adjacency LIST: each vertex lists its neighbours (what AQVL keeps),
-//  - adjacency MATRIX: a V x V table, cell [row][col] = 1 when an edge exists.
-// We build the matrix row by row with two nested loops and HAS_EDGE.
 
 DECLARE
   GRAPH g = ["A-B", "A-C", "B-C", "C-D", "D-E"]
@@ -183,8 +160,6 @@ SEQUENCE
     PRINT line
   END
 
-  // Undirected: every edge appears twice (A->B and B->A), so the matrix
-  // is symmetric and the number of 1s is 2 x edges.
   PRINT "Cells with 1:" ones "  edges =" ones / 2
   PRINT "Matrix size:" n * n "cells.  List size:" 2 * EDGE_COUNT(g) "entries"
   PRINT "A sparse graph (few edges) is cheaper as a list; a dense one fits a matrix."
@@ -192,11 +167,6 @@ END
 `,
 
   BreadthFirstSearch: `SCENE BreadthFirstSearch
-// Breadth-first search (BFS) explores a graph in rings: first every direct
-// friend of the start, then every friend-of-a-friend, and so on.
-// A QUEUE holds the vertices waiting to be explored (first in, first out),
-// and v.visited makes sure no vertex joins the queue twice.
-// v.dist = number of edges from the start ("degrees of separation").
 
 DECLARE
   GRAPH people = ["Asha-Ben", "Asha-Chen", "Ben-Dev", "Chen-Dev", "Chen-Esha", "Dev-Ravi", "Esha-Ravi", "Ravi-Gita", "Mia-Noor"]
@@ -212,7 +182,6 @@ SEQUENCE
   WHILE LENGTH(q) > 0
     v = DEQUEUE(q)
     order = order + " " + v.name
-    // Look at every neighbour; the unvisited ones are one step further out.
     i = 0
     WHILE i < DEGREE(v)
       w = NEIGHBOR(v, i)
@@ -227,7 +196,6 @@ SEQUENCE
   END
   PRINT "BFS visiting order:" order
 
-  // Group everyone by their distance from Asha.
   far = 0
   LOOP k FROM 0 TO VERTEX_COUNT(people) - 1
     p = VERTEX_AT(people, k)
@@ -246,7 +214,6 @@ SEQUENCE
     PRINT d "step(s) from Asha:" ring
   END
 
-  // Anyone never reached is in a different part of the network.
   LOOP k FROM 0 TO VERTEX_COUNT(people) - 1
     p = VERTEX_AT(people, k)
     IF p.visited == FALSE
@@ -257,10 +224,6 @@ END
 `,
 
   ShortestPathBFS: `SCENE FewestMetroStops
-// In an unweighted graph BFS finds the path with the FEWEST edges: the
-// first time it reaches a vertex is along a shortest route. Each vertex
-// remembers where it was reached from (parent); walking the parents back
-// from the goal gives the route in reverse, so a STACK turns it around.
 
 DECLARE
   GRAPH metro = ["Park-Mall", "Park-Lake", "Mall-Zoo", "Lake-Fort", "Fort-Zoo", "Mall-Hub", "Zoo-Dock", "Hub-Dock", "Fort-Bay"]
@@ -275,7 +238,6 @@ SEQUENCE
   source.parent = NULL
   ENQUEUE q source
   found = FALSE
-  // Stop as soon as the goal has been reached.
   WHILE LENGTH(q) > 0 AND found == FALSE
     station = DEQUEUE(q)
     i = 0
@@ -296,14 +258,12 @@ SEQUENCE
   IF found == FALSE
     PRINT "Dock cannot be reached from Park"
   ELSE
-    // Walk back from the goal to the source, pushing each station.
     stops = 0
     curr = goal
     WHILE curr != NULL
       PUSH route curr
       curr = curr.parent
     END
-    // Popping gives the stations from source to goal.
     path = ""
     WHILE LENGTH(route) > 0
       s = POP(route)
@@ -317,11 +277,6 @@ END
 `,
 
   DepthFirstSearch: `SCENE DepthFirstSearch
-// Depth-first search (DFS) explores like a person in a maze: keep walking
-// into a new room, and only when there is nowhere new to go, back up to the
-// most recent room that still has an unexplored door.
-// A STACK holds the rooms still to explore (last in, first out).
-// Neighbours are pushed in REVERSE order so they are explored in list order.
 
 DECLARE
   GRAPH maze = ["Gate-Hall", "Hall-Lib", "Hall-Pool", "Lib-Tower", "Pool-Cave", "Cave-Tower", "Tower-Vault", "Cave-Well"]
@@ -332,7 +287,6 @@ SEQUENCE
   order = ""
   WHILE LENGTH(s) > 0
     room = POP(s)
-    // A room can be pushed more than once; explore it only the first time.
     IF room.visited == FALSE
       room.visited = TRUE
       order = order + " " + room.name
@@ -348,8 +302,6 @@ SEQUENCE
   END
   PRINT "DFS exploring order:" order
 
-  // Compare with BFS: DFS dives down one corridor (Hall, Lib, Tower, ...)
-  // before coming back for Pool, while BFS would finish Hall's doors first.
   count = 0
   LOOP k FROM 0 TO VERTEX_COUNT(maze) - 1
     r = VERTEX_AT(maze, k)
@@ -362,12 +314,6 @@ END
 `,
 
   RecursiveDFS: `SCENE WebCrawler
-// Recursive DFS: to crawl a page, mark it visited, then crawl every linked
-// page that has not been visited yet. The call stack (purple vertices) is
-// the trail back to the start — each RETURN backtracks one step.
-// The graph is DIRECTED: a link goes from one page to another.
-// crawl() RETURNS how many new pages it found, so the counts add up on the
-// way back out of the recursion.
 
 DECLARE
   GRAPH site = ["Home->About", "Home->Blog", "Blog->Post1", "Blog->Post2", "Post2->Home", "About->Team", "Team->Blog", "Old->Home"]
@@ -393,7 +339,6 @@ SEQUENCE
   total = crawl(VERTEX(site, "Home"))
   PRINT "Pages reachable from Home:" total
 
-  // A page no link leads to (an orphan) is never found by the crawler.
   LOOP k FROM 0 TO VERTEX_COUNT(site) - 1
     page = VERTEX_AT(site, k)
     IF page.visited == FALSE
@@ -404,11 +349,6 @@ END
 `,
 
   ConnectedComponents: `SCENE ConnectedComponents
-// Which computers can talk to each other? Each group of machines joined by
-// cables is a CONNECTED COMPONENT. Loop over every vertex; each time one is
-// still unvisited, it starts a new group — explore everything reachable from
-// it (DFS with a stack) and give them all the same group number.
-// v.color = group paints each component its own colour.
 
 DECLARE
   GRAPH lan = ["PC1-PC2", "PC2-PC3", "PC1-PC3", "PC4-PC5", "PC6", "PC7-PC8", "PC8-PC9"]
@@ -443,7 +383,6 @@ SEQUENCE
   END
   PRINT "Separate networks:" groups
 
-  // Two computers can talk exactly when they are in the same component.
   a = VERTEX(lan, "PC3")
   b = VERTEX(lan, "PC5")
   IF a.group == b.group
@@ -455,15 +394,10 @@ END
 `,
 
   UndirectedCycle: `SCENE UndirectedCycleDetection
-// Does a pipe network contain a loop? In an undirected graph, DFS finds a
-// cycle when it meets an already-visited vertex that is NOT the one it just
-// came from (its parent). A connected graph with no cycle is a TREE, and a
-// tree with V vertices always has exactly V - 1 edges.
 
 DECLARE
   GRAPH pipes = ["Tank-P1", "P1-P2", "P1-P3", "P3-P4", "P3-P5"]
 
-  // Returns TRUE when a cycle is reachable from v (reached from cameFrom).
   FUNCTION hasCycle(v, cameFrom)
     v.visited = TRUE
     i = 0
@@ -484,7 +418,6 @@ DECLARE
     RETURN FALSE
   END
 
-  // Clears every visited mark so the search can run again.
   FUNCTION resetMarks()
     LOOP k FROM 0 TO VERTEX_COUNT(pipes) - 1
       v = VERTEX_AT(pipes, k)
@@ -500,7 +433,6 @@ SEQUENCE
     PRINT "No loop: the network is a tree —" EDGE_COUNT(pipes) "edges = V - 1"
   END
 
-  // Add one more pipe between two junctions that were already connected.
   ADD_EDGE pipes "P2" "P4"
   resetMarks()
   IF hasCycle(VERTEX(pipes, "Tank"), NULL)
@@ -512,12 +444,6 @@ END
 `,
 
   DirectedCycle: `SCENE CoursePrerequisiteCycle
-// "A->B" means course A must be taken before course B. If the arrows form a
-// cycle, nobody can ever finish the courses on it.
-// Directed cycle detection uses three colours:
-//   WHITE = not visited yet, GRAY = on the current DFS path, BLACK = finished.
-// Reaching a GRAY vertex means we walked in a circle back onto our own path.
-// Following the parent fields from v back to that vertex prints the cycle.
 
 DECLARE
   GRAPH courses = ["Maths->Stats", "Stats->ML", "Coding->ML", "ML->AI", "AI->Ethics", "Ethics->Stats"]
@@ -528,7 +454,6 @@ DECLARE
     WHILE i < DEGREE(v)
       w = NEIGHBOR(v, i)
       IF w.color == "GRAY"
-        // Back edge v -> w: rebuild the cycle w -> ... -> v -> w.
         cycle = w.name
         curr = v
         path = ""
@@ -574,17 +499,11 @@ END
 `,
 
   BipartiteCheck: `SCENE TwoTeamsBipartite
-// Split players into two teams so that no two RIVALS (edge) share a team.
-// That is possible exactly when the graph is BIPARTITE (2-colourable).
-// BFS colours the start 0, its neighbours 1, their neighbours 0, ...
-// If an edge ever joins two vertices of the SAME colour, it is impossible —
-// that happens precisely when the graph has a cycle of odd length.
 
 DECLARE
   GRAPH rivals = ["Ana-Bo", "Ana-Cy", "Bo-Dan", "Cy-Dan", "Dan-Eve", "Eve-Fay"]
   QUEUE q = []
 
-  // Tries to 2-colour every vertex; returns FALSE at the first conflict.
   FUNCTION splitTeams()
     LOOP k FROM 0 TO VERTEX_COUNT(rivals) - 1
       p = VERTEX_AT(rivals, k)
@@ -618,7 +537,6 @@ DECLARE
     RETURN TRUE
   END
 
-  // Prints the members of each team.
   FUNCTION showTeams()
     LOOP team FROM 0 TO 1
       line = ""
@@ -640,7 +558,6 @@ SEQUENCE
     PRINT "No valid split"
   END
 
-  // A new rivalry creates a triangle Dan - Eve - Fay (odd cycle of length 3).
   ADD_EDGE rivals "Dan" "Fay"
   IF splitTeams()
     showTeams()
@@ -651,12 +568,6 @@ END
 `,
 
   TopologicalSortKahn: `SCENE CourseScheduleKahn
-// Topological order: a list of the vertices where every arrow points
-// forwards — here, an order to take courses so prerequisites come first.
-// Kahn's algorithm: v.need = IN_DEGREE(v) = prerequisites still missing.
-// Courses with need 0 can be taken now (queue). Taking one lowers the need
-// of every course it unlocks; a course whose need drops to 0 joins the queue.
-// If some courses never reach 0, the prerequisites contain a cycle.
 
 DECLARE
   GRAPH plan = ["Intro->DSA", "Intro->Web", "Maths->DSA", "DSA->Algo", "Maths->Algo", "Web->Proj", "Algo->Proj"]
@@ -698,10 +609,6 @@ END
 `,
 
   TopologicalSortDFS: `SCENE GettingDressedDFS
-// Topological sort with DFS: a vertex is FINISHED only after everything
-// that must come after it is finished. Pushing each vertex onto a stack as
-// it finishes, then popping the stack, lists the vertices in a valid order.
-// "Socks->Shoes" = socks must go on before shoes.
 
 DECLARE
   GRAPH dress = ["Socks->Shoes", "Pants->Shoes", "Pants->Belt", "Shirt->Belt", "Shirt->Tie", "Tie->Coat", "Belt->Coat", "Watch"]
@@ -717,7 +624,6 @@ DECLARE
       END
       i = i + 1
     END
-    // Everything that depends on 'item' is on the stack already.
     PUSH finished item
   END
 
@@ -742,13 +648,6 @@ END
 `,
 
   DijkstraShortestPath: `SCENE DijkstraDeliveryRoute
-// Dijkstra's algorithm: shortest distances from one source in a graph with
-// NON-NEGATIVE weights (here: km between places in a town).
-//   1. Every place starts at distance INFINITY, the source at 0.
-//   2. Repeatedly pick the unvisited place with the smallest distance —
-//      its distance is now final — and RELAX its roads: if going through it
-//      is shorter, update the neighbour's dist and parent.
-// This version scans for the minimum with a loop (O(V^2)), no heap needed.
 
 DECLARE
   GRAPH town = ["Shop-Mkt:4", "Shop-Park:1", "Park-Mkt:2", "Mkt-Bank:5", "Park-Gym:8", "Bank-Gym:3", "Bank-Home:6", "Gym-Home:2"]
@@ -765,7 +664,6 @@ SEQUENCE
 
   finished = FALSE
   WHILE finished == FALSE
-    // Pick the closest place not finalised yet.
     u = NULL
     best = INFINITY
     LOOP k FROM 0 TO VERTEX_COUNT(town) - 1
@@ -781,7 +679,6 @@ SEQUENCE
     ELSE
       u.visited = TRUE
       PRINT "Finalised" u.name "at" u.dist "km"
-      // Relax every road out of u.
       i = 0
       WHILE i < DEGREE(u)
         v = NEIGHBOR(u, i)
@@ -797,7 +694,6 @@ SEQUENCE
     END
   END
 
-  // Shortest route to Home: follow parents back, then reverse with a stack.
   curr = VERTEX(town, "Home")
   WHILE curr != NULL
     PUSH route curr
@@ -814,13 +710,6 @@ END
 `,
 
   BellmanFordAlgorithm: `SCENE BellmanFordDrone
-// Bellman-Ford handles NEGATIVE weights, which Dijkstra cannot. Here the
-// weight is battery used by a delivery drone; flying downhill (Ridge->Mill)
-// recharges it, a negative cost.
-// Relax EVERY edge, V - 1 times (a shortest path has at most V - 1 edges).
-// The edges are listed "backwards" on purpose: good news travels only one
-// edge further per round, so watch the distances improve round by round.
-// One more round that still improves something proves a negative cycle.
 
 DECLARE
   GRAPH air = ["Port->Dock:2", "Mill->Port:4", "Ridge->Mill:-3", "Mill->Dock:7", "Ridge->Port:6", "Base->Ridge:4", "Base->Mill:5"]
@@ -854,7 +743,6 @@ SEQUENCE
     PRINT "The last round changed nothing: the distances are final."
   END
 
-  // Extra round: any further improvement means a negative cycle.
   negative = FALSE
   LOOP k FROM 0 TO EDGE_COUNT(air) - 1
     e = EDGE_AT(air, k)
@@ -873,11 +761,6 @@ END
 `,
 
   PrimsMST: `SCENE PrimsFibreNetwork
-// Connect every office with fibre cable using the least total cable: a
-// MINIMUM SPANNING TREE. Prim's algorithm grows one tree from a start
-// office: v.key = cheapest known cable joining v to the tree so far.
-// Each round adds the outside office with the smallest key, then updates
-// its neighbours' keys. The parent edges (green) form the tree.
 
 DECLARE
   GRAPH offices = ["HQ-Lab:4", "HQ-Shop:3", "Lab-Shop:1", "Lab-Depot:2", "Shop-Depot:4", "Depot-Cafe:3", "Shop-Cafe:6"]
@@ -893,7 +776,6 @@ SEQUENCE
 
   total = 0
   LOOP round FROM 1 TO VERTEX_COUNT(offices)
-    // The office outside the tree that is cheapest to connect.
     u = NULL
     LOOP k FROM 0 TO VERTEX_COUNT(offices) - 1
       o = VERTEX_AT(offices, k)
@@ -912,7 +794,6 @@ SEQUENCE
     IF u.parent != NULL
       PRINT "Lay cable" u.parent.name "-" u.name ":" u.key "km"
     END
-    // Offices next to u may now be cheaper to reach through u.
     i = 0
     WHILE i < DEGREE(u)
       v = NEIGHBOR(u, i)
@@ -928,16 +809,10 @@ END
 `,
 
   KruskalsMST: `SCENE KruskalsVillageRoads
-// Kruskal's algorithm builds the minimum spanning tree from the edges:
-// take roads from cheapest to most expensive, and keep a road only when it
-// joins two villages that are NOT already connected (otherwise it would
-// close a cycle). "Already connected" is answered by UNION-FIND: every
-// village points (leader) towards the representative of its group.
 
 DECLARE
   GRAPH roads = ["Ash-Bay:7", "Ash-Cove:5", "Bay-Cove:8", "Bay-Dale:9", "Bay-Elm:7", "Cove-Dale:15", "Dale-Elm:5", "Dale-Fen:6", "Elm-Fen:8", "Elm-Glen:9", "Fen-Glen:11"]
 
-  // Follows leader pointers until a village that leads itself.
   FUNCTION findLeader(v)
     WHILE v.leader != v
       v = v.leader
@@ -946,7 +821,6 @@ DECLARE
   END
 
 SEQUENCE
-  // Every village starts as its own group.
   LOOP k FROM 0 TO VERTEX_COUNT(roads) - 1
     v = VERTEX_AT(roads, k)
     v.leader = v
@@ -959,7 +833,6 @@ SEQUENCE
   kept = 0
   total = 0
   LOOP step FROM 1 TO EDGE_COUNT(roads)
-    // Cheapest road not looked at yet.
     cheapest = NULL
     LOOP k FROM 0 TO EDGE_COUNT(roads) - 1
       e = EDGE_AT(roads, k)
@@ -978,7 +851,6 @@ SEQUENCE
     a = findLeader(cheapest.from)
     b = findLeader(cheapest.to)
     IF a != b
-      // Different groups: keep the road and merge the groups.
       cheapest.inTree = TRUE
       a.leader = b
       kept = kept + 1
@@ -993,10 +865,6 @@ END
 `,
 
   CountAllPaths: `SCENE AllRoutesBacktracking
-// Every different way to walk from Home to School without visiting a place
-// twice. This is BACKTRACKING: mark a place as used, try every way onward,
-// then UNMARK it on the way back so other routes may pass through it.
-// The function RETURNS how many routes it found from 'place'.
 
 DECLARE
   GRAPH map = ["Home-Park", "Home-Mall", "Park-Mall", "Park-School", "Mall-Lib", "Lib-School", "Park-Lib"]
@@ -1016,7 +884,6 @@ DECLARE
       END
       i = i + 1
     END
-    // Backtrack: free this place for the other routes.
     place.visited = FALSE
     RETURN count
   END
@@ -1028,10 +895,6 @@ END
 `,
 
   GreedyColoring: `SCENE ExamTimetableColoring
-// Two exams that share a student cannot be in the same time slot (edge =
-// conflict). Greedy colouring: take the exams one by one and give each the
-// lowest slot number that none of its already-scheduled neighbours uses.
-// v.color = slot paints each slot its own colour.
 
 DECLARE
   GRAPH exams = ["Maths-Phys", "Maths-Chem", "Phys-Chem", "Phys-Bio", "Chem-Eng", "Bio-Eng", "Eng-Art", "Hist-Art"]
@@ -1047,7 +910,6 @@ SEQUENCE
     x = VERTEX_AT(exams, k)
     slot = 0
     clash = TRUE
-    // Try slot 0, 1, 2, ... until no neighbour already uses it.
     WHILE clash
       clash = FALSE
       i = 0

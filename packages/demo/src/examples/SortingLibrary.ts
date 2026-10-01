@@ -26,11 +26,6 @@ DECLARE
   ARRAY arr = [64, 34, 25, 12, 22, 11, 90]
 
 SEQUENCE
-  // Walk through the array comparing neighbours; if the left one is larger,
-  // swap them. After each pass the largest remaining value has "bubbled" to
-  // the end of the unsorted part, so that cell turns green and the next pass
-  // can stop one cell earlier.
-  // If a whole pass makes no swap, the array is already sorted: stop early.
   n = LENGTH(arr)
   pass = 0
   swapped = 1
@@ -53,7 +48,6 @@ SEQUENCE
     PRINT "Pass " + pass + " made no swaps, so the array is already sorted"
   END
 
-  // Whatever is left in front of the green cells is already in order
   k = 0
   WHILE k < n - pass
     HIGHLIGHT arr[k] 'SUCCESS'
@@ -69,9 +63,6 @@ DECLARE
   ARRAY arr = [64, 25, 12, 22, 11]
 
 SEQUENCE
-  // For each position i, scan the unsorted part arr[i .. n-1] for the
-  // smallest value (purple), then swap it into position i. Exactly one swap
-  // per pass, so selection sort makes at most n - 1 swaps in total.
   n = LENGTH(arr)
   swaps = 0
 
@@ -82,8 +73,6 @@ SEQUENCE
     LOOP j FROM i + 1 TO n - 1
       COMPARE arr[minIndex] arr[j]
       IF arr[j] < arr[minIndex]
-        // A new smallest value: the old candidate loses its colour
-        // (unless it is position i, which we are filling)
         IF minIndex != i
           HIGHLIGHT arr[minIndex] 'NEUTRAL'
         END
@@ -103,7 +92,6 @@ SEQUENCE
     HIGHLIGHT arr[i] 'SUCCESS'
   END
 
-  // The last element is the only one left, so it is in place too
   HIGHLIGHT arr[n - 1] 'SUCCESS'
   PRINT "Sorted with " + swaps + " swaps:" arr
 END
@@ -115,9 +103,6 @@ DECLARE
   ARRAY arr = [12, 11, 13, 5, 6]
 
 SEQUENCE
-  // Like sorting playing cards in your hand: arr[0 .. i-1] is already sorted.
-  // Pick up the next card (key = arr[i]), shift every larger card one place
-  // right to open a gap, then drop the key into the gap.
   n = LENGTH(arr)
   shifts = 0
 
@@ -127,7 +112,6 @@ SEQUENCE
     PRINT "Insert key " + key
     j = i - 1
 
-    // Keep shifting while there is a card to the left AND it is bigger than key
     keepShifting = 1
     WHILE keepShifting == 1
       IF j < 0
@@ -144,8 +128,6 @@ SEQUENCE
       END
     END
 
-    // j + 1 is the gap where key belongs
-    // Cells are only final once every key is inserted, so no green yet
     UPDATE arr[j + 1] key
     HIGHLIGHT arr[i] 'NEUTRAL'
     HIGHLIGHT arr[j + 1]
@@ -164,10 +146,6 @@ END
 DECLARE
   ARRAY arr = [10, 80, 30, 90, 40, 50, 70]
 
-  // Lomuto partition: the last element of the range is the pivot (purple).
-  // 'wall' marks the end of the "smaller than pivot" zone. Every element
-  // smaller than the pivot is swapped to just after the wall. Finally the
-  // pivot is swapped in after the wall: that is its final sorted position.
   FUNCTION partition(low, high)
     pivot = arr[high]
     HIGHLIGHT arr[high] 'MARKED'
@@ -194,8 +172,6 @@ DECLARE
     RETURN pivotIndex
   END
 
-  // Sort arr[low .. high]: partition it, then sort the part left of the
-  // pivot and the part right of it. A range of one element is already sorted.
   FUNCTION quickSort(low, high)
     IF low < high
       p = partition(low, high)
@@ -218,9 +194,6 @@ DECLARE
   ARRAY arr = [38, 27, 43, 3, 9, 82, 10]
   ARRAY temp = []
 
-  // Merge the two sorted halves arr[low .. mid] and arr[mid+1 .. high].
-  // Repeatedly take the smaller front element into temp, copy whatever is
-  // left over, then copy temp back into arr[low .. high] and empty temp.
   FUNCTION merge(low, mid, high)
     i = low
     j = mid + 1
@@ -248,7 +221,6 @@ DECLARE
       k = k + 1
     END
 
-    // Copy back; the merged range turns purple
     t = 0
     WHILE t < k
       UPDATE arr[low + t] temp[t]
@@ -261,7 +233,6 @@ DECLARE
     PRINT "Merged [" + low + ".." + high + "]:" arr
   END
 
-  // Split in the middle, sort each half, merge the two sorted halves.
   FUNCTION mergeSort(low, high)
     IF low < high
       total = low + high
@@ -286,9 +257,6 @@ END
 DECLARE
   ARRAY arr = [12, 11, 13, 5, 6, 7]
 
-  // The array is read as a binary tree: the children of index p are
-  // 2p + 1 and 2p + 2. siftDown moves arr[start] down until it is larger
-  // than both children, looking only at the first 'size' cells.
   FUNCTION siftDown(start, size)
     parent = start
     keepSifting = 1
@@ -320,7 +288,6 @@ DECLARE
 SEQUENCE
   n = LENGTH(arr)
 
-  // Phase 1: build a max-heap, sifting down every non-leaf from the last one
   half = (n - n % 2) / 2
   i = half - 1
   WHILE i >= 0
@@ -329,8 +296,6 @@ SEQUENCE
   END
   PRINT "Max-heap (largest value at index 0):" arr
 
-  // Phase 2: the largest value is at the root. Swap it to the end of the
-  // heap (green, final place), shrink the heap by one and repair it.
   last = n - 1
   WHILE last > 0
     SWAP arr[0] arr[last]
@@ -350,10 +315,6 @@ DECLARE
   ARRAY arr = [23, 12, 1, 8, 34, 54, 2, 3]
 
 SEQUENCE
-  // Insertion sort only moves an element one step at a time. Shell sort
-  // first runs insertion sort on elements 'gap' apart, so small values jump
-  // far to the left early, then halves the gap. The last round (gap = 1) is
-  // an ordinary insertion sort, but by then there is very little left to do.
   n = LENGTH(arr)
   gap = (n - n % 2) / 2
 
@@ -361,8 +322,6 @@ SEQUENCE
     PRINT "Gap = " + gap
     i = gap
     WHILE i < n
-      // Gapped insertion: swap arr[j] back while the element gap places
-      // to its left is larger
       j = i
       keepMoving = 1
       WHILE keepMoving == 1
@@ -397,15 +356,11 @@ DECLARE
   ARRAY arr = [5, 1, 4, 2, 8, 0, 2]
 
 SEQUENCE
-  // Bubble sort that goes both ways: a forward pass carries the largest
-  // value to the right end, a backward pass carries the smallest value to
-  // the left end. Both ends turn green and the unsorted window shrinks.
   start = 0
   finish = LENGTH(arr) - 1
   swapped = 1
 
   WHILE swapped == 1 AND start < finish
-    // Forward pass: left to right
     swapped = 0
     j = start
     WHILE j < finish
@@ -419,7 +374,6 @@ SEQUENCE
     HIGHLIGHT arr[finish] 'SUCCESS'
     finish = finish - 1
 
-    // Backward pass: right to left (only needed if something moved)
     IF swapped == 1
       swapped = 0
       j = finish - 1
@@ -437,7 +391,6 @@ SEQUENCE
     PRINT "Window now [" + start + ".." + finish + "]:" arr
   END
 
-  // The cells still inside the window are already in order
   k = start
   WHILE k <= finish
     HIGHLIGHT arr[k] 'SUCCESS'
@@ -455,13 +408,8 @@ DECLARE
   ARRAY output = []
 
 SEQUENCE
-  // No comparisons between elements at all. counts[v] = how many times the
-  // value v appears. Reading counts from v = 0 upwards and writing each v
-  // counts[v] times produces the sorted order.
-  // Works for whole numbers >= 0; it is fast when the largest value is small.
   n = LENGTH(arr)
 
-  // Step 1: find the largest value, so we know how big counts must be
   maxValue = arr[0]
   LOOP i FROM 1 TO n - 1
     IF arr[i] > maxValue
@@ -470,12 +418,10 @@ SEQUENCE
   END
   PRINT "Largest value = " + maxValue + ", so counts has indices 0.." + maxValue
 
-  // Step 2: counts = [0, 0, ..., 0]
   LOOP v FROM 0 TO maxValue
     INSERT counts[v] 0
   END
 
-  // Step 3: tally every element
   LOOP i FROM 0 TO n - 1
     HIGHLIGHT arr[i]
     value = arr[i]
@@ -484,7 +430,6 @@ SEQUENCE
   END
   PRINT "Counts:" counts
 
-  // Step 4: write each value v, counts[v] times
   k = 0
   LOOP v FROM 0 TO maxValue
     HIGHLIGHT counts[v]
@@ -496,7 +441,6 @@ SEQUENCE
     HIGHLIGHT counts[v] 'DISCARDED'
   END
 
-  // Step 5: copy the result back into arr
   LOOP i FROM 0 TO n - 1
     UPDATE arr[i] output[i]
     HIGHLIGHT arr[i] 'SUCCESS'
@@ -513,9 +457,6 @@ DECLARE
   ARRAY output = []
 
 SEQUENCE
-  // Sort by the ones digit, then the tens digit, then the hundreds digit ...
-  // Each round is a STABLE counting sort on one digit: equal digits keep
-  // their previous order, so the work of the earlier rounds is not lost.
   n = LENGTH(arr)
   maxValue = arr[0]
   LOOP i FROM 0 TO n - 1
@@ -527,12 +468,10 @@ SEQUENCE
 
   place = 1
   WHILE place <= maxValue
-    // Reset the ten digit counters
     LOOP d FROM 0 TO 9
       UPDATE digitCount[d] 0
     END
 
-    // Count each digit. digit = (value / place, rounded down) % 10
     LOOP i FROM 0 TO n - 1
       value = arr[i]
       shifted = (value - value % place) / place
@@ -540,13 +479,10 @@ SEQUENCE
       UPDATE digitCount[digit] digitCount[digit] + 1
     END
 
-    // Running totals: digitCount[d] = how many elements have digit <= d,
-    // i.e. one past the last output slot for digit d
     LOOP d FROM 1 TO 9
       UPDATE digitCount[d] digitCount[d] + digitCount[d - 1]
     END
 
-    // Place elements from right to left, so equal digits stay in order
     LOOP i FROM n - 1 TO 0
       HIGHLIGHT arr[i]
       value = arr[i]
@@ -577,11 +513,6 @@ DECLARE
   ARRAY arr = [20, 40, 50, 10, 30]
 
 SEQUENCE
-  // Cycle sort writes each value straight into its final position, so it
-  // makes the fewest possible writes (useful when writing is expensive,
-  // e.g. flash memory). The final position of a value = how many elements
-  // are smaller than it. Put the value there, pick up the value that was
-  // sitting there, and repeat until the cycle comes back to the start.
   n = LENGTH(arr)
   writes = 0
 
@@ -589,7 +520,6 @@ SEQUENCE
     item = arr[cycleStart]
     HIGHLIGHT arr[cycleStart] 'MARKED'
 
-    // Where does item belong?
     pos = cycleStart
     LOOP i FROM cycleStart + 1 TO n - 1
       IF arr[i] < item
@@ -600,7 +530,6 @@ SEQUENCE
     IF pos == cycleStart
       PRINT item + " is already in its place"
     ELSE
-      // Skip past equal values, so duplicates do not loop forever
       WHILE item == arr[pos]
         pos = pos + 1
       END
@@ -611,7 +540,6 @@ SEQUENCE
       item = held
       writes = writes + 1
 
-      // Keep going round the cycle until we are back at cycleStart
       WHILE pos != cycleStart
         pos = cycleStart
         LOOP i FROM cycleStart + 1 TO n - 1
@@ -643,8 +571,6 @@ END
 DECLARE
   ARRAY arr = [3, 6, 1, 10, 7, 2]
 
-  // flip(k) reverses arr[0 .. k], like sliding a spatula under the k-th
-  // pancake and flipping the whole stack above it.
   FUNCTION flip(k)
     left = 0
     right = k
@@ -656,14 +582,10 @@ DECLARE
   END
 
 SEQUENCE
-  // The only move allowed is a flip. For each stack size, find the biggest
-  // pancake, flip it to the top, then flip it down to the bottom of the
-  // unsorted stack. At most 2 flips per pancake.
   flips = 0
   size = LENGTH(arr)
 
   WHILE size > 1
-    // Find the biggest pancake among arr[0 .. size-1]
     maxIndex = 0
     LOOP i FROM 1 TO size - 1
       COMPARE arr[i] arr[maxIndex]
@@ -700,10 +622,6 @@ DECLARE
   ARRAY marks = [72, 95, 64, 88, 95, 50]
 
 SEQUENCE
-  // Two PARALLEL arrays: rollNo[i] scored marks[i]. To make a rank list we
-  // sort by marks, highest first (selection sort), and every time two marks
-  // are swapped the matching roll numbers are swapped too, so each student
-  // stays paired with their own marks.
   n = LENGTH(marks)
 
   LOOP i FROM 0 TO n - 2
@@ -724,8 +642,6 @@ SEQUENCE
   HIGHLIGHT marks[n - 1] 'SUCCESS'
   HIGHLIGHT rollNo[n - 1] 'SUCCESS'
 
-  // Students with equal marks share a rank (95, 95 are both rank 1; the
-  // next student is rank 3)
   PRINT "Rank list:"
   rank = 1
   LOOP i FROM 0 TO n - 1
@@ -746,17 +662,12 @@ DECLARE
   ARRAY newScores = [900, 450, 870, 1000]
 
 SEQUENCE
-  // A game keeps its top scores sorted from highest to lowest. When a new
-  // score arrives we do NOT re-sort everything: one step of insertion sort
-  // puts it in the right place. Scores that fall off the bottom are dropped,
-  // so the board always keeps its original size.
   boardSize = LENGTH(board)
 
   LOOP s FROM 0 TO LENGTH(newScores) - 1
     score = newScores[s]
     HIGHLIGHT newScores[s] 'MARKED'
 
-    // Walk up from the bottom while the new score beats the one above
     pos = LENGTH(board)
     keepClimbing = 1
     WHILE keepClimbing == 1
@@ -789,12 +700,6 @@ DECLARE
   ARRAY arr = [3, 1, 5, 2, 4]
   ARRAY temp = []
 
-  // An inversion is a pair i < j with arr[i] > arr[j]: a pair that is in
-  // the wrong order. Two people ranking the same songs can be compared by
-  // counting inversions — 0 means they agree completely.
-  // Merge sort counts them for free: when an element of the RIGHT half is
-  // taken before the remaining elements of the LEFT half, it is smaller
-  // than all of them, so it forms (mid - i + 1) inversions at once.
   FUNCTION mergeCount(low, mid, high)
     i = low
     j = mid + 1
@@ -834,7 +739,6 @@ DECLARE
     RETURN found
   END
 
-  // Returns the number of inversions inside arr[low .. high] (and sorts it)
   FUNCTION sortCount(low, high)
     IF low >= high
       RETURN 0
@@ -861,19 +765,14 @@ DECLARE
   ARRAY times = [34, 12, 45, 7, 23, 18, 29]
 
 SEQUENCE
-  // Find the k-th smallest value WITHOUT sorting everything — e.g. the
-  // median delivery time. Partition like quick sort; the pivot lands at its
-  // final index p. If p is the index we want, done. Otherwise only ONE side
-  // can contain the answer, so we keep working on that side only.
   n = LENGTH(times)
-  k = (n + 1 - (n + 1) % 2) / 2      // the median: 4th smallest of 7
-  target = k - 1                    // its index in sorted order
+  k = (n + 1 - (n + 1) % 2) / 2
+  target = k - 1
   low = 0
   high = n - 1
   answer = -1
 
   WHILE answer == -1
-    // Lomuto partition of times[low .. high]
     pivot = times[high]
     HIGHLIGHT times[high] 'MARKED'
     wall = low - 1
@@ -899,7 +798,6 @@ SEQUENCE
       answer = times[p]
       HIGHLIGHT times[p] 'SUCCESS'
     ELSE IF p < target
-      // Answer is right of p: everything from low to p is ruled out
       LOOP x FROM low TO p
         HIGHLIGHT times[x] 'DISCARDED'
       END
@@ -923,13 +821,8 @@ DECLARE
   ARRAY itemId = [1, 2, 3, 4, 5]
 
 SEQUENCE
-  // A sort is STABLE if items with equal keys keep their original order.
-  // Insertion sort only moves an item past strictly LARGER items (>), never
-  // past an equal one, so it is stable. Here products are sorted by price;
-  // item ids show that among equal prices the original order is kept.
   n = LENGTH(price)
 
-  // Step 1: is it already sorted? One pass over neighbouring pairs.
   isSorted = 1
   LOOP i FROM 0 TO n - 2
     COMPARE price[i] price[i + 1]
@@ -943,7 +836,6 @@ SEQUENCE
     PRINT "Not sorted yet, running insertion sort"
   END
 
-  // Step 2: stable insertion sort, moving price and itemId together
   LOOP i FROM 1 TO n - 1
     keyPrice = price[i]
     keyId = itemId[i]

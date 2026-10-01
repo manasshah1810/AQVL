@@ -25,11 +25,6 @@ DECLARE
   TRIE dictionary
   ARRAY words = ["car", "cat", "cart", "care", "dog", "do"]
 
-  // Insert one word, one character at a time, starting at the root.
-  // For each character: if the edge for it is missing, create the child
-  // node; then step down into that child. The node reached after the last
-  // character is marked as the end of a word.
-  // Returns how many NEW nodes the word needed.
   FUNCTION insertWord(word)
     node = dictionary.root
     created = 0
@@ -72,10 +67,6 @@ DECLARE
   TRIE dictionary = ["car", "cart", "cat", "do", "dog"]
   ARRAY queries = ["cat", "ca", "cart", "cow", "do", "dot"]
 
-  // Walk down one edge per character. If an edge is missing (GET_CHILD
-  // gives NULL) the word cannot be in the trie. If the whole walk succeeds
-  // the word is only stored when a word ENDS at the last node: "ca" has a
-  // path (inside "car" and "cat") but no word ends there.
   FUNCTION search(word)
     node = dictionary.root
     LOOP i FROM 0 TO TEXT_LENGTH(word) - 1
@@ -112,9 +103,6 @@ DECLARE
   TRIE products = ["laptop", "lamp", "lantern", "phone", "photo"]
   ARRAY typed = ["la", "lamp", "pho", "lap", "pen", "laptops"]
 
-  // A prefix check is a search WITHOUT the final isEnd test: it only asks
-  // whether the path exists, i.e. whether at least one stored word begins
-  // with these letters.
   FUNCTION startsWith(prefix)
     node = products.root
     i = 0
@@ -129,7 +117,6 @@ DECLARE
     RETURN TRUE
   END
 
-  // The same walk, but the full word must end at the last node
   FUNCTION isWord(text)
     node = products.root
     i = 0
@@ -168,9 +155,6 @@ END
 DECLARE
   TRIE t = ["tea", "ten", "to", "inn", "in", "i", "tent"]
 
-  // Recursion visits every node exactly once: count this node, then add
-  // what each child's subtree contains. CHILD_AT lists children a to z.
-  // (WHILE, not LOOP: a leaf has 0 children, and LOOP 0 TO -1 would count down.)
   FUNCTION countWords(node)
     total = 0
     IF node.isEnd
@@ -194,7 +178,6 @@ DECLARE
     RETURN total
   END
 
-  // The deepest node is the last letter of the longest word
   FUNCTION longestWord(node)
     deepest = 0
     i = 0
@@ -208,7 +191,6 @@ DECLARE
     RETURN deepest
   END
 
-  // A leaf (no children) is always the end of a word
   FUNCTION countLeaves(node)
     IF CHILD_COUNT(node) == 0
       RETURN 1
@@ -253,10 +235,6 @@ DECLARE
     node.isEnd = TRUE
   END
 
-  // Depth-first walk that visits children from a to z. 'prefix' is the
-  // text spelled by the path so far. A word is written out BEFORE its
-  // children are visited, so "app" comes before "apple": exactly
-  // dictionary order.
   FUNCTION collect(node, prefix)
     IF node.isEnd
       INSERT sorted[LENGTH(sorted)] prefix
@@ -287,7 +265,6 @@ DECLARE
   ARRAY typed = ["car", "ca", "do", "x"]
   ARRAY suggestions = []
 
-  // Step 1: walk down to the node of the typed prefix (NULL if no word starts with it)
   FUNCTION findNode(prefix)
     node = searches.root
     i = 0
@@ -298,8 +275,6 @@ DECLARE
     RETURN node
   END
 
-  // Step 2: every word below that node starts with the prefix. Collect
-  // them depth-first, a to z, stopping once 'limit' suggestions are found.
   FUNCTION collect(node, text, limit)
     IF LENGTH(suggestions) >= limit
       RETURN 0
@@ -321,7 +296,6 @@ SEQUENCE
     prefix = typed[k]
     HIGHLIGHT typed[k] 'MARKED'
 
-    // Clear last round's suggestions
     WHILE LENGTH(suggestions) > 0
       DELETE suggestions[LENGTH(suggestions) - 1]
     END
@@ -356,12 +330,8 @@ DECLARE
     RETURN node.isEnd
   END
 
-  // Remove 'word' below 'node', where 'depth' letters are already matched.
-  // Returns TRUE when 'node' itself is no longer needed, so the caller can
-  // unlink it: it is not the end of another word and has no children left.
   FUNCTION removeWord(node, word, depth)
     IF depth == TEXT_LENGTH(word)
-      // The word ends here: unmark it (its letters may still be used by longer words)
       node.isEnd = FALSE
     ELSE
       ch = CHAR_AT(word, depth)
@@ -399,8 +369,6 @@ DECLARE
   ARRAY signups = ["sam", "sara", "sarah", "sandy", "tom", "tim", "sally"]
   ARRAY asks = ["sa", "sar", "s", "t", "ti", "z"]
 
-  // Every node keeps a count: how many stored words pass through it,
-  // which is how many words start with that node's prefix.
   FUNCTION insertName(name)
     node = usernames.root
     LOOP i FROM 0 TO TEXT_LENGTH(name) - 1
@@ -416,7 +384,6 @@ DECLARE
     node.isEnd = TRUE
   END
 
-  // One walk down the prefix, then the answer is stored right there
   FUNCTION countStartingWith(prefix)
     node = usernames.root
     i = 0
@@ -448,8 +415,6 @@ END
 DECLARE
   TRIE seen
 
-  // Count one word: walk / build its path, and keep the number of times it
-  // appeared in the node where it ends.
   FUNCTION addWord(word)
     node = seen.root
     LOOP i FROM 0 TO TEXT_LENGTH(word) - 1
@@ -466,7 +431,6 @@ DECLARE
     node.freq = node.freq + 1
   END
 
-  // Print every word with its count (a to z), and return the highest count
   FUNCTION report(node, prefix)
     best = 0
     IF node.isEnd
@@ -488,7 +452,6 @@ DECLARE
 SEQUENCE
   sentence = "the cat and the dog and the bird"
 
-  // Split the sentence into words by hand: collect letters until a space
   word = ""
   i = 0
   WHILE i < TEXT_LENGTH(sentence)
@@ -536,9 +499,6 @@ SEQUENCE
     insertWord(words[k])
   END
 
-  // The common prefix is the path from the root on which nobody branches
-  // off: keep walking while the node has exactly one child and no word
-  // ends there (a word ending means it is as long as the prefix can get).
   node = t.root
   prefix = ""
   WHILE CHILD_COUNT(node) == 1 AND node.isEnd == FALSE
@@ -561,7 +521,6 @@ DECLARE
   TRIE t
   ARRAY words = ["zebra", "dog", "duck", "dove", "dot"]
 
-  // count = how many words pass through a node
   FUNCTION insertWord(word)
     node = t.root
     LOOP i FROM 0 TO TEXT_LENGTH(word) - 1
@@ -577,8 +536,6 @@ DECLARE
     node.isEnd = TRUE
   END
 
-  // Walk the word until a node that only this word passes through
-  // (count 1): the letters so far already tell it apart from every other word.
   FUNCTION uniquePrefix(word)
     node = t.root
     prefix = ""
@@ -592,7 +549,6 @@ DECLARE
       END
       i = i + 1
     END
-    // Every letter is shared: the word is a prefix of another word
     RETURN word
   END
 
@@ -614,8 +570,6 @@ END
 DECLARE
   TRIE roots = ["cat", "bat", "rat", "ca"]
 
-  // The shortest root that begins 'word', or the word itself if none does.
-  // Walk the word's letters and stop at the FIRST node where a root ends.
   FUNCTION shortestRoot(word)
     node = roots.root
     prefix = ""
@@ -637,8 +591,6 @@ DECLARE
 
 SEQUENCE
   sentence = "the cattle was rattled by the battery"
-  // Split the sentence by hand. A space added at the end makes the last
-  // word end with a space too, so every word is handled in the same place.
   text = sentence + " "
   result = ""
   word = ""
@@ -677,15 +629,11 @@ SEQUENCE
   text = "pineapplepenapple"
   n = TEXT_LENGTH(text)
 
-  // reachable[p] = 1 when the first p letters can be split into dictionary words
   LOOP p FROM 0 TO n
     INSERT reachable[p] 0
   END
   reachable[0] = 1
 
-  // From every reachable position, walk the trie along the text. Each time
-  // a word ends, the position right after it becomes reachable too. The
-  // walk stops as soon as no dictionary word continues with the next letter.
   LOOP start FROM 0 TO n - 1
     IF reachable[start] == 1
       node = dictionary.root
@@ -718,12 +666,6 @@ END
 DECLARE
   TRIE t = ["w", "wo", "wor", "worl", "world", "a", "ap", "app", "appl", "apply", "apple", "banana"]
 
-  // Longest word that can be built one letter at a time, where every
-  // step on the way is itself a word (a, ap, app, appl, apple).
-  // Only follow children that end a word: a gap breaks the chain
-  // ("banana" is skipped because "b" is not a word).
-  // Children are visited a to z and only a strictly longer word replaces
-  // the best, so on a tie the alphabetically first word wins.
   FUNCTION longestFrom(node, prefix)
     best = prefix
     i = 0
@@ -756,10 +698,6 @@ SEQUENCE
   text = "banana"
   n = TEXT_LENGTH(text)
 
-  // Every substring is the beginning of some suffix. Put every suffix
-  // (banana, anana, nana, ana, na, a) into a trie: each node, except the
-  // root, is then exactly one different substring, even when it appears
-  // many times in the text ("ana" twice, "a" three times).
   created = 0
   LOOP start FROM 0 TO n - 1
     node = suffixes.root
@@ -785,9 +723,6 @@ DECLARE
   TRIE words = ["bad", "dad", "mad", "pad", "bed", "bat"]
   ARRAY patterns = ["pad", ".ad", "b..", "..x", "m.d", "...."]
 
-  // Does some stored word match 'pattern' from letter 'i' on, starting at
-  // 'node'? A "." matches any single letter, so it tries every child;
-  // any other character follows just its own edge.
   FUNCTION matches(node, pattern, i)
     IF i == TEXT_LENGTH(pattern)
       RETURN node.isEnd
@@ -845,9 +780,6 @@ DECLARE
 SEQUENCE
   typing = "alic"
 
-  // Search as you type: keep the node of what has been typed so far and
-  // take ONE step for each new letter, instead of starting over at the
-  // root every time.
   node = contacts.root
   typed = ""
   i = 0
@@ -875,13 +807,10 @@ DECLARE
   TRIE bits
   ARRAY nums = [3, 10, 5, 25, 2, 8]
 
-  // The bit of x worth 'place' (1, 2, 4, 8, ...): drop the lower bits,
-  // shift them away by dividing, and keep the last binary digit
   FUNCTION bitOf(x, place)
     RETURN ((x - x % place) / place) % 2
   END
 
-  // Store x as a path of 0 / 1 edges, most significant bit first
   FUNCTION insertNumber(x, top)
     node = bits.root
     place = top
@@ -896,9 +825,6 @@ DECLARE
     node.isEnd = TRUE
   END
 
-  // The largest x XOR y for a stored y: at every bit, go the OPPOSITE way
-  // when possible (bits that differ give 1 in the XOR), starting with the
-  // bit worth the most.
   FUNCTION bestXor(x, top)
     node = bits.root
     place = top
@@ -918,7 +844,6 @@ DECLARE
   END
 
 SEQUENCE
-  // How many bits do the numbers need? 'top' is the highest bit's value.
   largest = 0
   LOOP i FROM 0 TO LENGTH(nums) - 1
     largest = MAX(largest, nums[i])

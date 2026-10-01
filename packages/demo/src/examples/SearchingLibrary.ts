@@ -27,18 +27,14 @@ export const SearchingScripts = {
   LinearSearch: `SCENE LinearSearch
 
 DECLARE
-  // Roll numbers in the order students entered the exam hall (NOT sorted)
   ARRAY rollNo = [104, 117, 109, 123, 131, 112, 140]
 
-  // Check every cell from left to right until the target turns up.
-  // Returns the index of the first match, or -1 when it is not there.
   FUNCTION linearSearch(target)
     n = LENGTH(rollNo)
     foundAt = -1
     comparisons = 0
     i = 0
 
-    // Two reasons to stop: we ran out of cells, or we already found it
     WHILE i < n AND foundAt == -1
       HIGHLIGHT rollNo[i]
       comparisons = comparisons + 1
@@ -59,7 +55,6 @@ DECLARE
     RETURN foundAt
   END
 
-  // Paint every cell blue again before the next search
   FUNCTION resetColours()
     LOOP k FROM 0 TO LENGTH(rollNo) - 1
       HIGHLIGHT rollNo[k] 'NEUTRAL'
@@ -67,8 +62,6 @@ DECLARE
   END
 
 SEQUENCE
-  // Linear search works on ANY array, sorted or not, because it simply
-  // looks at every cell. The cost is that a miss checks all n cells.
   present = linearSearch(123)
   resetColours()
   absent = linearSearch(150)
@@ -82,13 +75,10 @@ END
   AllOccurrences: `SCENE AllOccurrences
 
 DECLARE
-  // Goals scored by a football team in each match of the season
   ARRAY goals = [2, 0, 3, 1, 3, 0, 3, 2, 1, 3]
   ARRAY matches = []
 
 SEQUENCE
-  // A plain linear search stops at the first match. To find EVERY match
-  // we must not stop early: walk the whole array and record each index.
   target = 3
   n = LENGTH(goals)
   count = 0
@@ -101,7 +91,6 @@ SEQUENCE
       HIGHLIGHT goals[i] 'SUCCESS'
       INSERT matches[count] i
       count = count + 1
-      // The first match is remembered only once; the last one keeps moving
       IF first == -1
         first = i
       END
@@ -121,13 +110,8 @@ END
   SentinelLinearSearch: `SCENE SentinelLinearSearch
 
 DECLARE
-  // Product barcodes on a supermarket shelf
   ARRAY codes = [5021, 7310, 4402, 9981, 6605, 3217]
 
-  // The normal loop checks TWO things every step: "i < n" and
-  // "codes[i] == target". A sentinel search copies the target into the last
-  // cell first, so the loop is guaranteed to stop and only needs ONE check.
-  // Afterwards the real last value is put back.
   FUNCTION sentinelSearch(target)
     n = LENGTH(codes)
     lastValue = codes[n - 1]
@@ -140,11 +124,9 @@ DECLARE
       i = i + 1
     END
 
-    // Put the real value back
     UPDATE codes[n - 1] lastValue
     HIGHLIGHT codes[n - 1] 'NEUTRAL'
 
-    // We stopped either on a real match, or on the sentinel in the last cell
     IF i < n - 1 OR lastValue == target
       HIGHLIGHT codes[i] 'SUCCESS'
       PRINT "Barcode " + target + " is at index " + i
@@ -174,14 +156,8 @@ END
   BinarySearch: `SCENE BinarySearch
 
 DECLARE
-  // Prices in a sorted price list. Binary search NEEDS sorted input.
   ARRAY price = [11, 12, 22, 25, 34, 64, 90, 105, 120]
 
-  // Look at the middle of the window [low .. high]:
-  //   equal   -> found
-  //   smaller -> the target can only be to the RIGHT, so low = mid + 1
-  //   bigger  -> the target can only be to the LEFT,  so high = mid - 1
-  // Every step throws away half of the window.
   FUNCTION binarySearch(target)
     low = 0
     high = LENGTH(price) - 1
@@ -199,7 +175,6 @@ DECLARE
         PRINT "Found " + target + " at index " + mid + " in " + step + " steps"
         RETURN mid
       ELSE IF price[mid] < target
-        // Everything from low to mid is too small: grey it out
         k = low
         WHILE k <= mid
           HIGHLIGHT price[k] 'DISCARDED'
@@ -207,7 +182,6 @@ DECLARE
         END
         low = mid + 1
       ELSE
-        // Everything from mid to high is too big
         k = mid
         WHILE k <= high
           HIGHLIGHT price[k] 'DISCARDED'
@@ -217,7 +191,6 @@ DECLARE
       END
     END
 
-    // The window became empty (low > high): the target is not there
     PRINT target + " is not in the list (window empty after " + step + " steps)"
     RETURN -1
   END
@@ -235,7 +208,6 @@ SEQUENCE
   resetColours()
   binarySearch(50)
 
-  // Worst case: how many times can the window be halved before it is empty?
   size = LENGTH(price)
   maxSteps = 0
   WHILE size > 0
@@ -249,12 +221,8 @@ END
   BinarySearchRecursive: `SCENE BinarySearchRecursive
 
 DECLARE
-  // Page numbers where chapters start in a textbook (sorted)
   ARRAY chapterStart = [1, 15, 32, 47, 60, 78, 95, 110, 126, 140]
 
-  // The same idea as the loop version, written as a recursive FUNCTION.
-  // Each call handles one window [low .. high] and calls itself on the
-  // half that can still contain the target. 'depth' is only for printing.
   FUNCTION search(target, low, high, depth)
     IF low > high
       PRINT "  depth " + depth + ": empty window, " + target + " is not a chapter start"
@@ -303,12 +271,8 @@ END
   FirstAndLastOccurrence: `SCENE FirstAndLastOccurrence
 
 DECLARE
-  // Marks of a class, sorted. Several students share the same mark.
   ARRAY marks = [35, 42, 42, 58, 67, 67, 67, 67, 81, 90]
 
-  // Ordinary binary search stops at ANY copy of the target. To find the
-  // FIRST copy, keep searching to the left after a match; for the LAST
-  // copy, keep searching to the right. 'answer' remembers the best match.
   FUNCTION firstIndex(target)
     low = 0
     high = LENGTH(marks) - 1
@@ -380,12 +344,8 @@ END
   SearchInsertPosition: `SCENE SearchInsertPosition
 
 DECLARE
-  // Today's appointment times at a clinic, sorted (930 means 9:30)
   ARRAY slots = [900, 930, 1015, 1100, 1245, 1400]
 
-  // Find the index of the first slot that is >= newTime (the "lower bound").
-  // That is where the new appointment must go to keep the list sorted.
-  // When every slot is smaller, the answer is LENGTH(slots): the very end.
   FUNCTION insertPosition(newTime)
     low = 0
     high = LENGTH(slots) - 1
@@ -395,7 +355,6 @@ DECLARE
       mid = low + (size - size % 2) / 2
       HIGHLIGHT slots[mid]
       IF slots[mid] >= newTime
-        // mid could be the answer, but something further left might be too
         answer = mid
         high = mid - 1
       ELSE
@@ -428,10 +387,8 @@ END
   JumpSearch: `SCENE JumpSearch
 
 DECLARE
-  // Seat numbers already sold for a show, sorted
   ARRAY sold = [1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31]
 
-  // Integer square root, found with a loop: the largest s with s * s <= n
   FUNCTION intSqrt(n)
     s = 0
     WHILE (s + 1) * (s + 1) <= n
@@ -440,9 +397,6 @@ DECLARE
     RETURN s
   END
 
-  // Jump ahead in blocks of 'step' cells, looking only at the LAST cell of
-  // each block. Once a block's last cell is >= target, the target can only
-  // be inside that block, so scan it from left to right.
   FUNCTION jumpSearch(target)
     n = LENGTH(sold)
     step = intSqrt(n)
@@ -470,7 +424,6 @@ DECLARE
         PRINT "Seat " + target + " is sold (index " + i + ")"
         RETURN i
       ELSE IF sold[i] > target
-        // Sorted: once we pass the target it cannot appear later
         i = blockEnd
       END
       i = i + 1
@@ -498,12 +451,8 @@ END
   ExponentialSearch: `SCENE ExponentialSearch
 
 DECLARE
-  // Sorted IDs in a long log. The target is usually near the front.
   ARRAY ids = [2, 4, 7, 10, 15, 21, 28, 36, 45, 55, 66, 78, 91, 105]
 
-  // Phase 1: grow 'bound' as 1, 2, 4, 8 ... until ids[bound] >= target
-  //          (or the array ends). Now the target lies in [bound/2 .. bound].
-  // Phase 2: an ordinary binary search inside that small range.
   FUNCTION exponentialSearch(target)
     n = LENGTH(ids)
     IF ids[0] == target
@@ -517,7 +466,6 @@ DECLARE
       HIGHLIGHT ids[bound] 'MARKED'
       bound = bound * 2
     END
-    // Half of the bound, rounded down (bound = 1 gives 0, not 0.5)
     low = (bound - bound % 2) / 2
     high = bound
     IF high > n - 1
@@ -563,10 +511,6 @@ END
 DECLARE
   ARRAY arr = [2, 5, 8, 12, 16, 23, 38, 45, 56, 72, 80, 94]
 
-  // Split the window into three parts with two probes, m1 and m2:
-  //   target < arr[m1]           -> keep only the left third
-  //   target > arr[m2]           -> keep only the right third
-  //   otherwise                  -> keep the middle third
   FUNCTION ternarySearch(target)
     low = 0
     high = LENGTH(arr) - 1
@@ -619,20 +563,14 @@ END
   InterpolationSearch: `SCENE InterpolationSearch
 
 DECLARE
-  // House numbers along a street, evenly spaced (sorted and uniform)
   ARRAY houses = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
 
-  // Instead of always probing the middle, GUESS where the target should be,
-  // the way you open a dictionary near the back for a word starting with "w":
-  //   pos = low + (target - houses[low]) * (high - low) / (houses[high] - houses[low])
-  // The division is rounded down with (a - a % b) / b.
   FUNCTION interpolationSearch(target)
     low = 0
     high = LENGTH(houses) - 1
     probes = 0
     WHILE low <= high AND target >= houses[low] AND target <= houses[high]
       probes = probes + 1
-      // All values in the window are equal: probe low (and avoid dividing by zero)
       pos = low
       IF houses[high] != houses[low]
         top = (target - houses[low]) * (high - low)
@@ -676,13 +614,8 @@ END
   RotatedArraySearch: `SCENE RotatedArraySearch
 
 DECLARE
-  // A sorted list of shop opening hours that was "rotated": it starts in
-  // the middle of the day and wraps around. [13 .. 23] then [1 .. 11].
   ARRAY hours = [13, 15, 18, 21, 23, 1, 4, 7, 9, 11]
 
-  // At every step at least ONE half of [low .. high] is properly sorted.
-  // Find which half it is, check whether the target lies inside it, and
-  // keep that half or the other one.
   FUNCTION searchRotated(target)
     low = 0
     high = LENGTH(hours) - 1
@@ -697,7 +630,6 @@ DECLARE
       END
 
       IF hours[low] <= hours[mid]
-        // Left half [low .. mid] is sorted
         IF target >= hours[low] AND target < hours[mid]
           PRINT "  left half " + hours[low] + ".." + hours[mid] + " is sorted and holds " + target
           high = mid - 1
@@ -706,7 +638,6 @@ DECLARE
           low = mid + 1
         END
       ELSE
-        // Right half [mid .. high] is sorted
         IF target > hours[mid] AND target <= hours[high]
           PRINT "  right half " + hours[mid] + ".." + hours[high] + " is sorted and holds " + target
           low = mid + 1
@@ -739,13 +670,7 @@ END
   PeakElement: `SCENE PeakOfATrail
 
 DECLARE
-  // Heights along a hiking trail: it only goes up, then only goes down
   ARRAY elevation = [120, 180, 260, 340, 410, 460, 430, 350, 240, 150]
-
-  // Binary search on the SLOPE. Compare elevation[mid] with the next point:
-  //   going up   (elevation[mid] < elevation[mid + 1]) -> the top is to the right
-  //   going down                                  -> the top is mid or left
-  // The window shrinks until low == high, which is the summit.
 
 SEQUENCE
   low = 0
@@ -773,10 +698,6 @@ DECLARE
   ARRAY numbers = [0, 1, 15, 16, 99, 1000]
   ARRAY roots = []
 
-  // "Binary search on the answer": the array is not searched at all.
-  // The answer r is somewhere in 0 .. x, and the question "is r * r <= x?"
-  // is TRUE for small r and FALSE for large r. Binary search finds the last
-  // r where it is still TRUE: the whole-number square root.
   FUNCTION intSqrt(x)
     low = 0
     high = x
@@ -810,16 +731,8 @@ END
   SortedMatrixSearch: `SCENE CinemaSeatSearch
 
 DECLARE
-  // A 3 x 4 cinema seat map stored row by row in one array. Seat numbers
-  // increase along each row and each row continues from the previous one,
-  // so read left-to-right, top-to-bottom the whole map is sorted.
-  //   row 0: 101 102 105 108
-  //   row 1: 110 113 117 120
-  //   row 2: 124 126 130 133
   ARRAY seats = [101, 102, 105, 108, 110, 113, 117, 120, 124, 126, 130, 133]
 
-  // Binary search over positions 0 .. rows * cols - 1, turning a position
-  // into (row, column) with division and remainder.
   FUNCTION findSeat(target, cols)
     low = 0
     high = LENGTH(seats) - 1
@@ -854,13 +767,9 @@ END
   MissingRollNumber: `SCENE MissingRollNumber
 
 DECLARE
-  // Roll numbers 1 .. 12 handed in, sorted, but one sheet is missing
   ARRAY handedIn = [1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12]
 
 SEQUENCE
-  // With nothing missing, handedIn[i] would be i + 1.
-  // Left of the gap that is still true; from the gap onwards it is off by one.
-  // Binary search for the first index where handedIn[i] != i + 1.
   n = LENGTH(handedIn)
   low = 0
   high = n - 1
@@ -889,12 +798,8 @@ END
   ShipWithinDays: `SCENE DeliveryTruckCapacity
 
 DECLARE
-  // Parcel weights (kg), to be shipped IN THIS ORDER within 'days' days.
-  // Each day the truck loads parcels from the front until the next one
-  // would exceed its capacity. What is the SMALLEST capacity that works?
   ARRAY parcels = [3, 2, 2, 4, 1, 4]
 
-  // How many days does a truck of this capacity need?
   FUNCTION daysNeeded(capacity)
     days = 1
     load = 0
@@ -911,7 +816,6 @@ DECLARE
 SEQUENCE
   allowedDays = 3
 
-  // The capacity is at least the heaviest parcel and at most all of them.
   heaviest = 0
   total = 0
   LOOP i FROM 0 TO LENGTH(parcels) - 1
@@ -921,7 +825,6 @@ SEQUENCE
     END
   END
 
-  // A bigger truck never needs MORE days, so binary search the capacity.
   low = heaviest
   high = total
   best = total
@@ -945,13 +848,9 @@ END
   ContactBookSearch: `SCENE ContactBookSearch
 
 DECLARE
-  // Contacts in a phone, sorted alphabetically, with a parallel array of
-  // phone extensions: name[i] belongs to ext[i].
   ARRAY name = ["Aarav", "Bhavna", "Chen", "Divya", "Farhan", "Isha", "Kabir", "Meera", "Rohan", "Zoya"]
   ARRAY ext = [201, 214, 238, 245, 260, 272, 289, 301, 317, 342]
 
-  // Text compares in dictionary order ("Chen" < "Divya"), so binary search
-  // works on names exactly as it does on numbers.
   FUNCTION lookUp(person)
     low = 0
     high = LENGTH(name) - 1
@@ -984,10 +883,8 @@ END
   BSTSearch: `SCENE BSTSearchPath
 
 DECLARE
-  // Library book IDs stored in a binary search tree
   BST shelf = [50, 30, 70, 20, 40, 60, 80, 35, 65]
 
-  // Iterative: follow one path from the root. Smaller -> left, larger -> right.
   FUNCTION searchLoop(key)
     curr = shelf.root
     path = ""
@@ -1007,8 +904,6 @@ DECLARE
     RETURN curr
   END
 
-  // Recursive: the same decision, expressed as "search the correct subtree".
-  // Returns the number of nodes compared (0 when the key is missing).
   FUNCTION searchRec(node, key, depth)
     IF node == NULL
       RETURN 0
@@ -1040,14 +935,9 @@ END
   MazeDFS: `SCENE MazeExitDFS
 
 DECLARE
-  // Rooms of a maze and the corridors between them
   GRAPH maze = ["Entry-Hall", "Hall-Armory", "Hall-Garden", "Armory-Dungeon", "Garden-Well", "Garden-Tower", "Tower-Exit", "Well-Crypt"]
   STACK route = []
 
-  // Depth-first search for ONE room. Walk into an unvisited room, and only
-  // when it is a dead end come back (the RETURN) and try the next corridor.
-  // Each room remembers the room it was entered from (parent).
-  // Returns TRUE as soon as the goal is reached, which stops the search.
   FUNCTION explore(room, goal)
     room.visited = TRUE
     PRINT "Enter " + room.name
@@ -1075,7 +965,6 @@ SEQUENCE
   start.parent = NULL
 
   IF explore(start, goal)
-    // Follow the parents back from the exit, then pop to print in order
     curr = goal
     WHILE curr != NULL
       PUSH route curr
@@ -1096,12 +985,10 @@ END
   NearestHospitalBFS: `SCENE NearestHospitalBFS
 
 DECLARE
-  // City areas joined by roads of equal length
   GRAPH city = ["Home-Market", "Home-School", "Market-Station", "School-Park", "Park-Lake", "Station-Fort", "Lake-Fort", "Station-Airport"]
   QUEUE q = []
 
 SEQUENCE
-  // Which areas have a hospital? Every vertex gets a value first.
   LOOP k FROM 0 TO VERTEX_COUNT(city) - 1
     area = VERTEX_AT(city, k)
     area.hospital = FALSE
@@ -1111,8 +998,6 @@ SEQUENCE
   park = VERTEX(city, "Park")
   park.hospital = TRUE
 
-  // Breadth-first search explores areas in rings of 1 road, 2 roads, ...
-  // so the FIRST hospital taken out of the queue is the nearest one.
   home = VERTEX(city, "Home")
   home.visited = TRUE
   home.dist = 0
@@ -1143,7 +1028,6 @@ SEQUENCE
   IF nearest == NULL
     PRINT "No hospital can be reached from Home"
   ELSE
-    // Walk the parents back to Home, adding each name to the FRONT
     route = nearest.name
     curr = nearest.parent
     WHILE curr != NULL

@@ -17,6 +17,7 @@ const CATEGORY_NOTE: Record<ExampleCategory, string> = {
   'Hash Maps': 'Keys mapped to buckets',
   Tries: 'Prefix trees for words',
   'Recursion & Functions': 'Functions that call themselves',
+  'Layout & Camera': 'Where things sit and where the camera looks',
 };
 
 interface ExampleExplorerProps {

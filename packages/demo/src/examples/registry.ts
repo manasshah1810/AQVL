@@ -25,6 +25,7 @@ import { HeapScripts }       from './HeapLibrary';
 import { HashMapScripts }    from './HashMapLibrary';
 import { TrieScripts }       from './TrieLibrary';
 import { RecursionScripts }  from './RecursionLibrary';
+import { LayoutScripts }     from './LayoutLibrary';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -41,7 +42,8 @@ export type ExampleCategory =
   | 'Heaps'
   | 'Hash Maps'
   | 'Tries'
-  | 'Recursion & Functions';
+  | 'Recursion & Functions'
+  | 'Layout & Camera';
 
 export interface Example {
   /** Unique, stable identifier (used as React key and for active-state tracking). */
@@ -1836,6 +1838,95 @@ export const EXAMPLES: Example[] = [
     description: 'Count the ways to pay an amount (use a coin again or move on) and find the fewest coins with a memo table, then read the coins back out of it.',
     difficulty: 'Hard',
     source: RecursionScripts.CoinChangeWays,
+  },
+  // ── Layout & Camera ─────────────────────────────────────────────────────────
+  {
+    id: 'layout-array-line',
+    title: 'Array Line Spacing',
+    category: 'Layout & Camera',
+    description: 'Set the spacing of an array with LAYOUT ... AS LINE, then highlight one element.',
+    difficulty: 'Easy',
+    source: LayoutScripts.ArrayLineSpacing,
+  },
+  {
+    id: 'layout-horizontal-stack',
+    title: 'Horizontal Stack',
+    category: 'Layout & Camera',
+    description: 'Stacks stand vertical by default; LINE with axis=horizontal lays one out as a row.',
+    difficulty: 'Easy',
+    source: LayoutScripts.HorizontalStack,
+  },
+  {
+    id: 'layout-ring',
+    title: 'Ring of Values',
+    category: 'Layout & Camera',
+    description: 'Arrange an array on a CIRCULAR ring and light each element in turn.',
+    difficulty: 'Easy',
+    source: LayoutScripts.RingOfValues,
+  },
+  {
+    id: 'layout-grid',
+    title: 'Array as a Matrix',
+    category: 'Layout & Camera',
+    description: 'GRID turns a flat array into three rows of three, and the corners and centre are marked.',
+    difficulty: 'Easy',
+    source: LayoutScripts.ArrayAsMatrix,
+  },
+  {
+    id: 'layout-graph-ring',
+    title: 'Graph: Physics to Ring',
+    category: 'Layout & Camera',
+    description: 'Build a cycle under FORCE_DIRECTED, then freeze it into a CIRCULAR ring mid-run.',
+    difficulty: 'Medium',
+    source: LayoutScripts.GraphPhysicsToRing,
+  },
+  {
+    id: 'layout-tree-spacing',
+    title: 'Tree Level and Sibling Gaps',
+    category: 'Layout & Camera',
+    description: 'HIERARCHY with explicit levelGap and siblingGap on a seven-node search tree.',
+    difficulty: 'Easy',
+    source: LayoutScripts.TreeSpacing,
+  },
+  {
+    id: 'camera-focus',
+    title: 'Camera Focus on One Structure',
+    category: 'Layout & Camera',
+    description: 'CAMERA FOCUS points the camera at the tree, then at the array, then back to AUTO_FIT.',
+    difficulty: 'Medium',
+    source: LayoutScripts.CameraFocusTwoStructures,
+  },
+  {
+    id: 'camera-orbit',
+    title: 'Camera Orbit',
+    category: 'Layout & Camera',
+    description: 'CAMERA ORBIT(15) turns slowly around the tree while two values are inserted.',
+    difficulty: 'Easy',
+    source: LayoutScripts.CameraOrbit,
+  },
+  {
+    id: 'camera-fixed-angle',
+    title: 'Fixed Camera Angle',
+    category: 'Layout & Camera',
+    description: 'CAMERA POSITION pins the camera at an absolute point and turns automatic follow off.',
+    difficulty: 'Easy',
+    source: LayoutScripts.CameraFixedAngle,
+  },
+  {
+    id: 'layout-pin-release',
+    title: 'Pin and Release an Element',
+    category: 'Layout & Camera',
+    description: 'POSITION lifts one element out of its row; an empty AT () drops it back.',
+    difficulty: 'Medium',
+    source: LayoutScripts.PinAndRelease,
+  },
+  {
+    id: 'layout-custom',
+    title: 'Manual Placement',
+    category: 'Layout & Camera',
+    description: 'LAYOUT ... AS CUSTOM() disables automatic placement, so each element gets its own POSITION.',
+    difficulty: 'Medium',
+    source: LayoutScripts.ManualPlacement,
   },
 ];
 

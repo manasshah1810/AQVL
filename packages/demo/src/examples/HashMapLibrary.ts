@@ -21,10 +21,6 @@ DECLARE
   HASH_MAP shelf
   ARRAY words = ["cat", "dog", "act", "bird", "fish", "god"]
 
-  // The map's hash function for text, written out by hand:
-  // add up the character code of every letter, then keep the remainder
-  // after dividing by the number of buckets. The remainder is always
-  // between 0 and buckets - 1, so it is a valid bucket index.
   FUNCTION hashOf(word, buckets)
     total = 0
     LOOP i FROM 0 TO TEXT_LENGTH(word) - 1
@@ -43,13 +39,10 @@ SEQUENCE
     myBucket = hashOf(word, buckets)
     PRINT word + " -> bucket " + myBucket
 
-    // Our hand-written hash must agree with the one the map uses
     IF myBucket != BUCKET_OF(shelf, word)
       PRINT "  our hash disagrees with the map!"
     END
 
-    // Is some word already waiting in that bucket? Then this is a collision.
-    // (WHILE, not LOOP: the map starts empty, and LOOP 0 TO -1 would count down.)
     j = 0
     WHILE j < LENGTH(shelf)
       other = KEY_AT(shelf, j)
@@ -59,7 +52,6 @@ SEQUENCE
       j = j + 1
     END
 
-    // Store the word with its number of letters as the value
     shelf[word] = TEXT_LENGTH(word)
     HIGHLIGHT words[k] 'NEUTRAL'
   END
@@ -76,19 +68,16 @@ DECLARE
   ARRAY askFor = ["ben", "eli", "chen", "asha"]
 
 SEQUENCE
-  // Store: map[key] = value. A new key is added to the bucket its hash picks.
   phone["chen"] = 5550103
   phone["dia"] = 5550104
   PRINT "Phone book:" phone
   PRINT "It holds " + LENGTH(phone) + " contacts"
 
-  // Same key again: nothing new is added, only the value is replaced
   PRINT "Ben's old number: " + phone["ben"]
   phone["ben"] = 5550199
   PRINT "Ben's new number: " + phone["ben"]
   PRINT "Still " + LENGTH(phone) + " contacts: keys are unique"
 
-  // Reading a key that is not there stops the program, so check first
   LOOP i FROM 0 TO LENGTH(askFor) - 1
     name = askFor[i]
     HIGHLIGHT askFor[i] 'MARKED'
@@ -99,7 +88,6 @@ SEQUENCE
     END
   END
 
-  // Chen moved away: remove the key and its value together
   IF CONTAINS(phone, "chen")
     DELETE phone["chen"]
     PRINT "Removed chen"
@@ -117,13 +105,9 @@ END
 
 DECLARE
   HASH_MAP lockers
-  // Locker numbers 5, 13, 21 and 29 all leave remainder 5 when divided by 8
   ARRAY numbers = [5, 13, 2, 21, 10, 29]
   ARRAY owners = ["Asha", "Ben", "Chen", "Dia", "Eli", "Farah"]
 
-  // How many keys does a lookup of 'key' compare before it finds it?
-  // It only looks inside the key's own bucket, walking the chain in the
-  // order the keys were added (KEY_AT lists every bucket's chain in order).
   FUNCTION comparisonsFor(key)
     bucket = BUCKET_OF(lockers, key)
     count = 0
@@ -143,21 +127,17 @@ DECLARE
   END
 
 SEQUENCE
-  // Separate chaining: every bucket holds a small list (a chain) of the
-  // keys that hash to it, so two keys in one bucket never overwrite each other.
   LOOP i FROM 0 TO LENGTH(numbers) - 1
     lockers[numbers[i]] = owners[i]
     PRINT "Locker " + numbers[i] + " (" + owners[i] + ") -> bucket " + BUCKET_OF(lockers, numbers[i])
   END
 
-  // The longer the chain, the more comparisons a lookup needs
   LOOP i FROM 0 TO LENGTH(numbers) - 1
     key = numbers[i]
     steps = comparisonsFor(key)
     PRINT "Finding locker " + key + " takes " + steps + " comparison(s)"
   END
 
-  // Read one from the end of the long chain, with its lookup animated
   owner = lockers[29]
   PRINT "Locker 29 belongs to " + owner
   PRINT "Bucket 5 holds 4 keys: when many keys collide, a lookup slows from O(1) towards O(n)"
@@ -171,10 +151,6 @@ DECLARE
   ARRAY ids = [101, 205, 309, 412, 518, 623, 707, 811, 916, 1020, 1125, 1231, 1337]
 
 SEQUENCE
-  // load factor = keys stored / number of buckets. This map keeps it at
-  // or below 0.75: when one more key would pass it, the bucket row
-  // doubles and EVERY key is hashed again (its bucket can change,
-  // because key % capacity changes when capacity changes).
   watched = ids[0]
   LOOP i FROM 0 TO LENGTH(ids) - 1
     before = CAPACITY(roll)
@@ -213,7 +189,6 @@ DECLARE
   ARRAY amounts = [1, 4, 2]
 
 SEQUENCE
-  // Add more to the cart: an existing item gets its quantity increased
   LOOP i FROM 0 TO LENGTH(adding) - 1
     item = adding[i]
     IF CONTAINS(cart, item)
@@ -224,7 +199,6 @@ SEQUENCE
   END
   PRINT "Cart:" cart
 
-  // Walk every key of the cart with KEY_AT(cart, 0 .. LENGTH(cart) - 1)
   subtotal = 0
   biggestItem = ""
   biggestCost = 0
@@ -257,9 +231,6 @@ END
   OpenAddressingByHand: `SCENE OpenAddressingByHand
 
 DECLARE
-  // A hash table built by hand from two plain arrays, no HASH_MAP at all.
-  // -1 marks an empty slot. Collisions are solved by LINEAR PROBING: if a
-  // slot is taken, try the next one (wrapping around at the end).
   ARRAY keys = [-1, -1, -1, -1, -1, -1, -1]
   ARRAY vals = [0, 0, 0, 0, 0, 0, 0]
   ARRAY incoming = [50, 700, 76, 85, 92, 73, 101]
@@ -282,8 +253,6 @@ DECLARE
     RETURN slot
   END
 
-  // Follows the same probe sequence as insertKey. An empty slot means the
-  // key was never stored (it would have been placed there).
   FUNCTION findSlot(key)
     size = LENGTH(keys)
     slot = key % size
@@ -328,7 +297,6 @@ END
 DECLARE
   HASH_MAP freq
 
-  // Adds one to word's count (first time seen: the count starts at 1)
   FUNCTION countWord(word)
     IF CONTAINS(freq, word)
       freq[word] = freq[word] + 1
@@ -340,7 +308,6 @@ DECLARE
 SEQUENCE
   sentence = "the cat sat on the mat and the cat ran"
 
-  // Split the sentence into words ourselves: collect letters until a space
   word = ""
   LOOP i FROM 0 TO TEXT_LENGTH(sentence) - 1
     letter = CHAR_AT(sentence, i)
@@ -353,7 +320,6 @@ SEQUENCE
       word = word + letter
     END
   END
-  // The last word has no space after it
   IF word != ""
     countWord(word)
   END
@@ -361,7 +327,6 @@ SEQUENCE
   PRINT "Counts:" freq
   PRINT LENGTH(freq) + " different words"
 
-  // Find the most frequent word by walking every key
   bestWord = ""
   bestCount = 0
   LOOP k FROM 0 TO LENGTH(freq) - 1
@@ -384,7 +349,6 @@ DECLARE
 SEQUENCE
   text = "swiss cheese is tasty"
 
-  // Pass 1: count every character (spaces are skipped)
   LOOP i FROM 0 TO TEXT_LENGTH(text) - 1
     letter = CHAR_AT(text, i)
     IF letter != " "
@@ -397,8 +361,6 @@ SEQUENCE
   END
   PRINT "Counts:" count
 
-  // Pass 2: walk the text in order; the first letter counted once wins.
-  // (Walking the map would not work: it is ordered by bucket, not by text.)
   answer = -1
   i = 0
   WHILE answer == -1 AND i < TEXT_LENGTH(text)
@@ -427,15 +389,12 @@ DECLARE
   ARRAY firstWords = ["listen", "triangle", "rat", "aab"]
   ARRAY secondWords = ["silent", "integral", "car", "abb"]
 
-  // Empties the map by deleting its first key until none are left
   FUNCTION clearBalance()
     WHILE LENGTH(balance) > 0
       DELETE balance[KEY_AT(balance, 0)]
     END
   END
 
-  // +1 for every letter of a, -1 for every letter of b.
-  // They are anagrams exactly when every letter ends at 0.
   FUNCTION isAnagram(a, b)
     IF TEXT_LENGTH(a) != TEXT_LENGTH(b)
       RETURN FALSE
@@ -484,16 +443,12 @@ END
 
 DECLARE
   ARRAY nums = [4, 9, 12, 2, 15, 7]
-  // seen[value] = the index where that value was met
   HASH_MAP seen
 
 SEQUENCE
   target = 22
   PRINT "Looking for two numbers that add up to " + target
 
-  // For each number, the partner it needs is target - number. If that
-  // partner was seen earlier, we are done: one pass, O(n) instead of
-  // checking every pair, O(n^2).
   found = 0
   i = 0
   WHILE found == 0 AND i < LENGTH(nums)
@@ -522,9 +477,7 @@ END
   FirstDuplicate: `SCENE FirstDuplicate
 
 DECLARE
-  // Ticket numbers scanned at a stadium gate
   ARRAY tickets = [4471, 1093, 8820, 5512, 1093, 7004, 8820]
-  // firstSeen[ticket] = the position where the ticket was first scanned
   HASH_MAP firstSeen
 
 SEQUENCE
@@ -558,7 +511,6 @@ END
 
 DECLARE
   ARRAY nums = [100, 4, 200, 1, 3, 2, 101, 102, 5, 103]
-  // Used as a set: only the keys matter
   HASH_MAP present
 
 SEQUENCE
@@ -566,9 +518,6 @@ SEQUENCE
     present[nums[i]] = TRUE
   END
 
-  // A run starts at x only when x - 1 is missing. From each start, count
-  // x, x + 1, x + 2, ... while they are present. Every number is counted
-  // inside one run only, so this is O(n) even without sorting.
   bestStart = 0
   bestLength = 0
   LOOP i FROM 0 TO LENGTH(nums) - 1
@@ -596,16 +545,10 @@ END
 
 DECLARE
   ARRAY nums = [3, 4, 7, 2, -3, 1, 4, 2]
-  // prefixCount[s] = how many prefixes (nums[0] + ... + nums[j]) add up to s.
-  // The empty prefix adds up to 0, once.
   HASH_MAP prefixCount = {0: 1}
 
 SEQUENCE
   k = 7
-  // A subarray nums[a..i] adds up to k exactly when
-  //   prefix(i) - prefix(a - 1) = k, that is prefix(a - 1) = prefix(i) - k.
-  // So at every i, the number of good subarrays ending at i is the number
-  // of earlier prefixes equal to runningSum - k.
   runningSum = 0
   total = 0
   LOOP i FROM 0 TO LENGTH(nums) - 1
@@ -634,15 +577,11 @@ END
   LongestSubstringWithoutRepeats: `SCENE LongestSubstringWithoutRepeats
 
 DECLARE
-  // lastSeen[letter] = the last position where that letter appeared
   HASH_MAP lastSeen
 
 SEQUENCE
   text = "geeksforgeeks"
 
-  // Sliding window text[start..i] with no repeated letter. When the letter
-  // at i was already seen INSIDE the window, the window must start just
-  // after that earlier copy.
   start = 0
   bestStart = 0
   bestLength = 0
@@ -676,7 +615,6 @@ DECLARE
   HASH_MAP votes
 
 SEQUENCE
-  // Count the ballots one by one
   LOOP i FROM 0 TO LENGTH(ballots) - 1
     name = ballots[i]
     IF CONTAINS(votes, name)
@@ -687,7 +625,6 @@ SEQUENCE
   END
   PRINT "Votes:" votes
 
-  // Find the highest count, and how many candidates share it
   topVotes = 0
   winner = ""
   tied = 0
@@ -722,7 +659,6 @@ SEQUENCE
   magazine = "a quick brown fox jumps over the lazy dog at dawn"
   note = "attack at dawn"
 
-  // Count the letters the magazine offers (spaces are free)
   LOOP i FROM 0 TO TEXT_LENGTH(magazine) - 1
     letter = CHAR_AT(magazine, i)
     IF letter != " "
@@ -735,7 +671,6 @@ SEQUENCE
   END
   PRINT "The magazine has " + LENGTH(letters) + " different letters"
 
-  // Cut out each letter of the note; stop at the first one we run out of
   possible = TRUE
   missing = ""
   i = 0
@@ -761,7 +696,6 @@ SEQUENCE
   IF possible
     PRINT "The note can be made from the magazine"
   ELSE
-    // A letter we ran out of is in the map (with 0 left): mark it
     IF missing != ""
       HIGHLIGHT letters[missing] 'DISCARDED'
     END
@@ -773,17 +707,12 @@ END
   MemoizedFibonacci: `SCENE MemoizedFibonacci
 
 DECLARE
-  // memo[n] = fib(n), once it has been worked out
   HASH_MAP memo
 
-  // Plain recursion recomputes the same values again and again:
-  // fib(30) would make over a million calls. Remembering each answer in a
-  // hash map means each fib(n) is computed once: O(n) calls.
   FUNCTION fib(n)
     IF CONTAINS(memo, n)
       RETURN memo[n]
     END
-    // fib(0) = 0 and fib(1) = 1; every other value is the sum of the two before it
     result = n
     IF n > 1
       result = fib(n - 1) + fib(n - 2)
@@ -797,12 +726,10 @@ SEQUENCE
   PRINT "fib(12) = " + answer
   PRINT "Values remembered: " + LENGTH(memo)
 
-  // Every value from fib(0) to fib(12) is now one lookup away
   LOOP n FROM 0 TO 12
     PRINT "fib(" + n + ") = " + memo[n]
   END
 
-  // Asking again costs a single lookup, no new calls
   again = fib(12)
   PRINT "fib(12) again = " + again + ", still " + LENGTH(memo) + " values remembered"
 END

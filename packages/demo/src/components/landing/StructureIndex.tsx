@@ -24,6 +24,7 @@ const GLOSS: Record<ExampleCategory, string> = {
   'Hash Maps': 'buckets, collisions and lookups',
   Tries: 'insert, search, prefixes, autocomplete',
   'Recursion & Functions': 'FUNCTION, RETURN and the call stack',
+  'Layout & Camera': 'LAYOUT, CAMERA and POSITION',
 };
 
 /**
