@@ -2,57 +2,28 @@
  * Integration coverage for the Playground's core user-facing flow:
  * load an example -> compile -> run -> see the visualization update.
  *
- * @aqvl/renderer's AQVECanvas mounts a react-three-fiber <Canvas>, which
- * needs a real WebGL context that jsdom doesn't provide. It's mocked out
- * with a plain stub that surfaces the sceneState it was handed, so these
- * tests can assert the pipeline produced real frame data without needing
- * a WebGL context.
+ * @aqvl/renderer's StageCanvas mounts a react-three-fiber <Canvas>, which
+ * needs a real WebGL context that jsdom doesn't provide. Only that component
+ * is replaced, with a stub that surfaces the execution trace it was handed;
+ * the playhead, timeline and the rest of the visualizer run for real.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
-import type { SceneState } from '@aqvl/runtime';
+import type { ExecutionTrace } from '@aqvl/runtime';
 
-vi.mock('@aqvl/renderer', () => ({
-  AQVECanvas: ({ sceneState }: { sceneState: SceneState | null }) => (
-    <div
-      data-testid="aqve-canvas-stub"
-      data-element-count={sceneState ? sceneState.elements.size : -1}
-    />
-  ),
-  // Narrator, live-line and Loops/Searching overlay plumbing: inert stand-ins.
-  Character: () => null,
-  CharacterController: class {
-    attach() {}
-    detach() {}
-    clear() {}
-    say() {}
-  },
-  ArrayCameraChoreographer: class {},
-  IterationDirector: class {
-    getOverlay() {
-      return { cursors: [], windows: [] };
-    }
-    subscribe() {
-      return () => {};
-    }
-    dispose() {}
-  },
-  useActiveLine: () => null,
-  useIterationOverlay: () => null,
-  // Stacks / Queues / Linked Lists overlay plumbing.
-  CharacterAnchorBridge: class {},
-  LinearCameraChoreographer: class {},
-  LinearDirector: class {
-    getOverlay() {
-      return { roles: {}, ends: [] };
-    }
-    subscribe() {
-      return () => {};
-    }
-    dispose() {}
-  },
-  useLinearOverlay: () => null,
-}));
+vi.mock('@aqvl/renderer', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@aqvl/renderer')>();
+  return {
+    ...actual,
+    StageCanvas: ({ trace }: { trace: ExecutionTrace }) => (
+      <div
+        data-testid="aqve-canvas-stub"
+        data-element-count={trace.frames[0]?.nodes.length ?? -1}
+        data-step-count={trace.frames.length - 1}
+      />
+    ),
+  };
+});
 
 import Playground from '../../src/pages/Playground';
 

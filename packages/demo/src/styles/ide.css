@@ -157,7 +157,36 @@
   .ide-canvas-host {
     position: relative;
     overflow: hidden;
-    background: #06060a; /* unchanged 3D ground */
+    display: flex;
+    flex-direction: column;
+    background: var(--ink-deep);
+  }
+
+  /* The visualizer on top, the run's output and instruction pointer under it. */
+  .ide-stage {
+    position: relative;
+    flex: 1;
+    min-height: 260px;
+    display: flex;
+  }
+
+  .ide-run-panels {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 300px);
+    gap: 10px;
+    height: 210px;
+    padding: 10px;
+    border-top: 1px solid var(--line);
+    background: var(--ink);
+  }
+
+  .ide-run-panels .rop,
+  .ide-run-panels .exec-debugger {
+    position: static;
+    width: auto;
+    max-height: none;
+    min-height: 0;
+    overflow: auto;
   }
 
   .ide-empty {

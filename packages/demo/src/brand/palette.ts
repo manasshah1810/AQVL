@@ -18,8 +18,8 @@ export const C = {
   lineStrong: 'var(--line-strong)',
 } as const;
 
-/**
- * The one neon, reserved for the 3D viewport frame (the "active node" colour
- * from the launch film). Never used in text, chrome or loaders.
+/*
+ * The one neon (#3FF6DC, the "active node" colour from the launch film) now
+ * lives only inside the 3D scene, where it is reserved for the single most
+ * important event: a value changing. See packages/renderer/src/stage/look/palette.ts.
  */
-export const VIEWPORT_NEON = '#3FF6DC';

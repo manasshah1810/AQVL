@@ -1,0 +1,633 @@
+/* ============================================================
+   Visualizer v2: stage overlays and transport.
+   Same tokens as the rest of the site (index.css): ink / peach /
+   cream, hairlines, 2px controls and 10px panels, mono for what
+   the machine says, serif for what it means.
+   ============================================================ */
+
+@layer components {
+  .vz {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    min-width: 0;
+  }
+
+  .vz-viewport {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    background: var(--ink-deep);
+    isolation: isolate;
+  }
+
+  /* Shared glass panel for everything drawn over the scene. */
+  .vz-panel,
+  .vz-caption__card,
+  .vz-tools,
+  .vz-notice,
+  .vz-error,
+  .vz-overlay {
+    background: color-mix(in srgb, var(--ink) 86%, transparent);
+    border: 1px solid var(--line);
+    border-radius: var(--r-panel);
+    backdrop-filter: blur(10px) saturate(1.1);
+    -webkit-backdrop-filter: blur(10px) saturate(1.1);
+  }
+
+  /* ── What just happened ─────────────────────────────────── */
+  .vz-caption {
+    position: absolute;
+    top: 14px;
+    left: 14px;
+    z-index: 4;
+    width: min(46ch, calc(100% - 28px));
+    pointer-events: none;
+  }
+
+  .vz-caption__card {
+    padding: 11px 14px 12px;
+  }
+
+  .vz-caption__meta {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .vz-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 22px;
+    padding: 0 8px 0 7px;
+    border-radius: var(--r-ctl);
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    font-weight: 650;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .vz-caption__step {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--peach-muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .vz-caption__step b {
+    color: var(--cream);
+    font-weight: 600;
+  }
+
+  .vz-caption__text {
+    margin-top: 7px;
+    font-family: var(--font-serif);
+    font-size: 1.04rem;
+    line-height: 1.42;
+    color: var(--cream);
+    overflow-wrap: anywhere;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  /* ── View controls ──────────────────────────────────────── */
+  .vz-tools {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    z-index: 4;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 3px;
+    border-radius: var(--r-ctl);
+  }
+
+  .vz-tool {
+    display: inline-flex;
+    align-items: center;
+    height: 28px;
+    padding: 0 10px;
+    border-radius: var(--r-ctl);
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    font-weight: 550;
+    color: var(--peach);
+    transition:
+      background-color var(--spring-soft-d) var(--spring-soft),
+      color var(--spring-soft-d) var(--spring-soft);
+  }
+
+  .vz-tool:hover {
+    color: var(--cream);
+    background: var(--row-hover);
+  }
+
+  .vz-tool.is-on {
+    background: var(--dusk-deep);
+    color: var(--cream);
+  }
+
+  .vz-tool.is-accent {
+    background: var(--cream);
+    color: var(--ink);
+  }
+
+  .vz-tool--select {
+    padding: 0 4px;
+  }
+
+  .vz-tool--select select {
+    height: 26px;
+    padding: 0 6px;
+    border: 0;
+    border-radius: var(--r-ctl);
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+  }
+
+  .vz-tool--select select option {
+    background: var(--ink);
+    color: var(--peach);
+  }
+
+  /* ── Side panels: variables, call stack, key ────────────── */
+  .vz-side {
+    position: absolute;
+    top: 58px;
+    right: 14px;
+    z-index: 3;
+    width: min(270px, calc(100% - 28px));
+    max-height: calc(100% - 72px);
+    overflow: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .vz-panel {
+    padding: 10px 12px 12px;
+  }
+
+  .vz-panel__title {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    font-weight: 650;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--peach-muted);
+  }
+
+  .vz-panel__title + * {
+    margin-top: 6px;
+  }
+
+  .vz-panel__title:not(:first-child) {
+    margin-top: 12px;
+  }
+
+  .vz-vars {
+    display: grid;
+    gap: 1px;
+  }
+
+  .vz-var {
+    display: grid;
+    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+    gap: 10px;
+    padding: 3px 6px;
+    border-radius: var(--r-ctl);
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .vz-var dt {
+    color: var(--peach);
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .vz-var dd {
+    margin: 0;
+    color: var(--cream);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .vz-var.is-changed {
+    background: var(--row-hover);
+    box-shadow: inset 2px 0 0 var(--cream);
+  }
+
+  .vz-var__was {
+    margin-left: 6px;
+    color: var(--peach-muted);
+  }
+
+  .vz-stack {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    gap: 3px;
+  }
+
+  .vz-stack li {
+    padding: 4px 8px;
+    border-radius: var(--r-ctl);
+    border: 1px solid var(--line-faint);
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--peach);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .vz-stack li.is-top {
+    border-color: var(--line-strong);
+    background: var(--row-hover);
+    color: var(--cream);
+  }
+
+  .vz-stack__more {
+    color: var(--peach-muted) !important;
+    border-style: dashed !important;
+  }
+
+  .vz-legend ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    gap: 7px;
+  }
+
+  .vz-legend li {
+    display: grid;
+    grid-template-columns: 22px minmax(0, 1fr);
+    column-gap: 9px;
+    align-items: start;
+  }
+
+  .vz-legend__swatch {
+    grid-row: span 2;
+    display: grid;
+    place-items: center;
+    width: 22px;
+    height: 22px;
+    margin-top: 1px;
+    border-radius: 5px;
+    box-shadow: inset 0 -2px 0 rgb(0 0 0 / 0.18);
+  }
+
+  .vz-legend__name {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--cream);
+  }
+
+  .vz-legend__cue {
+    font-family: var(--font-serif);
+    font-size: 0.86rem;
+    line-height: 1.3;
+    color: var(--peach);
+  }
+
+  .vz-legend__keys {
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px solid var(--line-faint);
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    line-height: 1.9;
+    color: var(--peach-muted);
+  }
+
+  .vz-legend__keys kbd {
+    display: inline-block;
+    min-width: 18px;
+    padding: 0 4px;
+    margin: 0 1px;
+    border-radius: var(--r-ctl);
+    background: var(--kbd-bg);
+    border: 1px solid var(--line);
+    color: var(--peach);
+    text-align: center;
+    font: inherit;
+  }
+
+  /* ── Notices and states ─────────────────────────────────── */
+  .vz-notices {
+    position: absolute;
+    left: 14px;
+    bottom: 14px;
+    z-index: 3;
+    display: grid;
+    gap: 6px;
+    max-width: min(52ch, calc(100% - 28px));
+  }
+
+  .vz-notice {
+    padding: 7px 11px;
+    border-radius: var(--r-ctl);
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--peach);
+  }
+
+  .vz-overlay {
+    position: absolute;
+    inset: 50% auto auto 50%;
+    transform: translate(-50%, -50%);
+    z-index: 6;
+    width: min(440px, calc(100% - 32px));
+    padding: 20px 22px;
+  }
+
+  .vz-overlay__title,
+  .vz-error__title {
+    font-family: var(--font-serif);
+    font-size: 1.25rem;
+    font-weight: 520;
+    color: var(--cream);
+  }
+
+  .vz-overlay__body,
+  .vz-error__body {
+    margin-top: 8px;
+    font-size: 0.95rem;
+    line-height: 1.5;
+    color: var(--peach);
+  }
+
+  .vz-error {
+    position: absolute;
+    left: 50%;
+    bottom: 16px;
+    transform: translateX(-50%);
+    z-index: 5;
+    width: min(560px, calc(100% - 32px));
+    padding: 14px 18px;
+    box-shadow: inset 3px 0 0 var(--cream);
+  }
+
+  .vz-error__body {
+    font-family: var(--font-mono);
+    font-size: 0.82rem;
+    white-space: pre-wrap;
+  }
+
+  /* ── Transport ──────────────────────────────────────────── */
+  .vz-transport {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 10px 16px;
+    border-top: 1px solid var(--line);
+    background: var(--ink);
+  }
+
+  .vz-transport__keys {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .vz-btn {
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    border-radius: var(--r-ctl);
+    color: var(--peach);
+    transition:
+      background-color var(--spring-soft-d) var(--spring-soft),
+      color var(--spring-soft-d) var(--spring-soft);
+  }
+
+  .vz-btn:hover:not(:disabled) {
+    background: var(--row-hover);
+    color: var(--cream);
+  }
+
+  .vz-btn:disabled {
+    opacity: 0.4;
+  }
+
+  .vz-play {
+    display: grid;
+    place-items: center;
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    background: var(--dusk-deep);
+    color: var(--cream);
+    transition:
+      background-color var(--spring-soft-d) var(--spring-soft),
+      color var(--spring-soft-d) var(--spring-soft),
+      transform var(--spring-snappy-d) var(--spring-snappy);
+  }
+
+  .vz-play:hover:not(:disabled),
+  .vz-play.is-playing {
+    background: var(--cream);
+    color: var(--ink);
+  }
+
+  .vz-play:hover:not(:disabled) {
+    transform: scale(1.06);
+  }
+
+  .vz-play:active:not(:disabled) {
+    transform: scale(0.96);
+  }
+
+  .vz-play:disabled {
+    opacity: 0.45;
+  }
+
+  .vz-scrub {
+    --pos: 0;
+    position: relative;
+    flex: 1;
+    min-width: 120px;
+    height: 34px;
+    cursor: pointer;
+    touch-action: none;
+    border-radius: var(--r-ctl);
+  }
+
+  .vz-scrub__ticks {
+    position: absolute;
+    left: 0;
+    bottom: 12px;
+    pointer-events: none;
+  }
+
+  .vz-scrub__rail {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 8px;
+    height: 2px;
+    background: var(--line-strong);
+    overflow: hidden;
+  }
+
+  .vz-scrub__fill {
+    position: absolute;
+    inset: 0;
+    background: var(--cream);
+    transform-origin: left;
+    transform: scaleX(var(--pos));
+  }
+
+  .vz-scrub__thumb {
+    position: absolute;
+    bottom: 3px;
+    left: calc(var(--pos) * 100%);
+    width: 12px;
+    height: 12px;
+    margin-left: -6px;
+    border-radius: 50%;
+    background: var(--cream);
+    box-shadow: 0 0 0 3px var(--ink);
+    transition: transform var(--spring-snappy-d) var(--spring-snappy);
+  }
+
+  .vz-scrub:hover .vz-scrub__thumb,
+  .vz-scrub:focus-visible .vz-scrub__thumb {
+    transform: scale(1.25);
+  }
+
+  .vz-count {
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+    min-width: 7ch;
+    justify-content: flex-end;
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    font-variant-numeric: tabular-nums;
+    color: var(--peach-muted);
+  }
+
+  .vz-count b {
+    color: var(--cream);
+    font-weight: 600;
+  }
+
+  .vz-speed {
+    display: flex;
+    gap: 2px;
+    padding: 3px;
+    border-radius: var(--r-ctl);
+    border: 1px solid var(--line);
+  }
+
+  .vz-speed__opt {
+    position: relative;
+    min-width: 40px;
+    height: 28px;
+    padding: 0 7px;
+    border-radius: var(--r-ctl);
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    font-weight: 500;
+    color: var(--peach-muted);
+    transition: color var(--spring-soft-d) var(--spring-soft);
+  }
+
+  .vz-speed__opt:hover,
+  .vz-speed__opt.is-on {
+    color: var(--cream);
+  }
+
+  .vz-speed__bg {
+    position: absolute;
+    inset: 0;
+    border-radius: var(--r-ctl);
+    background: var(--dusk-deep);
+  }
+
+  /* Visible focus everywhere, in the site's emphasis colour. */
+  .vz :focus-visible {
+    outline: 2px solid var(--cream);
+    outline-offset: 2px;
+  }
+
+  /* ── Compact (compiler inspector) ───────────────────────── */
+  .vz--compact .vz-caption {
+    width: min(38ch, calc(100% - 28px));
+  }
+
+  .vz--compact .vz-caption__text {
+    font-size: 0.95rem;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+  }
+
+  .vz--compact .vz-speed {
+    display: none;
+  }
+
+  /* ── Narrow screens ─────────────────────────────────────── */
+  @media (max-width: 760px) {
+    .vz-caption {
+      top: 10px;
+      left: 10px;
+      width: calc(100% - 20px);
+    }
+
+    .vz-tools {
+      top: auto;
+      bottom: 10px;
+      right: 10px;
+    }
+
+    .vz-side {
+      top: auto;
+      bottom: 56px;
+      right: 10px;
+      max-height: 45%;
+    }
+
+    .vz-transport {
+      flex-wrap: wrap;
+      gap: 10px;
+      padding: 10px 12px;
+    }
+
+    .vz-scrub {
+      order: 3;
+      flex-basis: 100%;
+    }
+
+    .vz-count {
+      margin-left: auto;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .vz-play,
+    .vz-scrub__thumb,
+    .vz-tool,
+    .vz-btn {
+      transition: none;
+    }
+  }
+}

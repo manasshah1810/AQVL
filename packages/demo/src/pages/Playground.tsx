@@ -1,21 +1,8 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { Lexer, Parser, SemanticValidator, Optimizer, AQIRGenerator, analyzeFunctions } from '@aqvl/compiler';
-import { ExecutionEngine, type SceneState } from '@aqvl/runtime';
-import {
-  AQVECanvas,
-  ArrayCameraChoreographer,
-  Character,
-  CharacterAnchorBridge,
-  CharacterController,
-  IterationDirector,
-  LinearCameraChoreographer,
-  LinearDirector,
-  useLinearOverlay,
-  useActiveLine,
-  useIterationOverlay,
-  type IterationTopic,
-} from '@aqvl/renderer';
+import type { AQIRProgram } from '@aqvl/runtime';
+import { usePlayhead } from '@aqvl/renderer';
 
 import { IDEEditor, type EditorErrorMarker } from '../components/IDEEditor';
 import { ExampleExplorer } from '../components/ExampleExplorer';
@@ -24,11 +11,12 @@ import { ArrayScripts } from '../examples/ArrayLibrary';
 import { PlaygroundOutputConsole } from '../components/PlaygroundOutputConsole';
 import type { RuntimeLogEntry } from '../components/RuntimeOutputPanel';
 import { AlgoLoader } from '../components/loader/AlgoLoader';
+import { Visualizer } from '../components/visualizer/Visualizer';
+import { useTraceRun } from '../components/visualizer/useTraceRun';
 import { parseHash, replaceHash } from '../lib/router';
-import { spring } from '../lib/motion';
-import { VIEWPORT_NEON } from '../brand/palette';
+import { spring, usePrefersReducedMotion } from '../lib/motion';
+import { useTheme } from '../lib/theme';
 
-import '../styles/aqve-host.css';
 import './playground.css';
 
 function exampleFromHash() {
@@ -48,55 +36,35 @@ function docsHandoff(): string | null {
   }
 }
 
-// ── Transport glyphs (filled, drawn for this UI) ─────────────────────────────
-const GlyphPlay = () => (
-  <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
-    <path d="M3 1.5 L12 7 L3 12.5 Z" fill="currentColor" />
-  </svg>
-);
-const GlyphPause = () => (
-  <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
-    <rect x="2.5" y="1.5" width="3" height="11" rx="0.5" fill="currentColor" />
-    <rect x="8.5" y="1.5" width="3" height="11" rx="0.5" fill="currentColor" />
-  </svg>
-);
-const GlyphStepBack = () => (
-  <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
-    <rect x="1.5" y="2" width="2" height="10" rx="0.5" fill="currentColor" />
-    <path d="M12.5 2 L5 7 L12.5 12 Z" fill="currentColor" />
-  </svg>
-);
-const GlyphStepForward = () => (
-  <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
-    <rect x="10.5" y="2" width="2" height="10" rx="0.5" fill="currentColor" />
-    <path d="M1.5 2 L9 7 L1.5 12 Z" fill="currentColor" />
-  </svg>
-);
-
-/** Neon corner ticks on the viewport frame: the one place the neon accent appears. */
-function ViewportFrame() {
-  const t = 14;
-  const corners = [
-    { style: { top: 6, left: 6 }, d: `M 0 ${t} L 0 0 L ${t} 0` },
-    { style: { top: 6, right: 6 }, d: `M 0 0 L ${t} 0 L ${t} ${t}` },
-    { style: { bottom: 6, left: 6 }, d: `M 0 0 L 0 ${t} L ${t} ${t}` },
-    { style: { bottom: 6, right: 6 }, d: `M 0 ${t} L ${t} ${t} L ${t} 0` },
-  ];
-  return (
-    <>
-      {corners.map((c, i) => (
-        <svg key={i} width={t + 2} height={t + 2} viewBox={`-1 -1 ${t + 2} ${t + 2}`} className="pg-corner" style={c.style} aria-hidden="true">
-          <path d={c.d} fill="none" stroke={VIEWPORT_NEON} strokeWidth={1.5} />
-        </svg>
-      ))}
-    </>
-  );
-}
-
 const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 
-const SPEEDS = ['0.5x', '1x', '2x', '4x'] as const;
-type Speed = (typeof SPEEDS)[number];
+const LOG_KINDS = new Set<RuntimeLogEntry['kind']>(['traversal', 'search', 'info', 'relationship', 'operation', 'step', 'result', 'swap', 'compare']);
+
+/** Lex → parse → validate → optimise → generate. Throws with editor markers attached. */
+function compileProgram(source: string, onMarkers: (m: EditorErrorMarker[]) => void): AQIRProgram {
+  const tokens = new Lexer(source).tokenize();
+  const ast = new Parser(tokens).parse();
+  const diagnostics = new SemanticValidator().validate(ast);
+  if (diagnostics.length > 0) {
+    onMarkers(diagnostics.map((d) => ({ line: d.line, column: d.column, message: d.message })));
+    throw new Error(`Semantic Validation Failed:\n${diagnostics.map((d) => `[${d.level}] Line ${d.line}, Col ${d.column}: ${d.message}`).join('\n')}`);
+  }
+  // Calls to undeclared functions, wrong argument counts, RETURN outside a function.
+  const functionErrors = analyzeFunctions(ast, source).getErrors();
+  if (functionErrors.length > 0) {
+    onMarkers(functionErrors.map((e) => ({ line: e.lineNumber ?? 1, column: e.column ?? 1, message: e.message })));
+    throw functionErrors[0];
+  }
+  const optimized = new Optimizer().optimize(ast, {});
+  const generator = new AQIRGenerator();
+  const aqir = generator.generate(optimized) as unknown as AQIRProgram;
+  // User FUNCTIONs: the VM resolves CALLs through this table.
+  aqir.functionTable = {};
+  for (const fn of generator.getFunctionTable().all()) {
+    aqir.functionTable[fn.name] = { name: fn.name, params: fn.params, entryAddress: fn.startPC };
+  }
+  return aqir;
+}
 
 export default function Playground() {
   const [initialExample] = useState(exampleFromHash);
@@ -107,231 +75,68 @@ export default function Playground() {
     return localStorage.getItem('aqvl-visited') !== 'true';
   });
   const explorerBtnRef = useRef<HTMLButtonElement>(null);
+  const theme = useTheme();
+  const reducedMotion = usePrefersReducedMotion();
 
   useEffect(() => {
     localStorage.setItem('aqvl-visited', 'true');
   }, []);
 
-  // Compute active example for the info strip
-  const activeExample = useMemo(() => EXAMPLES.find(e => e.source === sourceCode), [sourceCode]);
+  const activeExample = useMemo(() => EXAMPLES.find((e) => e.source === sourceCode), [sourceCode]);
 
-  // Pipeline State
   const [isCompiling, setIsCompiling] = useState(false);
   const [compileError, setCompileError] = useState<string | null>(null);
-  const [runtimeError, setRuntimeError] = useState<string | null>(null);
   const [errorMarkers, setErrorMarkers] = useState<EditorErrorMarker[]>([]);
+  const [clearedThrough, setClearedThrough] = useState(0);
 
-  // Runtime State
-  const engineRef = useRef<ExecutionEngine | null>(null);
-  const [sceneState, setSceneState] = useState<SceneState | null>(null);
-  const [activeEngine, setActiveEngine] = useState<ExecutionEngine | null>(null);
-  const activeLine = useActiveLine(activeEngine);
-  const characterController = useMemo(() => new CharacterController(), []);
-  // Loops & Searching: cursors the camera follows, a live search window, and narration (see IterationDirector).
-  const iterationCamera = useMemo(() => new ArrayCameraChoreographer(), []);
-  const [iterationDirector, setIterationDirector] = useState<IterationDirector | null>(null);
-  const iterationOverlay = useIterationOverlay(iterationDirector);
-  // Sticky across edits: tweaking a Loops example's numbers keeps it a Loops run.
-  const iterationTopicRef = useRef<IterationTopic | null>(null);
-  // Stacks, Queues & Linked Lists: roles, active-end markers, drawn pointers, a camera that follows the active end (see LinearDirector).
-  const linearCamera = useMemo(() => new LinearCameraChoreographer(), []);
-  const [linearDirector, setLinearDirector] = useState<LinearDirector | null>(null);
-  const linearOverlay = useLinearOverlay(linearDirector);
-  const linearTopicRef = useRef(false);
-  // Lets the character reach for the element its line is about.
-  const characterAnchor = useMemo(() => new CharacterAnchorBridge(), []);
-  const narratorAnchor = useMemo(() => ({ controller: characterController, bridge: characterAnchor }), [characterController, characterAnchor]);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [animatedStepCurrent, setAnimatedStepCurrent] = useState(0);
-  const [animatedStepTotal, setAnimatedStepTotal] = useState(0);
-  const [resetKey, setResetKey] = useState(0);
-
-  // Runtime Output Logs
-  const [runtimeLogs, setRuntimeLogs] = useState<RuntimeLogEntry[]>([]);
-  const runtimeLogIdRef = useRef(0);
-  // Incremented on every compile. A superseded engine may still be finishing
-  // its current animation after pause(); its events must not reach the UI.
-  const runIdRef = useRef(0);
-
-  // Speed
-  const [speed, setSpeed] = useState<Speed>('1x');
-
-  // Apply speed to engine whenever it changes
-  const speedMultiplier = { '0.5x': 0.5, '1x': 1, '2x': 2, '4x': 4 } as const;
-  useEffect(() => {
-    if (engineRef.current) {
-      engineRef.current.setPlaybackRate(speedMultiplier[speed]);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [speed]);
-
-  // ── Handlers ──────────────────────────────────────────────────────────────────
-
-  const handlePlay = () => {
-    const engine = engineRef.current;
-    if (!engine) return;
-    // Finished: Play replays the program from the beginning.
-    if (engine.isAtEnd()) {
-      engine.restart();
-    }
-    engine.play();
-    setIsPlaying(true);
-  };
-
-  const handlePause = () => {
-    if (engineRef.current) {
-      engineRef.current.pause();
-      setIsPlaying(false);
-    }
-  };
+  const { run, tracing, start, clear } = useTraceRun();
+  const snap = usePlayhead(run?.playhead ?? null);
+  const playTimer = useRef(0);
 
   const handleCompileAndRun = () => {
+    window.clearTimeout(playTimer.current);
     setIsCompiling(true);
     setCompileError(null);
-    setRuntimeError(null);
     setErrorMarkers([]);
-    runIdRef.current++; // silence the previous engine from here on
-    setSceneState(null);
-    setAnimatedStepCurrent(0);
-    setAnimatedStepTotal(0);
-    setIsPlaying(false);
-    setResetKey(prev => prev + 1);
-    setRuntimeLogs([]);
+    setClearedThrough(0);
+    run?.playhead.pause();
 
-    if (engineRef.current) {
-      engineRef.current.pause();
-      engineRef.current = null;
-    }
-    characterController.detach();
-    characterController.clear();
-    setActiveEngine(null);
-    setIterationDirector(null);
-    setLinearDirector(null);
-
+    let program: AQIRProgram;
     try {
-      const lexer = new Lexer(sourceCode);
-      const generatedTokens = lexer.tokenize();
-
-      const parser = new Parser(generatedTokens);
-      const generatedAst = parser.parse();
-
-      const validator = new SemanticValidator();
-      const diagnostics = validator.validate(generatedAst);
-      if (diagnostics.length > 0) {
-        setErrorMarkers(diagnostics.map(d => ({ line: d.line, column: d.column, message: d.message })));
-        const errors = diagnostics.map(d => `[${d.level}] Line ${d.line}, Col ${d.column}: ${d.message}`).join('\n');
-        throw new Error(`Semantic Validation Failed:\n${errors}`);
-      }
-
-      // Calls to undeclared functions, wrong argument counts, RETURN outside a function.
-      const functionErrors = analyzeFunctions(generatedAst, sourceCode).getErrors();
-      if (functionErrors.length > 0) {
-        setErrorMarkers(functionErrors.map((e) => ({ line: e.lineNumber ?? 1, column: e.column ?? 1, message: e.message })));
-        throw functionErrors[0];
-      }
-
-      const optimizer = new Optimizer();
-      const optimizedAst = optimizer.optimize(generatedAst, {});
-
-      const generator = new AQIRGenerator();
-      const generatedAqir = generator.generate(optimizedAst);
-      // User FUNCTIONs: the VM resolves CALLs through this table.
-      generatedAqir.functionTable = {};
-      for (const fn of generator.getFunctionTable().all()) {
-        generatedAqir.functionTable[fn.name] = { name: fn.name, params: fn.params, entryAddress: fn.startPC };
-      }
-
-      const engine = new ExecutionEngine();
-      if (activeExample) {
-        iterationTopicRef.current =
-          activeExample.category === 'Loops & Control' ? 'loops' : activeExample.category === 'Searching' ? 'searching' : null;
-      }
-      if (activeExample) {
-        linearTopicRef.current = ['Stacks', 'Queues', 'Linked Lists'].includes(activeExample.category);
-      }
-      if (linearTopicRef.current) {
-        setLinearDirector(new LinearDirector(engine, characterController, linearCamera));
-      }
-      const iterationTopic = iterationTopicRef.current;
-      if (iterationTopic) {
-        setIterationDirector(new IterationDirector(engine, sourceCode, iterationTopic, characterController, iterationCamera));
-      }
-      const runId = runIdRef.current;
-      const isCurrentRun = () => runIdRef.current === runId;
-      engine.eventDispatcher.on('SCENE_LOADED', () => {
-        if (!isCurrentRun()) return;
-        const current = engine.stateManager.getCurrentState();
-        if (current) setSceneState({ ...current });
-      });
-      engine.eventDispatcher.on('STATE_UPDATED', (newState) => {
-        if (!isCurrentRun()) return;
-        setSceneState({ ...newState });
-      });
-      engine.eventDispatcher.on('RUNTIME_LOG', (entry: RuntimeLogEntry) => {
-        if (!isCurrentRun()) return;
-        // Tag each line with the step that produced it (the step being
-        // executed = the one after the step currently shown), so stepping
-        // back can drop the lines of the steps that were undone.
-        const step = engine.getCurrentStep() + 1;
-        setRuntimeLogs(prev => [...prev, { ...entry, id: ++runtimeLogIdRef.current, step }]);
-      });
-      let shownStep = 0;
-      engine.eventDispatcher.on('ANIMATED_STEP', (payload: { current: number; total: number }) => {
-        if (!isCurrentRun()) return;
-        if (payload.current < shownStep) {
-          setRuntimeLogs(prev => prev.filter(log => (log.step ?? 0) <= payload.current));
-        }
-        shownStep = payload.current;
-        setAnimatedStepCurrent(payload.current);
-        setAnimatedStepTotal(payload.total);
-      });
-      engine.eventDispatcher.on('EXECUTION_FINISHED', () => {
-        if (!isCurrentRun()) return;
-        setIsPlaying(false);
-      });
-      engine.eventDispatcher.on('EXECUTION_ERROR', (payload: { error: unknown; message: string }) => {
-        if (!isCurrentRun()) return;
-        setIsPlaying(false);
-        setRuntimeError(payload.message);
-      });
-      engine.loadProgram(generatedAqir);
-      // Seed the denominator immediately so the step counter shows "0 of N"
-      // before any animated instruction plays, rather than "0 of —".
-      setAnimatedStepTotal(engine.getTotalAnimatedSteps());
-
-      engineRef.current = engine;
-      // Apply current speed immediately to the fresh engine
-      engine.setPlaybackRate(speedMultiplier[speed]);
-      characterController.attach(engine.eventDispatcher);
-      setActiveEngine(engine);
-      setIsCompiling(false);
-
-      setTimeout(() => { handlePlay(); }, 100);
-
+      program = compileProgram(sourceCode, setErrorMarkers);
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       setCompileError(message);
-      // Lexer/Parser errors are AQVLError instances carrying a source line/column
-      // (see @aqvl/shared). SemanticValidator diagnostics already set markers above.
+      // Lexer/Parser errors are AQVLError instances carrying a source line/column (see @aqvl/shared).
       const at = e as { lineNumber?: unknown; column?: number };
-      if (typeof at.lineNumber === 'number') {
-        setErrorMarkers([{ line: at.lineNumber, column: at.column, message }]);
-      }
+      if (typeof at.lineNumber === 'number') setErrorMarkers([{ line: at.lineNumber, column: at.column, message }]);
       setIsCompiling(false);
+      clear();
+      return;
     }
+
+    const source = sourceCode;
+    void start(program, source).then((next) => {
+      if (!next) return;
+      setIsCompiling(false);
+      if (next.trace.error?.line != null) {
+        setErrorMarkers([{ line: next.trace.error.line, column: 1, message: next.trace.error.message }]);
+      }
+      // Let the previous scene clear the floor and the new one build in before playing.
+      playTimer.current = window.setTimeout(() => next.playhead.play(), run ? 900 : 650);
+    });
   };
 
   useEffect(() => {
     // Compile the starting example on the first frame after mount. Cancelled on
     // unmount, so StrictMode's mount -> unmount -> mount compiles only once.
     const frame = requestAnimationFrame(() => handleCompileAndRun());
-    return () => cancelAnimationFrame(frame);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.clearTimeout(playTimer.current);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  useEffect(() => () => characterController.detach(), [characterController]);
-  useEffect(() => () => iterationDirector?.dispose(), [iterationDirector]);
-  useEffect(() => () => linearDirector?.dispose(), [linearDirector]);
 
   // Ctrl/Cmd + Enter compiles and runs from anywhere on the page.
   const compileRef = useRef(handleCompileAndRun);
@@ -349,43 +154,41 @@ export default function Playground() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  const handleStepPrev = () => {
-    if (engineRef.current) {
-      engineRef.current.stepBackward();
-      setIsPlaying(false);
-    }
-  };
+  const busy = isCompiling || tracing !== null;
+  const isRuntimeReady = !!run && !busy && !compileError;
 
-  const handleStepNext = () => {
-    if (engineRef.current) {
-      engineRef.current.stepAnimateForward(() => {
-        setIsPlaying(false);
+  // The console shows what the steps up to the one on screen printed.
+  const logs = useMemo<RuntimeLogEntry[]>(() => {
+    if (!run) return [];
+    const out: RuntimeLogEntry[] = [];
+    const last = Math.min(snap.step, run.trace.frames.length - 1);
+    for (let k = Math.max(1, clearedThrough + 1); k <= last; k++) {
+      run.trace.frames[k].logs.forEach((l, i) => {
+        out.push({
+          id: k * 1000 + i,
+          timestamp: 0,
+          keyword: l.keyword,
+          message: l.message,
+          kind: LOG_KINDS.has(l.kind as RuntimeLogEntry['kind']) ? (l.kind as RuntimeLogEntry['kind']) : 'info',
+          step: k,
+        });
       });
     }
-  };
+    return out;
+  }, [run, snap.step, clearedThrough]);
 
-  const isRuntimeReady = !!sceneState && !isCompiling;
+  const activeLine = isRuntimeReady && snap.active > 0 ? run!.trace.frames[snap.active]?.line ?? null : null;
 
-  // Progress percentage — uses visible step counts so the bar advances in
-  // sync with each animation beat, not the raw VM instruction PC. The total
-  // comes from a dry run of the program, so current never exceeds it.
-  const progressPct = animatedStepTotal > 0
-    ? Math.min(100, Math.round((animatedStepCurrent / animatedStepTotal) * 100))
-    : 0;
-
-  // Status chip data
-  const getStatusChipProps = () => {
-    if (isCompiling) return { cls: 'compiling', label: 'Compiling…' };
+  const statusChip = (() => {
+    if (isCompiling && tracing === null) return { cls: 'compiling', label: 'Compiling…' };
+    if (tracing !== null) return { cls: 'compiling', label: 'Tracing…' };
     if (compileError) return { cls: 'error', label: 'Compile Error' };
-    if (runtimeError) return { cls: 'error', label: 'Runtime Error' };
-    if (isPlaying) return { cls: 'running', label: 'Running' };
+    if (run?.trace.error && snap.atEnd) return { cls: 'error', label: 'Runtime Error' };
+    if (snap.playing) return { cls: 'running', label: 'Running' };
     if (isRuntimeReady) return { cls: 'idle', label: 'Ready' };
     return { cls: 'idle', label: 'Idle' };
-  };
+  })();
 
-  const statusChip = getStatusChipProps();
-
-  // ── Render ─────────────────────────────────────────────────────────────────────
   return (
     <div className="pg">
       {/* ── Toolbar ───────────────────────────────────────────────────────── */}
@@ -394,7 +197,7 @@ export default function Playground() {
           ref={explorerBtnRef}
           type="button"
           className={`btn btn--quiet btn--sm${showExplorer ? ' is-on' : ''}`}
-          onClick={() => setShowExplorer(v => !v)}
+          onClick={() => setShowExplorer((v) => !v)}
           aria-expanded={showExplorer}
           aria-haspopup="dialog"
         >
@@ -424,10 +227,10 @@ export default function Playground() {
             type="button"
             className="btn btn--sm"
             onClick={handleCompileAndRun}
-            disabled={isCompiling}
+            disabled={busy}
             aria-keyshortcuts="Control+Enter Meta+Enter"
           >
-            {isCompiling ? 'Compiling…' : 'Compile & Run'}
+            {busy ? 'Compiling…' : 'Compile & Run'}
             <kbd className="pg-kbd" aria-hidden="true">
               {IS_MAC ? '⌘↵' : 'Ctrl ↵'}
             </kbd>
@@ -460,41 +263,31 @@ export default function Playground() {
                 if (errorMarkers.length > 0) setErrorMarkers([]);
               }}
               errorMarkers={errorMarkers}
-              activeLine={isRuntimeReady ? activeLine : null}
+              activeLine={activeLine}
             />
           </div>
         </section>
 
         <section className="pg-stage" aria-label="Visualization">
           <div className="pg-viewport">
-            <ViewportFrame />
-            {/* The 3D area: AQVECanvas draws its own scene and background. */}
-            <div className="pg-canvas-container aqve-host">
-              {isRuntimeReady && (
-                <AQVECanvas
-                  key={resetKey}
-                  sceneState={sceneState}
-                  arrayCameraChoreographer={iterationOverlay ? iterationCamera : linearOverlay ? linearCamera : undefined}
-                  iterationOverlay={iterationOverlay}
-                  linearOverlay={linearOverlay}
-                  narratorAnchor={linearOverlay ? narratorAnchor : undefined}
-                />
-              )}
+            {run && !compileError ? (
+              <Visualizer key="viz" trace={run.trace} playhead={run.playhead} source={run.source} theme={theme} reducedMotion={reducedMotion} />
+            ) : (
+              <div className="pg-viewport__ground" />
+            )}
 
-              {/* Teaching character — speaks ArrayNarrativeGenerator's real narration */}
-              {isRuntimeReady && (
-                <Character controller={characterController} anchorSource={linearOverlay ? characterAnchor : undefined} dockPosition={{ x: 48, y: 48 }} />
-              )}
-            </div>
-
-            {/* Run states, drawn over the viewport (outside the 3D area). */}
-            {isCompiling && (
+            {busy && !run && (
               <div className="pg-overlay">
-                <AlgoLoader variant="inline" label="Compiling your program" />
+                <AlgoLoader variant="inline" label={tracing !== null && tracing > 0 ? `Tracing your program · step ${tracing}` : 'Compiling your program'} />
+              </div>
+            )}
+            {busy && run && (
+              <div className="pg-tracing" role="status">
+                {tracing !== null && tracing > 0 ? `Tracing · step ${tracing}` : 'Compiling…'}
               </div>
             )}
 
-            {compileError && !isCompiling && (
+            {compileError && !busy && (
               <div className="pg-overlay" role="alert">
                 <div className="pg-error">
                   <p className="pg-error__title">Compilation Error</p>
@@ -504,16 +297,7 @@ export default function Playground() {
               </div>
             )}
 
-            {runtimeError && !isCompiling && !compileError && (
-              <div className="pg-overlay" role="alert">
-                <div className="pg-error">
-                  <p className="pg-error__title">Runtime Error</p>
-                  <pre className="pg-error__body">{runtimeError}</pre>
-                </div>
-              </div>
-            )}
-
-            {!isCompiling && !compileError && !runtimeError && !sceneState && (
+            {!busy && !compileError && !run && (
               <div className="pg-overlay">
                 <div className="pg-empty">
                   <p className="title">Nothing on stage yet.</p>
@@ -525,73 +309,7 @@ export default function Playground() {
             )}
           </div>
 
-          {/* ── Transport ─────────────────────────────────────────────── */}
-          <div className="pg-transport">
-            <div className="pg-transport__keys" role="group" aria-label="Playback">
-              <button id="pg-step-prev-btn" type="button" className="icon-btn" onClick={handleStepPrev} disabled={!isRuntimeReady} aria-label="Step back" title="Step back">
-                <GlyphStepBack />
-              </button>
-              {!isPlaying ? (
-                <button id="pg-play-btn" type="button" className="pg-play" onClick={handlePlay} disabled={!isRuntimeReady} aria-label="Play" title="Play">
-                  <GlyphPlay />
-                </button>
-              ) : (
-                <button id="pg-pause-btn" type="button" className="pg-play is-playing" onClick={handlePause} disabled={!isRuntimeReady} aria-label="Pause" title="Pause">
-                  <GlyphPause />
-                </button>
-              )}
-              <button id="pg-step-next-btn" type="button" className="icon-btn" onClick={handleStepNext} disabled={!isRuntimeReady} aria-label="Step forward" title="Step forward">
-                <GlyphStepForward />
-              </button>
-            </div>
-
-            <div className="pg-progress">
-              <div
-                className="pg-progress__track"
-                role="progressbar"
-                aria-valuemin={0}
-                aria-valuemax={animatedStepTotal}
-                aria-valuenow={animatedStepCurrent}
-                aria-label="Visualization progress"
-              >
-                <motion.span
-                  className="pg-progress__fill"
-                  initial={false}
-                  animate={{ scaleX: progressPct / 100 }}
-                  transition={spring.layout}
-                />
-              </div>
-              <div className="pg-progress__labels mono">
-                <span>
-                  Step <span className="text-cream">{animatedStepCurrent}</span>
-                  {animatedStepTotal > 0 && (
-                    <>
-                      {' '}of <span className="text-cream">{animatedStepTotal}</span>
-                    </>
-                  )}
-                </span>
-                <span className="muted">{progressPct}%</span>
-              </div>
-            </div>
-
-            <div className="pg-speed" role="radiogroup" aria-label="Playback speed">
-              {SPEEDS.map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  role="radio"
-                  aria-checked={speed === s}
-                  className={`pg-speed__opt${speed === s ? ' is-on' : ''}`}
-                  onClick={() => setSpeed(s)}
-                >
-                  {speed === s && <motion.span layoutId="pg-speed-on" className="pg-speed__bg" transition={spring.layout} />}
-                  <span className="relative">{s.replace('x', '×')}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <PlaygroundOutputConsole logs={runtimeLogs} onClear={() => setRuntimeLogs([])} />
+          <PlaygroundOutputConsole logs={logs} onClear={() => setClearedThrough(snap.step)} />
         </section>
       </div>
 
