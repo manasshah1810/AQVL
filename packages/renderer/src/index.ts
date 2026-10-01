@@ -87,3 +87,6 @@ export { PointerArrow } from './components/linear/PointerArrow';
 export { LinearPointerLayer, diffPointers } from './components/linear/LinearPointerLayer';
 export { CharacterAnchorBridge, CharacterAnchorTracker } from './components/character/CharacterAnchor';
 export type { CameraChoreographer } from './components/camera/BaseCameraChoreographer';
+
+// --- Visualizer v2: the trace-driven stage (see docs/design/visualizer-v2/README.md) ---
+export * from './stage';
