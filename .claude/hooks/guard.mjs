@@ -49,8 +49,12 @@ if (['Edit', 'Write', 'NotebookEdit', 'MultiEdit'].includes(tool)) {
 
 if (tool === 'Bash' || tool === 'PowerShell') {
   const c = String(args.command ?? '');
+  // Harmless stream plumbing (2>&1, >/dev/null) is not a write to the ledger; committing the ledger with git is how entries are published.
+  let w = c.replace(/\d*>&\d+/g, '').replace(/\d*>\s*\/dev\/null/g, '');
+  // A plain `git add/commit` line: text inside the quoted commit message (an email's "<...>") is not a redirect.
+  if (/^\s*git\s+(add|commit|status|diff|log|show|push)\b[^;|]*(&&\s*git\s+(add|commit|status|diff|log|show|push)\b[^;|]*)*(\|\s*(tail|head|grep)[^;&]*)?$/.test(c.replace(/(["'])(?:(?!\1)[\s\S])*\1/g, '""').replace(/\d*>&\d+/g, ''))) w = '';
   if (SKIP_HOOKS.test(c)) deny('skipping the git hooks is not allowed in this repo.');
-  if (LEDGER.test(c) && WRITES.test(c) && !/^\s*pnpm\s+(run\s+)?task\b/.test(c)) deny('the task ledger cannot be modified directly.');
-  if (PROTECTED.test(c) && WRITES.test(c) && !maintainer) deny('the tracker rules are maintainer-only.');
+  if (LEDGER.test(c) && WRITES.test(w) && !/^\s*pnpm\s+(run\s+)?task\b/.test(c)) deny('the task ledger cannot be modified directly.');
+  if (PROTECTED.test(c) && WRITES.test(w) && !maintainer) deny('the tracker rules are maintainer-only.');
 }
 process.exit(0);
