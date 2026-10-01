@@ -1,8 +1,9 @@
 node_modules/
-.cache/
-tmp/
+.remotion/
+# intermediate renders and review frames
 out/*
-!out/aqvl-launch-film.mp4
 !out/attempts/
+!out/aqvl-launch-film.mp4
 out/attempts/*
-!out/attempts/*.mp4
+!out/attempts/v*.mp4
+review/

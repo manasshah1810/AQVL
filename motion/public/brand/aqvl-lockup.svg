@@ -1,8 +1,1 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 350 100" height="200"><g>
-  <clipPath id="cl"><rect x="0" y="0" width="100" height="70"/></clipPath>
-  <clipPath id="cv"><rect x="0" y="30" width="100" height="70"/></clipPath>
-  <polygon points="27.3,50 50,16 72.7,50 50,84" fill="#ffb02e"/>
-  <g fill="none" stroke="#9fd0ff" stroke-width="8" stroke-linejoin="miter" stroke-miterlimit="10">
-    <polyline clip-path="url(#cl)" points="10,76 50,16 90,76"/>
-    <polyline clip-path="url(#cv)" points="10,24 50,84 90,24"/>
-  </g></g><g transform="translate(124,23) scale(1.12)"><g fill="none" stroke="#9fd0ff" stroke-width="7" stroke-linejoin="miter" stroke-miterlimit="10"><g transform="translate(0,0)"><polyline points="0,48 20,0 40,48"/><polyline points="9.5,33 30.5,33"/></g><g transform="translate(50,0)"><circle cx="24" cy="24" r="21"/><polyline points="34,34 47,47"/></g><g transform="translate(108,0)"><polyline points="0,0 20,48 40,0"/></g><g transform="translate(163,0)"><polyline points="0,0 0,48 30,48"/></g></g></g></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-6 0 298.24 100" width="1200" height="480"><path d="M 61.284 66.981 A 30 30 0 1 0 42.000 74.000 L 94 74.000" fill="none" stroke="#ebc0a3" stroke-width="11" stroke-linecap="butt"/><g transform="translate(130 36.8) scale(0.62)" fill="none" stroke="#ebc0a3" stroke-width="9" stroke-linecap="butt" stroke-linejoin="miter"><path transform="translate(0 0)" d="M 4.5 60 L 21 4.5 L 29 4.5 L 45.5 60 M 12 40.800000000000004 L 38 40.800000000000004"/><path transform="translate(68 0)" d="M 46.391 49.534 A 25.5 25.5 0 1 0 30.000 55.500 L 72.000 55.500"/><path transform="translate(150 0)" d="M 4.5 0 L 21 55.5 L 29 55.5 L 45.5 0"/><path transform="translate(216 0)" d="M 4.5 0 L 4.5 55.5 L 36 55.5"/></g></svg>
