@@ -1,15 +1,12 @@
 import React from 'react';
-import { Composition, AbsoluteFill, useCurrentFrame } from 'remotion';
-import { ensureFonts, SANS as fontFamily } from './fonts';
+import { Composition } from 'remotion';
+import { ensureFonts } from './fonts';
+import { Film, FILM_FRAMES } from './Film';
+import { WallLastFrame } from './scenes/Wall';
 ensureFonts();
-const Test: React.FC = () => {
-  const f = useCurrentFrame();
-  return (
-    <AbsoluteFill style={{ background: '#05060A', color: 'white', fontFamily, fontSize: 80, alignItems: 'center', justifyContent: 'center' }}>
-      AQVL test {f}
-    </AbsoluteFill>
-  );
-};
 export const Root: React.FC = () => (
-  <Composition id="Test" component={Test} durationInFrames={30} fps={30} width={960} height={540} />
+  <>
+    <Composition id="Film" component={Film} durationInFrames={FILM_FRAMES} fps={30} width={1920} height={1080} />
+    <Composition id="WallFrame" component={WallLastFrame} durationInFrames={1} fps={30} width={1920} height={1080} />
+  </>
 );
