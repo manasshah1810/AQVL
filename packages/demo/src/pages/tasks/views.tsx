@@ -12,6 +12,7 @@ import {
   TaskRow,
 } from './components';
 import { useTasks } from './context';
+import { formatIST } from './ledger';
 import { BurnUp, Columns, Donut } from './charts';
 import { burnUp, domainOf, statusCounts, statusSegments, weeklyThroughput } from './metrics';
 import { Panel, StatusLegend } from './report';
@@ -141,7 +142,7 @@ export function OverviewView() {
               <article key={s.id} className="tk-session">
                 <header>
                   <strong>{MEMBER_BY_ID[s.owner].name}</strong>
-                  <time dateTime={s.date}>{new Date(s.date).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}</time>
+                  <time dateTime={s.date}>{formatIST(s.date)}</time>
                 </header>
                 <SessionBody session={s} />
               </article>
@@ -190,7 +191,7 @@ export function ManasView() {
             <span className="tk-eyebrow">Last session</span>
             {lastSession ? (
               <>
-                <time>{new Date(lastSession.date).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}</time>
+                <time>{formatIST(lastSession.date)}</time>
                 <p><strong>Completed:</strong> {lastSession.completed || '—'}</p>
                 <p><strong>Left open:</strong> {lastSession.remaining || '—'}</p>
               </>

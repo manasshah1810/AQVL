@@ -227,3 +227,8 @@ export function formatDuration(min: number): string {
   const m = Math.round(min % 60);
   return m ? `${h}h ${m}m` : `${h}h`;
 }
+
+/** Ledger timestamps are stored in UTC; the team reads them in Indian Standard Time. */
+export function formatIST(iso: string): string {
+  return `${new Date(iso).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })} IST`;
+}

@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { BurnUp, Columns, Donut, Heatmap, Legend, StackedRows } from './charts';
 import { Kpi, ProgressRing } from './components';
 import { useTasks } from './context';
+import { formatIST } from './ledger';
 import {
   DOMAINS,
   activityByDay,
@@ -230,7 +231,7 @@ export function ReportView() {
                   const onTime = !t.deadline || new Date(t.completedAt!) <= new Date(`${t.deadline}T23:59:59`);
                   return (
                     <tr key={t.id}>
-                      <td>{new Date(t.completedAt!).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}</td>
+                      <td>{formatIST(t.completedAt!)}</td>
                       <td><span className="tk-row__id">{t.id}</span> {t.title}</td>
                       <td><span className={`tk-who tk-who--${t.owner}`}>{MEMBER_BY_ID[t.owner].name.split(' ')[0]}</span></td>
                       <td>{t.deadline ? formatDate(t.deadline) : '—'}</td>

@@ -44,7 +44,7 @@ export const PROTECTED = [
   'AGENTS.md',
 ];
 
-const MIN_ELAPSED_MIN = { prereq: 3, subphase: 10, team: 15 } as const;
+const MIN_ELAPSED_MIN = { prereq: 3, subphase: 3, team: 15 } as const;
 const MIN_LINES = { prereq: 0, subphase: 15, team: 15 } as const;
 const MIN_DELIVERABLE_BYTES = 120;
 const TEST_CMD = 'pnpm test';

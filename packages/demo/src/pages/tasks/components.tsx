@@ -4,7 +4,7 @@ import { copyText } from './store';
 import { daysBetween, formatDate, depsMet, isOverdue } from './model';
 import { MEMBER_BY_ID } from './teamData';
 import { STATUS_LABEL } from './types';
-import { formatDuration } from './ledger';
+import { formatDuration, formatIST } from './ledger';
 import type { MemberId, Priority, Session, Status, Task } from './types';
 
 // ─── Small atoms ─────────────────────────────────────────────────────────
@@ -157,8 +157,8 @@ export function TaskDetail({ task }: { task: Task }) {
         <span className="tk-detail__owner">Status: <StatusBadge status={task.status} /></span>
         <span className="tk-detail__owner">Priority: {task.priority}</span>
         <span className="tk-detail__owner">Owner: {MEMBER_BY_ID[task.owner].name}</span>
-        {task.startedAt && <span className="tk-detail__owner">Started {new Date(task.startedAt).toLocaleString()}</span>}
-        {task.completedAt && <span className="tk-detail__owner">Verified {new Date(task.completedAt).toLocaleString()}{task.elapsedMin !== null ? ` · ${formatDuration(task.elapsedMin)} elapsed` : ''}{task.doneBy ? ` · by ${task.doneBy}` : ''}</span>}
+        {task.startedAt && <span className="tk-detail__owner">Started {formatIST(task.startedAt)}</span>}
+        {task.completedAt && <span className="tk-detail__owner">Verified {formatIST(task.completedAt)}{task.elapsedMin !== null ? ` · ${formatDuration(task.elapsedMin)} elapsed` : ''}{task.doneBy ? ` · by ${task.doneBy}` : ''}</span>}
         {!task.completedAt && task.startedAt && <span className="tk-detail__owner">Clock running since start</span>}
       </div>
 
@@ -217,7 +217,7 @@ export function SessionLog({ owner }: { owner: MemberId }) {
         {shown.map((s) => (
           <article key={s.id} className="tk-session">
             <header>
-              <time dateTime={s.date}>{new Date(s.date).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}</time>
+              <time dateTime={s.date}>{formatIST(s.date)}</time>
               {s.taskIds.length > 0 && <span className="tk-session__tasks">{s.taskIds.join(', ')}</span>}
               {s.durationMin !== undefined && <span className="tk-session__tasks">{formatDuration(s.durationMin)}</span>}
             </header>
