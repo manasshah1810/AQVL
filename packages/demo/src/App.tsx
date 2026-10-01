@@ -11,6 +11,8 @@ import { IDEExecutionDebugger } from './components/IDEExecutionDebugger';
 import { RuntimeOutputPanel, RuntimeLogEntry } from './components/RuntimeOutputPanel';
 
 import { TreeScripts } from './examples/TreeLibrary';
+import './styles/aqve-host.css';
+import './styles/ide.css';
 import type { SceneState } from '@aqvl/runtime';
 import type { AQIRProgram, PipelineStage, PipelineState, ProgramNode, Token } from './types/pipeline';
 
@@ -49,17 +51,6 @@ export default function App() {
     tokens: 0,
     astNodes: 0
   });
-
-  // Theme State
-  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
-    return (localStorage.getItem('aqvl-docs-theme') as 'dark' | 'light') || 'dark';
-  });
-
-  const handleToggleTheme = () => {
-    const next = theme === 'dark' ? 'light' : 'dark';
-    setTheme(next);
-    localStorage.setItem('aqvl-docs-theme', next);
-  };
 
   const addLog = (text: string, type: 'log'|'error'|'success' = 'log') => {
     setConsoleLogs(prev => [...prev, { text, type }]);
@@ -266,7 +257,7 @@ export default function App() {
   const isRuntimeReady = pipelineState.runtime === 'success';
 
   return (
-    <div className="ide-container" data-theme={theme}>
+    <div className="ide-container">
       <IDEToolbar
         onCompile={handleCompile}
         onRun={handleRun}
@@ -276,23 +267,15 @@ export default function App() {
         onStop={handleStop}
         isPlaying={isPlaying}
         canRun={isRuntimeReady}
-        theme={theme}
-        onToggleTheme={handleToggleTheme}
       />
-      
+
       <div className="ide-main">
-        <div className="ide-panel ide-left-panel">
-          <div className="ide-panel-header">
-            <svg className="ide-panel-header-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="16 18 22 12 16 6" />
-              <polyline points="8 6 2 12 8 18" />
-            </svg>
-            AQVL Source Editor
-          </div>
-          <div className="ide-panel-content" style={{ overflow: 'hidden' }}>
+        <section className="ide-panel ide-left-panel" aria-label="Source">
+          <div className="ide-panel-header">Source</div>
+          <div className="ide-panel-content" style={{ overflow: 'hidden', display: 'flex' }}>
             <IDEEditor initialValue={sourceCode} onChange={setSourceCode} />
           </div>
-        </div>
+        </section>
 
         <IDECompilerPanel
           tokens={tokens}
@@ -301,75 +284,39 @@ export default function App() {
           pipelineState={pipelineState}
         />
 
-        <div className="ide-panel ide-right-panel">
+        <section className="ide-panel ide-right-panel" aria-label="Visualization">
           <div className="ide-panel-header" style={{ justifyContent: 'space-between' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <svg className="ide-panel-header-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <polygon points="23 7 16 12 23 17 23 7" />
-                <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
-              </svg>
-              Visualization
-            </div>
-            {sceneState && (
-              <div className={`ide-status-chip ${isPlaying ? 'running' : 'ready'}`}>
-                <div
-                  className="ide-status-chip-dot"
-                  style={{ animation: isPlaying ? 'nbPulse 1.5s ease-in-out infinite' : 'none' }}
-                />
-                {isPlaying ? 'Animating' : 'Scene Ready'}
-              </div>
-            )}
+            <span>Viewport</span>
+            {sceneState && <span className={isPlaying ? 'text-cream' : 'muted'}>{isPlaying ? 'Animating' : 'Scene ready'}</span>}
           </div>
-          <div className="ide-panel-content" style={{ backgroundColor: '#06060a', position: 'relative', overflow: 'hidden' }}>
+          <div className="ide-panel-content ide-canvas-host">
             {sceneState ? (
               <>
-                <AQVECanvas sceneState={sceneState} />
+                {/* The 3D area: AQVECanvas draws its own scene and background. */}
+                <div className="aqve-host" style={{ position: 'absolute', inset: 0 }}>
+                  <AQVECanvas sceneState={sceneState} />
+                </div>
                 <RuntimeOutputPanel
                   logs={runtimeLogs}
                   onClear={() => setRuntimeLogs([])}
                 />
-                <IDEExecutionDebugger 
-                  aqir={aqir} 
-                  currentInstructionIndex={currentInstructionIndex} 
-                  isPlaying={isPlaying} 
-                  pipelineState={pipelineState} 
+                <IDEExecutionDebugger
+                  aqir={aqir}
+                  currentInstructionIndex={currentInstructionIndex}
+                  isPlaying={isPlaying}
+                  pipelineState={pipelineState}
                 />
               </>
             ) : (
-              <div style={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                height: '100%',
-                gap: '16px',
-              }}>
-                <div style={{
-                  width: '56px', height: '56px',
-                  background: 'var(--bg-surface)',
-                  border: 'var(--border-w) solid var(--border-color)',
-                  borderRadius: 'var(--radius-md)',
-                  boxShadow: 'var(--shadow-sm)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  color: 'var(--text-muted)',
-                }}>
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <polygon points="23 7 16 12 23 17 23 7" />
-                    <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
-                  </svg>
-                </div>
-                <div style={{ textAlign: 'center' }}>
-                  <div style={{ fontFamily: 'var(--font-ui)', fontSize: '14px', fontWeight: 800, color: 'var(--text-secondary)', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                    {pipelineState.runtime === 'error' ? 'Compilation Failed' : 'Scene not loaded'}
-                  </div>
-                  <div style={{ fontFamily: 'var(--font-ui)', fontSize: '12px', color: 'var(--text-muted)', fontWeight: 500 }}>
-                    {pipelineState.runtime === 'error' ? 'Fix errors and recompile.' : 'Press Compile to build the scene.'}
-                  </div>
-                </div>
+              <div className="ide-empty">
+                <p className="title">{pipelineState.runtime === 'error' ? 'Compilation failed.' : 'No scene loaded.'}</p>
+                <p className="muted mt-2">
+                  {pipelineState.runtime === 'error' ? 'The console below says where. Fix it and compile again.' : 'Press Compile to build the scene.'}
+                </p>
               </div>
             )}
           </div>
-        </div>
+        </section>
       </div>
 
       <IDEBottomPanel

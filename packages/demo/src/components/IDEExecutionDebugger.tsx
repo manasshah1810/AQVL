@@ -19,20 +19,7 @@ export const IDEExecutionDebugger: React.FC<IDEExecutionDebuggerProps> = ({
   const isRuntimeReady = pipelineState.runtime === 'success';
 
   let statusLabel = 'Compiling';
-  let dotClass = 'compiling';
-  let statusColor = '#a5b4fc';
-
-  if (isRuntimeReady) {
-    if (isPlaying) {
-      statusLabel = 'Playing';
-      dotClass = 'playing';
-      statusColor = 'var(--success)';
-    } else {
-      statusLabel = 'Paused';
-      dotClass = 'paused';
-      statusColor = 'var(--warning)';
-    }
-  }
+  if (isRuntimeReady) statusLabel = isPlaying ? 'Playing' : 'Paused';
 
   const progress = totalInstructions > 0
     ? Math.round((currentInstructionIndex / totalInstructions) * 100)
@@ -42,16 +29,13 @@ export const IDEExecutionDebugger: React.FC<IDEExecutionDebuggerProps> = ({
     <div className="exec-debugger">
       {/* Header */}
       <div className="exec-debugger-header">
-        <span className="exec-debugger-title">Execution Debugger</span>
-        <span className="exec-debugger-status" style={{ color: statusColor }}>
-          <span className={`exec-debugger-status-dot ${dotClass}`} />
-          {statusLabel}
-        </span>
+        <span className="exec-debugger-title">Execution</span>
+        <span className={`exec-debugger-status${statusLabel === 'Paused' ? ' is-paused' : ''}`}>{statusLabel}</span>
       </div>
 
       {/* IP Counter */}
       <div className="exec-debugger-ip">
-        <span className="exec-debugger-ip-label">Instr Pointer (IP):</span>
+        <span className="exec-debugger-ip-label">Instruction pointer</span>
         <span className="exec-debugger-ip-value">
           {currentInstructionIndex} / {totalInstructions}
         </span>
@@ -59,20 +43,8 @@ export const IDEExecutionDebugger: React.FC<IDEExecutionDebuggerProps> = ({
 
       {/* Progress track */}
       {totalInstructions > 0 && (
-        <div style={{
-          height: '3px',
-          background: 'rgba(255,255,255,0.08)',
-          borderRadius: '99px',
-          overflow: 'hidden',
-        }}>
-          <div style={{
-            height: '100%',
-            width: `${progress}%`,
-            background: 'linear-gradient(90deg, #6366f1, #22c55e)',
-            borderRadius: '99px',
-            transition: 'width 0.3s cubic-bezier(0.4,0,0.2,1)',
-            boxShadow: '0 0 6px rgba(99,102,241,.4)',
-          }} />
+        <div className="ide-progress" aria-hidden="true">
+          <span className="ide-progress__fill" style={{ transform: `scaleX(${progress / 100})`, transition: 'transform 380ms var(--spring-snappy)' }} />
         </div>
       )}
 
@@ -102,14 +74,7 @@ export const IDEExecutionDebugger: React.FC<IDEExecutionDebuggerProps> = ({
         })}
 
         {instructions.length === 0 && (
-          <div style={{
-            color: 'var(--text-subtle)',
-            fontStyle: 'italic',
-            padding: '4px 6px',
-            fontSize: '10.5px',
-          }}>
-            No instructions loaded
-          </div>
+          <p className="ide-note">No instructions loaded</p>
         )}
       </div>
     </div>

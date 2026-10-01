@@ -1,417 +1,72 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { AnimatePresence, motion } from 'motion/react';
+import { CodeBlock as SiteCodeBlock } from '../components/code/CodeBlock';
+import { navigate, parseHash, replaceHash } from '../lib/router';
+import { spring } from '../lib/motion';
 import './docs.css';
 
-// ─── Icons ───────────────────────────────────────────────
-const SunIcon = () => (
-  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="12" cy="12" r="5" /><line x1="12" y1="1" x2="12" y2="3" /><line x1="12" y1="21" x2="12" y2="23" />
-    <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" /><line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
-    <line x1="1" y1="12" x2="3" y2="12" /><line x1="21" y1="12" x2="23" y2="12" />
-    <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" /><line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
-  </svg>
-);
-
-const MoonIcon = () => (
-  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
-  </svg>
-);
-
-const CopyIcon = () => (
-  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-  </svg>
-);
-
-const CheckIcon = () => (
-  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-    <polyline points="20 6 9 17 4 12" />
-  </svg>
-);
-
-const InfoIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
-  </svg>
-);
-
-const WarnIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-    <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
-  </svg>
-);
-
-const TipIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-  </svg>
-);
-
-// ─── Nav Icons ────────────────────────────────────────────
-const IconDoc = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-    <polyline points="14 2 14 8 20 8" />
-  </svg>
-);
-
-const IconArray = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="3" y="3" width="18" height="18" rx="2" />
-    <line x1="3" y1="9" x2="21" y2="9" />
-    <line x1="9" y1="3" x2="9" y2="21" />
-  </svg>
-);
-
-const IconCode = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <polyline points="16 18 22 12 16 6" />
-    <polyline points="8 6 2 12 8 18" />
-  </svg>
-);
-
-const IconWarn = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-    <line x1="12" y1="9" x2="12" y2="13" />
-    <line x1="12" y1="17" x2="12.01" y2="17" />
-  </svg>
-);
-
-const IconLink = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="5" cy="12" r="2" />
-    <circle cx="12" cy="12" r="2" />
-    <circle cx="19" cy="12" r="2" />
-    <line x1="7" y1="12" x2="10" y2="12" />
-    <line x1="14" y1="12" x2="17" y2="12" />
-  </svg>
-);
-
-const IconTree = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-    <polyline points="17 11 21 7 17 3" />
-    <line x1="21" y1="7" x2="9" y2="7" />
-  </svg>
-);
-
-const IconGraph = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="2" y="3" width="4" height="4" rx="1" />
-    <rect x="10" y="10" width="4" height="4" rx="1" />
-    <rect x="18" y="17" width="4" height="4" rx="1" />
-    <line x1="6" y1="5" x2="10" y2="12" />
-    <line x1="14" y1="12" x2="18" y2="19" />
-  </svg>
-);
-
-const IconStack = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="2" y="16" width="20" height="5" rx="1" />
-    <rect x="2" y="9" width="20" height="5" rx="1" />
-    <rect x="2" y="3" width="20" height="4" rx="1" />
-  </svg>
-);
-
-const IconSort = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <line x1="3" y1="6" x2="21" y2="6" />
-    <line x1="8" y1="12" x2="21" y2="12" />
-    <line x1="13" y1="18" x2="21" y2="18" />
-    <polyline points="3 12 6 9 3 6" />
-  </svg>
-);
-
-const IconSearch = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="11" cy="11" r="8" />
-    <line x1="21" y1="21" x2="16.65" y2="16.65" />
-  </svg>
-);
-
-const IconQueue = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="2" y="8" width="5" height="8" rx="1" />
-    <rect x="9" y="8" width="5" height="8" rx="1" />
-    <rect x="16" y="8" width="5" height="8" rx="1" />
-    <line x1="2" y1="20" x2="21" y2="20" />
-  </svg>
-);
-
-const IconHeap = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <polygon points="12 3 21 19 3 19" />
-    <line x1="12" y1="3" x2="12" y2="19" />
-    <line x1="7" y1="12" x2="17" y2="12" />
-  </svg>
-);
-
-const IconTrie = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="12" cy="4" r="2" />
-    <circle cx="5" cy="13" r="2" />
-    <circle cx="19" cy="13" r="2" />
-    <circle cx="12" cy="21" r="2" />
-    <line x1="11" y1="6" x2="6" y2="11" />
-    <line x1="13" y1="6" x2="18" y2="11" />
-    <line x1="6" y1="15" x2="11" y2="19" />
-  </svg>
-);
-
-const IconHashMap = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <line x1="4" y1="9" x2="20" y2="9" />
-    <line x1="4" y1="15" x2="20" y2="15" />
-    <line x1="10" y1="3" x2="8" y2="21" />
-    <line x1="16" y1="3" x2="14" y2="21" />
-  </svg>
-);
-
-const IconFlow = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <polyline points="4 4 4 12 12 12" />
-    <polyline points="9 9 12 12 9 15" />
-    <circle cx="18" cy="12" r="3" />
-  </svg>
-);
-
-const IconFunction = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M9 20c-2 0-3-1-3-3v-3c0-1.5-.8-2-2-2 1.2 0 2-.5 2-2V7c0-2 1-3 3-3" />
-    <path d="M15 4c2 0 3 1 3 3v3c0 1.5.8 2 2 2-1.2 0-2 .5-2 2v3c0 2-1 3-3 3" />
-  </svg>
-);
-
-const IconCamera = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M3 8h3l2-2h8l2 2h3v11H3z" />
-    <circle cx="12" cy="13" r="3.5" />
-  </svg>
-);
-
-// ─── Robot Mascot ─────────────────────────────────────────
-const RobotMascot = () => (
-  <svg width="44" height="44" viewBox="0 0 44 44" fill="none">
-    {/* Body */}
-    <rect x="8" y="18" width="28" height="22" rx="4" fill="#f472b6" stroke="#1a1916" strokeWidth="1.5"/>
-    {/* Head */}
-    <rect x="11" y="6" width="22" height="14" rx="3" fill="#f9a8d4" stroke="#1a1916" strokeWidth="1.5"/>
-    {/* Antenna */}
-    <line x1="22" y1="6" x2="22" y2="2" stroke="#1a1916" strokeWidth="1.5" strokeLinecap="round"/>
-    <circle cx="22" cy="1.5" r="1.5" fill="#f5c800"/>
-    {/* Eyes */}
-    <rect x="14" y="9" width="6" height="5" rx="1.5" fill="#1a1916"/>
-    <rect x="24" y="9" width="6" height="5" rx="1.5" fill="#1a1916"/>
-    <circle cx="17" cy="11.5" r="1.5" fill="#60a5fa"/>
-    <circle cx="27" cy="11.5" r="1.5" fill="#60a5fa"/>
-    {/* Mouth */}
-    <path d="M16 18 Q22 21 28 18" stroke="#1a1916" strokeWidth="1.5" strokeLinecap="round" fill="none"/>
-    {/* Legs */}
-    <rect x="13" y="38" width="7" height="5" rx="2" fill="#ec4899" stroke="#1a1916" strokeWidth="1.5"/>
-    <rect x="24" y="38" width="7" height="5" rx="2" fill="#ec4899" stroke="#1a1916" strokeWidth="1.5"/>
-    {/* Arms */}
-    <rect x="2" y="20" width="7" height="4" rx="2" fill="#f9a8d4" stroke="#1a1916" strokeWidth="1.5"/>
-    <rect x="35" y="20" width="7" height="4" rx="2" fill="#f9a8d4" stroke="#1a1916" strokeWidth="1.5"/>
-    {/* Chest panel */}
-    <rect x="15" y="24" width="14" height="10" rx="2" fill="rgba(0,0,0,0.15)"/>
-    <line x1="18" y1="27" x2="26" y2="27" stroke="#f5c800" strokeWidth="1" strokeLinecap="round"/>
-    <line x1="18" y1="30" x2="24" y2="30" stroke="#f5c800" strokeWidth="1" strokeLinecap="round"/>
-  </svg>
-);
-
-// ─── TOC Icons ────────────────────────────────────────────
-const TocIconDoc = () => (
-  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-    <polyline points="14 2 14 8 20 8" />
-  </svg>
-);
-
-const TocIconBracket = () => (
-  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-    <polyline points="16 18 22 12 16 6" />
-    <polyline points="8 6 2 12 8 18" />
-  </svg>
-);
-
-const TocIconTerm = () => (
-  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <polyline points="4 17 10 11 4 5" />
-    <line x1="12" y1="19" x2="20" y2="19" />
-  </svg>
-);
-
-const TocIconWarn = () => (
-  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-    <line x1="12" y1="9" x2="12" y2="13" />
-    <line x1="12" y1="17" x2="12.01" y2="17" />
-  </svg>
-);
-
-const TocIconList = () => (
-  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <line x1="8" y1="6" x2="21" y2="6" />
-    <line x1="8" y1="12" x2="21" y2="12" />
-    <line x1="8" y1="18" x2="21" y2="18" />
-    <line x1="3" y1="6" x2="3.01" y2="6" />
-    <line x1="3" y1="12" x2="3.01" y2="12" />
-    <line x1="3" y1="18" x2="3.01" y2="18" />
-  </svg>
-);
-
-// ─── Syntax Highlighter ───────────────────────────────────
-// Kept in sync with the compiler's KEYWORDS set —
-// packages/compiler/src/lexer/index.ts. CIRCULAR is deliberately excluded
-// here: it is styled separately via CIRCULAR_KEYWORD below.
-const KEYWORDS = new Set([
-  'SCENE', 'DECLARE', 'ARRAY', 'SEQUENCE',
-  'COMPARE', 'SWAP', 'HIGHLIGHT', 'WAIT', 'END',
-  'LINKEDLIST', 'TYPE', 'SINGLY', 'DOUBLY',
-  'NODE', 'EDGE', 'POINTER', 'STACK', 'QUEUE', 'HEAP',
-  'GRAPH', 'VERTEX', 'GRAPH_EDGE', 'TREE', 'TREE_NODE', 'BINARY_TREE', 'BST',
-  'LABEL', 'ANNOTATION', 'LINK', 'RELATION', 'DIRECTED', 'UNDIRECTED',
-  'TO', 'FROM', 'PARENT', 'CHILD', 'LEFT_CHILD', 'RIGHT_CHILD', 'SIBLING',
-  'INSERT', 'DELETE', 'INSERT_HEAD', 'INSERT_TAIL', 'DELETE_HEAD', 'DELETE_TAIL', 'FREE', 'NEW_NODE',
-  'MOVE', 'CONNECT', 'DISCONNECT', 'PUSH', 'POP', 'PEEK',
-  'ENQUEUE', 'DEQUEUE', 'FRONT', 'REAR', 'VISIT', 'MARK', 'TRAVERSE', 'ROTATE', 'SEARCH', 'HEAPIFY', 'UPDATE',
-  'HEAP_INSERT', 'HEAP_EXTRACT', 'HEAP_DECREASE', 'BUILD_HEAP',
-  'HASH_MAP', 'HASHMAP_INSERT', 'HASHMAP_LOOKUP', 'HASHMAP_DELETE',
-  'TRIE_INSERT', 'TRIE_SEARCH', 'TRIE_DELETE', 'TRIE_AUTOCOMPLETE', 'TRIE_STARTSWITH',
-  'SET', 'STATE', 'LOOP', 'LENGTH', 'NULL', 'TRIE', 'IF', 'HEAD', 'CLEAR', 'IS_EMPTY',
-  'ROOT', 'REMOVE', 'COPY', 'FIND', 'SELECT',
-  'PREORDER', 'INORDER', 'POSTORDER', 'LEVELORDER', 'REVERSELEVELORDER', 'REVERSE', 'ZIGZAG',
-  'DFS', 'BFS', 'DIJKSTRA', 'BELLMAN_FORD', 'ASTAR', 'PRIM', 'KRUSKAL', 'TOPO_SORT',
-  'ADD_VERTEX', 'ADD_EDGE', 'REMOVE_EDGE', 'REMOVE_VERTEX', 'VERTEX_AT', 'VERTEX_COUNT', 'EDGE_AT', 'EDGE_COUNT',
-  'IN_DEGREE', 'NEIGHBOR', 'WEIGHT', 'HAS_EDGE', 'TRUE', 'FALSE', 'INFINITY',
-  'CONTAINS', 'KEY_AT', 'BUCKET_OF', 'CAPACITY', 'TEXT_LENGTH', 'CHAR_AT', 'CHAR_CODE',
-  'HAS_CHILD', 'GET_CHILD', 'ADD_CHILD', 'REMOVE_CHILD', 'CHILD_COUNT', 'CHILD_AT', 'WORD_COUNT', 'NODE_COUNT',
-  'HEIGHT', 'DEPTH', 'LEVEL', 'MAX_DEPTH', 'MIN_DEPTH', 'SIZE', 'LEAVES', 'INTERNAL', 'DEGREE', 'STATS',
-  'PARENTOF', 'CHILDRENOF', 'ANCESTORS', 'DESCENDANTS', 'SIBLINGS', 'PATH', 'INTO',
-  'COUNT_NODES', 'COUNT_LEAVES', 'COUNT_INTERNAL', 'COUNT_LEFT_LEAVES', 'COUNT_RIGHT_LEAVES', 'COUNT_FULL', 'COUNT_HALF',
-  'IS_FULL', 'IS_COMPLETE', 'IS_PERFECT', 'IS_BALANCED', 'IS_DEGENERATE', 'IS_LEFT_SKEWED', 'IS_RIGHT_SKEWED', 'IS_SYMMETRIC',
-  'LCA', 'DISTANCE', 'GRANDPARENT', 'UNCLE', 'COUSINS',
-  'ROOT_TO_NODE', 'ROOT_TO_LEAVES', 'LONGEST_PATH', 'SHORTEST_PATH',
-  'MIRROR', 'INVERT', 'CLONE', 'REMOVE_LEAVES', 'PRUNE',
-  'LEFT_VIEW', 'RIGHT_VIEW', 'TOP_VIEW', 'BOTTOM_VIEW', 'BOUNDARY', 'VERTICAL_ORDER', 'DIAGONAL',
-  'MAX_VALUE', 'MIN_VALUE', 'MIN', 'MAX', 'SUM', 'AVERAGE', 'MAX_LEVEL_SUM',
-  'BUBBLE_SORT', 'SELECTION_SORT', 'INSERTION_SORT', 'MERGE_SORT', 'QUICK_SORT',
-  // User-defined functions (VM mode)
-  'FUNCTION', 'RETURN', 'ELSE',
-  // Spatial syntax (LAYOUT / CAMERA / POSITION)
-  'LAYOUT', 'AS', 'LINE', 'HIERARCHY', 'FORCE_DIRECTED', 'GRID', 'CUSTOM',
-  'CAMERA', 'FOCUS', 'AUTO_FIT', 'ORBIT', 'POSITION', 'AT',
-]);
-
-// CIRCULAR gets its own class to distinguish it visually as a structural modifier
-const CIRCULAR_KEYWORD = 'CIRCULAR';
-
-function highlightAQVL(source: string): React.ReactNode[] {
-  return source.split('\n').map((line, lineIdx) => {
-    const isLast = lineIdx === source.split('\n').length - 1;
-
-    // Comment line
-    if (line.trimStart().startsWith('//')) {
-      return (
-        <span key={lineIdx}>
-          <span className="tok-comment">{line}</span>
-          {!isLast && '\n'}
-        </span>
-      );
-    }
-
-    // Tokenise. Multi-character operators come first in the alternation so
-    // they win over their single-character prefixes, and quoted strings are
-    // captured whole so their contents (e.g. "A->B") aren't re-tokenised.
-    const parts = line.split(/(\s+|"[^"]*"|'[^']*'|<->|<-|->|<=|>=|==|!=|\[|\]|\{|\}|:|=|,|\(|\)|>|<|\+|-|\*|\/)/g);
-    const nodes = parts.map((part, partIdx) => {
-      if (part === CIRCULAR_KEYWORD) return <span key={partIdx} className="tok-circular">{part}</span>;
-      if (KEYWORDS.has(part)) return <span key={partIdx} className="tok-keyword">{part}</span>;
-      if (/^(["']).*\1$/.test(part)) return <span key={partIdx} className="tok-string">{part}</span>;
-      if (/^\d+(\.\d+)?$/.test(part)) return <span key={partIdx} className="tok-number">{part}</span>;
-      if (/^[a-z_][a-z0-9_]*$/i.test(part) && part.length > 0)
-        return <span key={partIdx} className="tok-variable">{part}</span>;
-      if (/^[=><!{}:,+\-*/[\]()]+$/.test(part) && part.trim())
-        return <span key={partIdx} className="tok-operator">{part}</span>;
-      return <span key={partIdx}>{part}</span>;
-    });
-
-    return (
-      <span key={lineIdx}>
-        {nodes}
-        {!isLast && '\n'}
-      </span>
-    );
-  });
-}
-
 // ─── CodeBlock ────────────────────────────────────────────
+// Full programs (they start with SCENE) get a "Run" action that hands the
+// source to the playground through sessionStorage.
 interface CodeBlockProps {
   code: string;
   label?: string;
 }
 
+export const HANDOFF_KEY = 'aqvl-handoff';
+
 const CodeBlock: React.FC<CodeBlockProps> = ({ code, label = 'aqvl' }) => {
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = () => {
-    navigator.clipboard.writeText(code).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
+  const runnable = /^\s*SCENE\s+\w+/.test(code);
+  const run = () => {
+    try {
+      sessionStorage.setItem(HANDOFF_KEY, code);
+    } catch {
+      return;
+    }
+    navigate('/playground?from=docs');
   };
-
   return (
-    <div className="docs-codeblock">
-      <div className="docs-codeblock-header">
-        <div className="docs-codeblock-dots">
-          <span /><span /><span />
-        </div>
-        <span className="docs-codeblock-lang">{label}</span>
-        <button
-          className={`docs-copy-btn${copied ? ' is-copied' : ''}`}
-          onClick={handleCopy}
-          aria-label="Copy code"
-        >
-          {copied ? <><CheckIcon /> Copied</> : <><CopyIcon /> Copy</>}
-        </button>
-      </div>
-      <div className="docs-codeblock-body">
-        <pre>{highlightAQVL(code)}</pre>
-      </div>
-    </div>
+    <SiteCodeBlock
+      code={code}
+      label={label}
+      className="docs-code"
+      actions={
+        runnable ? (
+          <button type="button" className="code__copy mono" onClick={run}>
+            Run
+          </button>
+        ) : undefined
+      }
+    />
   );
 };
 
 // ─── Alert ────────────────────────────────────────────────
 type AlertKind = 'note' | 'warn' | 'tip';
-const Alert: React.FC<{ kind: AlertKind; title: string; children: React.ReactNode }> = ({ kind, title, children }) => {
-  const icons: Record<AlertKind, React.ReactNode> = {
-    note: <InfoIcon />,
-    warn: <WarnIcon />,
-    tip: <TipIcon />,
-  };
-  const cls: Record<AlertKind, string> = {
-    note: 'docs-alert-note',
-    warn: 'docs-alert-warn',
-    tip: 'docs-alert-tip',
-  };
-  return (
-    <div className={`docs-alert ${cls[kind]}`}>
-      <span className="docs-alert-icon">{icons[kind]}</span>
-      <div className="docs-alert-body">
-        <p className="docs-alert-title">{title}</p>
-        <p>{children}</p>
-      </div>
-    </div>
-  );
-};
+const ALERT_WORD: Record<AlertKind, string> = { note: 'Note', warn: 'Watch out', tip: 'Tip' };
+
+const Alert: React.FC<{ kind: AlertKind; title: string; children: React.ReactNode }> = ({ kind, title, children }) => (
+  <aside className={`docs-alert docs-alert--${kind}`} aria-label={`${ALERT_WORD[kind]}: ${title}`}>
+    <p className="docs-alert__title">
+      <span className="docs-alert__kind mono">{ALERT_WORD[kind]}</span>
+      {title}
+    </p>
+    <div className="docs-alert__body">{children}</div>
+  </aside>
+);
 
 // ─── Inline code helper ───────────────────────────────────
-const C: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <code className="docs-ic">{children}</code>
+const C: React.FC<{ children: React.ReactNode }> = ({ children }) => <code className="docs-ic">{children}</code>;
+
+// ─── Page header ──────────────────────────────────────────
+const PageHero: React.FC<{ group: string; title: string; children: React.ReactNode }> = ({ group, title, children }) => (
+  <header className="docs-hero">
+    <p className="docs-hero__crumb mono">
+      Docs <span aria-hidden="true">/</span> {group}
+    </p>
+    <h1 className="docs-hero__title">{title}</h1>
+    <p className="docs-hero__lead">{children}</p>
+  </header>
 );
 
 // ─── TOC definition ───────────────────────────────────────
@@ -603,13 +258,130 @@ const TOC_BY_PAGE: Record<PageId, { id: string; label: string }[]> = {
   'layout-camera': TOC_ITEMS_LAYOUT_CAMERA,
 };
 
+// ─── Navigation model ─────────────────────────────────────
+interface NavEntry {
+  page: PageId;
+  label: string;
+  children?: { page: PageId; label: string }[];
+}
+
+const NAV_GROUPS: { label: string; items: NavEntry[] }[] = [
+  {
+    label: 'Data structures',
+    items: [
+      { page: 'arrays', label: 'Arrays' },
+      {
+        page: 'linked-lists',
+        label: 'Linked lists',
+        children: [
+          { page: 'singly-linked-list', label: 'Singly' },
+          { page: 'doubly-linked-list', label: 'Doubly' },
+          { page: 'circular-linked-list', label: 'Circular' },
+        ],
+      },
+      {
+        page: 'trees',
+        label: 'Trees',
+        children: [
+          { page: 'general-tree', label: 'General tree' },
+          { page: 'binary-tree', label: 'Binary tree' },
+          { page: 'bst', label: 'Binary search tree' },
+        ],
+      },
+      { page: 'stacks', label: 'Stacks' },
+      { page: 'queues', label: 'Queues' },
+      { page: 'graphs', label: 'Graphs' },
+      { page: 'heaps', label: 'Heaps' },
+      { page: 'tries', label: 'Tries' },
+      { page: 'hashmaps', label: 'Hash maps' },
+    ],
+  },
+  {
+    label: 'Language',
+    items: [
+      { page: 'control-flow', label: 'Loops & control flow' },
+      { page: 'functions', label: 'Functions & recursion' },
+    ],
+  },
+  { label: 'Spatial syntax', items: [{ page: 'layout-camera', label: 'Layout & camera' }] },
+  {
+    label: 'Algorithms',
+    items: [
+      { page: 'sorting', label: 'Sorting' },
+      { page: 'searching', label: 'Searching' },
+    ],
+  },
+];
+
+const PAGE_IDS = Object.keys(TOC_BY_PAGE) as PageId[];
+
+function pageFromHash(): PageId {
+  const seg = parseHash(window.location.hash).rest[0];
+  return seg && (PAGE_IDS as string[]).includes(seg) ? (seg as PageId) : 'arrays';
+}
+
+function SideNav({ activePage, onPick }: { activePage: PageId; onPick: (p: PageId) => void }) {
+  return (
+    <nav className="docs-nav" aria-label="Documentation">
+      {NAV_GROUPS.map((group) => (
+        <div key={group.label} className="docs-nav__group">
+          <p className="docs-nav__label mono">{group.label}</p>
+          <ul role="list">
+            {group.items.map((item) => {
+              const inFamily = activePage === item.page || !!item.children?.some((c) => c.page === activePage);
+              return (
+                <li key={item.page}>
+                  <a
+                    href={`#/docs/${item.page}`}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      onPick(item.page);
+                    }}
+                    className={`docs-nav__item${activePage === item.page ? ' is-active' : inFamily ? ' is-family' : ''}`}
+                    aria-current={activePage === item.page ? 'page' : undefined}
+                  >
+                    {activePage === item.page && <motion.span layoutId="docs-nav-on" className="docs-nav__bg" transition={spring.layout} />}
+                    <span className="relative">{item.label}</span>
+                  </a>
+                  {item.children && inFamily && (
+                    <ul role="list" className="docs-nav__children">
+                      {item.children.map((child) => (
+                        <li key={child.page}>
+                          <a
+                            href={`#/docs/${child.page}`}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              onPick(child.page);
+                            }}
+                            className={`docs-nav__item docs-nav__child${activePage === child.page ? ' is-active' : ''}`}
+                            aria-current={activePage === child.page ? 'page' : undefined}
+                          >
+                            {activePage === child.page && <motion.span layoutId="docs-nav-on" className="docs-nav__bg" transition={spring.layout} />}
+                            <span className="relative">{child.label}</span>
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      ))}
+    </nav>
+  );
+}
+
 // ─── Main Docs page ───────────────────────────────────────
 export default function Docs() {
-  const [activePage, setActivePage] = useState<PageId>('arrays');
-  const [theme, setTheme] = useState<'light' | 'dark'>('dark');
-  const [activeId, setActiveId] = useState('introduction');
-  const [scrollPct, setScrollPct] = useState(0);
+  const [activePage, setActivePage] = useState<PageId>(pageFromHash);
+  const [activeId, setActiveId] = useState(() => TOC_BY_PAGE[pageFromHash()][0].id);
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const observerRef = useRef<IntersectionObserver | null>(null);
+  const mainRef = useRef<HTMLDivElement>(null);
+  const progressRef = useRef<HTMLSpanElement>(null);
+  const drawerBtnRef = useRef<HTMLButtonElement>(null);
 
   const TOC_ITEMS = TOC_BY_PAGE[activePage];
 
@@ -617,26 +389,25 @@ export default function Docs() {
   const goToPage = useCallback((page: PageId) => {
     setActivePage(page);
     setActiveId(TOC_BY_PAGE[page][0].id);
+    setDrawerOpen(false);
+    replaceHash(`/docs/${page}`);
+    mainRef.current?.scrollTo({ top: 0 });
   }, []);
 
-  // Restore theme
+  // Links from elsewhere on the site (e.g. #/docs/layout-camera) while docs is open.
   useEffect(() => {
-    const saved = (localStorage.getItem('aqvl-docs-theme') ?? 'dark') as 'light' | 'dark';
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setTheme(saved);
-    document.documentElement.setAttribute('data-theme', saved);
+    const onHash = () => {
+      const p = pageFromHash();
+      setActivePage(p);
+      setActiveId(TOC_BY_PAGE[p][0].id);
+    };
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
   }, []);
-
-  const toggleTheme = () => {
-    const next = theme === 'dark' ? 'light' : 'dark';
-    setTheme(next);
-    document.documentElement.setAttribute('data-theme', next);
-    localStorage.setItem('aqvl-docs-theme', next);
-  };
 
   // IntersectionObserver — root is the scrollable container
   useEffect(() => {
-    const root = document.querySelector('.docs-main-wrap');
+    const root = mainRef.current;
     const cb: IntersectionObserverCallback = (entries) => {
       for (const entry of entries) {
         if (entry.isIntersecting) setActiveId(entry.target.id);
@@ -654,302 +425,86 @@ export default function Docs() {
     return () => observerRef.current?.disconnect();
   }, [activePage, TOC_ITEMS]);
 
-  // Scroll progress bar — track .docs-main-wrap, not window
+  // Reading progress, written straight to the bar's transform (no re-render per scroll event).
   useEffect(() => {
-    const container = document.querySelector('.docs-main-wrap');
+    const container = mainRef.current;
     if (!container) return;
     const onScroll = () => {
       const { scrollTop, scrollHeight, clientHeight } = container;
-      const pct = scrollHeight - clientHeight > 0
-        ? (scrollTop / (scrollHeight - clientHeight)) * 100
-        : 0;
-      setScrollPct(pct);
+      const pct = scrollHeight - clientHeight > 0 ? scrollTop / (scrollHeight - clientHeight) : 0;
+      if (progressRef.current) progressRef.current.style.transform = `scaleX(${pct})`;
     };
+    onScroll();
     container.addEventListener('scroll', onScroll, { passive: true });
     return () => container.removeEventListener('scroll', onScroll);
-  }, []);
+  }, [activePage]);
+
+  // Drawer: Escape closes, focus returns to its button.
+  useEffect(() => {
+    if (!drawerOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setDrawerOpen(false);
+        drawerBtnRef.current?.focus();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [drawerOpen]);
 
   const scrollTo = useCallback((id: string) => {
     const el = document.getElementById(id);
-    const container = document.querySelector('.docs-main-wrap');
+    const container = mainRef.current;
     if (el && container) {
       const elTop = el.getBoundingClientRect().top;
       const containerTop = container.getBoundingClientRect().top;
       container.scrollBy({ top: elTop - containerTop - 32, behavior: 'smooth' });
+      el.setAttribute('tabindex', '-1');
+      el.focus({ preventScroll: true });
     }
   }, []);
 
+  const currentLabel =
+    NAV_GROUPS.flatMap((g) => g.items.flatMap((i) => [i, ...(i.children ?? [])])).find((i) => i.page === activePage)?.label ?? 'Docs';
+
   // ── Render ─────────────────────────────────────────────
   return (
-    <div className="docs-root">
-      {/* Progress bar */}
-      <div className="docs-progress-bar" style={{ width: `${scrollPct}%` }} />
+    <div className="docs-shell">
+      <aside className="docs-side" aria-label="Documentation sections">
+        <SideNav activePage={activePage} onPick={goToPage} />
+      </aside>
 
-      <div className="docs-layout">
-        {/* ── Left Sidebar ─────────────────────────────── */}
-        <aside className="docs-sidebar">
-          <div className="docs-sidebar-topbar">
-            <a href="#/" className="docs-brand">
-              <div className="docs-brand-logo">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#111111" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="16 18 22 12 16 6" /><polyline points="8 6 2 12 8 18" />
-                </svg>
-              </div>
-              <span className="docs-brand-name">AQVL</span>
-            </a>
-            <button className="theme-btn" onClick={toggleTheme} aria-label="Toggle theme">
-              {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
-            </button>
-          </div>
-
-          <nav className="docs-sidebar-nav" aria-label="Sidebar navigation">
-            <div className="docs-nav-group">
-              <div className="docs-nav-group-label">Getting Started</div>
-              {TOC_ITEMS.map(({ id, label }) => {
-                const navIcon = id.includes('introduction') || id.includes('ll-introduction') || id.includes('sl-introduction') || id.includes('dl-introduction') || id.includes('cl-introduction') || id.includes('tr-introduction') || id.includes('gt-introduction') || id.includes('bt-introduction')
-                  ? <IconDoc />
-                  : id.includes('declaration') || id.includes('commands')
-                  ? <IconCode />
-                  : id.includes('examples')
-                  ? <IconArray />
-                  : <IconWarn />;
-                return (
-                  <button
-                    key={id}
-                    className={`docs-nav-item${activeId === id ? ' is-active' : ''}`}
-                    onClick={() => scrollTo(id)}
-                  >
-                    <span className="docs-nav-icon">{navIcon}</span>
-                    {label}
-                  </button>
-                );
-              })}
-            </div>
-
-            <div className="docs-nav-group">
-              <div className="docs-nav-group-label">Data Structures</div>
-              <button
-                className={`docs-nav-item ${activePage === 'arrays' ? 'is-active' : ''}`}
-                onClick={() => goToPage('arrays')}
-              >
-                <span className="docs-nav-icon"><IconArray /></span>
-                Arrays
-              </button>
-
-              {/* ── Linked Lists parent + nested children ─ */}
-              <button
-                className={`docs-nav-item ${activePage === 'linked-lists' ? 'is-active' : (activePage === 'singly-linked-list' || activePage === 'doubly-linked-list' || activePage === 'circular-linked-list') ? 'is-parent-active' : ''}`}
-                onClick={() => goToPage('linked-lists')}
-              >
-                <span className="docs-nav-icon"><IconLink /></span>
-                Linked Lists
-              </button>
-
-              {/* Children — shown whenever any linked-list page is active */}
-              {(activePage === 'linked-lists' || activePage === 'singly-linked-list' || activePage === 'doubly-linked-list' || activePage === 'circular-linked-list') && (
-                <div className="docs-nav-children">
-                  <button
-                    className={`docs-nav-item docs-nav-child ${activePage === 'singly-linked-list' ? 'is-active' : ''}`}
-                    onClick={() => goToPage('singly-linked-list')}
-                  >
-                    Singly
-                  </button>
-                  <button
-                    className={`docs-nav-item docs-nav-child ${activePage === 'doubly-linked-list' ? 'is-active' : ''}`}
-                    onClick={() => goToPage('doubly-linked-list')}
-                  >
-                    Doubly
-                  </button>
-                  <button
-                    className={`docs-nav-item docs-nav-child ${activePage === 'circular-linked-list' ? 'is-active' : ''}`}
-                    onClick={() => goToPage('circular-linked-list')}
-                  >
-                    Circular
-                  </button>
-                </div>
-              )}
-
-              {/* ── Trees parent + nested children ─ */}
-              <button
-                className={`docs-nav-item ${activePage === 'trees' ? 'is-active' : (activePage === 'general-tree' || activePage === 'binary-tree' || activePage === 'bst') ? 'is-parent-active' : ''}`}
-                onClick={() => goToPage('trees')}
-              >
-                <span className="docs-nav-icon"><IconTree /></span>
-                Trees
-              </button>
-
-              {/* Children — shown whenever any tree page is active */}
-              {(activePage === 'trees' || activePage === 'general-tree' || activePage === 'binary-tree' || activePage === 'bst') && (
-                <div className="docs-nav-children">
-                  <button
-                    className={`docs-nav-item docs-nav-child ${activePage === 'general-tree' ? 'is-active' : ''}`}
-                    onClick={() => goToPage('general-tree')}
-                  >
-                    General Tree
-                  </button>
-                  <button
-                    className={`docs-nav-item docs-nav-child ${activePage === 'binary-tree' ? 'is-active' : ''}`}
-                    onClick={() => goToPage('binary-tree')}
-                  >
-                    Binary Tree
-                  </button>
-                  <button
-                    className={`docs-nav-item docs-nav-child ${activePage === 'bst' ? 'is-active' : ''}`}
-                    onClick={() => goToPage('bst')}
-                  >
-                    BST
-                  </button>
-                </div>
-              )}
-
-              <button
-                className={`docs-nav-item ${activePage === 'stacks' ? 'is-active' : ''}`}
-                onClick={() => goToPage('stacks')}
-              >
-                <span className="docs-nav-icon"><IconStack /></span>
-                Stacks
-              </button>
-              <button
-                className={`docs-nav-item ${activePage === 'queues' ? 'is-active' : ''}`}
-                onClick={() => goToPage('queues')}
-              >
-                <span className="docs-nav-icon"><IconQueue /></span>
-                Queues
-              </button>
-              <button
-                className={`docs-nav-item ${activePage === 'graphs' ? 'is-active' : ''}`}
-                onClick={() => goToPage('graphs')}
-              >
-                <span className="docs-nav-icon"><IconGraph /></span>
-                Graphs
-              </button>
-              <button
-                className={`docs-nav-item ${activePage === 'heaps' ? 'is-active' : ''}`}
-                onClick={() => goToPage('heaps')}
-              >
-                <span className="docs-nav-icon"><IconHeap /></span>
-                Heaps
-              </button>
-              <button
-                className={`docs-nav-item ${activePage === 'tries' ? 'is-active' : ''}`}
-                onClick={() => goToPage('tries')}
-              >
-                <span className="docs-nav-icon"><IconTrie /></span>
-                Tries
-              </button>
-              <button
-                className={`docs-nav-item ${activePage === 'hashmaps' ? 'is-active' : ''}`}
-                onClick={() => goToPage('hashmaps')}
-              >
-                <span className="docs-nav-icon"><IconHashMap /></span>
-                Hash Maps
-              </button>
-            </div>
-
-            <div className="docs-nav-group">
-              <div className="docs-nav-group-label">Language</div>
-              <button
-                className={`docs-nav-item ${activePage === 'control-flow' ? 'is-active' : ''}`}
-                onClick={() => goToPage('control-flow')}
-              >
-                <span className="docs-nav-icon"><IconFlow /></span>
-                Loops &amp; Control Flow
-              </button>
-              <button
-                className={`docs-nav-item ${activePage === 'functions' ? 'is-active' : ''}`}
-                onClick={() => goToPage('functions')}
-              >
-                <span className="docs-nav-icon"><IconFunction /></span>
-                Functions &amp; Recursion
-              </button>
-            </div>
-
-            <div className="docs-nav-group">
-              <div className="docs-nav-group-label">Spatial Syntax</div>
-              <button
-                className={`docs-nav-item ${activePage === 'layout-camera' ? 'is-active' : ''}`}
-                onClick={() => goToPage('layout-camera')}
-              >
-                <span className="docs-nav-icon"><IconCamera /></span>
-                Layout &amp; Camera
-              </button>
-            </div>
-
-            <div className="docs-nav-group">
-              <div className="docs-nav-group-label">Algorithms</div>
-              <button
-                className={`docs-nav-item ${activePage === 'sorting' ? 'is-active' : ''}`}
-                onClick={() => goToPage('sorting')}
-              >
-                <span className="docs-nav-icon"><IconSort /></span>
-                Sorting
-              </button>
-              <button
-                className={`docs-nav-item ${activePage === 'searching' ? 'is-active' : ''}`}
-                onClick={() => goToPage('searching')}
-              >
-                <span className="docs-nav-icon"><IconSearch /></span>
-                Searching
-              </button>
-            </div>
-          </nav>
-
-          {/* ── Robot Mascot ─────────────────────────────── */}
-          <div className="docs-mascot">
-            <div className="docs-mascot-body">
-              <RobotMascot />
-            </div>
-            <div className="docs-mascot-bubble">
-              Build.<br />Visualize.<br />Understand.
-            </div>
-          </div>
-        </aside>
-
-        {/* ── Top-right action buttons ─────────────────── */}
-        <div className="docs-topbar-actions">
-          <button className="docs-action-btn docs-action-btn-code" aria-label="View source">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="16 18 22 12 16 6" /><polyline points="8 6 2 12 8 18" />
-            </svg>
-          </button>
-          <button className="docs-action-btn docs-action-btn-fav" aria-label="Home" onClick={() => window.location.hash = '#/'}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-              <polyline points="9 22 9 12 15 12 15 22" />
-            </svg>
-          </button>
+      <div className="docs-main-wrap" ref={mainRef}>
+        <div className="docs-progress" aria-hidden="true">
+          <span ref={progressRef} className="docs-progress__bar" />
         </div>
 
-        {/* ── Main content ─────────────────────────────── */}
-        <div className="docs-main-wrap">
-          <div className="docs-content">
+        <div className="docs-mobilebar">
+          <button
+            ref={drawerBtnRef}
+            type="button"
+            className="btn btn--quiet btn--sm"
+            aria-expanded={drawerOpen}
+            aria-controls="docs-drawer"
+            onClick={() => setDrawerOpen(true)}
+          >
+            Contents
+          </button>
+          <span className="mono muted truncate">{currentLabel}</span>
+        </div>
+
+        <motion.div
+          key={activePage}
+          className="docs-content"
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0, transition: spring.gentle }}
+        >
 
             {activePage === 'arrays' && (
               <>
-                {/* Page hero */}
-                <header className="docs-page-hero">
-                  <div className="docs-page-tag">Data Structures</div>
-                  <div className="docs-page-title-row">
-                    <div className="docs-page-title-icon">
-                      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <rect x="3" y="3" width="18" height="18" rx="2" />
-                        <line x1="3" y1="9" x2="21" y2="9" />
-                        <line x1="9" y1="3" x2="9" y2="21" />
-                      </svg>
-                    </div>
-                    <h1 className="docs-page-title">Arrays</h1>
-                    {/* Neobrutalism decorative sparkle */}
-                    <svg style={{marginLeft:'auto',flexShrink:0,opacity:0.6}} width="32" height="32" viewBox="0 0 24 24" fill="#f472b6" stroke="#111" strokeWidth="1.5">
-                      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-                    </svg>
-                    <svg style={{flexShrink:0,opacity:0.5}} width="20" height="20" viewBox="0 0 24 24" fill="#fde047" stroke="#111" strokeWidth="1.5">
-                      <rect x="3" y="3" width="18" height="18" rx="2" />
-                    </svg>
-                  </div>
-                  <p className="docs-page-lead">
-                    Learn how to declare, manipulate, and animate arrays in AQVL — the language built for visualizing algorithms.
-                  </p>
-                </header>
+                <PageHero group="Data structures" title="Arrays">
+                  Learn how to declare, manipulate, and animate arrays in AQVL — the language built for visualizing algorithms.
+                </PageHero>
 
                 {/* ── § Introduction ─────────────────────── */}
                 <section id="introduction" className="docs-section">
@@ -1152,22 +707,9 @@ export default function Docs() {
 
             {activePage === 'linked-lists' && (
               <>
-                {/* Page hero */}
-                <header className="docs-page-hero">
-                  <div className="docs-page-tag">Data Structures</div>
-                  <div className="docs-page-title-row">
-                    <div className="docs-page-title-icon">
-                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <circle cx="5" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="19" cy="12" r="2" />
-                        <line x1="7" y1="12" x2="10" y2="12" /><line x1="14" y1="12" x2="17" y2="12" />
-                      </svg>
-                    </div>
-                    <h1 className="docs-page-title">Linked Lists</h1>
-                  </div>
-                  <p className="docs-page-lead">
-                    AQVL supports three flavors of linked list: Singly, Doubly, and Circular. Each one is a separate page — select one in the sidebar to dive deep.
-                  </p>
-                </header>
+                <PageHero group="Data structures" title="Linked Lists">
+                  AQVL supports three flavors of linked list: Singly, Doubly, and Circular. Each one is a separate page — select one in the sidebar to dive deep.
+                </PageHero>
 
                 {/* ── § Introduction ─────────────────────── */}
                 <section id="ll-introduction" className="docs-section">
@@ -1188,8 +730,8 @@ export default function Docs() {
                   </p>
                   <CodeBlock label="Syntax" code={`LINKEDLIST <name> = [<value>, <value>, ...]`} />
                   <button
-                    className="docs-nav-item docs-overview-link"
-                    onClick={() => { setActivePage('singly-linked-list'); setActiveId('sl-introduction'); }}
+                    className="docs-overview-link"
+                    onClick={() => goToPage('singly-linked-list')}
                   >
                     → Open full Singly Linked List documentation
                   </button>
@@ -1203,8 +745,8 @@ export default function Docs() {
                   </p>
                   <CodeBlock label="Syntax" code={`DOUBLY LINKEDLIST <name> = [<value>, <value>, ...]`} />
                   <button
-                    className="docs-nav-item docs-overview-link"
-                    onClick={() => { setActivePage('doubly-linked-list'); setActiveId('dl-introduction'); }}
+                    className="docs-overview-link"
+                    onClick={() => goToPage('doubly-linked-list')}
                   >
                     → Open full Doubly Linked List documentation
                   </button>
@@ -1218,8 +760,8 @@ export default function Docs() {
                   </p>
                   <CodeBlock label="Syntax" code={`CIRCULAR LINKEDLIST <name> = [<value>, <value>, ...]`} />
                   <button
-                    className="docs-nav-item docs-overview-link"
-                    onClick={() => { setActivePage('circular-linked-list'); setActiveId('cl-introduction'); }}
+                    className="docs-overview-link"
+                    onClick={() => goToPage('circular-linked-list')}
                   >
                     → Open full Circular Linked List documentation
                   </button>
@@ -1232,19 +774,9 @@ export default function Docs() {
             ══════════════════════════════════════════════ */}
             {activePage === 'singly-linked-list' && (
               <>
-                <header className="docs-page-hero">
-                  <div className="docs-page-tag">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <circle cx="5" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="19" cy="12" r="2" />
-                      <line x1="7" y1="12" x2="10" y2="12" /><line x1="14" y1="12" x2="17" y2="12" />
-                    </svg>
-                    Linked Lists
-                  </div>
-                  <h1 className="docs-page-title">Singly Linked List</h1>
-                  <p className="docs-page-lead">
-                    A linear chain of nodes where each node points to the next, ending in <code>NULL</code>. You walk it and relink it with real pointer code.
-                  </p>
-                </header>
+                <PageHero group="Linked lists" title="Singly Linked List">
+                  A linear chain of nodes where each node points to the next, ending in <C>NULL</C>. You walk it and relink it with real pointer code.
+                </PageHero>
 
                 <section id="sl-introduction" className="docs-section">
                   <h2 className="docs-h2">Introduction</h2>
@@ -1414,19 +946,9 @@ export default function Docs() {
             ══════════════════════════════════════════════ */}
             {activePage === 'doubly-linked-list' && (
               <>
-                <header className="docs-page-hero">
-                  <div className="docs-page-tag">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <circle cx="5" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="19" cy="12" r="2" />
-                      <line x1="7" y1="12" x2="10" y2="12" /><line x1="14" y1="12" x2="17" y2="12" />
-                    </svg>
-                    Linked Lists
-                  </div>
-                  <h1 className="docs-page-title">Doubly Linked List</h1>
-                  <p className="docs-page-lead">
-                    Each node carries both a <em>next</em> and a <em>prev</em> pointer, so the list can be walked in both directions.
-                  </p>
-                </header>
+                <PageHero group="Linked lists" title="Doubly Linked List">
+                  Each node carries both a <em>next</em> and a <em>prev</em> pointer, so the list can be walked in both directions.
+                </PageHero>
 
                 <section id="dl-introduction" className="docs-section">
                   <h2 className="docs-h2">Introduction</h2>
@@ -1585,19 +1107,9 @@ export default function Docs() {
             ══════════════════════════════════════════════ */}
             {activePage === 'circular-linked-list' && (
               <>
-                <header className="docs-page-hero">
-                  <div className="docs-page-tag">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M21.5 12a9.5 9.5 0 1 1-9.5-9.5" />
-                      <polyline points="21.5 3 21.5 7 17.5 7" />
-                    </svg>
-                    Linked Lists
-                  </div>
-                  <h1 className="docs-page-title">Circular Linked List</h1>
-                  <p className="docs-page-lead">
-                    The last node wraps back to the first, creating a loop with no <code>NULL</code> at the end. Declared with the <span className="tok-circular">CIRCULAR</span> keyword.
-                  </p>
-                </header>
+                <PageHero group="Linked lists" title="Circular Linked List">
+                  The last node wraps back to the first, creating a loop with no <C>NULL</C> at the end. Declared with the <span className="tok-circular">CIRCULAR</span> keyword.
+                </PageHero>
 
                 <section id="cl-introduction" className="docs-section">
                   <h2 className="docs-h2">Introduction</h2>
@@ -1751,18 +1263,9 @@ export default function Docs() {
             ══════════════════════════════════════════════ */}
             {activePage === 'trees' && (
               <>
-                <header className="docs-page-hero">
-                  <div className="docs-page-tag">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <polygon points="12 2 2 22 22 22" />
-                    </svg>
-                    Data Structures
-                  </div>
-                  <h1 className="docs-page-title">Trees</h1>
-                  <p className="docs-page-lead">
-                    Binary trees and binary search trees you program the way you would in C: node pointers, loops, recursion and explicit memory — every step animated and explained.
-                  </p>
-                </header>
+                <PageHero group="Data structures" title="Trees">
+                  Binary trees and binary search trees you program the way you would in C: node pointers, loops, recursion and explicit memory — every step animated and explained.
+                </PageHero>
                 <section id="tr-introduction" className="docs-section">
                   <h2 className="docs-h2">Introduction</h2>
                   <p className="docs-p">A tree is made of nodes. In a binary tree each node holds a value (<C>val</C>) and two pointers, <C>left</C> and <C>right</C>; <C>NULL</C> means “no child”. The tree itself holds one pointer, <C>root</C>.</p>
@@ -1771,7 +1274,7 @@ export default function Docs() {
                 <section id="tr-overview-general" className="docs-section">
                   <h2 className="docs-h2">General Tree</h2>
                   <p className="docs-p">A tree whose nodes can have any number of children, built with the <C>ROOT</C> and <C>CHILD</C> commands.</p>
-                  <button className="docs-nav-item docs-overview-link" onClick={() => { setActivePage('general-tree'); setActiveId('gt-introduction'); }}>
+                  <button className="docs-overview-link" onClick={() => goToPage('general-tree')}>
                     → Open full General Tree documentation
                   </button>
                 </section>
@@ -1779,7 +1282,7 @@ export default function Docs() {
                   <h2 className="docs-h2">Binary Tree</h2>
                   <CodeBlock label="Syntax" code={`BINARY_TREE t = [1, 2, 3, NULL, 5]`} />
                   <p className="docs-p">Values are given in level order, left to right; <C>NULL</C> leaves a child empty. <C>BINARY_TREE t = []</C> starts empty.</p>
-                  <button className="docs-nav-item docs-overview-link" onClick={() => goToPage('binary-tree')}>
+                  <button className="docs-overview-link" onClick={() => goToPage('binary-tree')}>
                     → Open full Binary Tree documentation
                   </button>
                 </section>
@@ -1787,7 +1290,7 @@ export default function Docs() {
                   <h2 className="docs-h2">Binary Search Tree</h2>
                   <CodeBlock label="Syntax" code={`BST t = [50, 30, 70, 20, 40]`} />
                   <p className="docs-p">The values are inserted in order: smaller keys go left, larger keys go right. Everything that works on a binary tree works on a BST.</p>
-                  <button className="docs-nav-item docs-overview-link" onClick={() => goToPage('bst')}>
+                  <button className="docs-overview-link" onClick={() => goToPage('bst')}>
                     → Open full Binary Search Tree documentation
                   </button>
                 </section>
@@ -1795,18 +1298,9 @@ export default function Docs() {
             )}
             {activePage === 'general-tree' && (
               <>
-                <header className="docs-page-hero">
-                  <div className="docs-page-tag">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <polygon points="12 2 2 22 22 22" />
-                    </svg>
-                    Trees
-                  </div>
-                  <h1 className="docs-page-title">General Tree</h1>
-                  <p className="docs-page-lead">
-                    A hierarchical structure where nodes can have multiple children. Build the tree, modify it, and visualize traversals and searches.
-                  </p>
-                </header>
+                <PageHero group="Trees" title="General Tree">
+                  A hierarchical structure where nodes can have multiple children. Build the tree, modify it, and visualize traversals and searches.
+                </PageHero>
 
                 <section id="gt-introduction" className="docs-section">
                   <h2 className="docs-h2">Introduction</h2>
@@ -1903,18 +1397,9 @@ export default function Docs() {
             ══════════════════════════════════════════════ */}
             {activePage === 'binary-tree' && (
               <>
-                <header className="docs-page-hero">
-                  <div className="docs-page-tag">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <polygon points="12 2 2 22 22 22" />
-                    </svg>
-                    Trees
-                  </div>
-                  <h1 className="docs-page-title">Binary Tree</h1>
-                  <p className="docs-page-lead">
-                    Every node has a value and two pointers, left and right. Build, walk and change the tree with pointer code, loops and recursion.
-                  </p>
-                </header>
+                <PageHero group="Trees" title="Binary Tree">
+                  Every node has a value and two pointers, left and right. Build, walk and change the tree with pointer code, loops and recursion.
+                </PageHero>
                 <section id="bt-introduction" className="docs-section">
                   <h2 className="docs-h2">Introduction</h2>
                   <p className="docs-p">A binary tree node has at most two children. AQVL lays the tree out automatically — one column per node in inorder position, one row per level, so subtrees never overlap — and keeps nodes still while your code is in the middle of restructuring the tree.</p>
@@ -1977,23 +1462,9 @@ export default function Docs() {
             )}
             {activePage === 'stacks' && (
               <>
-                <header className="docs-page-hero">
-                  <div className="docs-page-tag">Data Structures</div>
-                  <div className="docs-page-title-row">
-                    <div className="docs-page-title-icon">
-                      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <rect x="2" y="16" width="20" height="5" rx="1" />
-                        <rect x="2" y="9" width="20" height="5" rx="1" />
-                        <rect x="2" y="3" width="20" height="4" rx="1" />
-                      </svg>
-                    </div>
-                    <h1 className="docs-page-title">Stacks</h1>
-                  </div>
-                  <p className="docs-page-lead">
-                    A last-in, first-out pile of values. AQVL renders a stack as a vertical column of boxes that grows
-                    upward on <code>PUSH</code> and shrinks on <code>POP</code>.
-                  </p>
-                </header>
+                <PageHero group="Data structures" title="Stacks">
+                  A last-in, first-out pile of values. AQVL renders a stack as a vertical column of boxes that grows upward on <C>PUSH</C> and shrinks on <C>POP</C>.
+                </PageHero>
 
                 <section id="sk-introduction" className="docs-section">
                   <h2 className="docs-h2">Introduction</h2>
@@ -2255,23 +1726,9 @@ END`} />
             ══════════════════════════════════════════════ */}
             {activePage === 'queues' && (
               <>
-                <header className="docs-page-hero">
-                  <div className="docs-page-tag">Data Structures</div>
-                  <div className="docs-page-title-row">
-                    <div className="docs-page-title-icon">
-                      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <rect x="2" y="8" width="5" height="8" rx="1" />
-                        <rect x="9" y="8" width="5" height="8" rx="1" />
-                        <rect x="16" y="8" width="5" height="8" rx="1" />
-                      </svg>
-                    </div>
-                    <h1 className="docs-page-title">Queues</h1>
-                  </div>
-                  <p className="docs-page-lead">
-                    A first-in, first-out line of values. Elements join at the rear and leave from the front, rendered
-                    as a horizontal row that advances as it drains.
-                  </p>
-                </header>
+                <PageHero group="Data structures" title="Queues">
+                  A first-in, first-out line of values. Elements join at the rear and leave from the front, rendered as a horizontal row that advances as it drains.
+                </PageHero>
 
                 <section id="qu-introduction" className="docs-section">
                   <h2 className="docs-h2">Introduction</h2>
@@ -2482,25 +1939,9 @@ END`} />
             ══════════════════════════════════════════════ */}
             {activePage === 'graphs' && (
               <>
-                <header className="docs-page-hero">
-                  <div className="docs-page-tag">Data Structures</div>
-                  <div className="docs-page-title-row">
-                    <div className="docs-page-title-icon">
-                      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <rect x="2" y="3" width="4" height="4" rx="1" />
-                        <rect x="10" y="10" width="4" height="4" rx="1" />
-                        <rect x="18" y="17" width="4" height="4" rx="1" />
-                        <line x1="6" y1="5" x2="10" y2="12" />
-                        <line x1="14" y1="12" x2="18" y2="19" />
-                      </svg>
-                    </div>
-                    <h1 className="docs-page-title">Graphs</h1>
-                  </div>
-                  <p className="docs-page-lead">
-                    Vertices joined by edges. Write BFS, DFS, shortest paths and spanning trees with loops, queues,
-                    stacks and recursion, and watch every step on the graph.
-                  </p>
-                </header>
+                <PageHero group="Data structures" title="Graphs">
+                  Vertices joined by edges. Write BFS, DFS, shortest paths and spanning trees with loops, queues, stacks and recursion, and watch every step on the graph.
+                </PageHero>
 
                 <section id="gp-introduction" className="docs-section">
                   <h2 className="docs-h2">Introduction</h2>
@@ -2728,18 +2169,9 @@ END`} />
             ══════════════════════════════════════════════ */}
             {activePage === 'bst' && (
               <>
-                <header className="docs-page-hero">
-                  <div className="docs-page-tag">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <polygon points="12 2 2 22 22 22" />
-                    </svg>
-                    Trees
-                  </div>
-                  <h1 className="docs-page-title">Binary Search Tree</h1>
-                  <p className="docs-page-lead">
-                    A binary tree kept in order: every key in the left subtree is smaller, every key in the right subtree is larger — so search, insert and delete follow one path from the root.
-                  </p>
-                </header>
+                <PageHero group="Trees" title="Binary Search Tree">
+                  A binary tree kept in order: every key in the left subtree is smaller, every key in the right subtree is larger — so search, insert and delete follow one path from the root.
+                </PageHero>
                 <section id="bst-introduction" className="docs-section">
                   <h2 className="docs-h2">Introduction</h2>
                   <p className="docs-p">Because of the ordering rule, each comparison discards a whole subtree: compare the key with <C>curr.val</C>, then go left or right. An inorder traversal of a BST lists its keys in sorted order.</p>
@@ -2797,22 +2229,9 @@ END`} />
             )}
             {activePage === 'heaps' && (
               <>
-                <header className="docs-page-hero">
-                  <div className="docs-page-tag">Data Structures</div>
-                  <div className="docs-page-title-row">
-                    <div className="docs-page-title-icon">
-                      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <polygon points="12 3 21 19 3 19" />
-                        <line x1="12" y1="3" x2="12" y2="19" />
-                      </svg>
-                    </div>
-                    <h1 className="docs-page-title">Heaps</h1>
-                  </div>
-                  <p className="docs-page-lead">
-                    A complete binary tree with a priority rule at every parent-child pair, written as real code over the
-                    array that stores it — shown as both a tree and that array, so sift-up and sift-down become concrete.
-                  </p>
-                </header>
+                <PageHero group="Data structures" title="Heaps">
+                  A complete binary tree with a priority rule at every parent-child pair, written as real code over the array that stores it — shown as both a tree and that array, so sift-up and sift-down become concrete.
+                </PageHero>
 
                 <section id="hp-introduction" className="docs-section">
                   <h2 className="docs-h2">Introduction</h2>
@@ -3068,25 +2487,9 @@ END`} />
             ══════════════════════════════════════════════ */}
             {activePage === 'tries' && (
               <>
-                <header className="docs-page-hero">
-                  <div className="docs-page-tag">Data Structures</div>
-                  <div className="docs-page-title-row">
-                    <div className="docs-page-title-icon">
-                      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <circle cx="12" cy="4" r="2" />
-                        <circle cx="5" cy="13" r="2" />
-                        <circle cx="19" cy="13" r="2" />
-                        <line x1="11" y1="6" x2="6" y2="11" />
-                        <line x1="13" y1="6" x2="18" y2="11" />
-                      </svg>
-                    </div>
-                    <h1 className="docs-page-title">Tries</h1>
-                  </div>
-                  <p className="docs-page-lead">
-                    A prefix tree written as real code — walk it with <C>GET_CHILD</C>, grow it with <C>ADD_CHILD</C>, mark
-                    words with <C>node.isEnd = TRUE</C> — with every step drawn as it happens.
-                  </p>
-                </header>
+                <PageHero group="Data structures" title="Tries">
+                  A prefix tree written as real code — walk it with <C>GET_CHILD</C>, grow it with <C>ADD_CHILD</C>, mark words with <C>node.isEnd = TRUE</C> — with every step drawn as it happens.
+                </PageHero>
 
                 <section id="tri-introduction" className="docs-section">
                   <h2 className="docs-h2">Introduction</h2>
@@ -3376,24 +2779,9 @@ END`} />
             ══════════════════════════════════════════════ */}
             {activePage === 'hashmaps' && (
               <>
-                <header className="docs-page-hero">
-                  <div className="docs-page-tag">Data Structures</div>
-                  <div className="docs-page-title-row">
-                    <div className="docs-page-title-icon">
-                      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <line x1="4" y1="9" x2="20" y2="9" />
-                        <line x1="4" y1="15" x2="20" y2="15" />
-                        <line x1="10" y1="3" x2="8" y2="21" />
-                        <line x1="16" y1="3" x2="14" y2="21" />
-                      </svg>
-                    </div>
-                    <h1 className="docs-page-title">Hash Maps</h1>
-                  </div>
-                  <p className="docs-page-lead">
-                    Key-value storage written as real code — <C>m[key] = value</C>, <C>m[key]</C>, <C>CONTAINS</C> — with
-                    every hash, bucket, collision chain and resize drawn as it happens.
-                  </p>
-                </header>
+                <PageHero group="Data structures" title="Hash Maps">
+                  Key-value storage written as real code — <C>m[key] = value</C>, <C>m[key]</C>, <C>CONTAINS</C> — with every hash, bucket, collision chain and resize drawn as it happens.
+                </PageHero>
 
                 <section id="hm-introduction" className="docs-section">
                   <h2 className="docs-h2">Introduction</h2>
@@ -3644,23 +3032,9 @@ END`} />
             ══════════════════════════════════════════════ */}
             {activePage === 'control-flow' && (
               <>
-                <header className="docs-page-hero">
-                  <div className="docs-page-tag">Language</div>
-                  <div className="docs-page-title-row">
-                    <div className="docs-page-title-icon">
-                      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <polyline points="4 4 4 12 12 12" />
-                        <polyline points="9 9 12 12 9 15" />
-                        <circle cx="18" cy="12" r="3" />
-                      </svg>
-                    </div>
-                    <h1 className="docs-page-title">Loops &amp; Control Flow</h1>
-                  </div>
-                  <p className="docs-page-lead">
-                    <C>LOOP</C>, <C>WHILE</C>, <C>IF</C> / <C>ELSE IF</C> / <C>ELSE</C>, variables and operators: the
-                    general-purpose half of AQVL that turns a list of animation commands into an algorithm.
-                  </p>
-                </header>
+                <PageHero group="Language" title="Loops & Control Flow">
+                  <C>LOOP</C>, <C>WHILE</C>, <C>IF</C> / <C>ELSE IF</C> / <C>ELSE</C>, variables and operators: the general-purpose half of AQVL that turns a list of animation commands into an algorithm.
+                </PageHero>
 
                 <section id="cf-introduction" className="docs-section">
                   <h2 className="docs-h2">Introduction</h2>
@@ -4052,22 +3426,9 @@ END`} />
             ══════════════════════════════════════════════ */}
             {activePage === 'functions' && (
               <>
-                <header className="docs-page-hero">
-                  <div className="docs-page-tag">Language</div>
-                  <div className="docs-page-title-row">
-                    <div className="docs-page-title-icon">
-                      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M9 20c-2 0-3-1-3-3v-3c0-1.5-.8-2-2-2 1.2 0 2-.5 2-2V7c0-2 1-3 3-3" />
-                        <path d="M15 4c2 0 3 1 3 3v3c0 1.5.8 2 2 2-1.2 0-2 .5-2 2v3c0 2-1 3-3 3" />
-                      </svg>
-                    </div>
-                    <h1 className="docs-page-title">Functions &amp; Recursion</h1>
-                  </div>
-                  <p className="docs-page-lead">
-                    Named functions with parameters and <code>RETURN</code> values, guard clauses, and recursion with a
-                    visible call stack, from factorial to backtracking.
-                  </p>
-                </header>
+                <PageHero group="Language" title="Functions & Recursion">
+                  Named functions with parameters and <C>RETURN</C> values, guard clauses, and recursion with a visible call stack, from factorial to backtracking.
+                </PageHero>
 
                 <section id="fn-introduction" className="docs-section">
                   <h2 className="docs-h2">Introduction</h2>
@@ -4632,23 +3993,9 @@ END`} />
             ══════════════════════════════════════════════ */}
             {activePage === 'sorting' && (
               <>
-                <header className="docs-page-hero">
-                  <div className="docs-page-tag">Algorithms</div>
-                  <div className="docs-page-title-row">
-                    <div className="docs-page-title-icon">
-                      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <line x1="3" y1="6" x2="21" y2="6" />
-                        <line x1="8" y1="12" x2="21" y2="12" />
-                        <line x1="13" y1="18" x2="21" y2="18" />
-                      </svg>
-                    </div>
-                    <h1 className="docs-page-title">Sorting Algorithms</h1>
-                  </div>
-                  <p className="docs-page-lead">
-                    Run a sort as a single built-in keyword, or write the comparisons and swaps yourself — AQVL supports
-                    both, and they teach different things.
-                  </p>
-                </header>
+                <PageHero group="Algorithms" title="Sorting Algorithms">
+                  Run a sort as a single built-in keyword, or write the comparisons and swaps yourself — AQVL supports both, and they teach different things.
+                </PageHero>
 
                 <section id="so-introduction" className="docs-section">
                   <h2 className="docs-h2">Introduction</h2>
@@ -5049,22 +4396,9 @@ END`} />
             ══════════════════════════════════════════════ */}
             {activePage === 'searching' && (
               <>
-                <header className="docs-page-hero">
-                  <div className="docs-page-tag">Algorithms</div>
-                  <div className="docs-page-title-row">
-                    <div className="docs-page-title-icon">
-                      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <circle cx="11" cy="11" r="8" />
-                        <line x1="21" y1="21" x2="16.65" y2="16.65" />
-                      </svg>
-                    </div>
-                    <h1 className="docs-page-title">Searching Algorithms</h1>
-                  </div>
-                  <p className="docs-page-lead">
-                    Linear, binary, jump, exponential, ternary and interpolation search written out with loops, IFs and
-                    recursive functions, plus searches on trees and graphs.
-                  </p>
-                </header>
+                <PageHero group="Algorithms" title="Searching Algorithms">
+                  Linear, binary, jump, exponential, ternary and interpolation search written out with loops, IFs and recursive functions, plus searches on trees and graphs.
+                </PageHero>
 
                 <section id="se-introduction" className="docs-section">
                   <h2 className="docs-h2">Introduction</h2>
@@ -5515,22 +4849,9 @@ END`} />
             ══════════════════════════════════════════════ */}
             {activePage === 'layout-camera' && (
               <>
-                <header className="docs-page-hero">
-                  <div className="docs-page-tag">Spatial Syntax</div>
-                  <div className="docs-page-title-row">
-                    <div className="docs-page-title-icon">
-                      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M3 8h3l2-2h8l2 2h3v11H3z" />
-                        <circle cx="12" cy="13" r="3.5" />
-                      </svg>
-                    </div>
-                    <h1 className="docs-page-title">Layout &amp; Camera</h1>
-                  </div>
-                  <p className="docs-page-lead">
-                    Take control of where things sit and where the camera looks — arrangement strategies, camera modes,
-                    and per-element position pins.
-                  </p>
-                </header>
+                <PageHero group="Spatial syntax" title="Layout & Camera">
+                  Take control of where things sit and where the camera looks — arrangement strategies, camera modes, and per-element position pins.
+                </PageHero>
 
                 <section id="lc-introduction" className="docs-section">
                   <h2 className="docs-h2">Introduction</h2>
@@ -5823,40 +5144,64 @@ END`} />
               </>
             )}
 
-          </div>
-        </div>
-
-        {/* ── Right TOC ──────────────────────────────── */}
-        <aside className="docs-toc-panel" aria-label="On this page">
-          <div className="docs-toc-inner">
-            <div className="docs-toc-label">ON THIS PAGE</div>
-            <ul className="docs-toc-list" role="list">
-              {TOC_ITEMS.map(({ id, label }) => {
-                const tocIcon = id.includes('introduction') || id.includes('ll-introduction') || id.includes('sl-introduction') || id.includes('dl-introduction') || id.includes('cl-introduction') || id.includes('tr-introduction') || id.includes('gt-introduction') || id.includes('bt-introduction')
-                  ? <TocIconDoc />
-                  : id.includes('declaration')
-                  ? <TocIconBracket />
-                  : id.includes('commands')
-                  ? <TocIconTerm />
-                  : id.includes('examples')
-                  ? <TocIconList />
-                  : <TocIconWarn />;
-                return (
-                  <li key={id} className="docs-toc-item">
-                    <button
-                      className={`docs-toc-btn${activeId === id ? ' is-active' : ''}`}
-                      onClick={() => scrollTo(id)}
-                    >
-                      <span className="docs-toc-icon">{tocIcon}</span>
-                      {label}
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-        </aside>
+        </motion.div>
       </div>
+
+      {/* ── On this page ───────────────────────────── */}
+      <aside className="docs-toc" aria-label="On this page">
+        <p className="docs-nav__label mono">On this page</p>
+        <ul role="list" className="docs-toc__list">
+          {TOC_ITEMS.map(({ id, label }) => (
+            <li key={id}>
+              <button
+                type="button"
+                className={`docs-toc__btn${activeId === id ? ' is-active' : ''}`}
+                aria-current={activeId === id ? 'location' : undefined}
+                onClick={() => scrollTo(id)}
+              >
+                {activeId === id && <motion.span layoutId="docs-toc-on" className="docs-toc__mark" transition={spring.layout} />}
+                {label}
+              </button>
+            </li>
+          ))}
+        </ul>
+        <a href="#/playground" className="ulink mono mt-8 inline-block text-[0.8125rem]">
+          Try it in the playground
+        </a>
+      </aside>
+
+      <AnimatePresence>
+        {drawerOpen && (
+          <motion.div
+            id="docs-drawer"
+            className="docs-drawer"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Documentation contents"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0, transition: { duration: 0.15 } }}
+            onMouseDown={(e) => {
+              if (e.target === e.currentTarget) setDrawerOpen(false);
+            }}
+          >
+            <motion.div
+              className="docs-drawer__panel"
+              initial={{ x: '-100%' }}
+              animate={{ x: 0, transition: spring.layout }}
+              exit={{ x: '-100%', transition: { duration: 0.18 } }}
+            >
+              <div className="mb-4 flex items-center justify-between">
+                <span className="title">Contents</span>
+                <button type="button" className="btn btn--quiet btn--sm" onClick={() => setDrawerOpen(false)} autoFocus>
+                  Close
+                </button>
+              </div>
+              <SideNav activePage={activePage} onPick={goToPage} />
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

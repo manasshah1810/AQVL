@@ -1,78 +1,84 @@
-import React, { useEffect, useState } from 'react';
-import { Navbar } from '../components/Navbar';
-import { Footer } from '../components/Footer';
-import './privacy.css';
+import React from 'react';
+import { motion } from 'motion/react';
+import { riseChild, waveParent } from '../lib/motion';
+
+const SECTIONS: { title: string; body: React.ReactNode }[] = [
+  {
+    title: 'What this page covers',
+    body: (
+      <p>
+        How AQVL handles data when you use this website, its documentation and the playground. The short version: your
+        programs never leave your browser, and nothing about you is collected.
+      </p>
+    ),
+  },
+  {
+    title: 'What is stored in your browser',
+    body: (
+      <>
+        <p>
+          AQVL keeps a few small values in your browser’s local storage, only to remember things between visits: for
+          example, whether you have opened the playground before, so the example picker does not open every time.
+        </p>
+        <ul>
+          <li>None of these values contain personal information.</li>
+          <li>They are not used for advertising, analytics, profiling or tracking across sites.</li>
+          <li>Clearing your browser’s site data removes them.</li>
+        </ul>
+        <p>
+          Because this storage is strictly necessary for the features you use, no consent banner is shown for it.
+        </p>
+      </>
+    ),
+  },
+  {
+    title: 'Third parties',
+    body: (
+      <p>
+        AQVL runs entirely on the client. There are no tracking networks, analytics providers or advertising services.
+        The typefaces are bundled with the site rather than loaded from a font service. Your code and its
+        visualizations are compiled and rendered inside your own browser.
+      </p>
+    ),
+  },
+  {
+    title: 'Questions',
+    body: (
+      <p>
+        Questions or requests about this policy can be raised on the project’s{' '}
+        <a className="ulink" href="https://github.com/manasshah1810/AQVL/issues" target="_blank" rel="noreferrer">
+          GitHub issue tracker
+          <span className="sr-only"> (opens in a new tab)</span>
+        </a>
+        .
+      </p>
+    ),
+  },
+];
 
 export default function Privacy() {
-  const [theme, setTheme] = useState<'light' | 'dark'>(
-    () => (localStorage.getItem('aqvl-docs-theme') ?? 'dark') as 'light' | 'dark'
-  );
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
-    const frame = requestAnimationFrame(() => setMounted(true));
-    return () => cancelAnimationFrame(frame);
-    // Only the saved theme at mount; toggleTheme sets the attribute itself.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const toggleTheme = () => {
-    const next = theme === 'dark' ? 'light' : 'dark';
-    setTheme(next);
-    document.documentElement.setAttribute('data-theme', next);
-    localStorage.setItem('aqvl-docs-theme', next);
-  };
-
-  if (!mounted) return null;
-
   return (
-    <div className="privacy-root" data-theme={theme}>
-      <Navbar theme={theme} onToggleTheme={toggleTheme} />
-      
-      <main className="privacy-main">
-        <div className="privacy-container">
-          <h1 className="privacy-title">Privacy Policy</h1>
-          <p className="privacy-last-updated">Last Updated: August 2026</p>
-
-          <section className="privacy-section">
-            <h2>1. Introduction</h2>
-            <p>
-              Welcome to AQVL. This Privacy Policy explains our approach to data collection and storage when you use our website, tools, and services. Transparency and respecting user privacy are core tenets of our project.
-            </p>
-          </section>
-
-          <section className="privacy-section">
-            <h2>2. Local Storage (Functional Preferences)</h2>
-            <p>
-              AQVL stores a small amount of data in your browser's local storage. This data is used only to remember user preferences and improve usability (for example, your theme selection or whether you have previously visited the site).
-            </p>
-            <ul>
-              <li>No personal information is stored in these values.</li>
-              <li>The data is not used for advertising, analytics, behavioral profiling, or cross-site tracking.</li>
-            </ul>
-            <p>
-              Because this storage is strictly necessary for the requested functionality, no cookie consent banner is required for these specific items. By using AQVL, you acknowledge and agree to this functional use of local storage.
-            </p>
-          </section>
-
-          <section className="privacy-section">
-            <h2>3. Third-Party Services</h2>
-            <p>
-              AQVL is a client-side application. We do not integrate with third-party tracking networks, analytics providers, or advertising services. Your code and visualizations run entirely within your local browser environment.
-            </p>
-          </section>
-
-          <section className="privacy-section">
-            <h2>4. Contact Us</h2>
-            <p>
-              If you have any questions, concerns, or requests regarding this Privacy Policy or our data practices, please reach out to the AlgoQuest team via our official channels.
-            </p>
-          </section>
+    <article aria-labelledby="privacy-title" className="page grid gap-12 py-20 md:grid-cols-12 md:py-28">
+      <header className="md:col-span-4">
+        <div className="md:sticky md:top-28">
+          <h1 id="privacy-title" className="headline">
+            Privacy
+          </h1>
+          <p className="mono muted mt-4">Last updated October 2026</p>
         </div>
-      </main>
+      </header>
 
-      <Footer />
-    </div>
+      <motion.div className="md:col-span-7 md:col-start-6" variants={waveParent} initial="hidden" animate="shown">
+        {SECTIONS.map((s, i) => (
+          <motion.section key={s.title} variants={riseChild} className="border-t border-[var(--line)] py-8 first:pt-0 first:border-t-0">
+            <h2 className="title flex items-baseline gap-4">
+              <span className="margin-num">{i + 1}</span>
+              {s.title}
+            </h2>
+            <div className="flow prose mt-4">{s.body}</div>
+          </motion.section>
+        ))}
+      </motion.div>
+    </article>
   );
 }

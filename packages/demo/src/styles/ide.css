@@ -1,0 +1,586 @@
+/* ============================================================
+   Compiler inspector (#/ide): editor | pipeline | viewport,
+   with timeline, runtime status, statistics and console below.
+   ============================================================ */
+
+@layer components {
+  .ide-container {
+    /* aliases for components written against the old token names */
+    --bg-elevated: var(--panel);
+    --border-color: var(--line);
+    --text-primary: var(--peach);
+    --text-secondary: var(--peach-muted);
+    --keyword-color: var(--cream);
+    --radius-sm: var(--r-ctl);
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    background: var(--ink);
+  }
+
+  /* ── Toolbar ──────────────────────────────────────────────── */
+  .ide-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 52px;
+    padding: 8px 16px;
+    border-bottom: 1px solid var(--line);
+    overflow-x: auto;
+  }
+
+  .ide-toolbar__label {
+    margin-right: 10px;
+    font-family: var(--font-serif);
+    font-size: 1.1rem;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+
+  .ide-toolbar-sep {
+    width: 1px;
+    height: 22px;
+    margin: 0 8px;
+    background: var(--line);
+    flex-shrink: 0;
+  }
+
+  .ide-toolbar-spacer {
+    flex: 1;
+  }
+
+  .ide-status-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    height: 34px;
+    padding: 0 12px;
+    border-radius: var(--r-ctl);
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    white-space: nowrap;
+    background: var(--panel);
+    color: var(--peach);
+    transition: background-color var(--spring-soft-d) var(--spring-soft);
+  }
+
+  .ide-status-chip.running {
+    background: var(--dusk-deep);
+    color: var(--cream);
+  }
+
+  .ide-status-chip.ready {
+    background: var(--panel);
+    color: var(--cream);
+  }
+
+  .ide-status-chip-dot {
+    width: 14px;
+    height: 2px;
+    background: currentColor;
+  }
+
+  .ide-status-chip.running .ide-status-chip-dot {
+    animation: ide-run 1.2s var(--spring-soft) infinite alternate;
+    transform-origin: left;
+  }
+
+  @keyframes ide-run {
+    from {
+      transform: scaleX(0.25);
+    }
+    to {
+      transform: scaleX(1);
+    }
+  }
+
+  /* ── Panels ───────────────────────────────────────────────── */
+  .ide-main {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .ide-panel {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border-right: 1px solid var(--line);
+    background: var(--ink);
+  }
+
+  .ide-panel:last-child {
+    border-right: none;
+  }
+
+  .ide-left-panel {
+    flex: 0 0 31%;
+    min-width: 280px;
+    background: var(--ink-deep);
+  }
+
+  .ide-center-panel {
+    flex: 0 0 25%;
+    min-width: 250px;
+  }
+
+  .ide-right-panel {
+    flex: 1;
+    min-width: 300px;
+  }
+
+  .ide-panel-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 40px;
+    padding: 0 14px;
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--peach);
+    background: var(--ink);
+    border-bottom: 1px solid var(--line);
+    flex-shrink: 0;
+    user-select: none;
+  }
+
+  .ide-panel-content {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+  }
+
+  .ide-canvas-host {
+    position: relative;
+    overflow: hidden;
+    background: #06060a; /* unchanged 3D ground */
+  }
+
+  .ide-empty {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    height: 100%;
+    padding: 28px;
+    background: var(--ink);
+  }
+
+  /* ── Compiler tabs ────────────────────────────────────────── */
+  .ide-progress {
+    position: relative;
+    height: 2px;
+    background: var(--line);
+    flex-shrink: 0;
+  }
+
+  .ide-progress__fill {
+    position: absolute;
+    inset: 0;
+    background: var(--cream);
+    transform-origin: left;
+  }
+
+  .ide-tabs {
+    display: flex;
+    gap: 2px;
+    padding: 6px;
+    border-bottom: 1px solid var(--line);
+    overflow-x: auto;
+    flex-shrink: 0;
+  }
+
+  .ide-tab {
+    position: relative;
+    padding: 6px 10px;
+    border-radius: var(--r-ctl);
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    font-weight: 500;
+    white-space: nowrap;
+    color: var(--peach-muted);
+    transition: color var(--spring-soft-d) var(--spring-soft);
+  }
+
+  .ide-tab:hover,
+  .ide-tab.active {
+    color: var(--cream);
+  }
+
+  .ide-tab__bg {
+    position: absolute;
+    inset: 0;
+    border-radius: var(--r-ctl);
+    background: var(--dusk-deep);
+  }
+
+  .ide-tab-content {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    padding: 10px;
+  }
+
+  .ide-tab-content pre {
+    margin: 0;
+    padding: 12px;
+    font-size: 0.75rem;
+    line-height: 1.6;
+    color: var(--peach);
+    background: var(--ink-deep);
+    border-radius: var(--r-ctl);
+    white-space: pre;
+    overflow: auto;
+  }
+
+  .pipeline-card {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 11px 12px;
+    border-bottom: 1px solid var(--line-faint);
+    transition: background-color var(--spring-soft-d) var(--spring-soft);
+  }
+
+  .pipeline-card.active {
+    background: rgb(58 54 73 / 0.5);
+  }
+
+  .pipeline-card.has-error {
+    background: var(--panel);
+    box-shadow: inset 2px 0 0 var(--cream);
+  }
+
+  .pipeline-card-title {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    font-size: 1rem;
+  }
+
+  .pipeline-card-status {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--peach-muted);
+    white-space: nowrap;
+  }
+
+  .status-icon {
+    display: inline-block;
+    width: 1.1em;
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    font-weight: 700;
+    text-align: center;
+  }
+
+  .status-icon.success {
+    color: var(--cream);
+  }
+
+  .status-icon.error {
+    color: var(--ink);
+    background: var(--cream);
+    border-radius: 2px;
+  }
+
+  .status-icon.pending {
+    color: var(--peach-muted);
+  }
+
+  /* ── Bottom panel ─────────────────────────────────────────── */
+  .ide-bottom-panel {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    height: 210px;
+    flex-shrink: 0;
+    border-top: 1px solid var(--line);
+  }
+
+  .ide-bottom-section {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    overflow: hidden;
+    border-right: 1px solid var(--line);
+  }
+
+  .ide-bottom-section:last-child {
+    border-right: none;
+  }
+
+  .ide-note {
+    padding: 12px 14px;
+    color: var(--peach-muted);
+    font-style: italic;
+    font-size: 0.95rem;
+  }
+
+  .timeline-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 12px;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--peach-muted);
+    border-bottom: 1px solid var(--line-faint);
+  }
+
+  .timeline-item.completed {
+    color: var(--peach);
+  }
+
+  .timeline-item.active {
+    background: var(--dusk-deep);
+    color: var(--cream);
+    font-weight: 650;
+  }
+
+  .timeline-idx {
+    min-width: 24px;
+    color: var(--peach-muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .kv-list {
+    list-style: none;
+    margin: 0;
+    padding: 4px 0;
+  }
+
+  .kv-item {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 5px 14px;
+    border-bottom: 1px solid var(--line-faint);
+    font-size: 0.92rem;
+  }
+
+  .kv-key {
+    color: var(--peach);
+  }
+
+  .kv-value {
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--cream);
+    text-align: right;
+    word-break: break-all;
+  }
+
+  .kv-value.stopped {
+    color: var(--peach-muted);
+  }
+
+  .console-log {
+    padding: 5px 14px;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    line-height: 1.55;
+    color: var(--peach);
+    border-bottom: 1px solid var(--line-faint);
+    white-space: pre-wrap;
+  }
+
+  .console-log.success {
+    color: var(--cream);
+  }
+
+  .console-log.error {
+    color: var(--ink);
+    background: var(--cream);
+  }
+
+  /* ── Execution debugger (floats over the viewport) ────────── */
+  .exec-debugger {
+    position: absolute;
+    right: 14px;
+    bottom: 14px;
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+    width: 300px;
+    padding: 12px 14px;
+    border-radius: var(--r-panel);
+    border: 1px solid var(--line-strong);
+    background: var(--ink);
+    color: var(--peach);
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+  }
+
+  .exec-debugger-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .exec-debugger-title {
+    font-family: var(--font-serif);
+    font-size: 1rem;
+    color: var(--peach);
+  }
+
+  .exec-debugger-status {
+    font-weight: 600;
+    color: var(--cream);
+  }
+
+  .exec-debugger-status.is-paused {
+    color: var(--peach-muted);
+  }
+
+  .exec-debugger-ip {
+    display: flex;
+    justify-content: space-between;
+    color: var(--peach-muted);
+  }
+
+  .exec-debugger-ip-value {
+    color: var(--cream);
+    font-weight: 600;
+  }
+
+  .exec-debugger-instructions {
+    max-height: 150px;
+    overflow-y: auto;
+  }
+
+  .exec-instr {
+    padding: 3px 6px;
+    border-radius: var(--r-ctl);
+    color: var(--peach-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .exec-instr.past {
+    color: var(--peach);
+  }
+
+  .exec-instr.active {
+    background: var(--dusk-deep);
+    color: var(--cream);
+    font-weight: 650;
+  }
+
+  .exec-instr-idx {
+    margin-right: 8px;
+    color: var(--peach-muted);
+  }
+
+  /* ── Runtime output overlay (RuntimeOutputPanel.tsx) ──────── */
+  .rop {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    z-index: 200;
+    display: flex;
+    flex-direction: column;
+    width: 360px;
+    max-height: calc(100% - 24px);
+    border-radius: var(--r-panel);
+    border: 1px solid var(--line-strong);
+    background: var(--ink);
+    overflow: hidden;
+  }
+
+  .rop__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 6px 8px 6px 14px;
+    border-bottom: 1px solid var(--line);
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    font-weight: 600;
+  }
+
+  .rop__list {
+    overflow-y: auto;
+  }
+
+  .rop__entry {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--line-faint);
+    animation: rop-in var(--spring-snappy-d) var(--spring-snappy);
+  }
+
+  .rop__kind {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    color: var(--peach-muted);
+  }
+
+  .rop__kind b {
+    margin-right: 8px;
+    color: var(--cream);
+  }
+
+  .rop__msg {
+    margin-top: 3px;
+    font-size: 0.98rem;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  @keyframes rop-in {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  @media (max-width: 1023px) {
+    .ide-main {
+      flex-direction: column;
+      overflow-y: auto;
+    }
+
+    .ide-panel {
+      flex: none !important;
+      min-width: 0;
+      border-right: 0;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .ide-left-panel {
+      height: 46vh;
+    }
+
+    .ide-center-panel {
+      height: 40vh;
+    }
+
+    .ide-right-panel {
+      height: 60vh;
+    }
+
+    .ide-bottom-panel {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      height: auto;
+    }
+
+    .ide-bottom-section {
+      height: 200px;
+      border-bottom: 1px solid var(--line);
+    }
+  }
+}

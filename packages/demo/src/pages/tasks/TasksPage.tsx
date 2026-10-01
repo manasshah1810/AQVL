@@ -20,13 +20,6 @@ export default function TasksPage() {
   const { tasks, sessions, integrity } = useLedger();
   const today = useToday();
   const [route, setRoute] = useState<Route>(readRoute);
-  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
-    try {
-      return (localStorage.getItem('aqvl-docs-theme') as 'dark' | 'light') || 'dark';
-    } catch {
-      return 'dark';
-    }
-  });
 
   useEffect(() => {
     const onHash = () => {
@@ -46,19 +39,9 @@ export default function TasksPage() {
     [tasks, sessions, today, integrity],
   );
 
-  const toggleTheme = () => {
-    const next = theme === 'dark' ? 'light' : 'dark';
-    setTheme(next);
-    try {
-      localStorage.setItem('aqvl-docs-theme', next);
-    } catch {
-      /* theme just won't persist */
-    }
-  };
-
   return (
     <TasksCtx.Provider value={ctx}>
-      <div className="tk-root" data-theme={theme}>
+      <div className="tk-root" data-theme="dark">
         <header className="tk-top">
           <div className="tk-top__inner">
             <a href="#/" className="tk-brand">
@@ -85,9 +68,6 @@ export default function TasksPage() {
             </nav>
             <div className="tk-top__tools">
               <span className="tk-today-chip">{new Date().toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}</span>
-              <button type="button" className="tk-btn" onClick={toggleTheme} aria-label="Toggle theme">
-                {theme === 'dark' ? 'Light' : 'Dark'}
-              </button>
             </div>
           </div>
         </header>

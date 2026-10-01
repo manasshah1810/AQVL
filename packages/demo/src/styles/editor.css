@@ -1,0 +1,297 @@
+/* ============================================================
+   AQVL source editor (IDEEditor.tsx)
+   Textarea + highlighted overlay are stacked and MUST share
+   padding, font metrics and line-height exactly. The component
+   measures the live values, so only keep the two in sync here.
+   ============================================================ */
+
+.aqvl-editor-root {
+  --ed-lh: 22px;
+  --ed-fs: 13.5px;
+  --ed-pad-y: 14px;
+  --ed-pad-x: 18px;
+  display: flex;
+  flex-direction: row;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  background: var(--ink-deep);
+  overflow: hidden;
+  position: relative;
+}
+
+/* ── Gutter ─────────────────────────────────────────────────── */
+.aqvl-editor-gutter {
+  flex-shrink: 0;
+  width: 54px;
+  min-width: 54px;
+  background: var(--ink-deep);
+  border-right: 1px solid var(--line-faint);
+  overflow: hidden;
+  padding: 0;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.aqvl-gutter-body {
+  padding: var(--ed-pad-y) 0;
+  will-change: transform;
+}
+
+.aqvl-gutter-line {
+  position: relative;
+  height: var(--ed-lh);
+  line-height: var(--ed-lh);
+  padding: 0 14px 0 8px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: #858199; /* dusk tint, 4.8:1 on ink-deep */
+  transition: color var(--spring-soft-d) var(--spring-soft);
+}
+
+.aqvl-gutter-line.current {
+  color: var(--peach);
+}
+
+.aqvl-gutter-line.executing {
+  color: var(--cream);
+  font-weight: 600;
+}
+
+.aqvl-gutter-line.has-error {
+  color: var(--cream);
+  font-weight: 700;
+}
+
+/* Error marker: a small cream diamond, readable without a new hue. */
+.aqvl-gutter-error-dot {
+  position: absolute;
+  left: 7px;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  background: var(--cream);
+  transform: translateY(-50%) rotate(45deg);
+}
+
+/* ── Content stack ──────────────────────────────────────────── */
+.aqvl-editor-content {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.aqvl-editor-overlay,
+.aqvl-editor-textarea {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  border: 0;
+  box-sizing: border-box;
+  padding: var(--ed-pad-y) var(--ed-pad-x);
+  font-family: var(--font-mono);
+  font-size: var(--ed-fs);
+  font-weight: 450;
+  line-height: var(--ed-lh);
+  letter-spacing: 0;
+  white-space: pre;
+  word-wrap: normal;
+  tab-size: 2;
+  -moz-tab-size: 2;
+  font-variant-ligatures: none;
+}
+
+.aqvl-editor-overlay {
+  color: var(--syn-default);
+  overflow: auto;
+  scrollbar-width: none;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+  z-index: 1;
+}
+
+.aqvl-editor-overlay::-webkit-scrollbar {
+  display: none;
+}
+
+/* Width probe: glyphs only, never padding. */
+.aqvl-metrics-probe {
+  padding: 0;
+  width: auto;
+  height: auto;
+  overflow: visible;
+  visibility: hidden;
+  white-space: pre;
+  top: -9999px;
+  left: -9999px;
+}
+
+.aqvl-editor-textarea {
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+  color: transparent !important;
+  -webkit-text-fill-color: transparent !important;
+  caret-color: var(--cream);
+  outline: none;
+  resize: none;
+  overflow: auto;
+  z-index: 2;
+}
+
+.aqvl-editor-textarea:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+}
+
+/* ::selection and ::-moz-selection stay in separate rules: an unknown
+   pseudo-element drops the whole selector list. */
+.aqvl-editor-textarea::selection {
+  background: rgb(102 99 121 / 0.55) !important;
+  color: transparent !important;
+  -webkit-text-fill-color: transparent !important;
+  text-shadow: none !important;
+}
+
+.aqvl-editor-textarea::-moz-selection {
+  background: rgb(102 99 121 / 0.55) !important;
+  color: transparent !important;
+  text-shadow: none !important;
+}
+
+/* ── Syntax ─────────────────────────────────────────────────── */
+.aqvl-editor-overlay .hl-keyword {
+  color: var(--syn-keyword);
+  font-weight: 650;
+}
+
+.aqvl-editor-overlay .hl-structural {
+  color: var(--syn-structural);
+  font-weight: 650;
+  font-style: italic;
+}
+
+.aqvl-editor-overlay .hl-number {
+  color: var(--syn-number);
+}
+
+.aqvl-editor-overlay .hl-string {
+  color: var(--syn-string);
+}
+
+.aqvl-editor-overlay .hl-comment {
+  color: var(--syn-comment);
+  font-style: italic;
+}
+
+/* ── Diagnostics ────────────────────────────────────────────── */
+.aqvl-error-overlay {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.aqvl-error-squiggle {
+  position: absolute;
+  height: var(--ed-lh);
+  background-image:
+    linear-gradient(45deg, transparent 40%, var(--cream) 50%, transparent 60%),
+    linear-gradient(135deg, transparent 40%, var(--cream) 50%, transparent 60%);
+  background-size: 5px 3px, 5px 3px;
+  background-position: bottom left, bottom left 2.5px;
+  background-repeat: repeat-x;
+}
+
+/* ── Live-execution playhead ────────────────────────────────── */
+.aqvl-playhead-clip {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.aqvl-playhead-overlay {
+  position: absolute;
+  left: 0;
+  right: 0;
+  background: rgb(102 99 121 / 0.32);
+  box-shadow: inset 2px 0 0 var(--cream);
+  transition: top 380ms var(--spring-snappy);
+}
+
+/* ── Autocomplete ───────────────────────────────────────────── */
+.aqvl-autocomplete {
+  position: absolute;
+  z-index: 100;
+  min-width: 220px;
+  max-width: 320px;
+  overflow: hidden;
+  background: var(--panel);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-panel);
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  animation: ac-in var(--spring-snappy-d) var(--spring-snappy);
+  transform-origin: top left;
+}
+
+@keyframes ac-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.aqvl-autocomplete-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 12px;
+  cursor: pointer;
+  color: var(--peach);
+  transition: background-color 240ms var(--spring-soft);
+}
+
+.aqvl-autocomplete-item.selected {
+  background: var(--dusk-deep);
+}
+
+.aqvl-autocomplete-kw {
+  color: var(--cream);
+  font-weight: 650;
+}
+
+.aqvl-autocomplete-hint {
+  flex-shrink: 0;
+  color: var(--peach-muted);
+  font-size: 11px;
+}
+
+.aqvl-autocomplete-footer {
+  padding: 6px 12px;
+  font-size: 11px;
+  color: var(--peach-muted);
+  background: var(--ink);
+  border-top: 1px solid var(--line);
+}
+
+.aqvl-editor-container,
+.aqvl-editor-scroller {
+  display: contents;
+}

@@ -29,43 +29,9 @@ interface IDEBottomPanelProps {
   consoleLogs: ConsoleMessage[];
 }
 
-function SectionHeader({ icon, title }: { icon: React.ReactNode; title: string }) {
-  return (
-    <div className="ide-panel-header" style={{ justifyContent: 'flex-start' }}>
-      <span className="ide-panel-header-icon">{icon}</span>
-      {title}
-    </div>
-  );
+function SectionHeader({ title }: { title: string }) {
+  return <div className="ide-panel-header">{title}</div>;
 }
-
-const TimelineIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-    <line x1="3" y1="12" x2="21" y2="12" />
-    <line x1="3" y1="6" x2="21" y2="6" />
-    <line x1="3" y1="18" x2="21" y2="18" />
-  </svg>
-);
-
-const StatusIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
-  </svg>
-);
-
-const StatsIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="18" y="3" width="4" height="18" rx="1" />
-    <rect x="10" y="8" width="4" height="13" rx="1" />
-    <rect x="2" y="13" width="4" height="8" rx="1" />
-  </svg>
-);
-
-const ConsoleIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-    <polyline points="4 17 10 11 4 5" />
-    <line x1="12" y1="19" x2="20" y2="19" />
-  </svg>
-);
 
 export function IDEBottomPanel({
   aqir,
@@ -82,13 +48,11 @@ export function IDEBottomPanel({
     <div className="ide-bottom-panel">
 
       {/* ── Execution Timeline ────────────────────────────── */}
-      <div className="ide-bottom-section" style={{ width: '25%' }}>
-        <SectionHeader icon={<TimelineIcon />} title="Execution Timeline" />
+      <div className="ide-bottom-section">
+        <SectionHeader title="Execution timeline" />
         <div className="ide-panel-content">
           {instructions.length === 0 && (
-            <div style={{ padding: '12px 14px', fontSize: '11.5px', color: 'var(--text-muted)', fontStyle: 'italic' }}>
-              No instructions
-            </div>
+            <p className="ide-note">No instructions yet</p>
           )}
           {instructions.map((inst, idx) => {
             const isCompleted = idx < currentInstructionIndex;
@@ -98,18 +62,11 @@ export function IDEBottomPanel({
                 key={idx}
                 className={`timeline-item ${isActive ? 'active' : ''} ${isCompleted ? 'completed' : ''}`}
               >
-                <span className="status-icon" style={{
-                  width: '15px',
-                  height: '15px',
-                  fontSize: '9px',
-                  color: isCompleted ? 'var(--success)' : isActive ? '#a5b4fc' : 'var(--text-subtle)',
-                }}>
-                  {isCompleted ? '✓' : isActive ? '▶' : ''}
+                <span className="status-icon" aria-hidden="true">
+                  {isCompleted ? '✓' : isActive ? '▸' : ''}
                 </span>
                 <span className="timeline-idx">{idx + 1}</span>
-                <span style={{ color: isActive ? 'var(--text-primary)' : undefined }}>
-                  {inst.type}
-                </span>
+                <span>{inst.type}</span>
               </div>
             );
           })}
@@ -117,8 +74,8 @@ export function IDEBottomPanel({
       </div>
 
       {/* ── Runtime Status ────────────────────────────────── */}
-      <div className="ide-bottom-section" style={{ width: '25%' }}>
-        <SectionHeader icon={<StatusIcon />} title="Runtime Status" />
+      <div className="ide-bottom-section">
+        <SectionHeader title="Runtime status" />
         <div className="ide-panel-content">
           <ul className="kv-list">
             <li className="kv-item">
@@ -156,8 +113,8 @@ export function IDEBottomPanel({
       </div>
 
       {/* ── Statistics ────────────────────────────────────── */}
-      <div className="ide-bottom-section" style={{ width: '25%' }}>
-        <SectionHeader icon={<StatsIcon />} title="Statistics" />
+      <div className="ide-bottom-section">
+        <SectionHeader title="Statistics" />
         <div className="ide-panel-content">
           <ul className="kv-list">
             <li className="kv-item">
@@ -193,13 +150,11 @@ export function IDEBottomPanel({
       </div>
 
       {/* ── Console ───────────────────────────────────────── */}
-      <div className="ide-bottom-section" style={{ width: '25%' }}>
-        <SectionHeader icon={<ConsoleIcon />} title="Console" />
+      <div className="ide-bottom-section">
+        <SectionHeader title="Console" />
         <div className="ide-panel-content">
           {consoleLogs.length === 0 && (
-            <div style={{ padding: '12px 14px', fontSize: '11.5px', color: 'var(--text-muted)', fontStyle: 'italic' }}>
-              No output yet
-            </div>
+            <p className="ide-note">No output yet</p>
           )}
           {consoleLogs.map((log, idx) => (
             <div key={idx} className={`console-log ${log.type}`}>

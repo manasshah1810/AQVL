@@ -1,11 +1,12 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import tailwindcss from '@tailwindcss/vite'
 import path from 'path'
 
 // https://vite.dev/config/
 export default defineConfig(({ command }) => ({
   base: command === 'build' ? '/AQVL/' : '/',
-  plugins: [react()],
+  plugins: [react(), tailwindcss()],
   resolve: {
     alias: {
       '@aqvl/compiler': path.resolve(__dirname, '../compiler/src/index.ts'),
@@ -22,6 +23,8 @@ export default defineConfig(({ command }) => ({
             { name: 'vendor-three', test: /[\\/]node_modules[\\/](three|@react-three)[\\/]/ },
             { name: 'vendor-react', test: /[\\/]node_modules[\\/](react|react-dom|scheduler)[\\/]/ },
             { name: 'vendor-animejs', test: /[\\/]node_modules[\\/]animejs[\\/]/ },
+            { name: 'vendor-motion', test: /[\\/]node_modules[\\/](motion|motion-dom|motion-utils|framer-motion)[\\/]/ },
+            { name: 'vendor-gsap', test: /[\\/]node_modules[\\/](gsap|lenis)[\\/]/ },
           ]
         }
       }

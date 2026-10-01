@@ -1,720 +1,213 @@
-import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import {
-  EXAMPLES,
-  EXAMPLE_CATEGORIES,
-  type Example,
-  type ExampleCategory,
-} from '../examples/registry';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { LayoutGroup, motion } from 'motion/react';
+import { EXAMPLES, EXAMPLE_CATEGORIES, type Example, type ExampleCategory } from '../examples/registry';
+import { spring, stagger } from '../lib/motion';
 
-// ── Category Metadata ─────────────────────────────────────────────────────────
-
-interface CategoryMeta {
-  icon: React.ReactNode;
-  color: string;
-  accent: string;
-  glow: string;
-  description: string;
-  pattern: React.ReactNode;
-}
-
-const CATEGORY_META: Record<ExampleCategory, CategoryMeta> = {
-  'Arrays': {
-    color: '#0ea5e9',
-    accent: 'rgba(14,165,233,0.15)',
-    glow: 'rgba(14,165,233,0.35)',
-    description: 'Contiguous blocks of memory',
-    icon: (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-        <rect x="3" y="9" width="18" height="6" rx="1"/>
-        <line x1="9" y1="9" x2="9" y2="15"/>
-        <line x1="15" y1="9" x2="15" y2="15"/>
-      </svg>
-    ),
-    pattern: (
-      <svg width="120" height="80" viewBox="0 0 120 80" fill="none">
-        <rect x="20" y="30" width="80" height="20" rx="2" fill="none" stroke="rgba(14,165,233,0.3)" strokeWidth="1"/>
-        <line x1="40" y1="30" x2="40" y2="50" stroke="rgba(14,165,233,0.3)" strokeWidth="1"/>
-        <line x1="60" y1="30" x2="60" y2="50" stroke="rgba(14,165,233,0.3)" strokeWidth="1"/>
-        <line x1="80" y1="30" x2="80" y2="50" stroke="rgba(14,165,233,0.3)" strokeWidth="1"/>
-        <rect x="40" y="30" width="20" height="20" fill="rgba(14,165,233,0.2)"/>
-      </svg>
-    ),
-  },
-  'Sorting': {
-    color: '#6366f1',
-    accent: 'rgba(99,102,241,0.15)',
-    glow: 'rgba(99,102,241,0.35)',
-    description: 'Ordering elements efficiently',
-    icon: (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-        <line x1="3" y1="6" x2="21" y2="6"/>
-        <line x1="3" y1="12" x2="15" y2="12"/>
-        <line x1="3" y1="18" x2="9" y2="18"/>
-        <polyline points="17 16 21 12 17 8"/>
-      </svg>
-    ),
-    pattern: (
-      <svg width="120" height="80" viewBox="0 0 120 80" fill="none">
-        {[12,20,35,55,80,100].map((h,i) => (
-          <rect key={i} x={8 + i*18} y={80-h} width="12" height={h} rx="3"
-            fill={`rgba(99,102,241,${0.08 + i*0.05})`}
-            stroke="rgba(99,102,241,0.25)" strokeWidth="1"/>
-        ))}
-        <path d="M14 56 L32 32 L50 42 L68 20 L86 28 L104 8"
-          stroke="rgba(99,102,241,0.4)" strokeWidth="1.5" fill="none" strokeDasharray="3 2"/>
-      </svg>
-    ),
-  },
-  'Linked Lists': {
-    color: '#10b981',
-    accent: 'rgba(16,185,129,0.15)',
-    glow: 'rgba(16,185,129,0.35)',
-    description: 'Chains of connected nodes',
-    icon: (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="6" cy="12" r="3"/>
-        <circle cx="18" cy="12" r="3"/>
-        <line x1="9" y1="12" x2="15" y2="12"/>
-        <path d="M15 10.5 L17 12 L15 13.5"/>
-      </svg>
-    ),
-    pattern: (
-      <svg width="120" height="80" viewBox="0 0 120 80" fill="none">
-        {[20,50,80].map((x,i) => (
-          <g key={i}>
-            <rect x={x-10} y="28" width="20" height="24" rx="4"
-              fill={`rgba(16,185,129,${0.08 + i*0.04})`}
-              stroke="rgba(16,185,129,0.3)" strokeWidth="1"/>
-            <text x={x} y="44" textAnchor="middle" fill="rgba(16,185,129,0.6)" fontSize="10" fontFamily="monospace">{i+1}</text>
-          </g>
-        ))}
-        {[30,62].map((x,i) => (
-          <g key={i}>
-            <line x1={x} y1="40" x2={x+8} y2="40" stroke="rgba(16,185,129,0.4)" strokeWidth="1.5"/>
-            <path d={`M ${x+6} 37 L ${x+10} 40 L ${x+6} 43`} stroke="rgba(16,185,129,0.4)" strokeWidth="1.5" fill="none"/>
-          </g>
-        ))}
-        <circle cx="105" cy="40" r="6" fill="none" stroke="rgba(16,185,129,0.2)" strokeWidth="1" strokeDasharray="2 1"/>
-        <text x="105" y="44" textAnchor="middle" fill="rgba(16,185,129,0.35)" fontSize="8">∅</text>
-      </svg>
-    ),
-  },
-  'Trees': {
-    color: '#f59e0b',
-    accent: 'rgba(245,158,11,0.15)',
-    glow: 'rgba(245,158,11,0.35)',
-    description: 'Hierarchical structures',
-    icon: (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="12" cy="4" r="2"/>
-        <circle cx="6" cy="16" r="2"/>
-        <circle cx="18" cy="16" r="2"/>
-        <circle cx="12" cy="16" r="2"/>
-        <line x1="12" y1="6" x2="6" y2="14"/>
-        <line x1="12" y1="6" x2="12" y2="14"/>
-        <line x1="12" y1="6" x2="18" y2="14"/>
-      </svg>
-    ),
-    pattern: (
-      <svg width="120" height="80" viewBox="0 0 120 80" fill="none">
-        <circle cx="60" cy="14" r="8" fill="rgba(245,158,11,0.12)" stroke="rgba(245,158,11,0.4)" strokeWidth="1.5"/>
-        <line x1="52" y1="19" x2="36" y2="39" stroke="rgba(245,158,11,0.25)" strokeWidth="1"/>
-        <line x1="60" y1="22" x2="60" y2="40" stroke="rgba(245,158,11,0.25)" strokeWidth="1"/>
-        <line x1="68" y1="19" x2="84" y2="39" stroke="rgba(245,158,11,0.25)" strokeWidth="1"/>
-        {[36,60,84].map((x,i) => (
-          <circle key={i} cx={x} cy="46" r="7" fill="rgba(245,158,11,0.1)" stroke="rgba(245,158,11,0.3)" strokeWidth="1"/>
-        ))}
-        {[28,44,76,92].map((x,i) => (
-          <circle key={i} cx={x} cy="68" r="5" fill="rgba(245,158,11,0.07)" stroke="rgba(245,158,11,0.2)" strokeWidth="1"/>
-        ))}
-        <line x1="30" y1="53" x2="28" y2="63" stroke="rgba(245,158,11,0.2)" strokeWidth="1"/>
-        <line x1="42" y1="53" x2="44" y2="63" stroke="rgba(245,158,11,0.2)" strokeWidth="1"/>
-        <line x1="76" y1="53" x2="76" y2="63" stroke="rgba(245,158,11,0.2)" strokeWidth="1"/>
-        <line x1="92" y1="53" x2="92" y2="63" stroke="rgba(245,158,11,0.2)" strokeWidth="1"/>
-      </svg>
-    ),
-  },
-  'Searching': {
-    color: '#ec4899',
-    accent: 'rgba(236,72,153,0.15)',
-    glow: 'rgba(236,72,153,0.35)',
-    description: 'Finding the needle in a haystack',
-    icon: (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="10" cy="10" r="6"/>
-        <line x1="21" y1="21" x2="15" y2="15"/>
-      </svg>
-    ),
-    pattern: (
-      <svg width="120" height="80" viewBox="0 0 120 80" fill="none">
-        {[10,26,42,58,74,90,106].map((x,i) => (
-          <rect key={i} x={x} y="28" width="12" height="24" rx="3"
-            fill={i === 3 ? 'rgba(236,72,153,0.3)' : `rgba(236,72,153,${0.05 + i*0.02})`}
-            stroke={i === 3 ? 'rgba(236,72,153,0.6)' : 'rgba(236,72,153,0.15)'}
-            strokeWidth={i === 3 ? 1.5 : 1}/>
-        ))}
-        <circle cx="64" cy="18" r="9" fill="none" stroke="rgba(236,72,153,0.5)" strokeWidth="1.5" strokeDasharray="3 2">
-          <animateTransform attributeName="transform" type="rotate" values="0 64 18;360 64 18" dur="3s" repeatCount="indefinite"/>
-        </circle>
-        <circle cx="64" cy="18" r="3" fill="rgba(236,72,153,0.4)"/>
-      </svg>
-    ),
-  },
-  'Loops & Control': {
-    color: '#8b5cf6',
-    accent: 'rgba(139,92,246,0.15)',
-    glow: 'rgba(139,92,246,0.35)',
-    description: 'Iteration and flow control',
-    icon: (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-        <polyline points="17 1 21 5 17 9"/>
-        <path d="M3 11V9a4 4 0 0 1 4-4h14"/>
-        <polyline points="7 23 3 19 7 15"/>
-        <path d="M21 13v2a4 4 0 0 1-4 4H3"/>
-      </svg>
-    ),
-    pattern: (
-      <svg width="120" height="80" viewBox="0 0 120 80" fill="none">
-        <path d="M20 40 Q35 15 60 40 Q85 65 100 40"
-          stroke="rgba(139,92,246,0.4)" strokeWidth="1.5" fill="none" strokeDasharray="4 2"/>
-        <circle cx="20" cy="40" r="4" fill="rgba(139,92,246,0.3)" stroke="rgba(139,92,246,0.6)" strokeWidth="1"/>
-        <circle cx="60" cy="40" r="4" fill="rgba(139,92,246,0.3)" stroke="rgba(139,92,246,0.6)" strokeWidth="1"/>
-        <circle cx="100" cy="40" r="4" fill="rgba(139,92,246,0.3)" stroke="rgba(139,92,246,0.6)" strokeWidth="1"/>
-        <path d="M58 26 L62 22 L66 26" stroke="rgba(139,92,246,0.5)" strokeWidth="1.5" fill="none"/>
-        <path d="M58 54 L62 58 L66 54" stroke="rgba(139,92,246,0.5)" strokeWidth="1.5" fill="none"/>
-        <rect x="45" y="6" width="30" height="16" rx="4" fill="none" stroke="rgba(139,92,246,0.2)" strokeWidth="1"/>
-        <text x="60" y="18" textAnchor="middle" fill="rgba(139,92,246,0.5)" fontSize="7">i &lt; n</text>
-      </svg>
-    ),
-  },
-  'Stacks': {
-    color: '#f97316',
-    accent: 'rgba(249,115,22,0.15)',
-    glow: 'rgba(249,115,22,0.35)',
-    description: 'Last in, first out',
-    icon: (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-        <rect x="4" y="4" width="16" height="4" rx="1"/>
-        <rect x="4" y="10" width="16" height="4" rx="1"/>
-        <rect x="4" y="16" width="16" height="4" rx="1"/>
-      </svg>
-    ),
-    pattern: (
-      <svg width="120" height="80" viewBox="0 0 120 80" fill="none">
-        {[0,1,2,3].map(i => (
-          <rect key={i} x="30" y={16 + i*14} width="60" height="10" rx="2"
-            fill={`rgba(249,115,22,${0.06 + i*0.05})`} stroke="rgba(249,115,22,0.3)" strokeWidth="1"/>
-        ))}
-        <path d="M60 8 L60 2 M56 6 L60 2 L64 6" stroke="rgba(249,115,22,0.5)" strokeWidth="1.5" fill="none"/>
-      </svg>
-    ),
-  },
-  'Queues': {
-    color: '#14b8a6',
-    accent: 'rgba(20,184,166,0.15)',
-    glow: 'rgba(20,184,166,0.35)',
-    description: 'First in, first out',
-    icon: (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-        <rect x="3" y="8" width="4" height="8" rx="1"/>
-        <rect x="10" y="8" width="4" height="8" rx="1"/>
-        <rect x="17" y="8" width="4" height="8" rx="1"/>
-        <path d="M21 12 L23 12"/>
-      </svg>
-    ),
-    pattern: (
-      <svg width="120" height="80" viewBox="0 0 120 80" fill="none">
-        {[10,34,58,82].map((x,i) => (
-          <rect key={i} x={x} y="30" width="18" height="20" rx="3"
-            fill={`rgba(20,184,166,${0.06 + i*0.05})`} stroke="rgba(20,184,166,0.3)" strokeWidth="1"/>
-        ))}
-        <path d="M104 40 L112 40 M108 36 L112 40 L108 44" stroke="rgba(20,184,166,0.5)" strokeWidth="1.5" fill="none"/>
-      </svg>
-    ),
-  },
-  'Graphs': {
-    color: '#3b82f6',
-    accent: 'rgba(59,130,246,0.15)',
-    glow: 'rgba(59,130,246,0.35)',
-    description: 'Vertices and edges',
-    icon: (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="6" cy="6" r="2.5"/>
-        <circle cx="18" cy="6" r="2.5"/>
-        <circle cx="12" cy="18" r="2.5"/>
-        <line x1="6" y1="8.5" x2="12" y2="15.5"/>
-        <line x1="18" y1="8.5" x2="12" y2="15.5"/>
-        <line x1="8.5" y1="6" x2="15.5" y2="6"/>
-      </svg>
-    ),
-    pattern: (
-      <svg width="120" height="80" viewBox="0 0 120 80" fill="none">
-        <line x1="24" y1="20" x2="90" y2="20" stroke="rgba(59,130,246,0.25)" strokeWidth="1"/>
-        <line x1="24" y1="20" x2="60" y2="60" stroke="rgba(59,130,246,0.25)" strokeWidth="1"/>
-        <line x1="90" y1="20" x2="60" y2="60" stroke="rgba(59,130,246,0.25)" strokeWidth="1"/>
-        <line x1="90" y1="20" x2="100" y2="55" stroke="rgba(59,130,246,0.25)" strokeWidth="1"/>
-        {[[24,20],[90,20],[60,60],[100,55]].map(([x,y],i) => (
-          <circle key={i} cx={x} cy={y} r="6" fill="rgba(59,130,246,0.12)" stroke="rgba(59,130,246,0.4)" strokeWidth="1.5"/>
-        ))}
-      </svg>
-    ),
-  },
-  'Heaps': {
-    color: '#eab308',
-    accent: 'rgba(234,179,8,0.15)',
-    glow: 'rgba(234,179,8,0.35)',
-    description: 'Priority-ordered trees',
-    icon: (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="12" cy="4" r="2"/>
-        <circle cx="6" cy="12" r="2"/>
-        <circle cx="18" cy="12" r="2"/>
-        <circle cx="3" cy="20" r="2"/>
-        <circle cx="9" cy="20" r="2"/>
-        <line x1="12" y1="6" x2="6" y2="10"/>
-        <line x1="12" y1="6" x2="18" y2="10"/>
-        <line x1="6" y1="14" x2="3" y2="18"/>
-        <line x1="6" y1="14" x2="9" y2="18"/>
-      </svg>
-    ),
-    pattern: (
-      <svg width="120" height="80" viewBox="0 0 120 80" fill="none">
-        <circle cx="60" cy="14" r="8" fill="rgba(234,179,8,0.12)" stroke="rgba(234,179,8,0.4)" strokeWidth="1.5"/>
-        <line x1="52" y1="19" x2="36" y2="39" stroke="rgba(234,179,8,0.25)" strokeWidth="1"/>
-        <line x1="68" y1="19" x2="84" y2="39" stroke="rgba(234,179,8,0.25)" strokeWidth="1"/>
-        {[36,84].map((x,i) => (
-          <circle key={i} cx={x} cy="46" r="7" fill="rgba(234,179,8,0.1)" stroke="rgba(234,179,8,0.3)" strokeWidth="1"/>
-        ))}
-      </svg>
-    ),
-  },
-  'Hash Maps': {
-    color: '#d946ef',
-    accent: 'rgba(217,70,239,0.15)',
-    glow: 'rgba(217,70,239,0.35)',
-    description: 'Keys mapped to values',
-    icon: (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-        <line x1="4" y1="9" x2="20" y2="9"/>
-        <line x1="4" y1="15" x2="20" y2="15"/>
-        <line x1="9" y1="4" x2="9" y2="20"/>
-        <line x1="15" y1="4" x2="15" y2="20"/>
-      </svg>
-    ),
-    pattern: (
-      <svg width="120" height="80" viewBox="0 0 120 80" fill="none">
-        {[0,1,2].map(row => (
-          <g key={row}>
-            <rect x="20" y={16 + row*18} width="35" height="14" rx="2" fill="rgba(217,70,239,0.08)" stroke="rgba(217,70,239,0.3)" strokeWidth="1"/>
-            <rect x="65" y={16 + row*18} width="35" height="14" rx="2" fill="rgba(217,70,239,0.14)" stroke="rgba(217,70,239,0.3)" strokeWidth="1"/>
-            <path d={`M55 ${23+row*18} L65 ${23+row*18}`} stroke="rgba(217,70,239,0.4)" strokeWidth="1.5"/>
-          </g>
-        ))}
-      </svg>
-    ),
-  },
-  'Tries': {
-    color: '#22c55e',
-    accent: 'rgba(34,197,94,0.15)',
-    glow: 'rgba(34,197,94,0.35)',
-    description: 'Prefix trees for words',
-    icon: (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="12" cy="4" r="2"/>
-        <circle cx="6" cy="12" r="2"/>
-        <circle cx="18" cy="12" r="2"/>
-        <circle cx="6" cy="20" r="2"/>
-        <circle cx="12" cy="20" r="2"/>
-        <line x1="12" y1="6" x2="6" y2="10"/>
-        <line x1="12" y1="6" x2="18" y2="10"/>
-        <line x1="6" y1="14" x2="6" y2="18"/>
-        <line x1="6" y1="14" x2="12" y2="18"/>
-      </svg>
-    ),
-    pattern: (
-      <svg width="120" height="80" viewBox="0 0 120 80" fill="none">
-        <circle cx="60" cy="12" r="6" fill="rgba(34,197,94,0.12)" stroke="rgba(34,197,94,0.4)" strokeWidth="1.5"/>
-        <line x1="54" y1="16" x2="38" y2="34" stroke="rgba(34,197,94,0.25)" strokeWidth="1"/>
-        <line x1="66" y1="16" x2="82" y2="34" stroke="rgba(34,197,94,0.25)" strokeWidth="1"/>
-        {[38,82].map((x,i) => (
-          <circle key={i} cx={x} cy="40" r="6" fill="rgba(34,197,94,0.1)" stroke="rgba(34,197,94,0.3)" strokeWidth="1"/>
-        ))}
-        <line x1="34" y1="45" x2="26" y2="62" stroke="rgba(34,197,94,0.2)" strokeWidth="1"/>
-        <line x1="42" y1="45" x2="50" y2="62" stroke="rgba(34,197,94,0.2)" strokeWidth="1"/>
-        {[26,50].map((x,i) => (
-          <circle key={i} cx={x} cy="68" r="5" fill="rgba(34,197,94,0.07)" stroke="rgba(34,197,94,0.2)" strokeWidth="1"/>
-        ))}
-      </svg>
-    ),
-  },
-  'Recursion & Functions': {
-    color: '#64748b',
-    accent: 'rgba(100,116,139,0.15)',
-    glow: 'rgba(100,116,139,0.35)',
-    description: 'Functions calling themselves',
-    icon: (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M17.5 12a5.5 5.5 0 1 1-5.5-5.5"/>
-        <polyline points="17.5 6 17.5 12 11.5 12"/>
-      </svg>
-    ),
-    pattern: (
-      <svg width="120" height="80" viewBox="0 0 120 80" fill="none">
-        {[26,20,14].map((r,i) => (
-          <circle key={i} cx="60" cy="40" r={r} fill="none" stroke={`rgba(100,116,139,${0.35 - i*0.08})`} strokeWidth="1.5" strokeDasharray="4 3"/>
-        ))}
-        <circle cx="60" cy="40" r="4" fill="rgba(100,116,139,0.4)"/>
-      </svg>
-    ),
-  },
+const CATEGORY_NOTE: Record<ExampleCategory, string> = {
+  Arrays: 'Contiguous blocks of memory',
+  Sorting: 'Putting elements in order',
+  'Linked Lists': 'Chains of nodes and pointers',
+  Trees: 'Hierarchies of nodes',
+  Searching: 'Finding one value among many',
+  'Loops & Control': 'Iteration and branching',
+  Stacks: 'Last in, first out',
+  Queues: 'First in, first out',
+  Graphs: 'Vertices and edges',
+  Heaps: 'Priority-ordered trees',
+  'Hash Maps': 'Keys mapped to buckets',
+  Tries: 'Prefix trees for words',
+  'Recursion & Functions': 'Functions that call themselves',
 };
-
-// ── Difficulty Badge ───────────────────────────────────────────────────────────
-
-const DIFFICULTY_CONFIG = {
-  Easy:   { label: 'Easy',   bg: 'rgba(16,185,129,0.12)', border: 'rgba(16,185,129,0.3)',  text: '#10b981' },
-  Medium: { label: 'Medium', bg: 'rgba(245,158,11,0.12)', border: 'rgba(245,158,11,0.3)',  text: '#f59e0b' },
-  Hard:   { label: 'Hard',   bg: 'rgba(239,68,68,0.12)',  border: 'rgba(239,68,68,0.3)',   text: '#ef4444' },
-};
-
-// ── Icons ─────────────────────────────────────────────────────────────────────
-
-const IconClose = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-    <line x1="18" y1="6" x2="6" y2="18"/>
-    <line x1="6" y1="6" x2="18" y2="18"/>
-  </svg>
-);
-
-const IconSearch = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="11" cy="11" r="7"/>
-    <line x1="21" y1="21" x2="16" y2="16"/>
-  </svg>
-);
-
-const IconArrow = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-    <line x1="5" y1="12" x2="19" y2="12"/>
-    <polyline points="12 5 19 12 12 19"/>
-  </svg>
-);
-
-const IconCheck = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-    <polyline points="20 6 9 17 4 12"/>
-  </svg>
-);
-
-// ── Props ──────────────────────────────────────────────────────────────────────
 
 interface ExampleExplorerProps {
   activeSource: string;
-  onSelect: (source: string) => void;
+  onSelect: (source: string, id: string) => void;
   onClose: () => void;
 }
 
-// ── Component ──────────────────────────────────────────────────────────────────
-
+/** Modal lesson picker for the playground. */
 export function ExampleExplorer({ activeSource, onSelect, onClose }: ExampleExplorerProps) {
   const [activeCategory, setActiveCategory] = useState<ExampleCategory | 'All'>(EXAMPLE_CATEGORIES[0]);
   const [query, setQuery] = useState('');
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [isExiting, setIsExiting] = useState(false);
-  const [cardTransitionKey, setCardTransitionKey] = useState(0);
-  const searchInputRef = useRef<HTMLInputElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const shellRef = useRef<HTMLDivElement>(null);
 
-  // Close on Escape (uses refs for `query`/`handleClose` so the listener isn't
-  // torn down and re-attached — and the editor isn't re-focused — on every keystroke)
+  // Escape clears the search first, then closes. Tab stays inside the dialog.
   const queryRef = useRef(query);
-  const handleCloseRef = useRef<() => void>(() => {});
   useEffect(() => {
     queryRef.current = query;
   }, [query]);
-
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         if (queryRef.current) setQuery('');
-        else handleCloseRef.current();
+        else onClose();
+        return;
+      }
+      if (e.key === 'Tab' && shellRef.current) {
+        const focusables = shellRef.current.querySelectorAll<HTMLElement>('button, input, [href], [tabindex]:not([tabindex="-1"])');
+        if (!focusables.length) return;
+        const first = focusables[0];
+        const last = focusables[focusables.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
       }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, []);
+  }, [onClose]);
 
-  // Return focus to the playground editor only when the explorer unmounts.
   useEffect(() => {
+    searchRef.current?.focus();
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
     return () => {
-      requestAnimationFrame(() => {
-        const editor = document.querySelector('.aqvl-editor-textarea') as HTMLTextAreaElement | null;
-        if (editor) editor.focus();
-      });
+      document.body.style.overflow = prev;
     };
   }, []);
 
-  // Typing a search looks through every category
-  const handleQueryChange = (value: string) => {
-    setQuery(value);
-    if (value.trim() && activeCategory !== 'All') {
-      setActiveCategory('All');
-    }
-  };
+  const q = query.trim().toLowerCase();
 
-  const trimmedQuery = query.trim().toLowerCase();
-
-  const filteredExamples = useMemo(() => {
+  const filtered = useMemo(() => {
     let list = EXAMPLES;
-    if (activeCategory !== 'All') {
-      list = list.filter(e => e.category === activeCategory);
-    }
-    if (trimmedQuery) {
-      list = list.filter(e =>
-        e.title.toLowerCase().includes(trimmedQuery) ||
-        e.description.toLowerCase().includes(trimmedQuery)
-      );
-    }
+    if (activeCategory !== 'All') list = list.filter((e) => e.category === activeCategory);
+    if (q) list = list.filter((e) => e.title.toLowerCase().includes(q) || e.description.toLowerCase().includes(q));
     return list;
-  }, [activeCategory, trimmedQuery]);
+  }, [activeCategory, q]);
 
-  const handleClose = useCallback(() => {
-    setIsExiting(true);
-    setTimeout(() => onClose(), 220);
-  }, [onClose]);
-  useEffect(() => {
-    handleCloseRef.current = handleClose;
-  }, [handleClose]);
+  const counts = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const e of EXAMPLES) m.set(e.category, (m.get(e.category) ?? 0) + 1);
+    return m;
+  }, []);
 
-  const handleCategoryChange = (cat: ExampleCategory | 'All') => {
-    setActiveCategory(cat);
-    setQuery('');
-    setCardTransitionKey(k => k + 1);
+  const handleQuery = (value: string) => {
+    setQuery(value);
+    // A search looks through every topic.
+    if (value.trim() && activeCategory !== 'All') setActiveCategory('All');
   };
 
-  const handleSelect = useCallback((example: Example) => {
-    setSelectedId(example.id);
-    setTimeout(() => {
-      onSelect(example.source);
-      setIsExiting(true);
-      setTimeout(() => onClose(), 200);
-    }, 280);
-  }, [onSelect, onClose]);
-
-  const handleBackdropClick = (e: React.MouseEvent) => {
-    if (e.target === e.currentTarget) handleClose();
-  };
+  const choose = useCallback((example: Example) => onSelect(example.source, example.id), [onSelect]);
 
   const renderTitle = (title: string) => {
-    if (!trimmedQuery) return title;
-    const idx = title.toLowerCase().indexOf(trimmedQuery);
+    if (!q) return title;
+    const idx = title.toLowerCase().indexOf(q);
     if (idx === -1) return title;
     return (
       <>
         {title.slice(0, idx)}
-        <mark className="lp-match">{title.slice(idx, idx + trimmedQuery.length)}</mark>
-        {title.slice(idx + trimmedQuery.length)}
+        <mark className="ex-match">{title.slice(idx, idx + q.length)}</mark>
+        {title.slice(idx + q.length)}
       </>
     );
   };
 
-  const currentMeta = activeCategory !== 'All' ? CATEGORY_META[activeCategory as ExampleCategory] : null;
-  const totalCount = filteredExamples.length;
-
   return (
-    <div
-      className={`lp-backdrop${isExiting ? ' exiting' : ''}`}
+    <motion.div
+      className="ex-backdrop"
       role="dialog"
       aria-modal="true"
       aria-label="Choose a lesson"
-      onClick={handleBackdropClick}
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1, transition: { duration: 0.18 } }}
+      exit={{ opacity: 0, transition: { duration: 0.16 } }}
     >
-      <div
-        ref={containerRef}
-        className={`lp-shell${isExiting ? ' exiting' : ''}`}
-        onClick={e => e.stopPropagation()}
+      <motion.div
+        ref={shellRef}
+        className="ex-shell"
+        initial={{ opacity: 0, y: 18, scale: 0.985 }}
+        animate={{ opacity: 1, y: 0, scale: 1, transition: spring.gentle }}
+        exit={{ opacity: 0, y: 10, transition: { duration: 0.14 } }}
       >
-        {/* ── Top Command Bar ── */}
-        <header className="lp-cmd-header">
-          <div className="lp-cmd-search-wrap">
-            <span className="lp-cmd-search-icon"><IconSearch /></span>
-            <input
-              ref={searchInputRef}
-              className="lp-cmd-search-input"
-              type="text"
-              placeholder="Search for an algorithm, structure, or lesson…"
-              value={query}
-              onChange={e => handleQueryChange(e.target.value)}
-              spellCheck={false}
-              autoComplete="off"
-              aria-label="Search examples"
-              autoFocus
-            />
-            {query && (
-              <button
-                className="lp-cmd-search-clear"
-                onClick={() => { setQuery(''); searchInputRef.current?.focus(); }}
-                aria-label="Clear search"
-              >
-                <IconClose />
-              </button>
-            )}
-          </div>
-          <button className="lp-cmd-close-btn" onClick={handleClose} aria-label="Close">
-            <kbd className="lp-cmd-esc">ESC</kbd>
+        <header className="ex-head">
+          <h2 className="title">Choose a lesson</h2>
+          <input
+            ref={searchRef}
+            type="search"
+            className="search-input ex-search"
+            placeholder="Search every topic"
+            value={query}
+            onChange={(e) => handleQuery(e.target.value)}
+            spellCheck={false}
+            autoComplete="off"
+            aria-label="Search examples"
+          />
+          <button type="button" className="btn btn--quiet btn--sm" onClick={onClose}>
+            Close <kbd className="pg-kbd">Esc</kbd>
           </button>
         </header>
 
-        <div className="lp-modal-body">
-          {/* ── Left Sidebar ── */}
-          <aside className="lp-sidebar">
-
-          {/* Wordmark */}
-          <div className="lp-sidebar-brand">
-            <div className="lp-brand-dot" />
-            <span className="lp-brand-label">Choose a Lesson</span>
-          </div>
-
-          {/* Category Nav */}
-          <nav className="lp-cat-nav" aria-label="Categories">
-            <button
-              className={`lp-cat-item${activeCategory === 'All' ? ' active' : ''}`}
-              onClick={() => handleCategoryChange('All')}
-              data-color="#a1a1aa"
-            >
-              <span className="lp-cat-item-icon">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="3" y="3" width="7" height="7" rx="1"/>
-                  <rect x="14" y="3" width="7" height="7" rx="1"/>
-                  <rect x="3" y="14" width="7" height="7" rx="1"/>
-                  <rect x="14" y="14" width="7" height="7" rx="1"/>
-                </svg>
-              </span>
-              <span className="lp-cat-item-label">All Examples</span>
-              <span className="lp-cat-item-count">{EXAMPLES.length}</span>
-            </button>
-
-            <div className="lp-cat-divider" />
-
-            {EXAMPLE_CATEGORIES.map(cat => {
-              const meta = CATEGORY_META[cat];
-              const count = EXAMPLES.filter(e => e.category === cat).length;
-              const isActive = activeCategory === cat;
-              return (
-                <button
-                  key={cat}
-                  className={`lp-cat-item${isActive ? ' active' : ''}`}
-                  onClick={() => handleCategoryChange(cat)}
-                  style={{ '--cat-color': meta.color } as React.CSSProperties}
-                >
-                  <span className="lp-cat-item-icon" style={{ color: isActive ? meta.color : undefined }}>
-                    {meta.icon}
-                  </span>
-                  <span className="lp-cat-item-label">{cat}</span>
-                  <span className="lp-cat-item-count">{count}</span>
-                </button>
-              );
-            })}
+        <div className="ex-body">
+          <nav className="ex-cats" aria-label="Topics">
+            <LayoutGroup id="ex-cats">
+              {(['All', ...EXAMPLE_CATEGORIES] as const).map((cat) => {
+                const on = activeCategory === cat;
+                return (
+                  <button
+                    key={cat}
+                    type="button"
+                    className={`ex-cat${on ? ' is-on' : ''}`}
+                    aria-pressed={on}
+                    onClick={() => {
+                      setActiveCategory(cat);
+                      setQuery('');
+                    }}
+                  >
+                    {on && <motion.span layoutId="ex-cat-on" className="ex-cat__bg" transition={spring.layout} />}
+                    <span className="relative">{cat === 'All' ? 'All examples' : cat}</span>
+                    <span className="ex-cat__n relative">{cat === 'All' ? EXAMPLES.length : counts.get(cat)}</span>
+                  </button>
+                );
+              })}
+            </LayoutGroup>
           </nav>
 
-          </aside>
-
-        {/* ── Main Content ── */}
-        <main className="lp-main">
-
-          {/* Header */}
-          <div className="lp-main-header">
-            <div className="lp-header-left">
-              {currentMeta ? (
-                <>
-                  <div className="lp-header-cat-dot" style={{ background: currentMeta.color, boxShadow: `0 0 8px ${currentMeta.color}` }} />
-                  <h2 className="lp-header-title">{activeCategory}</h2>
-                  <span className="lp-header-sub">{currentMeta.description}</span>
-                </>
-              ) : (
-                <>
-                  <h2 className="lp-header-title">All Examples</h2>
-                  <span className="lp-header-sub">{totalCount} lessons available</span>
-                </>
-              )}
+          <div className="ex-main">
+            <div className="ex-main__head">
+              <span className="font-serif text-[1.15rem]">{activeCategory === 'All' ? 'All examples' : activeCategory}</span>
+              <span className="mono muted">
+                {activeCategory === 'All' ? `${filtered.length} lessons` : CATEGORY_NOTE[activeCategory]}
+              </span>
             </div>
-          </div>
 
-          {/* Card Grid */}
-          <div className="lp-scroll-area">
-            {filteredExamples.length === 0 ? (
-              <div className="lp-empty">
-                <div className="lp-empty-icon">
-                  <IconSearch />
-                </div>
-                <div className="lp-empty-title">No lessons found</div>
-                <div className="lp-empty-hint">Try a different search term or browse a category</div>
+            {filtered.length === 0 ? (
+              <div className="ex-none">
+                <p className="title">No lessons match “{query}”.</p>
+                <p className="muted mt-2">Try a shorter word, or pick a topic on the left.</p>
               </div>
             ) : (
-              <div className="lp-grid" key={cardTransitionKey}>
-                {filteredExamples.map((example, idx) => {
-                  const meta = CATEGORY_META[example.category];
-                  const diff = DIFFICULTY_CONFIG[example.difficulty];
+              <ul role="list" className="ex-list" key={`${activeCategory}-${q}`}>
+                {filtered.map((example, idx) => {
                   const isActive = example.source === activeSource;
-                  const isSelected = selectedId === example.id;
-
                   return (
-                    <button
+                    <motion.li
                       key={example.id}
-                      className={`lp-card${isActive ? ' active' : ''}${isSelected ? ' selecting' : ''}`}
-                      style={{
-                        '--card-color': meta.color,
-                        '--card-accent': meta.accent,
-                        '--card-glow': meta.glow,
-                        animationDelay: `${idx * 40}ms`,
-                      } as React.CSSProperties}
-                      onClick={() => handleSelect(example)}
-                      aria-pressed={isActive}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0, transition: { ...spring.gentle, delay: stagger(idx, 0.025, 0.35) } }}
                     >
-                      {/* Card body */}
-                      <div className="lp-card-body">
-                        <div className="lp-card-meta">
-                          <span className="lp-diff-badge" style={{ color: diff.text, background: diff.bg, borderColor: diff.border }}>
-                            {diff.label}
-                          </span>
-                          <span className="lp-card-category">{example.category}</span>
-                          {isActive && (
-                            <div className="lp-card-active-badge" style={{ marginLeft: 'auto' }}>
-                              <IconCheck />
-                              <span>Current</span>
-                            </div>
-                          )}
-                        </div>
-                        <div className="lp-card-title">{renderTitle(example.title)}</div>
-                        <div className="lp-card-desc">{example.description}</div>
-                        <div className="lp-card-cta">
-                          {isSelected ? (
-                            <span className="lp-card-cta-loading">
-                              <span className="lp-spinner" />
-                              Loading…
-                            </span>
-                          ) : isActive ? (
-                            <span className="lp-card-cta-active">
-                              <IconCheck />
-                              Currently open
-                            </span>
-                          ) : (
-                            <span className="lp-card-cta-default">
-                              Open lesson
-                              <IconArrow />
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </button>
+                      <button type="button" className={`ex-row index-row${isActive ? ' is-current' : ''}`} onClick={() => choose(example)} aria-current={isActive ? 'true' : undefined}>
+                        <span className="ex-row__title">{renderTitle(example.title)}</span>
+                        <span className="ex-row__meta mono">
+                          {isActive ? 'open now' : example.difficulty}
+                        </span>
+                        <span className="ex-row__desc">{example.description}</span>
+                      </button>
+                    </motion.li>
                   );
                 })}
-              </div>
+              </ul>
             )}
           </div>
-        </main>
         </div>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   );
 }

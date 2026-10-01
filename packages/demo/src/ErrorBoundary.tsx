@@ -27,9 +27,18 @@ export class ErrorBoundary extends Component<Props, State> {
   public render() {
     if (this.state.hasError) {
       return (
-        <div style={{ color: 'red', padding: '20px', background: 'white' }}>
-          <h1>Something went wrong.</h1>
-          <pre>{this.state.errorMsg}</pre>
+        <div role="alert" className="page flex min-h-dvh flex-col justify-center gap-6 py-16">
+          <h1 className="headline">Something broke while drawing this page.</h1>
+          <p className="prose muted">
+            The error below came from the site itself, not from your program. Reloading usually clears it; if it
+            keeps happening, the message is what to report.
+          </p>
+          <pre className="panel max-w-[72ch] overflow-auto p-5 text-[0.875rem] whitespace-pre-wrap text-cream">{this.state.errorMsg}</pre>
+          <div>
+            <button type="button" className="btn" onClick={() => window.location.reload()}>
+              Reload the page
+            </button>
+          </div>
         </div>
       );
     }

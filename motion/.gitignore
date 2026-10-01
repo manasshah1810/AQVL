@@ -1,9 +1,0 @@
-node_modules/
-.remotion/
-# intermediate renders and review frames
-out/*
-!out/attempts/
-!out/aqvl-launch-film.mp4
-out/attempts/*
-!out/attempts/v*.mp4
-review/
