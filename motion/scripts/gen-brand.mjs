@@ -1,0 +1,10 @@
+import fs from 'fs';
+import {svgSymbol, svgWordmark, svgLockup, ICE, AMBER} from '../src/lib/brandData.js';
+const d = 'public/brand/';
+fs.mkdirSync(d, {recursive: true});
+fs.writeFileSync(d + 'aqvl-symbol.svg', svgSymbol(ICE, AMBER));
+fs.writeFileSync(d + 'aqvl-wordmark.svg', svgWordmark(ICE));
+fs.writeFileSync(d + 'aqvl-lockup.svg', svgLockup(ICE, AMBER));
+fs.writeFileSync(d + 'aqvl-symbol-onecolor.svg', svgSymbol('#111111', '#111111'));
+fs.writeFileSync(d + 'aqvl-wordmark-onecolor.svg', svgWordmark('#111111'));
+fs.writeFileSync(d + 'aqvl-lockup-onecolor.svg', svgLockup('#111111', '#111111'));

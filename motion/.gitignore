@@ -1,0 +1,8 @@
+node_modules/
+.cache/
+tmp/
+out/*
+!out/aqvl-launch-film.mp4
+!out/attempts/
+out/attempts/*
+!out/attempts/*.mp4
