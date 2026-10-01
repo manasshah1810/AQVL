@@ -787,12 +787,12 @@ body:has(.tk-root[data-theme='light']) { background: #f5f0e8; }
 
 html:has(.tk-root),
 body:has(.tk-root) {
-  background: #1e1c27 !important;
-  scrollbar-color: #57546a #1e1c27 !important;
+  background: var(--ink) !important;
+  scrollbar-color: var(--dusk) var(--ink) !important;
 }
 
-html:has(.tk-root)::-webkit-scrollbar-track { background: #1e1c27 !important; }
-html:has(.tk-root)::-webkit-scrollbar-thumb { background: #57546a !important; border-color: #1e1c27 !important; }
+html:has(.tk-root)::-webkit-scrollbar-track { background: var(--ink) !important; }
+html:has(.tk-root)::-webkit-scrollbar-thumb { background: var(--dusk) !important; border-color: var(--ink) !important; }
 
 /* Labels in the machine voice, sentence case, normal tracking. */
 .tk-root .tk-eyebrow,
@@ -821,12 +821,53 @@ html:has(.tk-root)::-webkit-scrollbar-thumb { background: #57546a !important; bo
 }
 
 .tk-root .tk-tabs a.is-active {
-  background: #57546a;
-  color: #f5d8c6;
+  background: var(--dusk-deep);
+  color: var(--cream);
   border-color: transparent;
 }
 
 .tk-root :focus-visible {
-  outline: 2px solid #f5d8c6;
+  outline: 2px solid var(--cream);
   outline-offset: 2px;
+}
+
+/* Light theme: follows the site toggle (data-theme on <html>). */
+:root[data-theme='light'] .tk-root {
+  --bg: #f7efe9;
+  --surface: #eadcd2;
+  --surface-2: #e1d0c4;
+  --surface-3: #dad6e3;
+  --line: rgb(58 54 73 / 0.28);
+  --line-soft: rgb(58 54 73 / 0.12);
+  --ink: #3a3649;
+  --ink-2: #3a3649;
+  --ink-3: #57546a;
+  --on-accent: #f7efe9;
+
+  --blue: #1e1c27;    --blue-bg: #e1d0c4;   --blue-ink: #1e1c27;
+  --purple: #1e1c27;  --purple-bg: #eadcd2; --purple-ink: #1e1c27;
+  --green: #3a3649;   --green-bg: #e1d0c4;  --green-ink: #3a3649;
+  --yellow: #1e1c27;  --yellow-bg: #dad6e3; --yellow-ink: #1e1c27;
+  --pink: #3a3649;    --pink-bg: #e1d0c4;   --pink-ink: #1e1c27;
+  --red: #1e1c27;     --red-bg: #dad6e3;    --red-ink: #1e1c27;
+  --orange: #57546a;  --orange-bg: #e1d0c4; --orange-ink: #1e1c27;
+
+  --st-planned: #dad6e3;
+  --st-in_progress: #666379;
+  --st-blocked: #1e1c27;
+  --st-unverified: #a07a68;
+  --st-completed: #3a3649;
+
+  --chart-grid: rgb(58 54 73 / 0.12);
+  --chart-tick: #57546a;
+  --heat-0: #efe4db; --heat-1: #dad6e3; --heat-2: #a9a6bd; --heat-3: #666379; --heat-4: #1e1c27;
+
+  --input-bg: #efe4db;
+  --input-ink: #1e1c27;
+  --placeholder: #57546a;
+  --focus: #1e1c27;
+  --select-bg: #1e1c27;
+  --select-ink: #f7efe9;
+  --scroll-track: #f7efe9;
+  --scroll-thumb: #666379;
 }

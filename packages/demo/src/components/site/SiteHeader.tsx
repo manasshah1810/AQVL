@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion, useMotionValueEvent, useScroll } from 'motion/react';
 import { Lockup } from '../../brand/Logo';
+import { ThemeToggle } from './ThemeToggle';
 import type { RouteName } from '../../lib/router';
 import { spring, usePrefersReducedMotion, waveDelay } from '../../lib/motion';
 
@@ -84,10 +85,13 @@ export function SiteHeader({ route, compact = false }: SiteHeaderProps) {
             </a>
           </nav>
 
+          <ThemeToggle className="hidden md:inline-grid" />
+
+          <ThemeToggle className="ml-auto md:hidden" />
           <button
             ref={toggleRef}
             type="button"
-            className="btn btn--quiet btn--sm ml-auto md:hidden"
+            className="btn btn--quiet btn--sm md:hidden"
             aria-expanded={open}
             aria-controls="site-menu"
             onClick={() => setOpen((o) => !o)}

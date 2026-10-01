@@ -10,9 +10,23 @@
     <meta property="og:title" content="AQVL: algorithms, written as code, shown in 3D" />
     <meta name="twitter:title" content="AQVL: algorithms, written as code, shown in 3D" />
     <meta name="description" content="AQVL is a small language for data structures and algorithms. Write a .aqvl program and it runs as an animated 3D scene, step by step, in your browser." />
+    <script>
+      // Theme before first paint: stored choice (or the old docs key), else the OS preference, else dark.
+      (function () {
+        var t = 'dark';
+        try {
+          t = localStorage.getItem('aqvl-theme') || localStorage.getItem('aqvl-docs-theme') || '';
+          if (t !== 'light' && t !== 'dark') t = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+        } catch (e) { t = 'dark'; }
+        document.documentElement.setAttribute('data-theme', t);
+        if (t === 'light') document.querySelector('meta[name="theme-color"]').setAttribute('content', '#F7EFE9');
+      })();
+    </script>
     <style>
       /* Shown only until the app's first paint replaces #root's contents. */
       html, body { margin: 0; background: #1e1c27; }
+      html[data-theme='light'], html[data-theme='light'] body { background: #f7efe9; }
+      html[data-theme='light'] .boot path { stroke: #3a3649; }
       .boot { display: grid; place-items: center; min-height: 100vh; }
       .boot path { stroke-dasharray: 260; stroke-dashoffset: 260; animation: boot-draw 1.4s cubic-bezier(.65,0,.35,1) infinite alternate; }
       @keyframes boot-draw { to { stroke-dashoffset: 0; } }

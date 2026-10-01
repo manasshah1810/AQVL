@@ -53,7 +53,7 @@
     font-weight: 500;
     padding: 2px 5px;
     border-radius: var(--r-ctl);
-    background: rgb(30 28 39 / 0.35);
+    background: var(--kbd-bg);
     color: inherit;
   }
 
@@ -418,7 +418,7 @@
     display: grid;
     place-items: center;
     padding: 24px;
-    background: rgb(23 21 31 / 0.92);
+    background: var(--scrim);
   }
 
   .ex-shell {

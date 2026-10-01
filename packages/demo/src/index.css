@@ -47,6 +47,14 @@
   --syn-string: #bfa29a;
   --syn-comment: #8e8ba3;
 
+  /* Derived surfaces (theme-dependent) */
+  --gutter-fg: #858199; /* line numbers, 4.8:1 on ink-deep */
+  --scrim: rgb(23 21 31 / 0.9);
+  --row-hover: rgb(58 54 73 / 0.45);
+  --wall: rgb(196 162 144 / 0.28);
+  --kbd-bg: rgb(30 28 39 / 0.35);
+  --on-dusk: #f5d8c6; /* text on #666379 fills, both themes */
+
   /* Type */
   --font-serif: 'Newsreader Variable', Newsreader, serif;
   --font-mono: 'JetBrains Mono Variable', 'JetBrains Mono', monospace;
@@ -67,6 +75,48 @@
   --spring-snappy-d: 480ms;
 
   color-scheme: dark;
+}
+
+/* ── Light theme: the same five hues, tints for ground, shades for text ──
+   Body text #3A3649 (10:1), emphasis #1E1C27, muted #57546A (6.4:1). */
+:root[data-theme='light'] {
+  --ink: #f7efe9;
+  --ink-deep: #efe4db;
+  --peach: #3a3649;
+  --peach-muted: #57546a;
+  --panel: #eadcd2;
+  --panel-raised: #e1d0c4;
+  --dusk: #666379;
+  --dusk-deep: #dad6e3;
+  --cream: #1e1c27;
+
+  --line: rgb(58 54 73 / 0.16);
+  --line-strong: rgb(58 54 73 / 0.3);
+  --line-faint: rgb(58 54 73 / 0.08);
+
+  --syn-default: #3a3649;
+  --syn-keyword: #1e1c27;
+  --syn-structural: #1e1c27;
+  --syn-number: #4e4b63;
+  --syn-string: #7a5546;
+  --syn-comment: #615d75;
+
+  --gutter-fg: #615d75;
+  --scrim: rgb(247 239 233 / 0.9);
+  --row-hover: rgb(58 54 73 / 0.06);
+  --wall: rgb(122 85 70 / 0.22);
+  --kbd-bg: rgb(30 28 39 / 0.1);
+  --on-dusk: #f7efe9;
+
+  color-scheme: light;
+}
+
+/* Theme switch: a circular reveal driven by the View Transitions API
+   (see lib/theme.ts); the default cross-fade is turned off. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
 }
 
 @layer base {
@@ -538,7 +588,7 @@
     width: 2.2em;
     margin-right: 1em;
     text-align: right;
-    color: #858199;
+    color: var(--gutter-fg);
     user-select: none;
     font-variant-numeric: tabular-nums;
   }

@@ -9,24 +9,26 @@ export default {
   content: ['./index.html', './src/**/*.{ts,tsx}'],
   theme: {
     extend: {
+      // Values live in src/index.css as CSS variables, one set per theme.
+      // Dark: ink #1E1C27, peach #ebc0a3, panel #3A3649, dusk #666379, cream #F5D8C6.
       colors: {
         ink: {
-          DEFAULT: '#1E1C27', // base background, ~70%
-          deep: '#17151F', // shade: recessed wells (code, editor)
+          DEFAULT: 'var(--ink)', // base background, ~70%
+          deep: 'var(--ink-deep)', // recessed wells (code, editor)
         },
         peach: {
-          DEFAULT: '#ebc0a3', // primary text + hairlines
-          muted: '#C4A290', // shade: secondary text (AA on ink and panel)
+          DEFAULT: 'var(--peach)', // primary text + hairlines
+          muted: 'var(--peach-muted)', // secondary text (AA on ink and panel)
         },
         panel: {
-          DEFAULT: '#3A3649', // flat secondary panels
-          raised: '#433F54', // tint: hovered panel
+          DEFAULT: 'var(--panel)', // flat secondary panels
+          raised: 'var(--panel-raised)',
         },
         dusk: {
-          DEFAULT: '#666379', // accent 1: fills, active indicators
-          deep: '#57546A', // shade: text-bearing fills (AA with cream)
+          DEFAULT: 'var(--dusk)', // accent 1: fills, active indicators
+          deep: 'var(--dusk-deep)', // text-bearing fills
         },
-        cream: '#F5D8C6', // accent 2: hover, highlight, key moments
+        cream: 'var(--cream)', // accent 2: hover, highlight, key moments
       },
       fontFamily: {
         serif: ['"Newsreader Variable"', 'Newsreader', 'serif'],

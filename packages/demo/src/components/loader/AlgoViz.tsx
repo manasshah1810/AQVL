@@ -104,7 +104,7 @@ export function BfsViz({ still = false, onCaption }: VizProps) {
         const d = f.dist[i];
         const reached = d >= 0;
         const frontier = d === f.layer && reached;
-        if (wall) return <rect key={i} x={x} y={y} width={cell} height={cell} rx={2} fill="rgba(196,162,144,0.28)" />;
+        if (wall) return <rect key={i} x={x} y={y} width={cell} height={cell} rx={2} fill="var(--wall)" />;
         return (
           <g key={i}>
             <rect x={x + 0.5} y={y + 0.5} width={cell - 1} height={cell - 1} rx={2} fill="none" stroke={C.line} />
@@ -169,7 +169,7 @@ export function BinarySearchViz({ still = false, onCaption }: VizProps) {
               textAnchor="middle"
               fontFamily="var(--font-mono)"
               fontSize={6.5}
-              fill={isMid ? C.ink : C.peach}
+              fill={isMid ? C.ink : inRange ? C.onDusk : C.peach}
             >
               {v}
             </text>
@@ -247,7 +247,7 @@ export function StackViz({ still = false, onCaption }: VizProps) {
               transition={spring.lively}
             >
               <rect x={bx} y={0} width={bw} height={bh} rx={2} fill={top ? C.cream : C.dusk} />
-              <text x={W / 2} y={12.5} textAnchor="middle" fontFamily="var(--font-mono)" fontSize={9} fill={top ? C.ink : C.cream}>
+              <text x={W / 2} y={12.5} textAnchor="middle" fontFamily="var(--font-mono)" fontSize={9} fill={top ? C.ink : C.onDusk}>
                 {item.value}
               </text>
             </motion.g>
@@ -314,7 +314,7 @@ export function DijkstraViz({ still = false, onCaption }: VizProps) {
               animate={{ scale: settled ? 1 : 0.3, opacity: settled ? 1 : 0 }}
               transition={spring.lively}
             />
-            <text x={n.x} y={n.y + 3} textAnchor="middle" fontFamily="var(--font-mono)" fontSize={8.5} fontWeight={600} fill={current ? C.ink : C.peach}>
+            <text x={n.x} y={n.y + 3} textAnchor="middle" fontFamily="var(--font-mono)" fontSize={8.5} fontWeight={600} fill={current ? C.ink : settled ? C.onDusk : C.peach}>
               {n.id}
             </text>
             <text x={n.x} y={n.y + 22} textAnchor="middle" fontFamily="var(--font-mono)" fontSize={7.5} fill={C.peachMuted}>

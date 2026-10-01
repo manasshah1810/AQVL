@@ -236,7 +236,7 @@
   }
 
   .docs-cmd-table tbody tr:hover {
-    background: rgb(58 54 73 / 0.45);
+    background: var(--row-hover);
   }
 
   .tok-keyword {
@@ -391,7 +391,7 @@
     position: fixed;
     inset: 0;
     z-index: 90;
-    background: rgb(23 21 31 / 0.88);
+    background: var(--scrim);
   }
 
   .docs-drawer__panel {

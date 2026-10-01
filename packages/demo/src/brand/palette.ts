@@ -1,16 +1,21 @@
-/** Palette as constants, for SVG/canvas attributes where CSS variables do not resolve. */
+/**
+ * Palette as CSS variable references, for SVG attributes and inline styles.
+ * They resolve per theme (index.css defines dark and light values).
+ */
 export const C = {
-  ink: '#1E1C27',
-  inkDeep: '#17151F',
-  peach: '#EBC0A3',
-  peachMuted: '#C4A290',
-  panel: '#3A3649',
-  panelRaised: '#433F54',
-  dusk: '#666379',
-  duskDeep: '#57546A',
-  cream: '#F5D8C6',
-  line: 'rgba(235,192,163,0.18)',
-  lineStrong: 'rgba(235,192,163,0.34)',
+  ink: 'var(--ink)',
+  inkDeep: 'var(--ink-deep)',
+  peach: 'var(--peach)',
+  peachMuted: 'var(--peach-muted)',
+  panel: 'var(--panel)',
+  panelRaised: 'var(--panel-raised)',
+  dusk: 'var(--dusk)',
+  duskDeep: 'var(--dusk-deep)',
+  cream: 'var(--cream)',
+  /** Text drawn on a dusk fill; light in both themes. */
+  onDusk: 'var(--on-dusk)',
+  line: 'var(--line)',
+  lineStrong: 'var(--line-strong)',
 } as const;
 
 /**
