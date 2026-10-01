@@ -81,18 +81,25 @@ void main(){
 const finalFrag = /* glsl */ `
 varying vec2 vUv; uniform sampler2D tSrc; uniform sampler2D tBloom;
 uniform float uBloom; uniform float uExposure; uniform float uCA; uniform float uVig;
-uniform float uTime; uniform vec2 uRes; uniform vec3 uTint; uniform float uFade; uniform float uWarm;
+uniform float uTime; uniform vec2 uRes; uniform vec3 uTint; uniform float uFade; uniform float uWarm; uniform vec2 uMotion;
 vec3 aces(vec3 x){ return clamp((x*(2.51*x+0.03))/(x*(2.43*x+0.59)+0.14), 0.0, 1.0); }
 float h(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
 void main(){
   vec2 d = vUv - 0.5;
   float r2 = dot(d, d);
   vec2 off = d * r2 * uCA;
-  vec3 c;
-  c.r = texture2D(tSrc, vUv - off).r;
-  c.g = texture2D(tSrc, vUv).g;
-  c.b = texture2D(tSrc, vUv + off).b;
-  c += texture2D(tBloom, vUv).rgb * uBloom;
+  vec3 c = vec3(0.0);
+  float ml = length(uMotion);
+  int taps = ml > 0.0005 ? 12 : 1;
+  for (int i = 0; i < 12; i++) {
+    if (i >= taps) break;
+    vec2 mo = taps > 1 ? uMotion * (float(i) / 11.0 - 0.5) : vec2(0.0);
+    c.r += texture2D(tSrc, vUv + mo - off).r;
+    c.g += texture2D(tSrc, vUv + mo).g;
+    c.b += texture2D(tSrc, vUv + mo + off).b;
+    c += texture2D(tBloom, vUv + mo).rgb * uBloom;
+  }
+  c /= float(taps);
   c *= uExposure * uTint;
   // warm analog grade for the classroom world
   c = mix(c, c * vec3(1.08, 0.98, 0.84), uWarm);
@@ -121,6 +128,7 @@ export type PostParams = {
   fade: number;
   warm: number;
   threshold: number;
+  motion?: number[];
 };
 
 export class Post {
@@ -186,6 +194,7 @@ export class Post {
       uTint: {value: new THREE.Vector3(1, 1, 1)},
       uFade: {value: 1},
       uWarm: {value: 0},
+      uMotion: {value: new THREE.Vector2()},
     });
     this.quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this.mats.blur);
     this.quad.frustumCulled = false;
@@ -304,6 +313,7 @@ export class Post {
     f.uniforms.uTime.value = p.time;
     f.uniforms.uFade.value = p.fade;
     f.uniforms.uWarm.value = p.warm;
+    f.uniforms.uMotion.value.set(p.motion?.[0] ?? 0, p.motion?.[1] ?? 0);
     this.pass(f, null);
   }
 }
