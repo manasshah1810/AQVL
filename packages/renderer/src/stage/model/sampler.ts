@@ -14,7 +14,7 @@ import {
 } from '../motion/spring';
 import { STAGGER_SECONDS } from '../timeline/beats';
 import { linearRgb } from './colors';
-import { DECAL_SHAPE, type DecalState, type LabelOrient, type LabelState, type RestFrame, type StageModel } from './StageModel';
+import { DECAL_SHAPE, type DecalState, type LabelFont, type LabelOrient, type LabelState, type RestFrame, type StageModel } from './StageModel';
 
 export const MAX_DECALS = 384;
 export const MAX_PULSES = 36;
@@ -43,7 +43,7 @@ interface StepPlan {
   /** Seconds into the step at which a shockwave leaves this node, or -1. */
   shockAt: Float32Array;
   shockColor: string[];
-  /** Extra flash on landing / writing (mutation only). */
+  /** Brightening on landing / writing (kept at zero: nothing flashes). */
   flash: Float32Array;
   labelKeys: string[];
   labelFrom: (LabelState | undefined)[];
@@ -69,9 +69,11 @@ export interface LabelOut {
   color: string;
   opacity: number;
   anchorX: 'left' | 'center' | 'right';
-  font: 'mono' | 'serif';
+  font: LabelFont;
   /** Node slot this label rides on, or -1; when set, x/y/z are relative offsets resolved by the renderer. */
   follow: number;
+  /** Edge slot this label sits on (its middle), or -1. */
+  edge: number;
   /** Printed on the node's face, on the floor, or turned to the camera. */
   orient: LabelOrient;
   /** Extra vertical slide (value changes). */
@@ -213,20 +215,18 @@ function buildPlan(model: StageModel, k: number): StepPlan {
     }
   }
 
-  // Value changes: the new value lands a little into the step, with a flash and a ripple.
+  // Value changes: the new value lands a little into the step, with one soft ripple.
   for (const w of event.writes) {
     const s = model.slotOf.get(w.id);
     if (s === undefined) continue;
     writeAt[s] = delay[s] + 0.16;
     if (emphasized.has(s) || event.writes.length <= 2) {
-      flash[s] = 1.4;
       shockAt[s] = writeAt[s];
       shockColor[s] = palette.states.MODIFYING.body;
     }
   }
   if (event.kind === 'swap') {
     for (const s of actors.slice(0, 2)) {
-      flash[s] = 1.0;
       shockAt[s] = -2; // resolved against the step length when sampling (landing time)
       shockColor[s] = palette.states.MODIFYING.body;
     }
@@ -240,7 +240,7 @@ function buildPlan(model: StageModel, k: number): StepPlan {
       }
     }
   }
-  // The aqua flash and ripple belong to mutations alone (see motion/attention.ts).
+  // The change ripple belongs to mutations alone (see motion/attention.ts).
   if (!mutation) {
     for (let s = 0; s < n; s++) {
       if (shockColor[s] !== palette.states.MODIFYING.body) continue;
@@ -396,7 +396,7 @@ export function sampleStage(model: StageModel, k: number, tau: number, duration:
           // Landing: a small mass-dependent settle.
           const since = local - span * 0.84;
           const fade = 1 - smoothstep(span * 0.9, span, local);
-          y -= 0.07 * dampedWave(since, 2.6 / Math.sqrt(mass), 5.5) * fade;
+          y -= 0.04 * dampedWave(since, 2.6 / Math.sqrt(mass), 6.5) * fade;
           glow += plan.flash[s] * Math.exp(-since / 0.28);
         }
         break;
@@ -413,7 +413,7 @@ export function sampleStage(model: StageModel, k: number, tau: number, duration:
       case Motion.Enter: {
         const p = calm ? smoothstep(0, 1, local / (span * 0.6)) : windowedSpring(local, span, mass);
         presence = Math.max(0, p);
-        y = by + (calm ? 0 : 0.55 * springResidual(local, mass) * (1 - smoothstep(span * 0.82, span, local)));
+        y = by + (calm ? 0 : 0.3 * springResidual(local, mass) * (1 - smoothstep(span * 0.82, span, local)));
         break;
       }
       case Motion.Exit: {
@@ -439,7 +439,7 @@ export function sampleStage(model: StageModel, k: number, tau: number, duration:
       const since = t - w;
       glow += plan.flash[s] * Math.exp(-since / 0.3);
       if (!calm) {
-        const pulse = 1 + 0.09 * dampedWave(since, 2.2, 4.2) * (1 - smoothstep(span * 0.85, span, local));
+        const pulse = 1 + 0.06 * dampedWave(since, 2.2, 5) * (1 - smoothstep(span * 0.85, span, local));
         out.dims[i3] *= pulse;
         out.dims[i3 + 1] *= pulse;
         out.dims[i3 + 2] *= pulse;
@@ -473,7 +473,7 @@ export function sampleStage(model: StageModel, k: number, tau: number, duration:
       if (since < life) {
         const q = since / life;
         const rgb = linearRgb(plan.shockColor[s]);
-        writeDecal(out, x, z, 0.9 + 2.4 * easeOutCubic(q), 0, DECAL_SHAPE.ring, rgb, 0.55 * (1 - q) * (1 - q), 8);
+        writeDecal(out, x, z, 1.0 + 1.8 * easeOutCubic(q), 0, DECAL_SHAPE.ring, rgb, 0.45 * (1 - q) * (1 - q), 8);
       }
     }
   }
@@ -587,10 +587,11 @@ function sampleLabels(plan: StepPlan, out: StageSample, t: number, D: number, ca
     const ref = (b ?? a)!;
     let o = out.labels.get(key);
     if (!o) {
-      o = { key, text: ref.text, x: 0, y: 0, z: 0, size: ref.size, color: ref.color, opacity: 0, anchorX: ref.anchorX, font: ref.font, follow: -1, orient: ref.orient, slide: 0 };
+      o = { key, text: ref.text, x: 0, y: 0, z: 0, size: ref.size, color: ref.color, opacity: 0, anchorX: ref.anchorX, font: ref.font, follow: -1, edge: -1, orient: ref.orient, slide: 0 };
       out.labels.set(key, o);
     }
     o.anchorX = ref.anchorX;
+    o.edge = ref.edge ?? -1;
     o.font = ref.font;
     o.orient = ref.orient;
     o.slide = 0;
@@ -727,22 +728,21 @@ function sampleEdges(model: StageModel, plan: StepPlan, t: number, D: number, ou
   // Light travelling along each edge the step used.
   if (!calm) {
     const base = linearRgb(plan.pulseColor);
-    // Mutation light is pushed past the bloom threshold; traversal light stays under it.
-    const boost = isMutation(plan.frame) ? (model.palette.bloom > 0 ? 3.2 : 1.3) : 1.1;
+    // A small dot in the edge's colour, not a light: it shows direction without glowing.
     const rgb = _pulseRgb;
-    rgb[0] = base[0] * boost;
-    rgb[1] = base[1] * boost;
-    rgb[2] = base[2] * boost;
+    rgb[0] = base[0];
+    rgb[1] = base[1];
+    rgb[2] = base[2];
     for (const e of plan.pulseEdges) {
       const q = smoothstep(0.08, 0.78, u);
       const bell = Math.sin(Math.PI * clamp01((u - 0.05) / 0.85));
       if (bell <= 0.001) continue;
-      for (let trail = 0; trail < 3 && out.pulseCount < MAX_PULSES; trail++) {
-        const qt = q - trail * 0.06;
+      for (let trail = 0; trail < 2 && out.pulseCount < MAX_PULSES; trail++) {
+        const qt = q - trail * 0.05;
         if (qt < 0) continue;
         const j = out.pulseCount++;
         bezier(out, e, qt * out.edgeVisible[e], j);
-        out.pulse[j * 4 + 3] = (0.16 - trail * 0.045) * bell;
+        out.pulse[j * 4 + 3] = (0.1 - trail * 0.035) * bell;
         out.pulseColor[j * 3] = rgb[0];
         out.pulseColor[j * 3 + 1] = rgb[1];
         out.pulseColor[j * 3 + 2] = rgb[2];

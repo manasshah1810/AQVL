@@ -55,8 +55,8 @@ export interface LabelState {
   color: string;
   opacity: number;
   anchorX: 'left' | 'center' | 'right';
-  /** 'mono' for code and values, 'serif' for notes. */
-  font: 'mono' | 'serif';
+  /** 'strong' for values and names, 'mono' for captions and code, 'serif' for notes. */
+  font: LabelFont;
   /**
    * How the text sits in the world:
    *  - 'face': printed on the front face of the node it follows (values), so it never cuts into the body;
@@ -70,9 +70,12 @@ export interface LabelState {
    * of the node's face the text lies.
    */
   follow?: { slot: number; dy: number };
+  /** Rides on an edge: placed at the middle of the edge's curve (weights). */
+  edge?: number;
 }
 
 export type LabelOrient = 'billboard' | 'face' | 'floor';
+export type LabelFont = 'strong' | 'mono' | 'serif';
 
 /** A halo ring drawn around a node in the air (0 solid, 1 dashed, 2 double). */
 export interface RingState {
@@ -142,9 +145,39 @@ const HIGH_NAMES = ['high', 'hi', 'right', 'r', 'end'];
 const MID_NAMES = ['mid', 'middle', 'm'];
 const MAX_CURSORS = 4;
 const MAX_FRAMES_SHOWN = 9;
-const REST_CACHE_SIZE = 64;
+const REST_CACHE_SIZE = 96;
 /** How far around the step's actors a large scene's camera leans in to. */
 const FOCUS_NEIGHBOURHOOD = 4.5;
+/** Steps either side whose extent the camera also keeps in frame, so it never pumps in and out. */
+const FRAMING_WINDOW = 3;
+
+/** Type sizes (world units): one scale for the whole scene. */
+export const TYPE = { value: 0.44, heading: 0.48, note: 0.27, index: 0.36, tag: 0.33, cursor: 0.31, weight: 0.3, relation: 0.38, frame: 0.28 } as const;
+/** Average advance of a JetBrains Mono glyph, as a fraction of its size. */
+const GLYPH = 0.6;
+/** Clear floor between structures standing side by side. */
+const STRUCTURE_GAP = 2.4;
+/** The camera's angle above structures that stand up: low across a single row, a little higher over rows. */
+const ONE_ROW_PITCH = 0.38;
+const ROWS_PITCH = 0.52;
+/** Width-to-height of the part of the canvas the picture usually gets (the inspector takes the rest). */
+const VIEW_ASPECT = 1.35;
+/** A node whose bottom is closer than this to the floor has its index printed on the floor in front of it. */
+const CAPTION_CLEARANCE = 0.75;
+/** How far in front of its node's face an index on the floor stands: far enough to clear the body on screen. */
+const INDEX_AHEAD = 0.95;
+
+interface GroupExtent {
+  key: string;
+  minX: number;
+  maxX: number;
+  minZ: number;
+  maxZ: number;
+  bottom: number;
+  top: number;
+  /** Room on the left for the structure's name and note. */
+  pad: number;
+}
 
 interface BarScale {
   min: number;
@@ -163,13 +196,24 @@ export class StageModel {
   readonly edgeSlots: EdgeSlot[] = [];
   readonly edgeSlotOf = new Map<string, number>();
   readonly floorY: number;
+  /** How far the camera looks down on structures that stand up (radians; see camera.ts). */
+  uprightPitch = ONE_ROW_PITCH;
   readonly maxCallDepth: number;
   readonly frames: TraceFrame[];
   private readonly bars = new Map<string, BarScale>();
   private readonly massRange = new Map<string, BarScale>();
   private readonly nodeMaps: (Map<string, TraceNode> | undefined)[] = [];
   private readonly restCache = new Map<number, RestFrame>();
+  private readonly framingCache = new Map<number, ViewKey>();
   private readonly source: SourceStructure | null;
+  /** Where each structure was moved to stand side by side (keyed by structure name, '' for loose nodes). */
+  private readonly shift = new Map<string, [number, number, number]>();
+  /** Rows of cells packed closer (x scaled about `origin`), so an array reads as one block of memory. */
+  private readonly packing = new Map<string, { f: number; origin: number }>();
+  /** Chains hanging under hash-map buckets, spread apart vertically (y scaled about `origin`) so each link shows. */
+  private readonly hang = new Map<string, { f: number; origin: number }>();
+  /** Structures spread across the floor (graphs, chained hash maps): looked down on, named at their back corner. */
+  private readonly flatStructures = new Set<string>();
 
   constructor(readonly trace: ExecutionTrace, readonly theme: StageTheme, source?: string) {
     this.palette = STAGE_PALETTES[theme];
@@ -219,12 +263,214 @@ export class StageModel {
       }
     }
 
+    this.pack();
+    this.findFlat();
+    this.arrange();
+
     // The floor: just under the lowest node bottom of the whole run, so nothing ever sinks through it.
     let lowest = Infinity;
     for (const frame of trace.frames) {
-      for (const n of frame.nodes) lowest = Math.min(lowest, n.pos.y - NODE_HEIGHT[n.shape] / 2);
+      for (const n of frame.nodes) lowest = Math.min(lowest, this.py(n) - NODE_HEIGHT[n.shape] / 2);
     }
     this.floorY = Number.isFinite(lowest) ? lowest - 0.002 : -0.5;
+  }
+
+  // ── Placement ───────────────────────────────────────────────────────────
+
+  /** x within the node's own structure (cells packed). */
+  private localX(n: TraceNode): number {
+    const p = n.structure ? this.packing.get(n.structure) : undefined;
+    return p ? p.origin + (n.pos.x - p.origin) * p.f : n.pos.x;
+  }
+
+  /** y within the node's own structure (hanging chains spread). */
+  private localY(n: TraceNode): number {
+    const h = n.structure ? this.hang.get(n.structure) : undefined;
+    return h ? h.origin + (n.pos.y - h.origin) * h.f : n.pos.y;
+  }
+
+  /** World position of a trace node, with its structure's place applied. */
+  px(n: TraceNode): number {
+    return this.localX(n) + (this.shift.get(n.structure ?? '')?.[0] ?? 0);
+  }
+  py(n: TraceNode): number {
+    return this.localY(n) + (this.shift.get(n.structure ?? '')?.[1] ?? 0);
+  }
+  pz(n: TraceNode): number {
+    return n.pos.z + (this.shift.get(n.structure ?? '')?.[2] ?? 0);
+  }
+
+  /** Width of a node's body: a box widens (up to almost two units) to fit a long value such as a vertex name. */
+  private widthOf(n: TraceNode): number {
+    return n.shape === 'box' && n.text.length > 3 ? Math.min(1.9, Math.max(1, 0.26 * n.text.length + 0.34)) : NODE_WIDTH[n.shape];
+  }
+
+  private noteOf(note: string | undefined, kind: string): string | undefined {
+    return note ?? (kind === 'STACK' ? 'stack' : kind === 'QUEUE' ? 'queue' : undefined);
+  }
+
+  /**
+   * Rows of cells (arrays, queues, hash-map buckets) are laid out by the
+   * runtime with wide gaps. Packed to one clear hand-width between the
+   * widest cells, an array reads as a single block of memory and the
+   * whole picture can be larger in the frame.
+   */
+  private pack(): void {
+    const kinds = new Map<string, string>();
+    for (const f of this.frames) for (const st of f.structures) kinds.set(st.name, st.kind);
+    // Cell spacing, measured within each frame (an array that re-centres as it grows shifts by half a cell).
+    const step = new Map<string, number>();
+    const widest = new Map<string, number>();
+    for (const f of this.frames) {
+      const xs = new Map<string, number[]>();
+      for (const n of f.nodes) {
+        if (!n.structure || n.detached) continue;
+        const kind = kinds.get(n.structure);
+        if (kind !== 'ARRAY' && kind !== 'QUEUE' && kind !== 'HASH_MAP') continue;
+        let list = xs.get(n.structure);
+        if (!list) xs.set(n.structure, (list = []));
+        list.push(n.pos.x);
+        widest.set(n.structure, Math.max(widest.get(n.structure) ?? 0, this.widthOf(n)));
+      }
+      for (const [name, list] of xs) {
+        list.sort((a, b) => a - b);
+        for (let i = 1; i < list.length; i++) {
+          const dx = list[i] - list[i - 1];
+          if (dx > 1e-3) step.set(name, Math.min(step.get(name) ?? Infinity, dx));
+        }
+      }
+    }
+    for (const [name, dx] of step) {
+      const target = (widest.get(name) ?? 1) + 0.42;
+      if (target < dx - 0.05) this.packing.set(name, { f: target / dx, origin: 0 });
+    }
+    // Hash-map chains hang one unit apart under their bucket: give each link a visible gap.
+    for (const [name, kind] of kinds) {
+      if (kind !== 'HASH_MAP') continue;
+      let top = -Infinity;
+      for (const f of this.frames) for (const n of f.nodes) if (n.structure === name) top = Math.max(top, n.pos.y);
+      if (Number.isFinite(top)) this.hang.set(name, { f: 1.45, origin: top });
+    }
+  }
+
+  /** A structure whose node centres spread further in depth than in height lies across the floor. */
+  private findFlat(): void {
+    const spread = new Map<string, { y0: number; y1: number; z0: number; z1: number }>();
+    for (const f of this.frames) {
+      for (const n of f.nodes) {
+        const key = n.structure ?? '';
+        const r = spread.get(key) ?? { y0: Infinity, y1: -Infinity, z0: Infinity, z1: -Infinity };
+        r.y0 = Math.min(r.y0, n.pos.y); r.y1 = Math.max(r.y1, n.pos.y);
+        r.z0 = Math.min(r.z0, n.pos.z); r.z1 = Math.max(r.z1, n.pos.z);
+        spread.set(key, r);
+      }
+    }
+    for (const [key, r] of spread) if (r.z1 - r.z0 > 2 && r.z1 - r.z0 > (r.y1 - r.y0) * 0.9) this.flatStructures.add(key);
+  }
+
+  /**
+   * Gives every structure its own place on the floor, once for the whole
+   * run so nothing jumps between steps: side by side in order of first
+   * appearance, one clear gap apart, all standing on the same floor, with
+   * room on each one's left for its name. A row that gets too wide wraps,
+   * the first row standing at the back (the top of the picture). A program
+   * with a single structure keeps the layout it was given.
+   */
+  private arrange(): void {
+    const groups = new Map<string, GroupExtent>();
+    const labelWidth = new Map<string, number>();
+    const grow = (key: string, x0: number, x1: number, z0: number, z1: number, bottom: number, top: number) => {
+      let g = groups.get(key);
+      if (!g) {
+        g = { key, minX: Infinity, maxX: -Infinity, minZ: Infinity, maxZ: -Infinity, bottom: Infinity, top: -Infinity, pad: 0 };
+        groups.set(key, g);
+      }
+      g.minX = Math.min(g.minX, x0);
+      g.maxX = Math.max(g.maxX, x1);
+      g.minZ = Math.min(g.minZ, z0);
+      g.maxZ = Math.max(g.maxZ, z1);
+      g.bottom = Math.min(g.bottom, bottom);
+      g.top = Math.max(g.top, top);
+    };
+    for (const frame of this.frames) {
+      for (const n of frame.nodes) {
+        const hw = this.widthOf(n) / 2;
+        const hd = NODE_WIDTH[n.shape] / 2;
+        const bottom = this.localY(n) - NODE_HEIGHT[n.shape] / 2;
+        const x = this.localX(n);
+        grow(n.structure ?? '', x - hw, x + hw, n.pos.z - hd, n.pos.z + hd, bottom, bottom + this.heightOf(n));
+      }
+      for (const st of frame.structures) {
+        const note = this.noteOf(st.note, st.kind);
+        const w = Math.max(st.name.length * TYPE.heading, (note?.length ?? 0) * TYPE.note) * GLYPH;
+        labelWidth.set(st.name, Math.max(labelWidth.get(st.name) ?? 0, w));
+        if (st.anchor && st.nodeIds.length === 0 && !groups.has(st.name)) {
+          grow(st.name, st.anchor.x - 0.5, st.anchor.x + 0.5, st.anchor.z - 0.5, st.anchor.z + 0.5, st.anchor.y - 0.5, st.anchor.y + 0.5);
+        }
+      }
+    }
+    if (groups.size <= 1) return;
+
+    const all = [...groups.values()];
+    for (const g of all) g.pad = labelWidth.has(g.key) ? labelWidth.get(g.key)! + 0.8 : 0;
+    const lowest = Math.min(...all.map((g) => g.bottom));
+    const span = (g: GroupExtent) => g.maxX - g.minX + g.pad;
+    const heightOf = (row: GroupExtent[]) => Math.max(...row.map((g) => g.top - g.bottom));
+    const depthOf = (row: GroupExtent[]) => Math.max(...row.map((g) => g.maxZ - g.minZ));
+    const widthOf = (row: GroupExtent[]) => row.reduce((sum, g) => sum + span(g), 0) + STRUCTURE_GAP * (row.length - 1);
+
+    // Rows in reading order, wrapping at `limit`; the tallest row stands at the back, and each row in
+    // front stands far enough forward that its tallest body stays below the feet of the row behind it.
+    const plan = (limit: number) => {
+      const rows: GroupExtent[][] = [[]];
+      let used = 0;
+      for (const g of all) {
+        const row = rows[rows.length - 1];
+        if (row.length > 0 && used + STRUCTURE_GAP + span(g) > limit) {
+          rows.push([g]);
+          used = span(g);
+        } else {
+          used += (row.length > 0 ? STRUCTURE_GAP : 0) + span(g);
+          row.push(g);
+        }
+      }
+      rows.sort((x, y) => heightOf(y) - heightOf(x));
+      // Seen from the camera's angle, a row behind another rises tan(pitch) on screen per unit of depth.
+      const pitch = rows.length > 1 ? ROWS_PITCH : ONE_ROW_PITCH;
+      const rise = Math.tan(pitch);
+      const fronts: number[] = [];
+      let front = 0;
+      rows.forEach((row, r) => {
+        front = r === 0 ? depthOf(row) : front + 1.6 + (heightOf(row) + 0.9) / rise + depthOf(row);
+        fronts.push(front);
+      });
+      const width = Math.max(...rows.map(widthOf));
+      // Height on screen from that angle (captions in front included).
+      const height = front * Math.sin(pitch) + heightOf(rows[0]) * Math.cos(pitch) + 1.2;
+      return { rows, fronts, pitch, scale: Math.min(VIEW_ASPECT / width, 1 / height) };
+    };
+    const widest = Math.max(...all.map(span));
+    const total = widthOf(all);
+    const plans = all.map((_, r) => plan(Math.max(widest, total / (r + 1) + 0.01)));
+    const best = Math.max(...plans.map((p) => p.scale));
+    // Side by side is preferred: the fewest rows that come within a few percent of the best fit.
+    const chosen = plans.filter((p) => p.scale >= best * 0.9).sort((x, y) => x.rows.length - y.rows.length)[0];
+    this.uprightPitch = chosen.pitch;
+
+    chosen.rows.forEach((row, r) => {
+      const depth = depthOf(row);
+      const centerZ = chosen.fronts[r] - depth / 2;
+      let cursor = -widthOf(row) / 2;
+      for (const g of row) {
+        this.shift.set(g.key, [cursor + g.pad - g.minX, lowest - g.bottom, centerZ - (g.minZ + g.maxZ) / 2]);
+        cursor += span(g) + STRUCTURE_GAP;
+      }
+    });
+  }
+
+  /** Whether anything at all is ever drawn as a node. */
+  get hasNodes(): boolean {
+    return this.slots.length > 0;
   }
 
   get frameCount(): number {
@@ -319,22 +565,21 @@ export class StageModel {
       const treatment = STATE_TREATMENTS[n.state];
       const isEmph = emphasized.includes(n.id);
       const height = this.heightOf(n);
-      // A box widens (up to almost two units) to fit a long value such as a vertex name.
-      const width = n.shape === 'box' && n.text.length > 3 ? Math.min(1.9, Math.max(1, 0.26 * n.text.length + 0.34)) : NODE_WIDTH[n.shape];
+      const width = this.widthOf(n);
       const scale = treatment.scale * (n.detached ? 0.86 : 1);
-      const bottom = n.pos.y - NODE_HEIGHT[n.shape] / 2;
+      const bottom = this.py(n) - NODE_HEIGHT[n.shape] / 2;
       const lift = isEmph ? treatment.emphasisLift : 0;
       rest.present[s] = 1;
-      rest.pos[s * 3] = n.pos.x;
+      rest.pos[s * 3] = this.px(n);
       rest.pos[s * 3 + 1] = bottom + (height * scale) / 2 + lift + treatment.restLift;
-      rest.pos[s * 3 + 2] = n.pos.z;
+      rest.pos[s * 3 + 2] = this.pz(n);
       rest.dims[s * 3] = width * scale;
       rest.dims[s * 3 + 1] = height * scale;
       rest.dims[s * 3 + 2] = NODE_WIDTH[n.shape] * scale;
       writeRgb(rest.color, s, palette.states[n.state].body);
       rest.textColor[s] = palette.states[n.state].text;
-      // The aqua glow is the mutation's alone: a node marked as changing outside a mutation step stays unlit.
-      rest.glow[s] = isEmph ? (n.state === 'MODIFYING' ? (mutation ? 0.32 : 0) : treatment.glow) : 0;
+      // Nothing glows: state is carried by colour, finish, size, lift and rings.
+      rest.glow[s] = isEmph && n.state === 'MODIFYING' && mutation ? treatment.glow : 0;
       rest.finish[s] = treatment.finish;
       rest.emphasized[s] = isEmph ? 1 : 0;
       rest.state[s] = n.state;
@@ -362,7 +607,7 @@ export class StageModel {
       rest.edgeFrom[es] = from;
       rest.edgeTo[es] = to;
       writeRgb(rest.edgeColor, es, edgeColorFor(palette, e.state));
-      rest.edgeWidth[es] = e.state === 'NEUTRAL' ? (e.pointer ? 0.04 : 0.034) : 0.06;
+      rest.edgeWidth[es] = e.state === 'NEUTRAL' ? (e.pointer ? 0.036 : 0.03) : 0.05;
       rest.edgeLabel[es] = e.label;
       this.routeEdge(rest, es, e, pairs);
     }
@@ -405,52 +650,55 @@ export class StageModel {
       const s = this.slotOf.get(n.id)!;
       const h = rest.dims[s * 3 + 1];
       const w = rest.dims[s * 3];
+      // How far the node's resting bottom is above the floor (emphasis lift aside).
+      const clearance = this.py(n) - NODE_HEIGHT[n.shape] / 2 - this.floorY;
       if (n.text !== '') {
         // Fit the value to the face: long text gets a smaller size, never more than the face is wide.
-        const fit = (w * 0.86) / Math.max(1, n.text.length * 0.6);
+        const fit = (w * 0.84) / Math.max(1, n.text.length * GLYPH);
         rest.labels.push({
           key: `v:${n.id}`,
           text: n.text,
           x: 0, y: 0, z: 0,
-          size: Math.min(n.shape === 'sphere' ? 0.4 : 0.44, fit),
+          size: Math.min(n.shape === 'sphere' ? 0.4 : TYPE.value, fit),
           color: rest.textColor[s],
-          opacity: n.state === 'DISCARDED' ? 0.8 : 1,
+          opacity: n.state === 'DISCARDED' ? 0.75 : 1,
           anchorX: 'center',
-          font: 'mono',
+          font: 'strong',
           orient: 'face',
           follow: { slot: s, dy: this.isBar(n.structure) ? h / 2 - 0.32 : 0 },
         });
       }
-      const onFloor = Math.abs(n.pos.y - NODE_HEIGHT[n.shape] / 2 - this.floorY) < 0.06;
+      // Too close to the floor to hang a caption underneath: print it on the floor in front instead.
+      const onFloor = clearance < CAPTION_CLEARANCE;
       if (n.caption !== '') {
         const isIndex = /^\d+$/.test(n.caption);
         rest.labels.push({
           key: `c:${n.id}`,
           text: n.caption,
           x: 0, y: 0, z: 0,
-          size: isIndex ? 0.26 : 0.22,
+          size: isIndex ? TYPE.index : TYPE.note,
           color: palette.caption,
           opacity: n.state === 'DISCARDED' ? 0.55 : 1,
           anchorX: 'center',
           font: 'mono',
-          // A node standing on the floor has its index printed on the floor in front of it.
           orient: onFloor ? 'floor' : 'billboard',
-          follow: { slot: s, dy: onFloor ? 0.22 : -h / 2 - (isIndex ? 0.28 : 0.32) },
+          follow: { slot: s, dy: onFloor ? INDEX_AHEAD : -h / 2 - 0.34 },
         });
       }
+      // Pointer tags always stand above their node: below, they would cross a tree's child edges or
+      // an array's index captions.
       n.tags.forEach((tag, i) => {
-        const below = n.tagPlacement === 'below';
         rest.labels.push({
           key: `t:${tag}`,
-          text: below ? `▴ ${tag}` : `${tag} ▾`,
+          text: `${tag} ▾`,
           x: 0, y: 0, z: 0,
-          size: 0.28,
-          color: tag === 'LEAKED' ? palette.states.MODIFYING.body : palette.tag,
+          size: TYPE.tag,
+          color: palette.tag,
           opacity: 1,
           anchorX: 'center',
-          font: 'mono',
+          font: 'strong',
           orient: 'billboard',
-          follow: { slot: s, dy: below ? -h / 2 - 0.62 - i * 0.34 : h / 2 + 0.38 + i * 0.34 },
+          follow: { slot: s, dy: h / 2 + 0.42 + i * 0.36 },
         });
       });
     }
@@ -462,7 +710,8 @@ export class StageModel {
         key: `w:${e.id}`,
         text: e.label,
         x: 0, y: 0, z: 0,
-        size: 0.26,
+        edge: this.edgeSlotOf.get(e.id),
+        size: TYPE.weight,
         color: palette.plate,
         opacity: 1,
         anchorX: 'center',
@@ -471,44 +720,72 @@ export class StageModel {
       });
     });
 
-    // Structures: a footprint on the floor and a name plate.
+    // Structures: a footprint under those that stand on the floor, and a name on the left.
     for (const st of frame.structures) {
       const members = st.nodeIds.map((id) => nodes.get(id)).filter((n): n is TraceNode => !!n);
       const attached = members.filter((n) => !n.detached);
       const detached = members.filter((n) => n.detached);
       const b = this.boundsOf(attached, rest);
+      const note = this.noteOf(st.note, st.kind);
       if (b) {
-        // The structure's footprint: a faint tint inside a hairline, like the site's ruled panels.
-        const footprint = {
-          x: (b.minX + b.maxX) / 2,
-          z: (b.minZ + b.maxZ) / 2,
-          w: b.maxX - b.minX + 1.6,
-          d: Math.max(1.9, b.maxZ - b.minZ + 1.6),
-        };
-        rest.decals.push({ key: `plinth:${st.name}`, shape: DECAL_SHAPE.roundRect, ...footprint, color: palette.plinth, alpha: 0.55, layer: 0 });
-        rest.decals.push({ key: `rule:${st.name}`, shape: DECAL_SHAPE.outline, ...footprint, color: palette.floorLine, alpha: this.theme === 'dark' ? 0.2 : 0.24, layer: 1 });
+        const grounded = attached.filter((n) => this.py(n) - NODE_HEIGHT[n.shape] / 2 - fy < 0.3).length >= attached.length * 0.6;
+        if (grounded) {
+          // A tray under the cells; when they are numbered it reaches forward to carry the indices on its front lip.
+          const numbered = attached.some((n) => n.caption !== '' && this.py(n) - NODE_HEIGHT[n.shape] / 2 - fy < CAPTION_CLEARANCE);
+          const back = b.back - 0.45;
+          const front = b.front + (numbered ? INDEX_AHEAD + TYPE.index + 0.1 : 0.45);
+          const footprint = {
+            x: (b.left + b.right) / 2,
+            z: (back + front) / 2,
+            w: b.right - b.left + 0.9,
+            d: front - back,
+          };
+          rest.decals.push({ key: `plinth:${st.name}`, shape: DECAL_SHAPE.roundRect, ...footprint, color: palette.plinth, alpha: 1, layer: 0 });
+          rest.decals.push({ key: `rule:${st.name}`, shape: DECAL_SHAPE.outline, ...footprint, color: palette.plinthLine, alpha: 1, layer: 1 });
+        }
+        // The name sits at the structure's top-left corner, like a figure title: left of an array's first
+        // cell, level with a tree's root; a structure spread across the floor is named at its back-left corner.
+        const flatSt = this.flatStructures.has(st.name);
+        const nameZ = flatSt ? b.back + 0.5 : b.topZ;
+        // Beside the top row if nothing else of the structure (or its tags) is in the way, else at the far left.
+        const nameW = Math.max(st.name.length * TYPE.heading, (note?.length ?? 0) * TYPE.note) * GLYPH;
+        let nameX = b.topLeft - 0.45;
+        if (!flatSt && nameX > b.left - 0.45) {
+          const top = b.topY + TYPE.heading;
+          const bottom = b.topY - (note ? 0.34 + TYPE.note : TYPE.heading);
+          const blocked = attached.some((n) => {
+            const s = this.slotOf.get(n.id)!;
+            const x = rest.pos[s * 3];
+            const hw = rest.dims[s * 3] / 2;
+            const y = this.py(n);
+            const hh = rest.dims[s * 3 + 1] / 2;
+            const above = n.tags.length > 0 ? 0.42 + 0.36 * n.tags.length : 0;
+            return x + Math.max(hw, n.tags.length > 0 ? 0.9 : 0) > nameX - nameW - 0.2 && x - hw < nameX + 0.2 && y + hh + above > bottom && y - hh < top && Math.abs(y - b.topY) > 0.35;
+          });
+          if (blocked) nameX = b.left - 0.45;
+        }
+        if (flatSt) nameX = b.left - 0.45;
         rest.labels.push({
           key: `p:${st.name}`,
           text: st.name,
-          x: b.minX - 0.95,
-          y: b.topY,
-          z: b.topZ,
-          size: 0.34,
+          x: nameX,
+          y: note ? b.topY + 0.16 : b.topY,
+          z: nameZ,
+          size: TYPE.heading,
           color: palette.plate,
           opacity: 1,
           anchorX: 'right',
-          font: 'mono',
+          font: 'strong',
           orient: 'billboard',
         });
-        const note = st.note ?? (st.kind === 'STACK' ? 'stack' : st.kind === 'QUEUE' ? 'queue' : undefined);
         if (note) {
           rest.labels.push({
             key: `pn:${st.name}`,
             text: note,
-            x: b.minX - 0.95,
-            y: b.topY - 0.4,
-            z: b.topZ,
-            size: 0.22,
+            x: nameX,
+            y: b.topY - 0.34,
+            z: nameZ,
+            size: TYPE.note,
             color: palette.caption,
             opacity: 1,
             anchorX: 'right',
@@ -517,13 +794,14 @@ export class StageModel {
           });
         }
       } else if (st.anchor) {
+        const shift = this.shift.get(st.name) ?? [0, 0, 0];
         rest.labels.push({
           key: `p:${st.name}`,
-          text: st.note ? `${st.name}: ${st.note}` : st.name,
-          x: st.anchor.x + 0.6,
-          y: st.anchor.y,
-          z: st.anchor.z,
-          size: 0.32,
+          text: note ? `${st.name} · ${note}` : st.name,
+          x: st.anchor.x + shift[0] + 0.5,
+          y: Math.max(st.anchor.y + shift[1], fy + 0.5),
+          z: st.anchor.z + shift[2],
+          size: TYPE.heading * 0.85,
           color: palette.caption,
           opacity: 1,
           anchorX: 'right',
@@ -536,21 +814,21 @@ export class StageModel {
         rest.decals.push({
           key: `heap:${st.name}`,
           shape: DECAL_SHAPE.dashedOutline,
-          x: (hb.minX + hb.maxX) / 2,
-          z: (hb.minZ + hb.maxZ) / 2,
-          w: Math.max(3.2, hb.maxX - hb.minX + 1.8),
-          d: Math.max(1.9, hb.maxZ - hb.minZ + 1.6),
-          color: palette.plate,
-          alpha: 0.75,
+          x: (hb.left + hb.right) / 2,
+          z: (hb.back + hb.front) / 2,
+          w: Math.max(3.2, hb.right - hb.left + 1.0),
+          d: Math.max(1.9, hb.front - hb.back + 0.9),
+          color: palette.caption,
+          alpha: 0.6,
           layer: 1,
         });
         rest.labels.push({
           key: `heap:${st.name}`,
           text: 'heap memory · not linked',
-          x: hb.minX - 0.6,
+          x: hb.left - 0.2,
           y: fy + 0.22,
-          z: hb.maxZ + 1.05,
-          size: 0.2,
+          z: hb.front + 0.75,
+          size: TYPE.note,
           color: palette.caption,
           opacity: 1,
           anchorX: 'left',
@@ -567,10 +845,10 @@ export class StageModel {
       rest.decals.push({
         key: `sorted:${r.structure}`,
         shape: DECAL_SHAPE.roundRect,
-        x: (b.minX + b.maxX) / 2,
-        z: (b.minZ + b.maxZ) / 2,
-        w: b.maxX - b.minX + 1.25,
-        d: Math.max(1.45, b.maxZ - b.minZ + 1.25),
+        x: (b.left + b.right) / 2,
+        z: (b.back + b.front) / 2,
+        w: b.right - b.left + 0.36,
+        d: b.front - b.back + 0.36,
         color: palette.states.SUCCESS.body,
         alpha: 0.22,
         layer: 2,
@@ -583,10 +861,10 @@ export class StageModel {
       rest.decals.push({
         key: `part:${p.structure}:${p.depth}`,
         shape: DECAL_SHAPE.dashedOutline,
-        x: (b.minX + b.maxX) / 2,
-        z: (b.minZ + b.maxZ) / 2,
-        w: b.maxX - b.minX + 1.35 - inset * 2,
-        d: Math.max(1.5, b.maxZ - b.minZ + 1.35) - inset * 2,
+        x: (b.left + b.right) / 2,
+        z: (b.back + b.front) / 2,
+        w: b.right - b.left + 0.62 - inset * 2,
+        d: b.front - b.back + 0.62 - inset * 2,
         color: palette.plate,
         alpha: 0.8,
         layer: 3 + p.depth,
@@ -596,8 +874,8 @@ export class StageModel {
         text: p.label ?? `[${p.start}..${p.end}]`,
         x: (b.minX + b.maxX) / 2,
         y: fy + 0.2,
-        z: b.maxZ + 1.15 + p.depth * 0.32,
-        size: 0.2,
+        z: b.front + 2.45 + p.depth * 0.42,
+        size: TYPE.note,
         color: palette.caption,
         opacity: 1,
         anchorX: 'center',
@@ -648,17 +926,18 @@ export class StageModel {
         x: (rest.pos[sa * 3] + rest.pos[sb * 3]) / 2,
         y: top + 0.95,
         z: (rest.pos[sa * 3 + 2] + rest.pos[sb * 3 + 2]) / 2,
-        size: 0.34,
-        color: palette.states.EVALUATING.body,
+        size: TYPE.relation,
+        color: palette.tag,
         opacity: 1,
         anchorX: 'center',
-        font: 'mono',
+        font: 'strong',
         orient: 'billboard',
       });
     }
 
-    // The call stack lane.
-    if (this.maxCallDepth > 0) this.addCallStack(rest, frame);
+    // The call stack lane: only for a program with nothing else to show (otherwise the
+    // inspector's call-stack panel says the same thing without crowding the scene).
+    if (this.maxCallDepth > 0 && !this.hasNodes) this.addCallStack(rest, frame);
   }
 
   private addCursors(rest: RestFrame, frame: TraceFrame): void {
@@ -683,30 +962,38 @@ export class StageModel {
     for (const loop of this.source.loopsAt(frame.line)) if (loop.kind === 'LOOP' && loop.variable) names.push(loop.variable);
     for (const n of [...LOW_NAMES, ...HIGH_NAMES, ...MID_NAMES]) if (typeof vars[n] === 'number') names.push(n);
 
+    // Cursors pointing at the same cell share one chevron and one label ("low = high = 0").
     const seen = new Set<string>();
-    const stackAt = new Map<number, number>();
-    let count = 0;
+    const byCell = new Map<number, string[]>();
     for (const name of names) {
-      if (seen.has(name) || count >= MAX_CURSORS) continue;
+      if (seen.has(name) || seen.size >= MAX_CURSORS) continue;
       seen.add(name);
       const v = vars[name];
-      if (typeof v !== 'number' || !Number.isInteger(v) || v < 0 || v >= length) continue;
-      const cell = cells.get(v);
-      if (!cell) continue;
-      const s = this.slotOf.get(cell.id)!;
-      const level = stackAt.get(v) ?? 0;
-      stackAt.set(v, level + 1);
-      count++;
+      if (typeof v !== 'number' || !Number.isInteger(v) || v < 0 || v >= length || !cells.has(v)) continue;
+      const list = byCell.get(v) ?? [];
+      list.push(name);
+      byCell.set(v, list);
+    }
+    // Left to right; a label that would touch its neighbour steps forward a row.
+    const rowEnds: number[] = [];
+    for (const v of [...byCell.keys()].sort((a, b) => a - b)) {
+      const group = byCell.get(v)!;
+      const s = this.slotOf.get(cells.get(v)!.id)!;
       const x = rest.pos[s * 3];
-      const z = rest.pos[s * 3 + 2] + rest.dims[s * 3 + 2] / 2 + 0.75;
-      rest.decals.push({ key: `cur:${name}`, shape: DECAL_SHAPE.chevron, x, z, w: 0.42, d: 0.34, color: this.palette.tag, alpha: 0.95, layer: 7 });
+      const z = rest.pos[s * 3 + 2] + rest.dims[s * 3 + 2] / 2 + INDEX_AHEAD + 0.75;
+      const text = `${group.join(' = ')} = ${v}`;
+      const half = (text.length * TYPE.cursor * GLYPH) / 2;
+      let row = 0;
+      while (row < rowEnds.length && rowEnds[row] > x - half - 0.2) row++;
+      rowEnds[row] = x + half;
+      rest.decals.push({ key: `cur:${group[0]}`, shape: DECAL_SHAPE.chevron, x, z, w: 0.42, d: 0.34, color: this.palette.tag, alpha: 0.95, layer: 7 });
       rest.labels.push({
-        key: `cur:${name}`,
-        text: `${name} = ${v}`,
+        key: `cur:${group[0]}`,
+        text,
         x,
-        y: this.floorY + 0.14 + level * 0.32,
-        z: z + 0.95,
-        size: 0.24,
+        y: this.floorY + 0.24,
+        z: z + 0.9 + row * 0.55,
+        size: TYPE.cursor,
         color: this.palette.tag,
         opacity: 1,
         anchorX: 'center',
@@ -725,10 +1012,10 @@ export class StageModel {
         rest.decals.push({
           key: `window:${array.name}`,
           shape: DECAL_SHAPE.roundRect,
-          x: (b.minX + b.maxX) / 2,
-          z: (b.minZ + b.maxZ) / 2,
-          w: b.maxX - b.minX + 1.3,
-          d: Math.max(1.5, b.maxZ - b.minZ + 1.3),
+          x: (b.left + b.right) / 2,
+          z: (b.back + b.front) / 2,
+          w: b.right - b.left + 0.5,
+          d: b.front - b.back + 0.5,
           color: this.palette.states.TRAVERSING.body,
           alpha: 0.2,
           layer: 2,
@@ -751,7 +1038,7 @@ export class StageModel {
         x: lane.x,
         y: this.floorY + 0.36 + i * 0.62,
         z: lane.z,
-        size: 0.24,
+        size: TYPE.frame,
         color: isTop ? this.palette.frameTop : this.palette.frameText,
         opacity: 1,
         anchorX: 'center',
@@ -766,7 +1053,7 @@ export class StageModel {
       x: lane.x,
       y: this.floorY + 0.36 + shown.length * 0.62 + 0.15,
       z: lane.z,
-      size: 0.2,
+      size: TYPE.note,
       color: this.palette.caption,
       opacity: 1,
       anchorX: 'center',
@@ -782,12 +1069,12 @@ export class StageModel {
       let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, minZ = Infinity, maxZ = -Infinity;
       for (const f of this.frames) {
         for (const n of f.nodes) {
-          minX = Math.min(minX, n.pos.x); maxX = Math.max(maxX, n.pos.x);
-          minY = Math.min(minY, n.pos.y); maxY = Math.max(maxY, n.pos.y);
-          minZ = Math.min(minZ, n.pos.z); maxZ = Math.max(maxZ, n.pos.z);
+          minX = Math.min(minX, this.px(n)); maxX = Math.max(maxX, this.px(n));
+          minY = Math.min(minY, this.py(n)); maxY = Math.max(maxY, this.py(n));
+          minZ = Math.min(minZ, this.pz(n)); maxZ = Math.max(maxZ, this.pz(n));
         }
       }
-      if (this.maxCallDepth > 0) minX = Math.min(minX, this.laneX().x - 2);
+      if (this.maxCallDepth > 0 && !this.hasNodes) minX = Math.min(minX, this.laneX().x - 2);
       if (!Number.isFinite(minX)) {
         this.boundsCache = { center: [0, this.floorY, 0], radius: 4 };
       } else {
@@ -808,8 +1095,8 @@ export class StageModel {
       let maxZ = -Infinity;
       for (const f of this.frames) {
         for (const n of f.nodes) {
-          minX = Math.min(minX, n.pos.x);
-          maxZ = Math.max(maxZ, n.pos.z);
+          minX = Math.min(minX, this.px(n));
+          maxZ = Math.max(maxZ, this.pz(n));
         }
       }
       // Wide enough for the longest call, clear of the structures' name plates.
@@ -824,21 +1111,36 @@ export class StageModel {
   private boundsOf(members: TraceNode[], rest: RestFrame) {
     if (members.length === 0) return null;
     let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity, topY = -Infinity, topZ = 0;
+    let left = Infinity, right = -Infinity, back = Infinity, front = -Infinity;
     for (const n of members) {
       const s = this.slotOf.get(n.id)!;
       const x = rest.pos[s * 3];
-      const y = rest.pos[s * 3 + 1];
       const z = rest.pos[s * 3 + 2];
+      const hw = rest.dims[s * 3] / 2;
+      const hd = rest.dims[s * 3 + 2] / 2;
       minX = Math.min(minX, x);
       maxX = Math.max(maxX, x);
       minZ = Math.min(minZ, z);
       maxZ = Math.max(maxZ, z);
-      if (n.pos.y > topY + 1e-6) {
-        topY = n.pos.y;
+      left = Math.min(left, x - hw);
+      right = Math.max(right, x + hw);
+      back = Math.min(back, z - hd);
+      front = Math.max(front, z + hd);
+      // The highest resting centre (emphasis lift ignored, so names don't bob with the action).
+      const y = this.py(n);
+      if (y > topY + 1e-6) {
+        topY = y;
         topZ = z;
       }
     }
-    return { minX, maxX, minZ, maxZ, topY, topZ };
+    // Left edge of the top row (an array's first cell, a tree's root, a stack's top): where its name goes.
+    let topLeft = Infinity;
+    for (const n of members) {
+      if (Math.abs(this.py(n) - topY) > 0.35) continue;
+      const s = this.slotOf.get(n.id)!;
+      topLeft = Math.min(topLeft, rest.pos[s * 3] - rest.dims[s * 3] / 2);
+    }
+    return { minX, maxX, minZ, maxZ, left, right, back, front, topY, topZ, topLeft };
   }
 
   private rangeBounds(frame: TraceFrame, structure: string, start: number, end: number, rest: RestFrame) {
@@ -860,24 +1162,27 @@ export class StageModel {
     for (let s = 0; s < this.slots.length; s++) {
       if (!rest.present[s]) continue;
       if (focusStructure && this.slots[s].structure !== focusStructure && this.slots[s].id !== focusStructure) continue;
-      grow(rest.pos[s * 3], rest.pos[s * 3 + 1], rest.pos[s * 3 + 2], Math.max(rest.dims[s * 3], rest.dims[s * 3 + 1]) / 2 + 0.25);
+      const x = rest.pos[s * 3], y = rest.pos[s * 3 + 1], z = rest.pos[s * 3 + 2];
+      grow(x - rest.dims[s * 3] / 2 - 0.15, y - rest.dims[s * 3 + 1] / 2, z - rest.dims[s * 3 + 2] / 2 - 0.15);
+      grow(x + rest.dims[s * 3] / 2 + 0.15, y + rest.dims[s * 3 + 1] / 2, z + rest.dims[s * 3 + 2] / 2 + 0.15);
     }
-    // Whether the structures lie across the floor (look down on them) or stand up (look across):
-    // decided by where the node centres spread, not by their padding or by labels.
-    let cMinY = Infinity, cMaxY = -Infinity, cMinZ = Infinity, cMaxZ = -Infinity;
-    for (let s = 0; s < this.slots.length; s++) {
-      if (!rest.present[s]) continue;
-      cMinY = Math.min(cMinY, rest.pos[s * 3 + 1]); cMaxY = Math.max(cMaxY, rest.pos[s * 3 + 1]);
-      cMinZ = Math.min(cMinZ, rest.pos[s * 3 + 2]); cMaxZ = Math.max(cMaxZ, rest.pos[s * 3 + 2]);
+    // Captions printed on the floor in front of their node.
+    for (const l of rest.labels) {
+      if (!l.follow || l.orient !== 'floor' || !rest.present[l.follow.slot]) continue;
+      const s = l.follow.slot;
+      grow(rest.pos[s * 3], this.floorY, rest.pos[s * 3 + 2] + rest.dims[s * 3 + 2] / 2 + l.follow.dy + l.size);
     }
-    const flat = Number.isFinite(cMinZ) && cMaxZ - cMinZ > 2.5 && cMaxZ - cMinZ > (cMaxY - cMinY) * 0.9;
+    // Look down on the scene when any structure in it lies across the floor (decided per structure,
+    // so rows of structures standing one behind another still get the low, across-the-table view).
+    let flat = false;
+    for (let s = 0; s < this.slots.length && !flat; s++) if (rest.present[s] && this.flatStructures.has(this.slots[s].structure ?? '')) flat = true;
     if (!focusStructure) {
       for (const l of rest.labels) {
-        if (l.follow) continue;
-        const width = l.text.length * l.size * 0.62;
+        if (l.follow || l.edge !== undefined) continue;
+        const width = l.text.length * l.size * GLYPH;
         const left = l.anchorX === 'right' ? l.x - width : l.anchorX === 'center' ? l.x - width / 2 : l.x;
-        grow(left, l.y, l.z);
-        grow(left + width, l.y, l.z);
+        grow(left, l.y - l.size / 2, l.z);
+        grow(left + width, l.y + l.size / 2, l.z);
       }
     }
     if (!Number.isFinite(minX)) {
@@ -922,7 +1227,51 @@ export class StageModel {
       flat,
       mode: mode === 'FOCUS' || mode === 'ORBIT' || mode === 'POSITION' ? mode : 'AUTO_FIT',
       orbitSpeed: camera?.speed ?? 12,
-      position: camera?.position ? [camera.position.x, camera.position.y, camera.position.z] : undefined,
+      position: camera?.position
+        ? [camera.position.x + this.meanShift[0], camera.position.y + this.meanShift[1], camera.position.z + this.meanShift[2]]
+        : undefined,
     };
+  }
+
+  /** Average structure move (an absolute camera position written for the given layout moves with the scene). */
+  private get meanShift(): [number, number, number] {
+    if (this.shift.size === 0) return [0, 0, 0];
+    const sum: [number, number, number] = [0, 0, 0];
+    for (const v of this.shift.values()) for (let i = 0; i < 3; i++) sum[i] += v[i] / this.shift.size;
+    return sum;
+  }
+
+  /**
+   * What the camera frames at step k: the step's own view, widened to keep
+   * everything shown a few steps either side in frame too, so a structure
+   * that grows is made room for before it grows and the camera never pumps
+   * in and out from one step to the next.
+   */
+  framing(k: number): ViewKey {
+    const hit = this.framingCache.get(k);
+    if (hit) return hit;
+    const base = this.rest(k).view;
+    let view = base;
+    if (base.mode === 'AUTO_FIT' || base.mode === 'ORBIT') {
+      const lo = [base.center[0] - base.half[0], base.center[1] - base.half[1], base.center[2] - base.half[2]];
+      const hi = [base.center[0] + base.half[0], base.center[1] + base.half[1], base.center[2] + base.half[2]];
+      let flatVotes = 0;
+      let votes = 0;
+      for (let j = Math.max(0, k - FRAMING_WINDOW); j <= Math.min(this.frames.length - 1, k + FRAMING_WINDOW); j++) {
+        const v = j === k ? base : this.rest(j).view;
+        if (v.mode !== base.mode) continue;
+        votes++;
+        if (v.flat) flatVotes++;
+        for (let i = 0; i < 3; i++) {
+          lo[i] = Math.min(lo[i], v.center[i] - v.half[i]);
+          hi[i] = Math.max(hi[i], v.center[i] + v.half[i]);
+        }
+      }
+      const center: [number, number, number] = [(lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, (lo[2] + hi[2]) / 2];
+      const half: [number, number, number] = [(hi[0] - lo[0]) / 2, (hi[1] - lo[1]) / 2, (hi[2] - lo[2]) / 2];
+      view = { ...base, center, half, radius: Math.hypot(half[0], half[1], half[2]), flat: flatVotes * 2 > votes };
+    }
+    this.framingCache.set(k, view);
+    return view;
   }
 }
