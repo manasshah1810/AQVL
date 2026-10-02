@@ -1,5 +1,5 @@
-import type { AQIRInstruction, AQIRObject, SwapObjectsInstruction, CompareObjectsInstruction, HighlightObjectInstruction, LinkObjectsInstruction, GenericActionInstruction, SetStateInstruction, SetPartitionBoundaryInstruction, ClearPartitionBoundaryInstruction, MarkSortedRegionInstruction } from '@aqvl/shared';
-import { getSemanticColorToken, normalizeSemanticState } from '@aqvl/shared';
+import type { AQIRInstruction, AQIRObject, SwapObjectsInstruction, CompareObjectsInstruction, HighlightObjectInstruction, LinkObjectsInstruction, GenericActionInstruction, SetPartitionBoundaryInstruction, ClearPartitionBoundaryInstruction, MarkSortedRegionInstruction } from '@aqvl/shared';
+import { getSemanticColorToken } from '@aqvl/shared';
 import { AQIROpcode } from '../types';
 import { AnimationScheduler } from './AnimationScheduler';
 import { SceneManager } from './SceneManager';
@@ -9,7 +9,7 @@ import { EventDispatcher } from './EventDispatcher';
 
 import { LifecycleManager } from './LifecycleManager';
 import { RelationshipManager } from './RelationshipManager';
-import { AlgorithmRegistry, AlgorithmContext, BinaryTreeAlgorithms, BSTAlgorithms, SortAlgorithms, GraphAlgorithms, HeapEngine, HashMapVisualizer, TrieVisualizer, ArrayEngine, StackEngine, StackAnimationContext, QueueEngine, QueueAnimationContext, LinkedListEngine } from './algorithms';
+import { AlgorithmRegistry, AlgorithmContext, BinaryTreeAlgorithms, BSTAlgorithms, SortAlgorithms, GraphAlgorithms, HeapEngine, HashMapVisualizer, TrieVisualizer, ArrayEngine, StackEngine, QueueEngine, LinkedListEngine } from './algorithms';
 import { Graph } from '../data-structures/Graph';
 
 // Register BinaryTree advanced algorithms
@@ -48,9 +48,17 @@ const DEBUG_ANIMATION: boolean =
 // Register trie operations (real insert/search/startsWith/delete/autocomplete, backed by Trie)
 AlgorithmRegistry.register(['TRIE_INIT', 'TRIE_INSERT', 'TRIE_SEARCH', 'TRIE_STARTSWITH', 'TRIE_DELETE', 'TRIE_AUTOCOMPLETE'], new TrieVisualizer());
 
-import { AnimationContext, MoveAnimation, AnticipationAnimation } from './animations';
-import type { LinkedListContext } from './algorithms/LinkedListEngine';
-import { LinkedListEngine as LinkedListModel, LinkedListError } from './algorithms/LinkedListEngine';
+// Register stack / queue operations on STACK_ELEMENT / QUEUE_ELEMENT scenes (backed by Stack / Queue).
+// Compiled STACK / QUEUE declarations are TreeEngine containers, routed before the registry is consulted.
+AlgorithmRegistry.register(['PUSH', 'POP', 'PEEK'], new StackEngine());
+AlgorithmRegistry.register(['ENQUEUE', 'DEQUEUE', 'FRONT', 'REAR'], new QueueEngine());
+
+import { AnticipationAnimation } from './animations';
+import type { LinkedListContext } from './algorithms/LinkedListProgramEngine';
+import { LinkedListProgramEngine } from './algorithms/LinkedListProgramEngine';
+import { PrimitiveAnimator } from './algorithms/PrimitiveAnimator';
+import { ArrayIndexOutOfRangeError } from './algorithms/ArrayEngine';
+import { formatPrintValue } from './algorithms/formatValue';
 import { TreeEngine, TreeError, type TreeContext } from './algorithms/TreeEngine';
 import { HeapProgramEngine, HeapIndexError } from './algorithms/HeapProgramEngine';
 import { HashMapProgramEngine } from './algorithms/HashMapProgramEngine';
@@ -60,21 +68,7 @@ import { AQVLVirtualMachine, type StepCallback } from '../VirtualMachine';
 import type { VMInstruction, FunctionTable, ExecutionResult } from '../types';
 
 
-/** Raised when an `arr[i]` reference / read falls outside the array's current bounds. */
-export class ArrayIndexOutOfRangeError extends Error {
-  constructor(public readonly arrayName: string, public readonly index: number, public readonly length: number) {
-    super(`Index ${index} is out of bounds for array '${arrayName}' (valid indices are 0 to ${length - 1}).`);
-    this.name = 'ArrayIndexOutOfRangeError';
-  }
-}
-
-/** Formats a PRINT argument for the output console. */
-function formatPrintValue(value: unknown): string {
-  if (typeof value === 'number') return Number.isInteger(value) ? String(value) : String(Number(value.toFixed(4)));
-  if (typeof value === 'boolean') return value ? 'TRUE' : 'FALSE';
-  if (value === null || value === undefined) return 'null';
-  return String(value);
-}
+export { ArrayIndexOutOfRangeError };
 
 export class AnimationController {
   private defaultColor = getSemanticColorToken('NEUTRAL').color;
@@ -83,14 +77,14 @@ export class AnimationController {
   private activeTreeIsBST: boolean = false;
   /** Shared BSTAlgorithms instance used for dispatch-based BST routing */
   private bstAlgorithms: BSTAlgorithms = _bstAlgorithmsInstance;
-  /** Handles the array-targeted branches of bare INSERT/DELETE (see ArrayEngine.ts) */
+  /** Arrays: the array-targeted INSERT / DELETE / UPDATE, and the reads a program makes of an array (see ArrayEngine.ts) */
   private arrayEngine: ArrayEngine = new ArrayEngine();
-  /** Handles PUSH/POP/PEEK (see StackEngine.ts) */
-  private stackEngine: StackEngine = new StackEngine();
-  /** Handles ENQUEUE/DEQUEUE/FRONT/REAR (see QueueEngine.ts) */
-  private queueEngine: QueueEngine = new QueueEngine();
-  /** Handles INSERT_HEAD/INSERT_TAIL/DELETE_HEAD/DELETE_TAIL/REVERSE (see LinkedListEngine.ts) */
+  /** Built-in linked-list operations: INSERT_HEAD, REVERSE, DELETE list[i], ... (see LinkedListEngine.ts) */
   private linkedListEngine: LinkedListEngine = new LinkedListEngine();
+  /** Linked lists used by real code: pointer moves, field writes, NEW_NODE, FREE (see LinkedListProgramEngine.ts) */
+  private linkedListProgram: LinkedListProgramEngine = new LinkedListProgramEngine();
+  /** How each element-level AQIR primitive (focus, contrast, exchange, set, link, unlink) is animated (see PrimitiveAnimator.ts) */
+  private primitives: PrimitiveAnimator = new PrimitiveAnimator();
   /** Pointer trees (BINARY_TREE / BST), their recursion and their queues / stacks (see TreeEngine.ts) */
   private treeEngine: TreeEngine = new TreeEngine();
   /** Graphs used by real code: vertex / edge references, fields, NEIGHBOR / DEGREE / ... (see GraphProgramEngine.ts) */
@@ -287,23 +281,23 @@ export class AnimationController {
       (arrayName, index) =>
         this.heapEngine.isHeap(this.llContext(), arrayName)
           ? this.heapEngine.valueAt(this.llContext(), arrayName, index)
-          : this.linkedListEngine.isList(this.llContext(), arrayName)
-          ? this.linkedListEngine.valueAt(this.llContext(), arrayName, index)
-          : this.readArrayValue(arrayName, index),
+          : this.linkedListProgram.isList(this.llContext(), arrayName)
+          ? this.linkedListProgram.valueAt(this.llContext(), arrayName, index)
+          : this.arrayEngine.valueAt(this.llContext(), arrayName, index),
       (arrayName) =>
         this.hashMapEngine.isHashMap(this.llContext(), arrayName)
           ? this.hashMapEngine.length(this.llContext(), arrayName)
           : this.heapEngine.isHeap(this.llContext(), arrayName)
           ? this.heapEngine.length(this.llContext(), arrayName)
-          : this.linkedListEngine.isList(this.llContext(), arrayName)
-          ? this.linkedListEngine.length(this.llContext(), arrayName)
+          : this.linkedListProgram.isList(this.llContext(), arrayName)
+          ? this.linkedListProgram.length(this.llContext(), arrayName)
           : this.treeEngine.isTree(this.treeContext(), arrayName)
             ? this.treeEngine.size(this.treeContext(), arrayName)
             : this.treeEngine.isContainer(this.treeContext(), arrayName)
               ? this.treeEngine.containerLength(this.treeContext(), arrayName)
               : this.graphEngine.isGraph(this.treeContext(), arrayName)
                 ? (this.graphEngine.read(this.treeContext(), 'VERTEX_COUNT', [arrayName], `LENGTH(${arrayName})`) as number)
-                : this.getArrayElements(arrayName).length
+                : this.arrayEngine.length(this.llContext(), arrayName)
     );
     // Linked lists and trees: `curr.next` / `node.left` reads, and
     // pointer-variable assignments (`curr = curr.next`) animated as steps
@@ -324,7 +318,7 @@ export class AnimationController {
         ? this.graphEngine.readMember(this.treeContext(), object, member, objectExpr)
         : this.pointerOwnerIsTree(object)
         ? this.treeEngine.readMember(this.treeContext(), object, member, objectExpr)
-        : this.linkedListEngine.readMember(this.llContext(), object, member, objectExpr)
+        : this.linkedListProgram.readMember(this.llContext(), object, member, objectExpr)
     );
     vm.setVariableObserver(
       async (name, value, previous, instr) => {
@@ -343,8 +337,8 @@ export class AnimationController {
           return true;
         }
         const tree = this.treeEngine.isPointerAssignment(this.treeContext(), value, previous) &&
-          (TreeEngine.isNodeRef(value) || TreeEngine.isNodeRef(previous) || !this.linkedListEngine.hasAnyList(this.llContext()));
-        if (!tree && !this.linkedListEngine.isPointerAssignment(this.llContext(), value, previous)) return false;
+          (TreeEngine.isNodeRef(value) || TreeEngine.isNodeRef(previous) || !this.linkedListProgram.hasAnyList(this.llContext()));
+        if (!tree && !this.linkedListProgram.isPointerAssignment(this.llContext(), value, previous)) return false;
         this.currentVM = vm;
         await this.executeInstruction({
           action: tree ? 'TREE_POINTER_MOVE' : 'LL_POINTER_MOVE',
@@ -353,7 +347,7 @@ export class AnimationController {
         return true;
       },
       () => {
-        this.linkedListEngine.onScopeExit(this.llContext());
+        this.linkedListProgram.onScopeExit(this.llContext());
         this.treeEngine.onScopeExit(this.treeContext());
         this.graphEngine.onScopeExit(this.treeContext());
         this.trieEngine.onScopeExit(this.treeContext());
@@ -391,7 +385,7 @@ export class AnimationController {
     return (
       this.trieEngine.hasAnyTrie(ctx) &&
       !this.treeEngine.hasAnyTree(ctx) &&
-      !this.linkedListEngine.hasAnyList(this.llContext()) &&
+      !this.linkedListProgram.hasAnyList(this.llContext()) &&
       !this.graphEngine.hasAnyGraph(ctx)
     );
   }
@@ -402,8 +396,8 @@ export class AnimationController {
    */
   private pointerOwnerIsTree(value: unknown): boolean {
     if (this.treeEngine.owns(this.treeContext(), value)) return true;
-    if (LinkedListModel.isNodeRef(value) || this.linkedListEngine.isList(this.llContext(), value)) return false;
-    return this.treeEngine.hasAnyTree(this.treeContext()) && !this.linkedListEngine.hasAnyList(this.llContext());
+    if (LinkedListProgramEngine.isNodeRef(value) || this.linkedListProgram.isList(this.llContext(), value)) return false;
+    return this.treeEngine.hasAnyTree(this.treeContext()) && !this.linkedListProgram.hasAnyList(this.llContext());
   }
 
   /** Context for TreeEngine: the usual handler context plus access to the running program's variables and call stack. */
@@ -417,8 +411,8 @@ export class AnimationController {
     };
   }
 
-  /** Context for LinkedListEngine: the usual handler context plus access to the running program's variables. */
-  private llContext(): LinkedListContext {
+  /** The context every engine is called with (see AlgorithmContext). */
+  private algorithmContext(): AlgorithmContext {
     return {
       scheduler: this.animationScheduler,
       sceneManager: this.sceneManager,
@@ -426,8 +420,16 @@ export class AnimationController {
       eventDispatcher: this.eventDispatcher,
       stateManager: this.stateManager,
       relationshipManager: this.relationshipManager,
+      lifecycleManager: this.lifecycleManager,
       activeTreeName: this.activeTreeName,
       defaultColor: this.defaultColor,
+    };
+  }
+
+  /** Context for the program engines (lists, heaps, maps, ...): the usual handler context plus access to the running program's variables. */
+  private llContext(): LinkedListContext {
+    return {
+      ...this.algorithmContext(),
       host: {
         evaluate: (expr) => (this.currentVM ? this.currentVM.evaluateExpression(expr) : expr),
         setVariable: (name, value) => this.currentVM?.setVariable(name, value),
@@ -439,7 +441,7 @@ export class AnimationController {
   /** Called when a program's scene has just been loaded, before its initial layout. */
   public onSceneLoaded(): void {
     this.currentVM = null; // the previous program's variables must not tag the new scene's nodes
-    this.linkedListEngine.initialize(this.llContext());
+    this.linkedListProgram.initialize(this.llContext());
     this.connectGraphRefs();
     this.treeEngine.initialize(this.treeContext());
     this.graphEngine.initialize(this.treeContext());
@@ -448,7 +450,7 @@ export class AnimationController {
 
   /** Called after the scene is restored to an earlier step (step back / scrub). */
   public onStateRestored(): void {
-    this.linkedListEngine.settleAfterRestore(this.llContext());
+    this.linkedListProgram.settleAfterRestore(this.llContext());
     this.treeEngine.settleAfterRestore(this.treeContext());
     this.graphEngine.settleAfterRestore(this.treeContext());
     this.trieEngine.settleAfterRestore(this.treeContext());
@@ -599,21 +601,6 @@ export class AnimationController {
     }
   }
 
-  /** Live elements of array `arrayName`, in index order (elements mid-deletion excluded). */
-  private getArrayElements(arrayName: string): any[] {
-    return (this.sceneManager.getSceneGraph() as any[])
-      .filter((e: any) => e.logicalParent === arrayName && e.originalType === 'ARRAY_ELEMENT' && !e.animationLayer)
-      .sort((a: any, b: any) => a.logicalIndex - b.logicalIndex);
-  }
-
-  /** Current value of `arrayName[index]`, for `arr[i]` read inside an expression. */
-  private readArrayValue(arrayName: string, index: number): unknown {
-    const els = this.getArrayElements(arrayName);
-    const el = els.find((e: any) => e.logicalIndex === index);
-    if (!el) throw new ArrayIndexOutOfRangeError(arrayName, index, els.length);
-    return el.value;
-  }
-
   /**
    * Evaluates the `(array, index)` addressed by a compiled `arrayName#indexExpr`
    * reference. Returns null for ordinary object IDs. `indexExpr` is either a
@@ -693,18 +680,14 @@ export class AnimationController {
     if (typeof id === 'string' && !id.includes('#') && !this.sceneManager.getElement(id) && this.currentVM) {
       // A pointer variable (`HIGHLIGHT curr`) holding a node reference.
       const value = this.currentVM.tryGetVariable(id);
-      if (LinkedListModel.isNodeRef(value) || TreeEngine.isNodeRef(value)) return value;
+      if (LinkedListProgramEngine.isNodeRef(value) || TreeEngine.isNodeRef(value)) return value;
     }
     const slot = this.resolveArraySlot(id);
     if (!slot) return id;
-    if (this.linkedListEngine.isList(this.llContext(), slot.arrayName)) {
-      return this.linkedListEngine.nodeAt(this.llContext(), slot.arrayName, slot.index);
+    if (this.linkedListProgram.isList(this.llContext(), slot.arrayName)) {
+      return this.linkedListProgram.nodeAt(this.llContext(), slot.arrayName, slot.index);
     }
-    const els = this.getArrayElements(slot.arrayName);
-    if (els.length === 0) return id; // not an ARRAY (e.g. another indexed structure) — leave unresolved
-    const el = els.find((e: any) => e.logicalIndex === slot.index);
-    if (!el) throw new ArrayIndexOutOfRangeError(slot.arrayName, slot.index, els.length);
-    return el.id;
+    return this.arrayEngine.slotElementId(this.llContext(), slot.arrayName, slot.index, id);
   }
 
   /**
@@ -718,35 +701,20 @@ export class AnimationController {
     const args = gen.args ?? [];
     const slot = this.resolveArraySlot(args[0]);
     if (!slot) return gen;
-    if (this.linkedListEngine.isList(this.llContext(), slot.arrayName)) {
+    if (this.linkedListProgram.isList(this.llContext(), slot.arrayName)) {
       // Linked lists resolve `list[i]` themselves (by walking from the head).
       return {
         ...gen,
         payload: { ...((gen as any).payload ?? {}), logicalParent: slot.arrayName, logicalIndex: slot.index },
       } as GenericActionInstruction;
     }
-    const els = this.getArrayElements(slot.arrayName);
-    if (els.length === 0 && slot.index !== 0) return gen; // not an ARRAY
-
-    const actionName = gen.actionName.toUpperCase();
-    const el = els.find((e: any) => e.logicalIndex === slot.index);
-    const appending = actionName === 'INSERT' && slot.index === els.length;
-    if (!el && !appending) {
-      throw new ArrayIndexOutOfRangeError(slot.arrayName, slot.index, els.length);
-    }
-
-    const boundArgs = [...args];
-    if (el) boundArgs[0] = el.id;
-    if ((actionName === 'UPDATE' || actionName === 'INSERT') && boundArgs.length > 1 && this.currentVM) {
-      boundArgs[boundArgs.length - 1] = this.currentVM.evaluateExpression(boundArgs[boundArgs.length - 1]) as any;
-    }
-
-    return {
-      ...gen,
-      args: boundArgs,
-      targetId: el ? el.id : gen.targetId,
-      payload: { ...((gen as any).payload ?? {}), logicalParent: slot.arrayName, logicalIndex: slot.index },
-    } as GenericActionInstruction;
+    return this.arrayEngine.bindSlotOperands(
+      this.llContext(),
+      gen,
+      slot.arrayName,
+      slot.index,
+      this.currentVM ? (expr) => this.currentVM!.evaluateExpression(expr) : null
+    );
   }
 
   /** Source-like text for a compiled operand, for console messages (`node.left`, `root`, `5`). */
@@ -790,7 +758,7 @@ export class AnimationController {
   public async executeInstruction(instruction: AQIRInstruction): Promise<void> {
     return new Promise((resolve) => {
       this.clearTransientActiveStates();
-      this.linkedListEngine.restoreBaseColors(this.llContext());
+      this.linkedListProgram.restoreBaseColors(this.llContext());
       this.treeEngine.restoreBaseColors(this.treeContext());
       this.graphEngine.restoreBaseColors(this.treeContext());
       this.heapEngine.restoreBaseColors(this.llContext());
@@ -802,12 +770,6 @@ export class AnimationController {
       // in DECLARE block before any explicit TREE/BST sequence action).
       this.autoDetectActiveTree();
       
-      const animCtx: AnimationContext = {
-        scheduler: this.animationScheduler,
-        sceneManager: this.sceneManager,
-        layoutManager: this.layoutManager
-      };
-
       if (DEBUG_ANIMATION) console.log(`[AnimationController] Executing instruction:`, JSON.stringify(instruction));
 
       if (this.executeHeapStatement(instruction)) {
@@ -835,10 +797,10 @@ export class AnimationController {
                 return this.heapEngine.format(this.llContext(), part.array);
               }
               if (part !== null && typeof part === 'object' && 'array' in part) {
-                return `[${this.getArrayElements(part.array).map((el: any) => formatPrintValue(el.value)).join(', ')}]`;
+                return this.arrayEngine.format(this.llContext(), part.array);
               }
               if (part !== null && typeof part === 'object' && 'list' in part) {
-                return this.linkedListEngine.format(this.llContext(), part.list);
+                return this.linkedListProgram.format(this.llContext(), part.list);
               }
               if (part !== null && typeof part === 'object' && 'tree' in part) {
                 return this.treeEngine.format(this.treeContext(), part.tree);
@@ -856,7 +818,7 @@ export class AnimationController {
                 this.trieEngine.formatValue(this.treeContext(), value) ??
                 this.graphEngine.formatValue(this.treeContext(), value) ??
                 this.treeEngine.formatValue(this.treeContext(), value) ??
-                this.linkedListEngine.formatValue(this.llContext(), value) ??
+                this.linkedListProgram.formatValue(this.llContext(), value) ??
                 formatPrintValue(value)
               );
             })
@@ -874,7 +836,7 @@ export class AnimationController {
         // moving, a field / pointer write, NEW_NODE and FREE.
         case 'LL_POINTER_MOVE': {
           const i = instruction as any;
-          this.linkedListEngine.animatePointerMove(this.llContext(), i.name, i.value, i.previous, i.sourceText, i.valueExpr);
+          this.linkedListProgram.animatePointerMove(this.llContext(), i.name, i.value, i.previous, i.sourceText, i.valueExpr);
           break;
         }
         // The same pointer statements, compiled alike for lists and trees:
@@ -884,17 +846,17 @@ export class AnimationController {
           if (this.trieEngine.owns(this.treeContext(), target) || this.nullBelongsToTrie(target)) this.trieEngine.setField(this.treeContext(), instruction as any);
           else if (this.graphEngine.owns(this.treeContext(), target)) this.graphEngine.setField(this.treeContext(), instruction as any);
           else if (this.pointerOwnerIsTree(target)) this.treeEngine.setField(this.treeContext(), instruction as any);
-          else this.linkedListEngine.setField(this.llContext(), instruction as any);
+          else this.linkedListProgram.setField(this.llContext(), instruction as any);
           break;
         }
         case 'LL_NEW':
           if (this.treeEngine.isTree(this.treeContext(), (instruction as any).list)) this.treeEngine.allocate(this.treeContext(), instruction as any);
-          else this.linkedListEngine.allocate(this.llContext(), instruction as any);
+          else this.linkedListProgram.allocate(this.llContext(), instruction as any);
           break;
         case 'LL_FREE': {
           const target = this.currentVM ? this.currentVM.evaluateExpression((instruction as any).target) : null;
           if (this.pointerOwnerIsTree(target)) this.treeEngine.free(this.treeContext(), instruction as any);
-          else this.linkedListEngine.free(this.llContext(), instruction as any);
+          else this.linkedListProgram.free(this.llContext(), instruction as any);
           break;
         }
 
@@ -975,67 +937,7 @@ export class AnimationController {
         case 'HIGHLIGHT_OBJECT': {
           const hl = instruction as HighlightObjectInstruction;
           const targetEl = this.sceneManager.getElement(this.resolveElementId(hl.targetId));
-          if (targetEl) {
-            AnticipationAnimation.applyAnticipation(this.animationScheduler, [targetEl], 'SELECTION');
-
-            const activeToken = getSemanticColorToken(hl.color || 'SUCCESS');
-            targetEl.isHighlighted = true;
-            targetEl.highlightType = hl.color || 'SUCCESS';
-            targetEl.state = activeToken.name;
-            targetEl.color = activeToken.color;
-            targetEl.emissiveColor = activeToken.emissiveColor;
-            targetEl.emissiveIntensity = activeToken.emissiveIntensity;
-
-            this.animationScheduler.enqueue({
-              targets: targetEl,
-              color: activeToken.color,
-              emissiveColor: activeToken.emissiveColor,
-              emissiveIntensity: activeToken.emissiveIntensity,
-              duration: 400,
-              easing: 'easeOutExpo'
-            });
-            this.animationScheduler.enqueue({
-              targets: targetEl.scale,
-              x: 1.15, y: 1.15, z: 1.15,
-              duration: 400,
-              easing: 'easeOutExpo'
-            });
-            this.animationScheduler.commitGroup(true);
-
-            this.animationScheduler.advanceCursor(200);
-
-            this.animationScheduler.enqueue({
-              targets: targetEl.scale,
-              x: 1, y: 1, z: 1,
-              duration: 300,
-              easing: 'easeInOutQuad'
-            });
-            this.animationScheduler.commitGroup(true);
-            
-            this.animationScheduler.enqueue({
-              targets: {},
-              duration: 1,
-              complete: () => {
-                this.stateManager.saveState(this.sceneManager.getSceneGraph(), `Highlighted ${hl.targetId}`, this.animationScheduler.getCurrentTime());
-                this.eventDispatcher.dispatch('STATE_UPDATED', this.stateManager.getCurrentState());
-                const idx = (targetEl as any).logicalIndex !== undefined ? `[${(targetEl as any).logicalIndex}]` : '';
-                const val = (targetEl as any).value !== undefined ? (targetEl as any).value : targetEl.id;
-                const isListNode = targetEl.originalType === 'LINKEDLIST_NODE' || TreeEngine.isNodeRef(targetEl.id);
-                const name = isListNode ? `node ${val} of ${(targetEl as any).logicalParent}` : `${(targetEl as any).logicalParent || ''}${idx}`;
-                const colorName = String(hl.color || 'SUCCESS').toUpperCase();
-                let message = isListNode ? `Visiting ${name}` : `Highlighted ${name} — value: ${val}`;
-                if (activeToken.name === 'NEUTRAL') message = `Cleared mark on ${name} (value: ${val})`;
-                else if (activeToken.name !== 'EVALUATING') message = `Marked ${name} = ${val} as ${colorName}`;
-                this.eventDispatcher.dispatch('RUNTIME_LOG', {
-                  keyword: 'HIGHLIGHT',
-                  message,
-                  kind: 'step',
-                  timestamp: Date.now(),
-                });
-              }
-            });
-            this.animationScheduler.commitSequential();
-          }
+          if (targetEl) this.primitives.focus(this.algorithmContext(), targetEl, hl);
           break;
         }
 
@@ -1049,154 +951,9 @@ export class AnimationController {
             this.treeEngine.swapValues(this.treeContext(), leftEl.id, rightEl.id);
           } else if (leftEl && rightEl && leftEl.originalType === 'LINKEDLIST_NODE' && rightEl.originalType === 'LINKEDLIST_NODE') {
             // Linked-list nodes have no slots to trade: SWAP exchanges their values.
-            const token = getSemanticColorToken('MODIFYING');
-            for (const el of [leftEl, rightEl]) {
-              el.isHighlighted = true;
-              el.state = 'MODIFYING';
-              el.color = token.color;
-              el.emissiveColor = token.emissiveColor;
-              el.emissiveIntensity = token.emissiveIntensity;
-            }
-            const [a, b] = [leftEl.value, rightEl.value];
-            leftEl.value = b;
-            rightEl.value = a;
-            this.animationScheduler.enqueue({ targets: [leftEl.position, rightEl.position], y: '+=0.6', duration: 300, easing: 'easeOutExpo' });
-            this.animationScheduler.commitGroup(true);
-            this.animationScheduler.enqueue({ targets: [leftEl.position, rightEl.position], y: '-=0.6', duration: 300, easing: 'easeInQuad' });
-            this.animationScheduler.commitGroup(true);
-            this.animationScheduler.enqueue({
-              targets: {},
-              duration: 1,
-              complete: () => {
-                this.stateManager.saveState(this.sceneManager.getSceneGraph(), `Swapped values ${a} and ${b}`, this.animationScheduler.getCurrentTime());
-                this.eventDispatcher.dispatch('STATE_UPDATED', this.stateManager.getCurrentState());
-                this.eventDispatcher.dispatch('RUNTIME_LOG', {
-                  keyword: 'SWAP',
-                  message: `Swapped node values ${a} ↔ ${b}`,
-                  kind: 'swap',
-                  timestamp: Date.now(),
-                });
-              },
-            });
-            this.animationScheduler.commitSequential();
+            this.linkedListEngine.swapValues(this.algorithmContext(), leftEl, rightEl);
           } else if (leftEl && rightEl) {
-            AnticipationAnimation.applyAnticipation(this.animationScheduler, [leftEl, rightEl], 'SWAP');
-
-            const activeToken = getSemanticColorToken('MODIFYING');
-            leftEl.isHighlighted = true;
-            leftEl.highlightType = 'MODIFYING';
-            rightEl.isHighlighted = true;
-            rightEl.highlightType = 'MODIFYING';
-            leftEl.state = 'MODIFYING';
-            rightEl.state = 'MODIFYING';
-            leftEl.color = activeToken.color;
-            leftEl.emissiveColor = activeToken.emissiveColor;
-            leftEl.emissiveIntensity = activeToken.emissiveIntensity;
-            rightEl.color = activeToken.color;
-            rightEl.emissiveColor = activeToken.emissiveColor;
-            rightEl.emissiveIntensity = activeToken.emissiveIntensity;
-
-            const leftIndex = leftEl.logicalIndex;
-            const rightIndex = rightEl.logicalIndex;
-
-            // Synchronously swap and compute layout
-            leftEl.logicalIndex = rightIndex;
-            rightEl.logicalIndex = leftIndex;
-            this.layoutManager.updateLayout(this.sceneManager.getSceneGraph());
-
-            this.animationScheduler.enqueue({
-              targets: [leftEl, rightEl],
-              color: activeToken.color,
-              emissiveColor: activeToken.emissiveColor,
-              emissiveIntensity: activeToken.emissiveIntensity,
-              duration: 300,
-              easing: 'easeOutExpo'
-            });
-            this.animationScheduler.enqueue({
-              targets: [leftEl.scale, rightEl.scale],
-              x: 1.1, y: 1.1, z: 1.1,
-              duration: 300,
-              easing: 'easeOutExpo'
-            });
-            this.animationScheduler.enqueue({
-              targets: [leftEl.position, rightEl.position],
-              y: (el: any) => el.y + 1.8,
-              duration: 300,
-              easing: 'easeOutExpo'
-            });
-            this.animationScheduler.commitGroup(true);
-
-            this.animationScheduler.advanceCursor(200);
-
-            if (leftEl.worldTarget) {
-              this.animationScheduler.enqueue({
-                targets: leftEl.position,
-                x: leftEl.worldTarget.x,
-                z: leftEl.worldTarget.z + 1.5,
-                duration: 600,
-                easing: 'easeInOutSine'
-              });
-            }
-            if (rightEl.worldTarget) {
-              this.animationScheduler.enqueue({
-                targets: rightEl.position,
-                x: rightEl.worldTarget.x,
-                z: rightEl.worldTarget.z - 1.5,
-                duration: 600,
-                easing: 'easeInOutSine'
-              });
-            }
-            this.animationScheduler.commitGroup(true);
-
-            if (leftEl.worldTarget) {
-              this.animationScheduler.enqueue({
-                targets: leftEl.position,
-                y: leftEl.worldTarget.y,
-                z: leftEl.worldTarget.z,
-                duration: 350,
-                easing: 'easeOutBounce'
-              });
-            }
-            if (rightEl.worldTarget) {
-              this.animationScheduler.enqueue({
-                targets: rightEl.position,
-                y: rightEl.worldTarget.y,
-                z: rightEl.worldTarget.z,
-                duration: 350,
-                easing: 'easeOutBounce'
-              });
-            }
-            this.animationScheduler.commitGroup(true);
-
-            this.animationScheduler.enqueue({
-              targets: [leftEl.scale, rightEl.scale],
-              x: 1, y: 1, z: 1,
-              duration: 300,
-              easing: 'easeInOutQuad'
-            });
-            this.animationScheduler.commitGroup(true);
-            
-            this.animationScheduler.enqueue({
-              targets: {},
-              duration: 1,
-              complete: () => {
-                leftEl.label = `${leftEl.logicalParent}[${leftEl.logicalIndex}]`;
-                rightEl.label = `${rightEl.logicalParent}[${rightEl.logicalIndex}]`;
-                const lVal = leftEl.value ?? leftEl.id;
-                const rVal = rightEl.value ?? rightEl.id;
-                const lIdx = leftEl.logicalIndex;
-                const rIdx = rightEl.logicalIndex;
-                this.stateManager.saveState(this.sceneManager.getSceneGraph(), `Swapped ${swp.leftId} and ${swp.rightId}`, this.animationScheduler.getCurrentTime());
-                this.eventDispatcher.dispatch('STATE_UPDATED', this.stateManager.getCurrentState());
-                this.eventDispatcher.dispatch('RUNTIME_LOG', {
-                  keyword: 'SWAP',
-                  message: `Swapped [${rIdx}] (${lVal}) ↔ [${lIdx}] (${rVal})`,
-                  kind: 'swap',
-                  timestamp: Date.now(),
-                });
-              }
-            });
-            this.animationScheduler.commitSequential();
+            this.primitives.exchange(this.algorithmContext(), leftEl, rightEl, swp);
           }
           break;
         }
@@ -1206,92 +963,7 @@ export class AnimationController {
           const leftEl = this.sceneManager.getElement(this.resolveElementId(cmp.leftId)) as any;
           const rightEl = this.sceneManager.getElement(this.resolveElementId(cmp.rightId)) as any;
           
-          if (leftEl && rightEl) {
-            AnticipationAnimation.applyAnticipation(this.animationScheduler, [leftEl, rightEl], 'COMPARISON');
-
-            const activeToken = getSemanticColorToken('EVALUATING');
-            leftEl.isHighlighted = true;
-            leftEl.highlightType = 'EVALUATING';
-            rightEl.isHighlighted = true;
-            rightEl.highlightType = 'EVALUATING';
-            leftEl.state = 'EVALUATING';
-            rightEl.state = 'EVALUATING';
-            leftEl.color = activeToken.color;
-            leftEl.emissiveColor = activeToken.emissiveColor;
-            leftEl.emissiveIntensity = activeToken.emissiveIntensity;
-            rightEl.color = activeToken.color;
-            rightEl.emissiveColor = activeToken.emissiveColor;
-            rightEl.emissiveIntensity = activeToken.emissiveIntensity;
-
-            this.animationScheduler.enqueue({
-              targets: [leftEl, rightEl],
-              color: activeToken.color,
-              emissiveColor: activeToken.emissiveColor,
-              emissiveIntensity: activeToken.emissiveIntensity,
-              duration: 400,
-              easing: 'easeOutExpo'
-            });
-
-            this.animationScheduler.enqueue({
-              targets: [leftEl.scale, rightEl.scale],
-              x: 1.15, y: 1.15, z: 1.15,
-              duration: 400,
-              easing: 'easeOutExpo'
-            });
-
-            this.animationScheduler.enqueue({
-              targets: [leftEl.position, rightEl.position],
-              y: '+=0.3',
-              duration: 400,
-              easing: 'easeOutExpo'
-            });
-            this.animationScheduler.commitGroup(true);
-
-            this.animationScheduler.advanceCursor(300);
-
-            this.animationScheduler.enqueue({
-              targets: [leftEl.scale, rightEl.scale],
-              x: 1, y: 1, z: 1,
-              duration: 300,
-              easing: 'easeInOutQuad'
-            });
-
-            this.animationScheduler.enqueue({
-              targets: [leftEl.position, rightEl.position],
-              y: '-=0.3',
-              duration: 300,
-              easing: 'easeInOutQuad'
-            });
-            this.animationScheduler.commitGroup(true);
-            
-            this.animationScheduler.enqueue({
-              targets: {},
-              duration: 1,
-              complete: () => {
-                // Only indexed elements carry an `arr[i]` label (a linked-list
-                // node has no index — relabelling it produced "list[undefined]").
-                if (leftEl.logicalIndex !== undefined) leftEl.label = `${leftEl.logicalParent}[${leftEl.logicalIndex}]`;
-                if (rightEl.logicalIndex !== undefined) rightEl.label = `${rightEl.logicalParent}[${rightEl.logicalIndex}]`;
-                const lVal = leftEl.value ?? leftEl.id;
-                const rVal = rightEl.value ?? rightEl.id;
-                const lIdx = leftEl.logicalIndex !== undefined ? leftEl.logicalIndex : `node ${lVal}`;
-                const rIdx = rightEl.logicalIndex !== undefined ? rightEl.logicalIndex : `node ${rVal}`;
-                const cmpSymbol = lVal < rVal ? '<' : lVal > rVal ? '>' : '=';
-                const cmpWord = lVal < rVal ? 'less than' : lVal > rVal ? 'greater than' : 'equal to';
-                this.stateManager.saveState(this.sceneManager.getSceneGraph(), `Compared ${cmp.leftId} and ${cmp.rightId}`, this.animationScheduler.getCurrentTime());
-                this.eventDispatcher.dispatch('STATE_UPDATED', this.stateManager.getCurrentState());
-                this.eventDispatcher.dispatch('RUNTIME_LOG', {
-                  keyword: 'COMPARE',
-                  message: leftEl.logicalIndex === undefined || rightEl.logicalIndex === undefined
-                    ? `Comparing ${lIdx} vs ${rIdx}\n${lVal} ${cmpSymbol} ${rVal}  (${lVal} is ${cmpWord} ${rVal})`
-                    : `Comparing [${lIdx}]=${lVal} vs [${rIdx}]=${rVal}\n${lVal} ${cmpSymbol} ${rVal}  (${lVal} is ${cmpWord} ${rVal})`,
-                  kind: 'compare',
-                  timestamp: Date.now(),
-                });
-              }
-            });
-            this.animationScheduler.commitSequential();
-          }
+          if (leftEl && rightEl) this.primitives.contrast(this.algorithmContext(), leftEl, rightEl, cmp);
           break;
         }
 
@@ -1331,13 +1003,8 @@ export class AnimationController {
           }
 
           const listName = (gen as any).payload?.logicalParent;
-          if (listName && this.linkedListEngine.isList(this.llContext(), listName)) {
-            const handled = this.linkedListEngine.execute(this.llContext(), gen, listName, (gen as any).payload?.logicalIndex);
-            if (!handled) {
-              throw new LinkedListError(
-                `${actionName} is not a linked-list operation. Linked lists support INSERT_HEAD, INSERT_TAIL, DELETE_HEAD, DELETE_TAIL, REVERSE, SEARCH, INSERT/DELETE/UPDATE ${listName}[i], and pointer code (curr = curr.next, prev.next = ..., NEW_NODE, FREE).`
-              );
-            }
+          if (listName && this.linkedListProgram.isList(this.llContext(), listName)) {
+            this.linkedListEngine.execute(this.llContext(), gen);
             break;
           }
           
@@ -1393,37 +1060,17 @@ export class AnimationController {
             break;
           }
 
-          if (actionName === 'INSERT') {
-            const arrayContext: AlgorithmContext = {
-              scheduler: this.animationScheduler,
-              sceneManager: this.sceneManager,
-              layoutManager: this.layoutManager,
-              eventDispatcher: this.eventDispatcher,
-              stateManager: this.stateManager,
-              relationshipManager: this.relationshipManager,
-              activeTreeName: this.activeTreeName,
-              defaultColor: this.defaultColor
-            };
-            this.arrayEngine.insert(arrayContext, gen);
+          const ctx = this.algorithmContext();
+          if (['INSERT', 'DELETE', 'UPDATE'].includes(actionName) && this.arrayEngine.targetsSlot(ctx, gen)) {
+            this.arrayEngine.execute(ctx, gen);
+          } else if (actionName === 'INSERT') {
+            // A bare INSERT that addresses no array slot has nothing to animate.
           } else if (actionName === 'DELETE') {
             let targetEl = gen.targetId ? this.sceneManager.getElement(gen.targetId) as any : null;
             if (!targetEl && gen.args && gen.args.length > 0) {
               targetEl = this.sceneManager.getElement(String(gen.args[0])) as any;
             }
-
-            const arrayContext: AlgorithmContext = {
-              scheduler: this.animationScheduler,
-              sceneManager: this.sceneManager,
-              layoutManager: this.layoutManager,
-              eventDispatcher: this.eventDispatcher,
-              stateManager: this.stateManager,
-              relationshipManager: this.relationshipManager,
-              activeTreeName: this.activeTreeName,
-              defaultColor: this.defaultColor
-            };
-            const handledByArrayEngine = this.arrayEngine.delete(arrayContext, gen);
-
-            if (!handledByArrayEngine && targetEl && targetEl.originalType === 'TREE_NODE') {
+            if (targetEl && targetEl.originalType === 'TREE_NODE') {
               const edges = this.sceneManager.getSceneGraph().filter((el: any) => el.type === 'edge' && (el.sourceId === targetEl.id || el.targetId === targetEl.id));
               
               this.animationScheduler.enqueue({
@@ -1454,70 +1101,11 @@ export class AnimationController {
             if (!targetEl && gen.args && gen.args.length > 0) {
               targetEl = this.sceneManager.getElement(String(gen.args[0])) as any;
             }
-            if (targetEl) {
-              AnticipationAnimation.applyAnticipation(this.animationScheduler, [targetEl], 'UPDATE');
-              const newValue = gen.args?.[gen.args.length - 1];
-              const modifyingToken = getSemanticColorToken('MODIFYING');
-              targetEl.state = 'MODIFYING';
-              targetEl.color = modifyingToken.color;
-              targetEl.emissiveColor = modifyingToken.emissiveColor;
-              targetEl.emissiveIntensity = modifyingToken.emissiveIntensity;
-
-              this.animationScheduler.enqueue({
-                targets: targetEl,
-                color: modifyingToken.color,
-                emissiveColor: modifyingToken.emissiveColor,
-                emissiveIntensity: modifyingToken.emissiveIntensity,
-                duration: 300,
-                easing: 'easeOutExpo'
-              });
-              this.animationScheduler.enqueue({
-                targets: targetEl.scale,
-                x: 1.2, y: 1.2, z: 1.2,
-                duration: 300,
-                easing: 'easeOutExpo'
-              });
-              this.animationScheduler.commitGroup(true);
-              
-              this.animationScheduler.enqueue({
-                targets: targetEl.scale,
-                x: 1, y: 1, z: 1,
-                duration: 300,
-                easing: 'easeInOutQuad',
-                complete: () => {
-                  targetEl.value = newValue;
-                  this.stateManager.saveState(this.sceneManager.getSceneGraph(), `Updated value to ${newValue}`, this.animationScheduler.getCurrentTime());
-                  this.eventDispatcher.dispatch('STATE_UPDATED', this.stateManager.getCurrentState());
-                  this.eventDispatcher.dispatch('RUNTIME_LOG', {
-                    keyword: 'UPDATE',
-                    message: `Updated value of element to ${newValue}.`,
-                    kind: 'operation',
-                    timestamp: Date.now(),
-                  });
-                }
-              });
-              this.animationScheduler.commitSequential();
-            }
+            if (targetEl) this.primitives.set(ctx, targetEl, gen.args?.[gen.args.length - 1]);
           } else if (actionName === 'DISCONNECT') {
             const sourceId = gen.args[0];
             const targetId = gen.args[1];
-            if (typeof sourceId === 'string' && typeof targetId === 'string') {
-              const allEls = this.sceneManager.getSceneGraph();
-              const edgeToRemove = allEls.find((el: any) => el.type === 'edge' && el.sourceId === sourceId && el.targetId === targetId);
-              if (edgeToRemove) {
-                this.animationScheduler.enqueue({
-                  targets: {},
-                  duration: 1,
-                  complete: () => {
-                    this.sceneManager.removeElement(edgeToRemove.id);
-                    this.stateManager.saveState(this.sceneManager.getSceneGraph(), `Disconnected ${sourceId} from ${targetId}`, this.animationScheduler.getCurrentTime());
-                    this.eventDispatcher.dispatch('STATE_UPDATED', this.stateManager.getCurrentState());
-                  }
-                });
-                this.animationScheduler.commitGroup(true);
-                this.animationScheduler.advanceCursor(300);
-              }
-            }
+            if (typeof sourceId === 'string' && typeof targetId === 'string') this.primitives.unlink(ctx, sourceId, targetId);
           } else if (actionName === 'TREE' || actionName === 'BINARY_TREE' || actionName === 'BST') {
             this.activeTreeName = gen.args[0];
             this.activeTreeIsBST = (actionName === 'BST');
@@ -3161,74 +2749,9 @@ export class AnimationController {
           break;
         }
 
-        case 'LINK_OBJECTS': {
-          const link = instruction as LinkObjectsInstruction;
-          const sourceEl = this.sceneManager.getElement(link.sourceId) as any;
-          const targetEl = this.sceneManager.getElement(link.targetId) as any;
-          
-          if (sourceEl && targetEl) {
-            const edgeId = `edge_${link.sourceId}_${link.targetId}`;
-            const parent = sourceEl.logicalParent || targetEl.logicalParent;
-            
-            if (!this.sceneManager.getElement(edgeId)) {
-              const newEdge: any = {
-                id: edgeId,
-                type: 'edge',
-                position: { x: sourceEl.position.x, y: sourceEl.position.y, z: sourceEl.position.z },
-                scale: { x: 1, y: 1, z: 1 },
-                color: '#888888',
-                emissiveIntensity: 0,
-                emissiveColor: '#888888',
-                sourceId: link.sourceId,
-                targetId: link.targetId,
-                directed: link.directed,
-                relationType: link.relationType,
-                logicalParent: parent,
-                originalType: 'EDGE'
-              };
-              this.sceneManager.addElement(newEdge);
-              
-              this.relationshipManager.addRelationship({
-                id: edgeId,
-                sourceId: link.sourceId,
-                targetId: link.targetId,
-                type: 'edge',
-                directed: link.directed,
-                relationType: link.relationType
-              });
-
-              // Synchronous layout update
-              this.layoutManager.updateLayout(this.sceneManager.getSceneGraph());
-
-              // Animate all elements in the parent structure to their new positions
-              const allEls = this.sceneManager.getSceneGraph().filter(el => el.logicalParent === parent && el.originalType !== 'EDGE');
-              allEls.forEach(el => {
-                if ((el as any).worldTarget) {
-                  this.animationScheduler.enqueue({
-                    targets: el.position,
-                    x: (el as any).worldTarget.x,
-                    y: (el as any).worldTarget.y,
-                    z: (el as any).worldTarget.z,
-                    duration: 500,
-                    easing: 'easeOutCubic'
-                  });
-                }
-              });
-              this.animationScheduler.commitGroup(true);
-
-              this.animationScheduler.enqueue({
-                targets: {},
-                duration: 1,
-                complete: () => {
-                  this.stateManager.saveState(this.sceneManager.getSceneGraph(), `Linked ${link.sourceId} to ${link.targetId}`, this.animationScheduler.getCurrentTime());
-                  this.eventDispatcher.dispatch('STATE_UPDATED', this.stateManager.getCurrentState());
-                }
-              });
-              this.animationScheduler.commitSequential();
-            }
-          }
+        case 'LINK_OBJECTS':
+          this.primitives.link(this.algorithmContext(), instruction as LinkObjectsInstruction);
           break;
-        }
 
         case 'SET_STATE':
           console.warn(`[AnimationController] ${instruction.action} is not fully ported to sequential testing yet.`);
@@ -3246,1162 +2769,6 @@ export class AnimationController {
       }
 
       this.animationScheduler.play();
-    });
-  }
-
-  public buildAnimations(instructions: AQIRInstruction[]): void {
-    this.animationScheduler.init();
-    
-    const animCtx: AnimationContext = {
-      scheduler: this.animationScheduler,
-      sceneManager: this.sceneManager,
-      layoutManager: this.layoutManager
-    };
-
-    // Create a virtual graph to simulate structural changes during timeline building
-    const virtualGraph = JSON.parse(JSON.stringify(this.sceneManager.getSceneGraph()));
-
-    instructions.forEach((instruction, idx) => {
-      if (DEBUG_ANIMATION) console.log(`[AnimationController] Executing instruction [${idx}]:`, JSON.stringify(instruction));
-
-      switch (instruction.action) {
-        case 'SWAP_OBJECTS': {
-          const swp = instruction as SwapObjectsInstruction;
-          const vLeftEl = virtualGraph.find((el: any) => el.id === swp.leftId);
-          const vRightEl = virtualGraph.find((el: any) => el.id === swp.rightId);
-          
-          if (vLeftEl && vRightEl) {
-            const logicalParent = vLeftEl.logicalParent;
-            const leftIndex = vLeftEl.logicalIndex;
-            const rightIndex = vRightEl.logicalIndex;
-            
-            // Find all instances in virtual graph
-            const vAllLeftEls = this.sceneManager.getSceneGraph().filter((el: any) => el.logicalParent === logicalParent && el.logicalIndex === leftIndex);
-            const vAllRightEls = this.sceneManager.getSceneGraph().filter((el: any) => el.logicalParent === logicalParent && el.logicalIndex === rightIndex);
-            
-            // Map to actual elements
-            const allLeftEls = vAllLeftEls.map((el: any) => this.sceneManager.getElement(el.id)).filter(Boolean) as any[];
-            const allRightEls = vAllRightEls.map((el: any) => this.sceneManager.getElement(el.id)).filter(Boolean) as any[];
-
-            // Synchronously update virtualGraph for subsequent instructions
-            vAllLeftEls.forEach((el: any) => el.logicalIndex = rightIndex);
-            vAllRightEls.forEach((el: any) => el.logicalIndex = leftIndex);
-
-            // 1. Highlight, lift, and detach to animation layer
-            this.animationScheduler.enqueue({
-              targets: {},
-              duration: 1,
-              complete: () => {
-                [...allLeftEls, ...allRightEls].forEach(el => {
-                  el.animationLayer = true;
-                });
-              }
-            });
-            this.animationScheduler.commitGroup(true);
-
-            this.animationScheduler.enqueue({
-              targets: [...allLeftEls, ...allRightEls],
-              color: '#4caf50',
-              emissiveColor: '#4caf50',
-              emissiveIntensity: 0.8,
-              duration: 300,
-              easing: 'easeOutExpo'
-            });
-
-            this.animationScheduler.enqueue({
-              targets: [...allLeftEls.map(el => el.scale), ...allRightEls.map(el => el.scale)],
-              x: 1.1, y: 1.1, z: 1.1,
-              duration: 300,
-              easing: 'easeOutExpo'
-            });
-
-            this.animationScheduler.enqueue({
-              targets: [...allLeftEls.map(el => el.position), ...allRightEls.map(el => el.position)],
-              y: (el: any, i: number, l: number) => el.y + 1.8,
-              duration: 300,
-              easing: 'easeOutExpo'
-            });
-            this.animationScheduler.commitGroup(true);
-
-            // 2. Pause briefly
-            this.animationScheduler.advanceCursor(200);
-
-            // 3. Swap logical indices and compute new layout targets
-            this.animationScheduler.enqueue({
-              targets: {},
-              duration: 1,
-              complete: () => {
-                allLeftEls.forEach(el => { el.logicalIndex = rightIndex; el.animationLayer = false; });
-                allRightEls.forEach(el => { el.logicalIndex = leftIndex; el.animationLayer = false; });
-                
-                // Get the new layout targets
-                this.layoutManager.updateLayout(this.sceneManager.getSceneGraph());
-
-                // Restore animation layer state so they don't snap
-                allLeftEls.forEach(el => el.animationLayer = true);
-                allRightEls.forEach(el => el.animationLayer = true);
-              }
-            });
-            this.animationScheduler.commitGroup(true);
-
-            // 4. Move horizontally to new world targets
-            this.animationScheduler.enqueue({
-              targets: {},
-              duration: 1,
-              complete: () => {
-                allLeftEls.forEach(el => {
-                  if (el.worldTarget) {
-                    this.animationScheduler.enqueue({
-                      targets: el.position,
-                      x: el.worldTarget.x,
-                      z: el.worldTarget.z + 1.5,
-                      duration: 600,
-                      easing: 'easeInOutSine'
-                    });
-                  }
-                });
-
-                allRightEls.forEach(el => {
-                  if (el.worldTarget) {
-                    this.animationScheduler.enqueue({
-                      targets: el.position,
-                      x: el.worldTarget.x,
-                      z: el.worldTarget.z - 1.5,
-                      duration: 600,
-                      easing: 'easeInOutSine'
-                    });
-                  }
-                });
-                this.animationScheduler.commitGroup(true);
-              }
-            });
-            this.animationScheduler.commitSequential();
-
-            // 5. Lower to new world positions
-            this.animationScheduler.enqueue({
-              targets: {},
-              duration: 1,
-              complete: () => {
-                [...allLeftEls, ...allRightEls].forEach(el => {
-                  if (el.worldTarget) {
-                    this.animationScheduler.enqueue({
-                      targets: el.position,
-                      y: el.worldTarget.y,
-                      z: el.worldTarget.z,
-                      duration: 350,
-                      easing: 'easeOutBounce'
-                    });
-                  }
-                });
-                this.animationScheduler.commitGroup(true);
-              }
-            });
-            this.animationScheduler.commitSequential();
-
-            // 6. Snap, save state, remove highlight
-            this.animationScheduler.enqueue({
-              targets: {},
-              duration: 1,
-              complete: () => {
-                [...allLeftEls, ...allRightEls].forEach(el => {
-                  el.animationLayer = false;
-                });
-                
-                this.layoutManager.updateLayout(this.sceneManager.getSceneGraph());
-
-                const lVal = allLeftEls[0]?.value ?? swp.leftId;
-                const rVal = allRightEls[0]?.value ?? swp.rightId;
-                const lIdx = vRightEl.logicalIndex; // after swap, left is now at right's old index
-                const rIdx = vLeftEl.logicalIndex;  // and right is at left's old index
-                this.stateManager.saveState(this.sceneManager.getSceneGraph(), `Swapped ${swp.leftId} and ${swp.rightId}`, this.animationScheduler.getCurrentTime());
-                this.eventDispatcher.dispatch('STATE_UPDATED', this.stateManager.getCurrentState());
-                this.eventDispatcher.dispatch('RUNTIME_LOG', {
-                  keyword: 'SWAP',
-                  message: `Swapped [${lIdx}] (${lVal}) ↔ [${rIdx}] (${rVal})`,
-                  kind: 'swap',
-                  timestamp: Date.now(),
-                });
-              }
-            });
-            this.animationScheduler.commitGroup(true);
-
-            this.animationScheduler.enqueue({
-              targets: [...allLeftEls, ...allRightEls],
-              color: this.defaultColor,
-              emissiveIntensity: 0,
-              duration: 300,
-              easing: 'easeInOutQuad'
-            });
-
-            this.animationScheduler.enqueue({
-              targets: [...allLeftEls.map(el => el.scale), ...allRightEls.map(el => el.scale)],
-              x: 1, y: 1, z: 1,
-              duration: 300,
-              easing: 'easeInOutQuad'
-            });
-            this.animationScheduler.commitGroup(true);
-          }
-          break;
-        }
-
-        case 'COMPARE_OBJECTS': {
-          const cmp = instruction as CompareObjectsInstruction;
-          const leftEl = this.sceneManager.getElement(this.resolveElementId(cmp.leftId)) as any;
-          const rightEl = this.sceneManager.getElement(this.resolveElementId(cmp.rightId)) as any;
-          
-          if (leftEl && rightEl) {
-            // Highlight, scale up, lift, emissive glow
-            this.animationScheduler.enqueue({
-              targets: [leftEl, rightEl],
-              color: '#ffeb3b',
-              emissiveColor: '#ffeb3b',
-              emissiveIntensity: 0.5,
-              duration: 400,
-              easing: 'easeOutExpo',
-              complete: () => {
-                const lVal = leftEl.value ?? leftEl.id;
-                const rVal = rightEl.value ?? rightEl.id;
-                const lIdx = leftEl.logicalIndex !== undefined ? leftEl.logicalIndex : leftEl.id;
-                const rIdx = rightEl.logicalIndex !== undefined ? rightEl.logicalIndex : rightEl.id;
-                const cmpSymbol = lVal < rVal ? '<' : lVal > rVal ? '>' : '=';
-                const cmpWord = lVal < rVal ? 'less than' : lVal > rVal ? 'greater than' : 'equal to';
-                this.eventDispatcher.dispatch('RUNTIME_LOG', {
-                  keyword: 'COMPARE',
-                  message: `Comparing [${lIdx}]=${lVal} vs [${rIdx}]=${rVal}\n${lVal} ${cmpSymbol} ${rVal}  (${lVal} is ${cmpWord} ${rVal})`,
-                  kind: 'compare',
-                  timestamp: Date.now(),
-                });
-              }
-            });
-
-            this.animationScheduler.enqueue({
-              targets: [leftEl.scale, rightEl.scale],
-              x: 1.15, y: 1.15, z: 1.15,
-              duration: 400,
-              easing: 'easeOutExpo'
-            });
-
-            this.animationScheduler.enqueue({
-              targets: [leftEl.position, rightEl.position],
-              y: '+=0.3',
-              duration: 400,
-              easing: 'easeOutExpo'
-            });
-            this.animationScheduler.commitGroup(true);
-
-            // Pause briefly
-            this.animationScheduler.advanceCursor(300);
-
-            // Return to normal
-            this.animationScheduler.enqueue({
-              targets: [leftEl, rightEl],
-              color: this.defaultColor,
-              emissiveIntensity: 0,
-              duration: 300,
-              easing: 'easeInOutQuad'
-            });
-
-            this.animationScheduler.enqueue({
-              targets: [leftEl.scale, rightEl.scale],
-              x: 1, y: 1, z: 1,
-              duration: 300,
-              easing: 'easeInOutQuad'
-            });
-
-            this.animationScheduler.enqueue({
-              targets: [leftEl.position, rightEl.position],
-              y: '-=0.3',
-              duration: 300,
-              easing: 'easeInOutQuad'
-            });
-            this.animationScheduler.commitGroup(true);
-
-            this.animationScheduler.enqueue({
-              targets: {},
-              duration: 1,
-              complete: () => {
-                this.stateManager.saveState(this.sceneManager.getSceneGraph(), `Compared ${cmp.leftId} and ${cmp.rightId}`, this.animationScheduler.getCurrentTime());
-                this.eventDispatcher.dispatch('STATE_UPDATED', this.stateManager.getCurrentState());
-              }
-            });
-            this.animationScheduler.commitSequential();
-          }
-          break;
-        }
-        case 'HIGHLIGHT_OBJECT': {
-          const hl = instruction as HighlightObjectInstruction;
-          const targetEl = this.sceneManager.getElement(this.resolveElementId(hl.targetId)) as any;
-          if (targetEl) {
-            this.animationScheduler.enqueue({
-              targets: targetEl,
-              color: hl.color,
-              emissiveColor: hl.color,
-              emissiveIntensity: 0.3,
-              duration: 400,
-              complete: () => {
-                const idx = targetEl.logicalIndex !== undefined ? `[${targetEl.logicalIndex}]` : '';
-                const val = targetEl.value !== undefined ? targetEl.value : targetEl.id;
-                this.eventDispatcher.dispatch('RUNTIME_LOG', {
-                  keyword: 'HIGHLIGHT',
-                  message: `Highlighted ${targetEl.logicalParent || ''}${idx} — value: ${val}`,
-                  kind: 'step',
-                  timestamp: Date.now(),
-                });
-              }
-            });
-            this.animationScheduler.commitGroup(true);
-          }
-          break;
-        }
-        case 'WAIT': {
-          this.animationScheduler.advanceCursor(800);
-          break;
-        }
-        case 'LINK_OBJECTS': {
-          const link = instruction as LinkObjectsInstruction;
-          const sourceEl = this.sceneManager.getElement(link.sourceId) as any;
-          const targetEl = this.sceneManager.getElement(link.targetId) as any;
-          
-          if (sourceEl && targetEl) {
-            const edgeId = `edge_${link.sourceId}_${link.targetId}`;
-            const parent = sourceEl.logicalParent || targetEl.logicalParent;
-            
-            // Update virtual graph immediately for future layout calculations
-            if (!virtualGraph.find((el: any) => el.id === edgeId)) {
-              virtualGraph.push({
-                id: edgeId,
-                type: 'edge',
-                position: { x: 0, y: 0, z: 0 },
-                scale: { x: 1, y: 1, z: 1 },
-                sourceId: link.sourceId,
-                targetId: link.targetId,
-                directed: link.directed,
-                relationType: link.relationType,
-                logicalParent: parent,
-                originalType: 'EDGE'
-              });
-            }
-
-            this.animationScheduler.enqueue({
-              targets: {},
-              duration: 1,
-              complete: () => {
-                if (!this.sceneManager.getElement(edgeId)) {
-                  const newEdge: any = {
-                    id: edgeId,
-                    type: 'edge',
-                    position: { x: 0, y: 0, z: 0 },
-                    scale: { x: 1, y: 1, z: 1 },
-                    color: '#888888',
-                    emissiveIntensity: 0,
-                    emissiveColor: '#888888',
-                    sourceId: link.sourceId,
-                    targetId: link.targetId,
-                    directed: link.directed,
-                    relationType: link.relationType,
-                    logicalParent: parent,
-                    originalType: 'EDGE'
-                  };
-                  this.lifecycleManager.spawn(newEdge, true);
-                  
-                  this.relationshipManager.addRelationship({
-                    id: edgeId,
-                    sourceId: link.sourceId,
-                    targetId: link.targetId,
-                    type: 'edge',
-                    directed: link.directed,
-                    relationType: link.relationType
-                  });
-                  
-                  this.lifecycleManager.activate(edgeId);
-
-                  this.stateManager.saveState(this.sceneManager.getSceneGraph(), `Linked ${link.sourceId} and ${link.targetId}`, this.animationScheduler.getCurrentTime());
-                  this.eventDispatcher.dispatch('STATE_UPDATED', this.stateManager.getCurrentState());
-                }
-              }
-            });
-            this.animationScheduler.commitGroup(true);
-
-            // Trigger relayout automatically upon linking using virtualGraph
-            const layoutMap = this.layoutManager.updateLayout(virtualGraph);
-            layoutMap.forEach((pos, id) => {
-              const el = this.sceneManager.getElement(id) as any;
-              const vEl = virtualGraph.find((e: any) => e.id === id);
-              if (vEl) {
-                // Update virtual graph position
-                vEl.position.x = pos.x;
-                vEl.position.y = pos.y;
-                vEl.position.z = pos.z;
-                
-                // Enqueue animation for the real element
-                if (el) {
-                  this.animationScheduler.enqueue({
-                    targets: el.position,
-                    x: pos.x, y: pos.y, z: pos.z,
-                    duration: 500, easing: 'easeInOutQuad'
-                  });
-                }
-              }
-            });
-            this.animationScheduler.commitGroup(true);
-            
-            // Brief pause to show connection
-            this.animationScheduler.advanceCursor(400);
-          }
-          break;
-        }
-        case 'GENERIC_ACTION': {
-          const gen = instruction as GenericActionInstruction;
-          if (DEBUG_ANIMATION) console.log(`[Runtime] Executing generic action: ${gen.actionName}`, gen.args);
-          
-          if (gen.actionName === 'VISIT' || gen.actionName === 'MARK') {
-            const targetId = gen.args[0];
-            const targetEl = this.sceneManager.getElement(targetId) as any;
-            if (targetEl) {
-              const color = gen.actionName === 'MARK' ? '#ff9800' : '#4caf50';
-              this.animationScheduler.enqueue({
-                targets: targetEl,
-                color: color,
-                emissiveColor: color,
-                emissiveIntensity: 0.6,
-                duration: 400
-              });
-              this.animationScheduler.commitGroup(true);
-              
-              this.animationScheduler.enqueue({
-                targets: targetEl.scale,
-                x: 1.15, y: 1.15, z: 1.15,
-                duration: 200,
-              });
-              this.animationScheduler.commitSequential(); // scale up
-              
-              this.animationScheduler.enqueue({
-                targets: targetEl.scale,
-                x: 1, y: 1, z: 1,
-                duration: 200,
-              });
-              this.animationScheduler.commitSequential(); // scale down
-            }
-          } else if (gen.actionName === 'INSERT') {
-            const arrName = gen.args[0];
-            const index = gen.args[1];
-            const val = gen.args[2];
-            
-            const isLinkedList = virtualGraph.some((el: any) => el.logicalParent === arrName && el.originalType === 'LINKEDLIST_NODE');
-            
-            const newId = `obj_${arrName}_new_${Date.now()}`;
-            const newEl: any = {
-              id: newId,
-              type: 'box',
-              value: val,
-              logicalIndex: index,
-              logicalParent: arrName,
-              originalType: isLinkedList ? 'LINKEDLIST_NODE' : 'ARRAY_ELEMENT',
-              position: { x: index * 1.5, y: 3, z: 0 },
-              scale: { x: 1, y: 1, z: 1 },
-              color: '#4caf50',
-              emissiveIntensity: 0.5,
-              emissiveColor: '#4caf50',
-              lifecycleState: 'ACTIVE',
-              visible: true,
-              opacity: 0,
-              animationLayer: true
-            };
-            
-            // Shift logical indices in virtual graph
-            virtualGraph.forEach((el: any) => {
-              if (el.logicalParent === arrName && el.logicalIndex >= index) {
-                el.logicalIndex++;
-              }
-            });
-            virtualGraph.push(newEl);
-            
-            // Find previous and next node if linked list
-            let prevNode: any = null;
-            let nextNode: any = null;
-            let edgeToRemove: any = null;
-            
-            if (isLinkedList) {
-              prevNode = virtualGraph.find((el: any) => el.logicalParent === arrName && el.logicalIndex === index - 1);
-              nextNode = virtualGraph.find((el: any) => el.logicalParent === arrName && el.logicalIndex === index + 1); // it was already shifted
-              
-              if (prevNode && nextNode) {
-                edgeToRemove = virtualGraph.find((el: any) => el.type === 'edge' && el.logicalParent === arrName && el.sourceId === prevNode.id && el.targetId === nextNode.id);
-                if (edgeToRemove) {
-                  const idx = virtualGraph.indexOf(edgeToRemove);
-                  if (idx >= 0) virtualGraph.splice(idx, 1);
-                }
-              }
-              
-              if (prevNode) {
-                virtualGraph.push({
-                  id: `edge_${prevNode.id}_${newId}`,
-                  type: 'edge',
-                  sourceId: prevNode.id,
-                  targetId: newId,
-                  directed: true,
-                  logicalParent: arrName,
-                  originalType: 'EDGE',
-                  color: '#888888', visible: true, opacity: 1,
-                  position: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 }
-                });
-              }
-              if (nextNode) {
-                virtualGraph.push({
-                  id: `edge_${newId}_${nextNode.id}`,
-                  type: 'edge',
-                  sourceId: newId,
-                  targetId: nextNode.id,
-                  directed: true,
-                  logicalParent: arrName,
-                  originalType: 'EDGE',
-                  color: '#888888', visible: true, opacity: 1,
-                  position: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 }
-                });
-              }
-            }
-
-            // Reserve the slot for the incoming element
-            this.layoutManager.reserveSlot(arrName, index);
-            
-            if (isLinkedList) {
-              this.animationScheduler.enqueue({
-                targets: {}, duration: 1, complete: () => {
-                  this.eventDispatcher.dispatch('RUNTIME_LOG', {
-                    keyword: 'TRAVERSAL',
-                    message: `Traversing to position ${index}...`,
-                    kind: 'traversal',
-                    timestamp: Date.now(),
-                  });
-                }
-              });
-              this.animationScheduler.commitSequential();
-            }
-
-            this.animationScheduler.enqueue({
-              targets: {},
-              duration: 1,
-              complete: () => {
-                // Also shift logical indices in real graph before spawning
-                this.sceneManager.getSceneGraph().forEach((el: any) => {
-                  if (el.logicalParent === arrName && el.logicalIndex >= index && el.type !== 'edge') {
-                    el.logicalIndex++;
-                  }
-                });
-                
-                if (edgeToRemove) {
-                   this.lifecycleManager.remove(edgeToRemove.id);
-                   this.lifecycleManager.destroy(edgeToRemove.id);
-                }
-                
-                this.lifecycleManager.spawn(newEl, true);
-                this.lifecycleManager.activate(newId);
-                
-                if (isLinkedList) {
-                  if (prevNode) {
-                    const e: any = {
-                      id: `edge_${prevNode.id}_${newId}`, type: 'edge', sourceId: prevNode.id, targetId: newId,
-                      directed: true, logicalParent: arrName, originalType: 'EDGE',
-                      color: '#888888', visible: true, opacity: 1,
-                      emissiveIntensity: 0, emissiveColor: '#000000', lifecycleState: 'ACTIVE',
-                      position: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 }
-                    };
-                    this.lifecycleManager.spawn(e, true);
-                  }
-                  if (nextNode) {
-                    const e: any = {
-                      id: `edge_${newId}_${nextNode.id}`, type: 'edge', sourceId: newId, targetId: nextNode.id,
-                      directed: true, logicalParent: arrName, originalType: 'EDGE',
-                      color: '#888888', visible: true, opacity: 1,
-                      emissiveIntensity: 0, emissiveColor: '#000000', lifecycleState: 'ACTIVE',
-                      position: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 }
-                    };
-                    this.lifecycleManager.spawn(e, true);
-                  }
-                }
-              }
-            });
-            this.animationScheduler.commitGroup(true);
-            
-            // Re-layout immediately so they slide open
-            this.animationScheduler.enqueue({
-              targets: {},
-              duration: 1,
-              complete: () => {
-                const layoutMap = this.layoutManager.updateLayout(virtualGraph);
-                layoutMap.forEach((pos, id) => {
-                  const targetEl = this.sceneManager.getElement(id) as any;
-                  const vEl = virtualGraph.find((e: any) => e.id === id);
-                  if (vEl) {
-                    vEl.position.x = pos.x;
-                    vEl.position.y = pos.y;
-                    vEl.position.z = pos.z;
-                    if (targetEl && id !== newId) {
-                      this.animationScheduler.enqueue({
-                        targets: targetEl.position,
-                        x: pos.x, y: pos.y, z: pos.z,
-                        duration: 400,
-                        easing: 'easeInOutQuad'
-                      });
-                    }
-                  }
-                });
-                this.animationScheduler.commitGroup(true);
-              }
-            });
-            this.animationScheduler.commitSequential();
-            
-            // Fade in new element
-            this.animationScheduler.enqueue({
-              targets: {},
-              duration: 1,
-              complete: () => {
-                const targetEl = this.sceneManager.getElement(newId) as any;
-                if (targetEl) {
-                  const layoutMap = this.layoutManager.updateLayout(this.sceneManager.getSceneGraph());
-                  const finalPos = layoutMap.get(newId) || { x: 0, y: 0, z: 0 };
-                  
-                  targetEl.position.x = finalPos.x;
-                  targetEl.position.y = finalPos.y + 1.8; // start above
-                  targetEl.position.z = finalPos.z;
-                  
-                  this.animationScheduler.enqueue({
-                    targets: targetEl.position,
-                    y: finalPos.y,
-                    duration: 400,
-                    easing: 'easeOutBack'
-                  });
-                  this.animationScheduler.enqueue({
-                    targets: targetEl,
-                    opacity: 1,
-                    duration: 400,
-                  });
-                  this.animationScheduler.commitGroup(true);
-                }
-              }
-            });
-            this.animationScheduler.commitSequential();
-
-            // Finish up
-            this.animationScheduler.enqueue({
-              targets: {},
-              duration: 1,
-              complete: () => {
-                const targetEl = this.sceneManager.getElement(newId) as any;
-                if (targetEl) targetEl.animationLayer = false;
-                this.layoutManager.freeSlot(arrName, index);
-                this.layoutManager.updateLayout(this.sceneManager.getSceneGraph());
-                if (isLinkedList) {
-                  this.eventDispatcher.dispatch('RUNTIME_LOG', {
-                    keyword: 'INSERT',
-                    message: `Inserted value ${val} at position ${index} in "${arrName}".\nUpdating links to include new node.\nInsertion complete.`,
-                    kind: 'operation',
-                    timestamp: Date.now(),
-                  });
-                } else {
-                  this.eventDispatcher.dispatch('RUNTIME_LOG', {
-                    keyword: 'INSERT',
-                    message: `Inserted value ${val} at index ${index} in "${arrName}".\nElements to the right shifted one position forward.\nInsertion complete.`,
-                    kind: 'operation',
-                    timestamp: Date.now(),
-                  });
-                }
-              }
-            });
-            this.animationScheduler.commitGroup(true);
-            this.animationScheduler.advanceCursor(600);
-
-          } else if (gen.actionName === 'DELETE') {
-            const arrName = gen.args[0];
-            const index = gen.args[1];
-            
-            // Find the element at that index
-            const vElIdx = virtualGraph.findIndex((el: any) => el.logicalParent === arrName && el.logicalIndex === index);
-            if (vElIdx >= 0) {
-              const targetId = virtualGraph[vElIdx].id;
-              const isLinkedList = virtualGraph[vElIdx].originalType === 'LINKEDLIST_NODE';
-              
-              const targetEl = this.sceneManager.getElement(targetId) as any;
-              if (targetEl) {
-                if (isLinkedList) {
-                  this.animationScheduler.enqueue({
-                    targets: {}, duration: 1, complete: () => {
-                      this.eventDispatcher.dispatch('RUNTIME_LOG', {
-                        keyword: 'TRAVERSAL',
-                        message: `Traversing to find node at position ${index}...`,
-                        kind: 'traversal',
-                        timestamp: Date.now(),
-                      });
-                    }
-                  });
-                  this.animationScheduler.commitSequential();
-                }
-
-                this.animationScheduler.enqueue({
-                  targets: targetEl,
-                  color: '#f44336',
-                  emissiveColor: '#f44336',
-                  emissiveIntensity: 0.8,
-                  opacity: 0,
-                  duration: 400
-                });
-                this.animationScheduler.enqueue({
-                  targets: targetEl.scale,
-                  x: 0, y: 0, z: 0,
-                  duration: 400,
-                  easing: 'easeInBack'
-                });
-                this.animationScheduler.commitGroup(true);
-              }
-              
-              let edgesToRemove: any[] = [];
-              let newEdge: any = null;
-              
-              if (isLinkedList) {
-                const prevNode = virtualGraph.find((el: any) => el.logicalParent === arrName && el.logicalIndex === index - 1);
-                const nextNode = virtualGraph.find((el: any) => el.logicalParent === arrName && el.logicalIndex === index + 1);
-                
-                // Find edges connected to the target
-                edgesToRemove = this.sceneManager.getSceneGraph().filter((el: any) => el.type === 'edge' && el.logicalParent === arrName && (el.sourceId === targetId || el.targetId === targetId));
-                
-                // Remove them from virtual graph
-                edgesToRemove.forEach(edge => {
-                  const idx = virtualGraph.indexOf(edge);
-                  if (idx >= 0) virtualGraph.splice(idx, 1);
-                });
-                
-                // If there's a prev and next, connect them directly
-                if (prevNode && nextNode) {
-                  newEdge = {
-                    id: `edge_${prevNode.id}_${nextNode.id}`,
-                    type: 'edge',
-                    sourceId: prevNode.id,
-                    targetId: nextNode.id,
-                    directed: true,
-                    logicalParent: arrName,
-                    originalType: 'EDGE',
-                    color: '#888888', visible: true, opacity: 1,
-                    emissiveIntensity: 0, emissiveColor: '#000000', lifecycleState: 'ACTIVE',
-                    position: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 }
-                  };
-                  virtualGraph.push(newEdge);
-                }
-              }
-              
-              // Shift indices down
-              const elToDel = virtualGraph[vElIdx];
-              virtualGraph.splice(vElIdx, 1);
-              virtualGraph.forEach((el: any) => {
-                if (el.logicalParent === arrName && el.logicalIndex > index && el.type !== 'edge') {
-                  el.logicalIndex--;
-                }
-              });
-              
-              this.animationScheduler.enqueue({
-                targets: {},
-                duration: 1,
-                complete: () => {
-                  this.sceneManager.getSceneGraph().forEach((el: any) => {
-                    if (el.logicalParent === arrName && el.logicalIndex > index && el.type !== 'edge') {
-                      el.logicalIndex--;
-                    }
-                  });
-                  this.lifecycleManager.remove(targetId);
-                  this.lifecycleManager.destroy(targetId);
-                  
-                  if (isLinkedList) {
-                    edgesToRemove.forEach(edge => {
-                      this.lifecycleManager.remove(edge.id);
-                      this.lifecycleManager.destroy(edge.id);
-                    });
-                    if (newEdge) {
-                      this.lifecycleManager.spawn(newEdge, true);
-                    }
-                  }
-                }
-              });
-              this.animationScheduler.commitGroup(true);
-
-              // Relayout remaining
-              this.animationScheduler.enqueue({
-                targets: {},
-                duration: 1,
-                complete: () => {
-                  const layoutMap = this.layoutManager.updateLayout(virtualGraph);
-                  layoutMap.forEach((pos, id) => {
-                    const tel = this.sceneManager.getElement(id) as any;
-                    const vEl = virtualGraph.find((e: any) => e.id === id);
-                    if (vEl) {
-                      vEl.position.x = pos.x; vEl.position.y = pos.y; vEl.position.z = pos.z;
-                      if (tel) {
-                        this.animationScheduler.enqueue({
-                          targets: tel.position,
-                          x: pos.x, y: pos.y, z: pos.z,
-                          duration: 400, easing: 'easeInOutQuad'
-                        });
-                      }
-                    }
-                  });
-                  this.animationScheduler.commitGroup(true);
-                  if (isLinkedList) {
-                    this.eventDispatcher.dispatch('RUNTIME_LOG', {
-                      keyword: 'DELETE',
-                      message: `Deleted node at position ${index} from "${arrName}".\nUpdating adjacent links.\nDeletion complete.`,
-                      kind: 'operation',
-                      timestamp: Date.now(),
-                    });
-                  } else {
-                    this.eventDispatcher.dispatch('RUNTIME_LOG', {
-                      keyword: 'DELETE',
-                      message: `Deleted element at index ${index} from "${arrName}".\nElements to the right shifted one position back.\nDeletion complete.`,
-                      kind: 'operation',
-                      timestamp: Date.now(),
-                    });
-                  }
-                }
-              });
-              this.animationScheduler.commitSequential();
-              this.animationScheduler.advanceCursor(400);
-            }
-          } else if (gen.actionName === 'PUSH' || gen.actionName === 'POP' || gen.actionName === 'PEEK') {
-            const stackContext: StackAnimationContext = {
-              scheduler: this.animationScheduler,
-              sceneManager: this.sceneManager,
-              layoutManager: this.layoutManager,
-              eventDispatcher: this.eventDispatcher,
-              stateManager: this.stateManager,
-              relationshipManager: this.relationshipManager,
-              activeTreeName: this.activeTreeName,
-              defaultColor: this.defaultColor,
-              lifecycleManager: this.lifecycleManager
-            };
-            if (gen.actionName === 'PUSH') {
-              this.stackEngine.push(stackContext, gen, virtualGraph);
-            } else if (gen.actionName === 'POP') {
-              this.stackEngine.pop(stackContext, gen, virtualGraph);
-            } else {
-              this.stackEngine.peek(stackContext, gen);
-            }
-          } else if (gen.actionName === 'ENQUEUE' || gen.actionName === 'DEQUEUE' || gen.actionName === 'FRONT' || gen.actionName === 'REAR') {
-            const queueContext: QueueAnimationContext = {
-              scheduler: this.animationScheduler,
-              sceneManager: this.sceneManager,
-              layoutManager: this.layoutManager,
-              eventDispatcher: this.eventDispatcher,
-              stateManager: this.stateManager,
-              relationshipManager: this.relationshipManager,
-              activeTreeName: this.activeTreeName,
-              defaultColor: this.defaultColor,
-              lifecycleManager: this.lifecycleManager
-            };
-            if (gen.actionName === 'ENQUEUE') {
-              this.queueEngine.enqueue(queueContext, gen, virtualGraph);
-            } else if (gen.actionName === 'DEQUEUE') {
-              this.queueEngine.dequeue(queueContext, gen, virtualGraph);
-            } else {
-              this.queueEngine.peek(queueContext, gen);
-            }
-          } else if (gen.actionName === 'TRAVERSE' || gen.actionName === 'VISIT') {
-            const treeName = gen.args[0];
-            const arg1 = gen.args[1];
-            // E.g. TRAVERSE myTree[1] or TRAVERSE myTree 1
-            const targetEl = virtualGraph.find((el: any) => 
-               el.logicalParent === treeName && 
-               (el.logicalIndex === arg1 || el.label === `${treeName}[${arg1}]` || el.label === arg1)
-            ) || virtualGraph.find((el: any) => el.logicalParent === treeName && el.logicalIndex === parseInt(arg1));
-            
-            if (targetEl) {
-              const tel = this.sceneManager.getElement(targetEl.id) as any;
-              if (tel) {
-                this.animationScheduler.enqueue({
-                  targets: tel,
-                  emissiveColor: '#ffeb3b',
-                  emissiveIntensity: 0.8,
-                  duration: 200
-                });
-                this.animationScheduler.enqueue({
-                  targets: tel.scale,
-                  x: 1.1, y: 1.1, z: 1.1,
-                  duration: 200
-                });
-                this.animationScheduler.commitSequential();
-                
-                this.animationScheduler.enqueue({
-                  targets: tel,
-                  emissiveIntensity: 0,
-                  duration: 200
-                });
-                this.animationScheduler.enqueue({
-                  targets: tel.scale,
-                  x: 1, y: 1, z: 1,
-                  duration: 200
-                });
-                this.animationScheduler.commitSequential();
-                this.animationScheduler.advanceCursor(100);
-                this.animationScheduler.enqueue({
-                  targets: {},
-                  duration: 1,
-                  complete: () => {
-                    const visitVal = targetEl.value !== undefined ? targetEl.value : (targetEl.label || targetEl.id);
-                    const visitIdx = targetEl.logicalIndex !== undefined ? `[${targetEl.logicalIndex}]` : '';
-                    this.eventDispatcher.dispatch('RUNTIME_LOG', {
-                      keyword: 'VISIT',
-                      message: `Visiting ${treeName}${visitIdx} — value: ${visitVal}`,
-                      kind: 'traversal',
-                      timestamp: Date.now(),
-                    });
-                  }
-                });
-                this.animationScheduler.commitGroup(true);
-              }
-            }
-          } else if (gen.actionName === 'UPDATE') {
-            const arrName = gen.args[0];
-            const index = gen.args[1];
-            const val = gen.args[2];
-            
-            const vEl = virtualGraph.find((el: any) => el.logicalParent === arrName && el.logicalIndex === index);
-            if (vEl) {
-              const isLinkedList = vEl.originalType === 'LINKEDLIST_NODE';
-              const targetEl = this.sceneManager.getElement(vEl.id) as any;
-              if (targetEl) {
-                if (isLinkedList) {
-                  this.animationScheduler.enqueue({
-                    targets: {}, duration: 1, complete: () => {
-                      this.eventDispatcher.dispatch('RUNTIME_LOG', {
-                        keyword: 'TRAVERSAL',
-                        message: `Traversing to position ${index}...`,
-                        kind: 'traversal',
-                        timestamp: Date.now(),
-                      });
-                    }
-                  });
-                  this.animationScheduler.commitSequential();
-                }
-                const oldVal = targetEl.value;
-                this.animationScheduler.enqueue({
-                  targets: targetEl,
-                  color: '#9c27b0',
-                  emissiveColor: '#9c27b0',
-                  emissiveIntensity: 0.6,
-                  duration: 300
-                });
-                this.animationScheduler.enqueue({
-                  targets: targetEl.scale,
-                  x: 1.2, y: 1.2, z: 1.2,
-                  duration: 300
-                });
-                this.animationScheduler.commitGroup(true);
-                
-                this.animationScheduler.enqueue({
-                  targets: {},
-                  duration: 1,
-                  complete: () => { targetEl.value = val; vEl.value = val; }
-                });
-                this.animationScheduler.commitGroup(true);
-                
-                this.animationScheduler.enqueue({
-                  targets: targetEl,
-                  color: this.defaultColor,
-                  emissiveIntensity: 0,
-                  duration: 300
-                });
-                this.animationScheduler.enqueue({
-                  targets: targetEl.scale,
-                  x: 1, y: 1, z: 1,
-                  duration: 300
-                });
-                this.animationScheduler.commitGroup(true);
-                this.animationScheduler.advanceCursor(300);
-                this.animationScheduler.enqueue({
-                  targets: {}, duration: 1,
-                  complete: () => {
-                    this.eventDispatcher.dispatch('RUNTIME_LOG', {
-                      keyword: 'UPDATE',
-                      message: isLinkedList ? `Updated node value at position ${index} from ${oldVal} to ${val}` : `Updated "${arrName}[${index}]": ${oldVal} -> ${val}`,
-                      kind: 'operation',
-                      timestamp: Date.now(),
-                    });
-                  }
-                });
-                this.animationScheduler.commitGroup(true);
-              }
-            }
-          } else if (gen.actionName === 'SEARCH') {
-            const arrName = gen.args[0];
-            const val = gen.args[1];
-            // Emit start log
-            this.animationScheduler.enqueue({
-              targets: {}, duration: 1,
-              complete: () => {
-                this.eventDispatcher.dispatch('RUNTIME_LOG', {
-                  keyword: 'SEARCH',
-                  message: `Linear search for "${val}" in "${arrName}"...`,
-                  kind: 'search',
-                  timestamp: Date.now(),
-                });
-              }
-            });
-            this.animationScheduler.commitGroup(true);
-            // Scan through with per-element step logs
-            const elements = this.sceneManager.getSceneGraph().filter((el: any) => el.logicalParent === arrName && el.originalType !== 'EDGE').sort((a: any, b: any) => a.logicalIndex - b.logicalIndex);
-            let foundIndex = -1;
-            elements.forEach((vEl: any, idx: number) => {
-              if (String(vEl.value) === String(val)) foundIndex = idx;
-              const isMatch = String(vEl.value) === String(val);
-              const targetEl = this.sceneManager.getElement(vEl.id) as any;
-              if (targetEl) {
-                this.animationScheduler.enqueue({
-                  targets: targetEl,
-                  color: isMatch ? '#4ade80' : '#00bcd4',
-                  emissiveColor: isMatch ? '#4ade80' : '#00bcd4',
-                  emissiveIntensity: 0.5,
-                  duration: 200,
-                  complete: () => {
-                    const checkMsg = isMatch
-                      ? `  ✓ Index ${idx}: value = ${vEl.value}  ← FOUND!`
-                      : `  Index ${idx}: value = ${vEl.value}  ← not a match`;
-                    this.eventDispatcher.dispatch('RUNTIME_LOG', {
-                      keyword: 'SCAN',
-                      message: checkMsg,
-                      kind: 'step',
-                      timestamp: Date.now(),
-                    });
-                  }
-                });
-                this.animationScheduler.commitSequential();
-                this.animationScheduler.enqueue({
-                  targets: targetEl,
-                  color: this.defaultColor,
-                  emissiveIntensity: 0,
-                  duration: 200
-                });
-                this.animationScheduler.commitSequential();
-              }
-            });
-            this.animationScheduler.enqueue({
-              targets: {}, duration: 1,
-              complete: () => {
-                const msg = val !== undefined
-                  ? (foundIndex >= 0 ? `Found "${val}" at index ${foundIndex} in "${arrName}"` : `"${val}" not found in "${arrName}"`)
-                  : `Searched "${arrName}" (${elements.length} elements scanned)`;
-                this.eventDispatcher.dispatch('RUNTIME_LOG', {
-                  keyword: 'RESULT',
-                  message: msg,
-                  kind: 'result',
-                  timestamp: Date.now(),
-                });
-              }
-            });
-            this.animationScheduler.commitGroup(true);
-            this.animationScheduler.advanceCursor(200);
-          } else {
-            // Default pause for other actions
-            this.animationScheduler.advanceCursor(300);
-          }
-          break;
-        }
-        case 'SET_STATE': {
-          const setStateIns = instruction as SetStateInstruction;
-          if (DEBUG_ANIMATION) console.log(`[Runtime] Setting state for ${setStateIns.targetId} to ${setStateIns.stateName}`);
-          
-          const targetEl = this.sceneManager.getElement(setStateIns.targetId) as any;
-          if (targetEl) {
-            const canonicalState = normalizeSemanticState(setStateIns.stateName);
-            targetEl.state = canonicalState;
-
-            const vEl = virtualGraph.find((e: any) => e.id === setStateIns.targetId);
-            if (vEl) {
-              vEl.state = canonicalState;
-            }
-
-            const token = getSemanticColorToken(canonicalState);
-            const s = setStateIns.stateName.toLowerCase();
-            const updates: any = { targets: targetEl, duration: 400 };
-
-            if (s === 'deleted') {
-              this.lifecycleManager.remove(setStateIns.targetId);
-              updates.scaleX = 0;
-              updates.scaleY = 0;
-              updates.scaleZ = 0;
-              updates.opacity = 0;
-              updates.complete = () => {
-                this.lifecycleManager.destroy(setStateIns.targetId);
-              };
-            } else {
-              updates.color = token.color;
-              updates.emissiveColor = token.emissiveColor;
-              updates.emissiveIntensity = token.emissiveIntensity;
-              if (token.opacity !== undefined) {
-                updates.opacity = token.opacity;
-              }
-            }
-
-            updates.complete = () => {
-              if (s === 'deleted') {
-                this.lifecycleManager.destroy(setStateIns.targetId);
-              }
-              const val = targetEl.value !== undefined ? targetEl.value : (targetEl.label || targetEl.id);
-              this.eventDispatcher.dispatch('RUNTIME_LOG', {
-                keyword: 'STATE',
-                message: `Element "${val}" state changed to "${canonicalState}"`,
-                kind: 'info',
-                timestamp: Date.now(),
-              });
-            };
-
-            this.animationScheduler.enqueue(updates);
-            this.animationScheduler.commitGroup(true);
-          }
-          break;
-        }
-        case 'UPDATE_LAYOUT': {
-          const layoutMap = this.layoutManager.updateLayout(virtualGraph);
-          let animatedAny = false;
-          
-          layoutMap.forEach((pos, id) => {
-            const targetEl = this.sceneManager.getElement(id) as any;
-            const vEl = virtualGraph.find((e: any) => e.id === id);
-            
-            if (vEl) {
-              // Only animate if the position actually changed in the virtual graph
-              if (Math.abs(vEl.position.x - pos.x) > 0.01 || Math.abs(vEl.position.y - pos.y) > 0.01) {
-                if (targetEl) {
-                  this.animationScheduler.enqueue({
-                    targets: targetEl.position,
-                    x: pos.x,
-                    y: pos.y,
-                    z: pos.z,
-                    duration: 600,
-                    easing: 'easeInOutQuad'
-                  });
-                  animatedAny = true;
-                }
-                vEl.position.x = pos.x;
-                vEl.position.y = pos.y;
-                vEl.position.z = pos.z;
-              }
-            }
-          });
-
-          if (!animatedAny) {
-            this.animationScheduler.advanceCursor(100);
-          } else {
-            this.animationScheduler.commitGroup(true); // run all layout moves concurrently
-            // Save state after layout update
-            this.animationScheduler.enqueue({
-              targets: {},
-              duration: 1,
-              complete: () => {
-                this.stateManager.saveState(this.sceneManager.getSceneGraph(), `Dynamic Relayout`, this.animationScheduler.getCurrentTime());
-                this.eventDispatcher.dispatch('STATE_UPDATED', this.stateManager.getCurrentState());
-              }
-            });
-            this.animationScheduler.commitGroup(true);
-          }
-          break;
-        }
-      }
     });
   }
 }

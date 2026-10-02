@@ -17,9 +17,17 @@
  * and after state.
  */
 
+import type { StepPrimitives } from './steps';
+
 export type HeapStep =
   | { type: 'COMPARE'; i: number; j: number }
   | { type: 'SWAP'; i: number; j: number };
+
+/** The AQIR primitive each heap step realises (see ./steps.ts). */
+export const HEAP_STEP_PRIMITIVES: StepPrimitives<HeapStep> = {
+  COMPARE: { kind: 'ANNOTATE', verb: 'contrast' },
+  SWAP: { kind: 'MUTATE', verb: 'exchange' },
+};
 
 export class MinHeap {
   elements: number[] = [];

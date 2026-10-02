@@ -12,6 +12,7 @@ import { LayoutManager } from '../LayoutManager';
 import { StateManager } from '../StateManager';
 import { RelationshipManager } from '../RelationshipManager';
 import { EventDispatcher } from '../EventDispatcher';
+import { LifecycleManager } from '../LifecycleManager';
 import { GenericActionInstruction } from '@aqvl/shared';
 import { PacingConfig } from '../../narrative/PacingConfig';
 
@@ -22,6 +23,8 @@ export interface AlgorithmContext {
   eventDispatcher: EventDispatcher;
   stateManager?: StateManager;
   relationshipManager?: RelationshipManager;
+  /** Spawns / removes elements with their lifecycle state (StackEngine, QueueEngine). */
+  lifecycleManager?: LifecycleManager;
 
   // Expose the current tree being operated on
   activeTreeName?: string | null;

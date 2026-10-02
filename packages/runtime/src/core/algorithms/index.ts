@@ -17,3 +17,5 @@ export * from './ArrayEngine';
 export * from './StackEngine';
 export * from './QueueEngine';
 export * from './LinkedListEngine';
+export * from './LinkedListProgramEngine';
+export * from './PrimitiveAnimator';
