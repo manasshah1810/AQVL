@@ -11,6 +11,7 @@ declare module 'troika-three-text' {
     color: string | number | Color;
     fillOpacity: number;
     outlineWidth: number | string;
+    outlineBlur: number | string;
     outlineColor: string | number | Color;
     outlineOpacity: number;
     letterSpacing: number;

@@ -14,6 +14,7 @@ import type { StageModel } from '../model/StageModel';
 import { MAX_PULSES, type StageSample } from '../model/sampler';
 import { createEdgeMaterial, createPulseMaterial } from '../look/materials';
 import type { StageDriver } from './driver';
+import { NO_SHADOW_LAYER } from './StageEnvironment';
 
 /** Segments per edge: enough for the curved pointer routes to read as smooth. */
 const SEGMENTS = 14;
@@ -43,16 +44,16 @@ function point(sample: StageSample, e: number, q: number, into: Vector3): Vector
 
 /**
  * Edges as lit rods (instanced cylinder segments along each edge's curve),
- * arrowheads for directed edges, and the light that travels along an edge
- * when a step uses it.
+ * arrowheads for directed edges, and the small dot that travels along an
+ * edge when a step uses it.
  */
-export function EdgeRods({ model, driver, shadows, additive }: { model: StageModel; driver: StageDriver; shadows: boolean; additive: boolean }) {
+export function EdgeRods({ model, driver }: { model: StageModel; driver: StageDriver }) {
   const E = model.edgeSlots.length;
   const parts = useMemo(() => {
     const rodMaterial = createEdgeMaterial();
     const rods = new InstancedMesh(new CylinderGeometry(1, 1, 1, 10, 1, true), rodMaterial, Math.max(1, E * SEGMENTS));
     const heads = new InstancedMesh(new ConeGeometry(1, 1, 18), rodMaterial, Math.max(1, E));
-    const pulseMaterial = createPulseMaterial(additive);
+    const pulseMaterial = createPulseMaterial();
     const pulses = new InstancedMesh(new SphereGeometry(1, 16, 12), pulseMaterial, MAX_PULSES);
     for (const mesh of [rods, heads, pulses]) {
       mesh.instanceMatrix.setUsage(DynamicDrawUsage);
@@ -63,13 +64,9 @@ export function EdgeRods({ model, driver, shadows, additive }: { model: StageMod
       }
     }
     pulses.renderOrder = 5;
+    pulses.layers.set(NO_SHADOW_LAYER);
     return { rods, heads, pulses, rodMaterial, pulseMaterial };
-  }, [E, additive]);
-
-  useEffect(() => {
-    parts.rods.castShadow = shadows;
-    parts.heads.castShadow = shadows;
-  }, [parts, shadows]);
+  }, [E]);
 
   useEffect(
     () =>

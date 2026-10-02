@@ -12,6 +12,7 @@ import {
 } from '@aqvl/renderer';
 import monoFont from '@fontsource/jetbrains-mono/files/jetbrains-mono-latin-500-normal.woff?url';
 import monoItalicFont from '@fontsource/jetbrains-mono/files/jetbrains-mono-latin-400-italic.woff?url';
+import monoStrongFont from '@fontsource/jetbrains-mono/files/jetbrains-mono-latin-600-normal.woff?url';
 import { spring } from '../../lib/motion';
 import { Scrubber } from './Scrubber';
 import { WatchPanel } from './WatchPanel';
@@ -20,7 +21,7 @@ import { EVENT_META, toneChip } from './events';
 import { ToneGlyph } from './ToneGlyph';
 import './visualizer.css';
 
-const FONTS = { mono: monoFont, monoItalic: monoItalicFont };
+const FONTS = { mono: monoFont, monoStrong: monoStrongFont, monoItalic: monoItalicFont };
 const SPEEDS = [0.5, 1, 2, 4] as const;
 const TIER_LABEL: Record<QualityTier, string> = { high: 'High', medium: 'Balanced', low: 'Light' };
 
@@ -243,7 +244,7 @@ export function Visualizer({ trace, playhead, source, theme, reducedMotion, comp
               Recenter
             </button>
           )}
-          <button type="button" className={`vz-tool${calm ? ' is-on' : ''}`} aria-pressed={calm} onClick={toggleCalm} title="Calm motion: no arcs, ripples or camera drift (C)">
+          <button type="button" className={`vz-tool${calm ? ' is-on' : ''}`} aria-pressed={calm} onClick={toggleCalm} title="Calm motion: no arcs, ripples or travelling dots (C)">
             Calm
           </button>
           <label className="vz-tool vz-tool--select" title="Rendering quality (drops automatically when frames run long)">

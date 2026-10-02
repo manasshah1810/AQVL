@@ -1,9 +1,7 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
-import { Bloom, DepthOfField, EffectComposer, Noise, ToneMapping, Vignette } from '@react-three/postprocessing';
-import { BlendFunction, ToneMappingMode, type DepthOfFieldEffect } from 'postprocessing';
-import { PerspectiveCamera, Vector3 } from 'three';
+import { PerspectiveCamera } from 'three';
 type OrbitControlsImpl = React.ComponentRef<typeof OrbitControls>;
 import type { StageModel } from '../model/StageModel';
 import { ENVELOPE_SECONDS, StageSample, sampleStage } from '../model/sampler';
@@ -15,10 +13,12 @@ import { EdgeRods } from './EdgeRods';
 import { FloorDecals } from './FloorDecals';
 import { HaloRings } from './HaloRings';
 import { LabelLayer, type StageFonts } from './LabelLayer';
-import { StageEnvironment } from './StageEnvironment';
+import { NO_SHADOW_LAYER, StageEnvironment } from './StageEnvironment';
+import { NodeShadows } from './NodeShadows';
 import { FrameProbe, QUALITY, type QualityTier } from './quality';
 
-export const STAGE_FOV = 38;
+/** A long-ish lens: little perspective distortion, so rows stay rows and columns stay upright. */
+export const STAGE_FOV = 26;
 
 export interface StageSceneProps {
   model: StageModel;
@@ -46,8 +46,6 @@ export function StageScene({ model, playhead, tier, calm, follow, fonts, phase, 
   const sample = useMemo(() => new StageSample(model.slots.length, model.edgeSlots.length), [model]);
   const bounds = useMemo(() => model.sceneBounds(), [model]);
   const controls = useRef<OrbitControlsImpl>(null);
-  const dof = useRef<DepthOfFieldEffect>(null);
-  const focusPoint = useMemo(() => new Vector3(), []);
   const camera = useThree((s) => s.camera) as PerspectiveCamera;
   const size = useThree((s) => s.size);
   const invalidate = useThree((s) => s.invalidate);
@@ -73,7 +71,8 @@ export function StageScene({ model, playhead, tier, calm, follow, fonts, phase, 
   useEffect(() => {
     camera.fov = STAGE_FOV;
     camera.near = 0.1;
-    camera.far = 400;
+    camera.far = 600;
+    camera.layers.enable(NO_SHADOW_LAYER);
     camera.updateProjectionMatrix();
   }, [camera]);
 
@@ -105,35 +104,22 @@ export function StageScene({ model, playhead, tier, calm, follow, fonts, phase, 
     const freeAspect = (w - right) / Math.max(1, h - top);
     const freeFov = (2 * Math.atan(Math.tan((STAGE_FOV * Math.PI) / 360) * ((h - top) / (h + top))) * 180) / Math.PI;
     const pose = cameraAt(model, playhead.table, playhead.time, freeAspect, freeFov, calm);
-    focusPoint.set(pose.focus[0], pose.focus[1], pose.focus[2]);
     if (follow) {
       camera.position.set(pose.position[0], pose.position[1], pose.position[2]);
       camera.lookAt(pose.target[0], pose.target[1], pose.target[2]);
       controls.current?.target.set(pose.target[0], pose.target[1], pose.target[2]);
     }
-    if (dof.current) {
-      dof.current.target = focusPoint;
-      dof.current.cocMaterial.focusRange = Math.max(10, bounds.radius * 3);
-    }
     driver.publish(sample);
   });
 
-  const effects = [];
-  if (quality.depthOfField && !calm) effects.push(<DepthOfField key="dof" ref={dof} focusRange={10} bokehScale={1} resolutionScale={0.5} />);
-  if (model.palette.bloom > 0) {
-    effects.push(<Bloom key="bloom" mipmapBlur luminanceThreshold={0.86} luminanceSmoothing={0.1} intensity={0.9 * model.palette.bloom} radius={0.6} />);
-  }
-  effects.push(<Vignette key="vignette" offset={0.3} darkness={model.theme === 'dark' ? 0.55 : 0.22} />);
-  effects.push(<Noise key="noise" premultiply opacity={0.03} blendFunction={BlendFunction.ADD} />);
-  effects.push(<ToneMapping key="tone" mode={ToneMappingMode.NEUTRAL} />);
-
   return (
     <>
-      <StageEnvironment model={model} quality={quality} bounds={bounds} />
-      <NodeBodies model={model} driver={driver} shadows={quality.shadows} sphereSegments={quality.sphereSegments} />
-      <EdgeRods model={model} driver={driver} shadows={quality.shadows} additive={model.theme === 'dark'} />
+      <StageEnvironment model={model} bounds={bounds} />
+      <NodeBodies model={model} driver={driver} sphereSegments={quality.sphereSegments} />
+      <EdgeRods model={model} driver={driver} />
       <FloorDecals driver={driver} floorY={model.floorY} />
-      <HaloRings driver={driver} glow={model.theme === 'dark' ? 1.15 : 0.9} additive={model.theme === 'dark'} />
+      <NodeShadows model={model} driver={driver} color={model.palette.shadow} opacity={model.palette.shadowOpacity} />
+      <HaloRings driver={driver} />
       <LabelLayer model={model} driver={driver} fonts={fonts} />
       <OrbitControls
         ref={controls}
@@ -141,17 +127,12 @@ export function StageScene({ model, playhead, tier, calm, follow, fonts, phase, 
         enableDamping
         dampingFactor={0.08}
         minDistance={2}
-        maxDistance={140}
-        maxPolarAngle={Math.PI / 2 - 0.04}
+        maxDistance={260}
+        maxPolarAngle={Math.PI / 2 - 0.12}
         onStart={() => {
           if (follow) onFollowChange(false);
         }}
       />
-      {quality.post && (
-        <EffectComposer multisampling={quality.multisampling} enableNormalPass={false}>
-          {effects}
-        </EffectComposer>
-      )}
     </>
   );
 }

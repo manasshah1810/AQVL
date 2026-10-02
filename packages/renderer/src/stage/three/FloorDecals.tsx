@@ -3,6 +3,7 @@ import { DynamicDrawUsage, InstancedBufferAttribute, InstancedMesh, Matrix4, Pla
 import { MAX_DECALS } from '../model/sampler';
 import { createDecalMaterial } from '../look/materials';
 import type { StageDriver } from './driver';
+import { NO_SHADOW_LAYER } from './StageEnvironment';
 
 const _m = new Matrix4();
 const _p = new Vector3();
@@ -26,6 +27,7 @@ export function FloorDecals({ driver, floorY }: { driver: StageDriver; floorY: n
     mesh.instanceMatrix.setUsage(DynamicDrawUsage);
     mesh.frustumCulled = false;
     mesh.renderOrder = 1;
+    mesh.layers.set(NO_SHADOW_LAYER);
     for (let i = 0; i < MAX_DECALS; i++) mesh.setMatrixAt(i, HIDDEN);
     return { mesh, color, shape, material, geometry };
   }, []);

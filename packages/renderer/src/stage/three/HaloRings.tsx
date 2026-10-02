@@ -1,8 +1,6 @@
 import React, { useEffect, useMemo } from 'react';
 import { useThree } from '@react-three/fiber';
 import {
-  AdditiveBlending,
-  NormalBlending,
   DynamicDrawUsage,
   InstancedBufferAttribute,
   InstancedMesh,
@@ -13,6 +11,7 @@ import {
 } from 'three';
 import { MAX_RINGS } from '../model/sampler';
 import type { StageDriver } from './driver';
+import { NO_SHADOW_LAYER } from './StageEnvironment';
 
 const _m = new Matrix4();
 const _p = new Vector3();
@@ -24,10 +23,10 @@ const HIDDEN = new Matrix4().makeScale(0, 0, 0);
  * ring turned to the camera (solid = visited / changed, dashed = marked,
  * double = a role). Two instances per ring so a double ring is two rings.
  */
-export function HaloRings({ driver, glow, additive }: { driver: StageDriver; glow: number; additive: boolean }) {
+export function HaloRings({ driver }: { driver: StageDriver }) {
   const camera = useThree((s) => s.camera);
   const parts = useMemo(() => {
-    const geometry = new TorusGeometry(1, 0.035, 8, 96);
+    const geometry = new TorusGeometry(1, 0.028, 8, 96);
     const color = new InstancedBufferAttribute(new Float32Array(MAX_RINGS * 2 * 4), 4);
     const style = new InstancedBufferAttribute(new Float32Array(MAX_RINGS * 2), 1);
     color.setUsage(DynamicDrawUsage);
@@ -35,7 +34,7 @@ export function HaloRings({ driver, glow, additive }: { driver: StageDriver; glo
     geometry.setAttribute('aColor', color);
     geometry.setAttribute('aStyle', style);
     const material = new ShaderMaterial({
-      uniforms: { uGlow: { value: glow } },
+      uniforms: {},
       vertexShader: /* glsl */ `
 attribute vec4 aColor;
 attribute float aStyle;
@@ -49,28 +48,26 @@ void main() {
   gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0);
 }`,
       fragmentShader: /* glsl */ `
-uniform float uGlow;
 varying vec4 vColor;
 varying float vStyle;
 varying vec2 vUv;
 void main() {
   if (vStyle > 0.5 && vStyle < 1.5 && fract(vUv.x * 18.0) < 0.42) discard;
-  gl_FragColor = vec4(vColor.rgb * uGlow, vColor.a);
+  gl_FragColor = vec4(vColor.rgb, vColor.a);
   #include <colorspace_fragment>
 }`,
       transparent: true,
       depthWrite: false,
-      // Light adds up on a dark ground; on paper it would vanish, so it is painted instead.
-      blending: additive ? AdditiveBlending : NormalBlending,
       toneMapped: false,
     });
     const mesh = new InstancedMesh(geometry, material, MAX_RINGS * 2);
     mesh.instanceMatrix.setUsage(DynamicDrawUsage);
     mesh.frustumCulled = false;
     mesh.renderOrder = 6;
+    mesh.layers.set(NO_SHADOW_LAYER);
     for (let i = 0; i < mesh.count; i++) mesh.setMatrixAt(i, HIDDEN);
     return { mesh, geometry, material, color, style };
-  }, [glow, additive]);
+  }, []);
 
   useEffect(
     () =>

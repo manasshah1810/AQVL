@@ -2,20 +2,14 @@ export type QualityTier = 'high' | 'medium' | 'low';
 
 export interface QualitySettings {
   dpr: [number, number];
-  shadows: boolean;
-  shadowMapSize: number;
-  reflections: boolean;
-  /** Bloom, vignette, dither. */
-  post: boolean;
-  depthOfField: boolean;
-  multisampling: number;
   sphereSegments: number;
 }
 
+/** Every tier draws the same clean picture (MSAA, soft shadows, no post-processing); lower tiers trade resolution and smoothness for speed. */
 export const QUALITY: Record<QualityTier, QualitySettings> = {
-  high: { dpr: [1, 2], shadows: true, shadowMapSize: 2048, reflections: true, post: true, depthOfField: true, multisampling: 2, sphereSegments: 40 },
-  medium: { dpr: [1, 1.5], shadows: true, shadowMapSize: 1024, reflections: false, post: true, depthOfField: false, multisampling: 2, sphereSegments: 28 },
-  low: { dpr: [1, 1], shadows: false, shadowMapSize: 512, reflections: false, post: false, depthOfField: false, multisampling: 0, sphereSegments: 18 },
+  high: { dpr: [1, 2], sphereSegments: 48 },
+  medium: { dpr: [1, 1.5], sphereSegments: 36 },
+  low: { dpr: [1, 1], sphereSegments: 24 },
 };
 
 export function lowerTier(tier: QualityTier): QualityTier {

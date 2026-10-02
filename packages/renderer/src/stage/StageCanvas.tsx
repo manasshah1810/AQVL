@@ -1,7 +1,7 @@
 /// <reference path="./three/troika-three-text.d.ts" />
 import React, { Component, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Canvas } from '@react-three/fiber';
-import { NeutralToneMapping, PCFSoftShadowMap, SRGBColorSpace } from 'three';
+import { NeutralToneMapping, SRGBColorSpace } from 'three';
 import { preloadFont } from 'troika-three-text';
 import type { ExecutionTrace } from '@aqvl/runtime';
 import { StageModel } from './model/StageModel';
@@ -9,7 +9,7 @@ import { ENVELOPE_SECONDS } from './model/sampler';
 import type { Playhead } from './timeline/Playhead';
 import type { StageTheme } from './look/palette';
 import { STAGE_PALETTES } from './look/palette';
-import { StageScene } from './three/StageScene';
+import { STAGE_FOV, StageScene } from './three/StageScene';
 import type { StageFonts } from './three/LabelLayer';
 import { QUALITY, lowerTier, type QualityTier } from './three/quality';
 
@@ -25,7 +25,7 @@ export interface StageCanvasProps {
   /** The program's source (for loop cursors and index names). */
   source?: string;
   theme: StageTheme;
-  /** Reduced motion: no arcs, ripples, travelling light, drift or depth of field. */
+  /** Reduced motion: no arcs, ripples or travelling dots. */
   calm: boolean;
   /** Camera follows the action (off while the viewer orbits by hand). */
   follow: boolean;
@@ -60,11 +60,11 @@ class WebGLBoundary extends Component<{ onError: (message: string) => void; chil
 /** Loads the scene's typefaces before any text is drawn, and says so if one fails (no silent fallback). */
 function useFontsReady(fonts: StageFonts): { ready: boolean; error: string | null } {
   const [state, setState] = useState<{ key: string; ready: boolean; error: string | null }>({ key: '', ready: false, error: null });
-  const key = `${fonts.mono}|${fonts.monoItalic}`;
+  const key = `${fonts.mono}|${fonts.monoStrong}|${fonts.monoItalic}`;
   useEffect(() => {
     let cancelled = false;
     Promise.all(
-      [fonts.mono, fonts.monoItalic].map(
+      [fonts.mono, fonts.monoStrong, fonts.monoItalic].map(
         (url) =>
           fetch(url).then((r) => {
             if (!r.ok) throw new Error(`${url} answered ${r.status}`);
@@ -78,7 +78,7 @@ function useFontsReady(fonts: StageFonts): { ready: boolean; error: string | nul
     return () => {
       cancelled = true;
     };
-  }, [key, fonts.mono, fonts.monoItalic]);
+  }, [key, fonts.mono, fonts.monoStrong, fonts.monoItalic]);
   return state.key === key ? { ready: state.ready, error: state.error } : { ready: false, error: null };
 }
 
@@ -142,12 +142,13 @@ export function StageCanvas(props: StageCanvasProps) {
             key={canvasKey}
             frameloop="demand"
             dpr={quality.dpr}
-            shadows={{ type: PCFSoftShadowMap }}
-            camera={{ position: [0, 4, 14], fov: 38 }}
-            gl={{ antialias: !quality.post, powerPreference: 'high-performance', alpha: false, stencil: false }}
+            camera={{ position: [0, 4, 14], fov: STAGE_FOV }}
+            gl={{ antialias: true, powerPreference: 'high-performance', alpha: false, stencil: false }}
             onCreated={({ gl }) => {
               gl.toneMapping = NeutralToneMapping;
               gl.outputColorSpace = SRGBColorSpace;
+              // Off-screen passes (contact shadows) must start transparent; the picture itself always paints its background.
+              gl.setClearAlpha(0);
               // A fresh renderer exists: whatever was lost has been rebuilt.
               setLost(false);
               const canvas = gl.domElement;
