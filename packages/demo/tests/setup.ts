@@ -42,3 +42,13 @@ if (typeof window.matchMedia === 'undefined') {
     dispatchEvent: () => false,
   }) as unknown as MediaQueryList;
 }
+
+// The visualizer measures its overlays and the scrubber its track.
+if (typeof window.ResizeObserver === 'undefined') {
+  class MockResizeObserver implements ResizeObserver {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+  window.ResizeObserver = MockResizeObserver as unknown as typeof ResizeObserver;
+}

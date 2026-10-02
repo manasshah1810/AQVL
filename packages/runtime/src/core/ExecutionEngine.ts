@@ -70,6 +70,12 @@ export interface ExecutionEngineOptions {
    * for tests.
    */
   headless?: boolean;
+  /**
+   * The timeline every animation is scheduled on. Overrides the default
+   * (animated, or instant when `headless`); the trace recorder passes a
+   * SnapTimelineEngine so each step lands on its final values.
+   */
+  timelineEngine?: TimelineEngine;
 }
 
 export class ExecutionEngine {
@@ -93,7 +99,7 @@ export class ExecutionEngine {
     this.stateManager = new StateManager();
     this.relationshipManager = new RelationshipManager(this.eventDispatcher);
     this.layoutManager = new LayoutManager(this.sceneManager, this.relationshipManager);
-    this.timelineEngine = this.headless ? new InstantTimelineEngine() : new TimelineEngine();
+    this.timelineEngine = options.timelineEngine ?? (this.headless ? new InstantTimelineEngine() : new TimelineEngine());
     this.animationScheduler = new AnimationScheduler(this.timelineEngine, this.eventDispatcher);
     this.lifecycleManager = new LifecycleManager(this.sceneManager);
     this.animationController = new AnimationController(
@@ -429,7 +435,6 @@ export class ExecutionEngine {
   }
 
   private syncToState(currentState: any) {
-    console.log(`[ExecutionEngine] syncToState() - State Title: ${currentState.description}`);
     // Sync SceneGraph to State
     const currentGraph = this.sceneManager.getSceneGraph();
     const currentIds = new Set(currentGraph.map(el => el.id));

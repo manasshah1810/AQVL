@@ -11,10 +11,13 @@
   "dependencies": {
     "@aqvl/runtime": "workspace:*",
     "@aqvl/shared": "workspace:*",
-    "@react-three/drei": "^9.121.4",
-    "@react-three/fiber": "^9.6.1",
+    "@react-three/drei": "10.7.7",
+    "@react-three/fiber": "9.8.1",
+    "@react-three/postprocessing": "3.1.3",
     "animejs": "^3.2.2",
-    "three": "^0.185.1"
+    "postprocessing": "6.39.5",
+    "three": "^0.185.1",
+    "troika-three-text": "0.52.4"
   },
   "peerDependencies": {
     "react": "^19.2.0",

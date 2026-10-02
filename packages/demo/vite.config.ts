@@ -8,6 +8,8 @@ export default defineConfig(({ command }) => ({
   base: command === 'build' ? '/AQVL/' : '/',
   plugins: [react(), tailwindcss()],
   resolve: {
+    // The renderer is consumed from source: make sure it and the app share one React / three / R3F.
+    dedupe: ['react', 'react-dom', 'three', '@react-three/fiber', '@react-three/drei', '@react-three/postprocessing', 'postprocessing'],
     alias: {
       '@aqvl/compiler': path.resolve(__dirname, '../compiler/src/index.ts'),
       '@aqvl/runtime': path.resolve(__dirname, '../runtime/src/index.ts'),
@@ -20,7 +22,7 @@ export default defineConfig(({ command }) => ({
       output: {
         codeSplitting: {
           groups: [
-            { name: 'vendor-three', test: /[\\/]node_modules[\\/](three|@react-three)[\\/]/ },
+            { name: 'vendor-three', test: /[\\/]node_modules[\\/](three|@react-three|postprocessing|troika-[a-z-]+|three-stdlib|three-mesh-bvh|camera-controls|maath|meshline|stats-gl)[\\/]/ },
             { name: 'vendor-react', test: /[\\/]node_modules[\\/](react|react-dom|scheduler)[\\/]/ },
             { name: 'vendor-animejs', test: /[\\/]node_modules[\\/]animejs[\\/]/ },
             { name: 'vendor-motion', test: /[\\/]node_modules[\\/](motion|motion-dom|motion-utils|framer-motion)[\\/]/ },

@@ -37,7 +37,6 @@ export class AnimationScheduler {
   constructor(private timelineEngine: TimelineEngine, private eventDispatcher?: EventDispatcher) {}
 
   public init(onComplete?: () => void): void {
-    console.log('[AnimationScheduler] init() called - Resetting timeline cursor to 0');
     this.timelineCursor = 0;
     this.currentTasks = [];
     this.timelineEngine.init(onComplete);
