@@ -387,7 +387,8 @@ export function sampleStage(model: StageModel, k: number, tau: number, duration:
         const sideways = calm ? 0 : plan.side[s] * 1.35;
         const out01 = smoothstep(0, 0.3, p) - smoothstep(0.7, 1, p);
         const across = calm ? smoothstep(0, 1, p) : easeInOutCubic((p - 0.16) / 0.68);
-        const hop = calm ? 0 : (plan.side[s] > 0 ? 0.55 : 0.3) * Math.sin(Math.PI * p);
+        // The one passing behind the row rises higher, so neither ever hides the other.
+        const hop = calm ? 0 : (plan.side[s] > 0 ? 0.28 : 1.05) * Math.sin(Math.PI * p);
         x = lerp(ax, bx, across);
         z = lerp(az, bz, across) + sideways * out01;
         y = lerp(ay, by, p) + hop;

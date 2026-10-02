@@ -862,6 +862,15 @@ export class StageModel {
       if (focusStructure && this.slots[s].structure !== focusStructure && this.slots[s].id !== focusStructure) continue;
       grow(rest.pos[s * 3], rest.pos[s * 3 + 1], rest.pos[s * 3 + 2], Math.max(rest.dims[s * 3], rest.dims[s * 3 + 1]) / 2 + 0.25);
     }
+    // Whether the structures lie across the floor (look down on them) or stand up (look across):
+    // decided by where the node centres spread, not by their padding or by labels.
+    let cMinY = Infinity, cMaxY = -Infinity, cMinZ = Infinity, cMaxZ = -Infinity;
+    for (let s = 0; s < this.slots.length; s++) {
+      if (!rest.present[s]) continue;
+      cMinY = Math.min(cMinY, rest.pos[s * 3 + 1]); cMaxY = Math.max(cMaxY, rest.pos[s * 3 + 1]);
+      cMinZ = Math.min(cMinZ, rest.pos[s * 3 + 2]); cMaxZ = Math.max(cMaxZ, rest.pos[s * 3 + 2]);
+    }
+    const flat = Number.isFinite(cMinZ) && cMaxZ - cMinZ > 2.5 && cMaxZ - cMinZ > (cMaxY - cMinY) * 0.9;
     if (!focusStructure) {
       for (const l of rest.labels) {
         if (l.follow) continue;
@@ -879,7 +888,6 @@ export class StageModel {
     minY = Math.min(minY, this.floorY);
     const center: [number, number, number] = [(minX + maxX) / 2, (minY + maxY) / 2, (minZ + maxZ) / 2];
     const radius = Math.max(2.4, 0.5 * Math.hypot(maxX - minX, maxY - minY, maxZ - minZ));
-    const flat = maxZ - minZ > (maxY - minY) * 0.9 && maxZ - minZ > 2.5;
 
     let focus: [number, number, number] = center;
     if (emphasized.length > 0) {
