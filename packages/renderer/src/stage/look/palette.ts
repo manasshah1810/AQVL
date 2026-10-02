@@ -1,10 +1,13 @@
 import type { SemanticState } from '@aqvl/shared';
 
 /**
- * The stage's colours, derived from the website's palette (ink / peach /
- * dusk / cream, see packages/demo/src/index.css) and extended only where a
- * state needs a hue of its own. Every value here is documented, with its
- * reason and contrast, in docs/design/visualizer-v2/README.md.
+ * The stage's colours. Only the surroundings follow the site's light / dark
+ * mode: the background, the floor, and the inks that are printed on them
+ * (names, captions, call frames). The things being visualised keep one
+ * calm palette in both modes: porcelain at rest, and four soft, mid-light
+ * hues for what is happening to them. All bodies carry the same dark ink,
+ * so a value reads the same whatever its state. Every value, with its
+ * reason and contrast, is in docs/design/visualizer-v2/README.md.
  */
 
 export type StageTheme = 'dark' | 'light';
@@ -20,15 +23,18 @@ export interface StagePalette {
   /** The void; fog fades to the same colour so the floor dissolves into it. */
   background: string;
   floor: string;
-  /** Faint hairline grid on the floor (peach, like the site's hairlines). */
+  /** Faint guide grid on the floor. */
   floorLine: string;
-  /** Raised footprint under each structure. */
+  /** Footprint under each structure that stands on the floor. */
   plinth: string;
-  /** Footprint of the heap-memory area (detached nodes). */
-  plinthDetached: string;
+  /** Hairline round that footprint. */
+  plinthLine: string;
+  /** Contact shadows under bodies. */
+  shadow: string;
+  shadowOpacity: number;
   states: Record<SemanticState, StateColor>;
   edges: Record<'idle' | 'visit' | 'compare' | 'mutate' | 'settled' | 'discarded' | 'marked', string>;
-  /** Structure name plates. */
+  /** Structure names. */
   plate: string;
   /** Index captions and secondary labels. */
   caption: string;
@@ -42,103 +48,100 @@ export interface StagePalette {
   lights: {
     key: string;
     keyIntensity: number;
-    rim: string;
-    rimIntensity: number;
+    fill: string;
+    fillIntensity: number;
     sky: string;
     ground: string;
     ambient: number;
     envIntensity: number;
   };
-  /** Bloom is only worth it on the dark ground. */
-  bloom: number;
 }
+
+/** Ink printed on every node body. */
+const BODY_INK = '#262833';
+
+/** The visualised things: identical in both modes. */
+const STATES: Record<SemanticState, StateColor> = {
+  // At rest: porcelain. Quiet, so anything coloured is news.
+  NEUTRAL: { body: '#e2e2ea', text: BODY_INK },
+  // Being compared / read: amber, "looking at this".
+  EVALUATING: { body: '#edbb55', text: BODY_INK },
+  // Being written / swapped / linked: coral, the change itself.
+  MODIFYING: { body: '#e9805f', text: BODY_INK },
+  // Being visited / pointed at: blue, the walk through the structure.
+  TRAVERSING: { body: '#6e9fe0', text: BODY_INK },
+  // Settled / sorted / found: sage green, done.
+  SUCCESS: { body: '#5fb389', text: BODY_INK },
+  // Ruled out: a greyed, smaller, matte body (the universal "disabled").
+  DISCARDED: { body: '#9c9aa8', text: BODY_INK },
+  // Marked (probe, boundary): lilac, with a dashed ring.
+  AUXILIARY: { body: '#b79be6', text: BODY_INK },
+  // A role (root, leaf, view): teal, with a double ring.
+  STRUCTURAL: { body: '#7fc2c8', text: BODY_INK },
+};
+
+const STATE_EDGES = {
+  visit: STATES.TRAVERSING.body,
+  compare: STATES.EVALUATING.body,
+  mutate: STATES.MODIFYING.body,
+  settled: STATES.SUCCESS.body,
+  marked: STATES.AUXILIARY.body,
+};
 
 export const STAGE_PALETTES: Record<StageTheme, StagePalette> = {
   dark: {
     background: '#17151f',
-    floor: '#1d1a27',
-    floorLine: '#ebc0a3',
-    plinth: '#25212f',
-    plinthDetached: '#211d2a',
-    states: {
-      NEUTRAL: { body: '#5e5878', text: '#f5d8c6' },
-      EVALUATING: { body: '#eba96e', text: '#1e1c27' },
-      MODIFYING: { body: '#3ff6dc', text: '#17151f' },
-      TRAVERSING: { body: '#b3abf2', text: '#1e1c27' },
-      SUCCESS: { body: '#6c9c83', text: '#1e1c27' },
-      DISCARDED: { body: '#2b2737', text: '#9a96ae' },
-      AUXILIARY: { body: '#ec9fc4', text: '#1e1c27' },
-      STRUCTURAL: { body: '#7186bf', text: '#1e1c27' },
-    },
-    edges: {
-      idle: '#6d6886',
-      visit: '#b3abf2',
-      compare: '#eba96e',
-      mutate: '#3ff6dc',
-      settled: '#6c9c83',
-      discarded: '#34303f',
-      marked: '#ec9fc4',
-    },
-    plate: '#c4a290',
-    caption: '#8e8ba3',
-    tag: '#ebc0a3',
-    frame: '#2c2839',
-    frameText: '#f5d8c6',
-    frameTop: '#b3abf2',
+    floor: '#17151f',
+    floorLine: '#8a87a0',
+    plinth: '#211e2b',
+    plinthLine: '#3a3748',
+    shadow: '#000000',
+    shadowOpacity: 0.7,
+    states: STATES,
+    edges: { idle: '#7b788f', discarded: '#3a3747', ...STATE_EDGES },
+    plate: '#ece8f2',
+    caption: '#aeabbf',
+    tag: '#ece8f2',
+    frame: '#2a2735',
+    frameText: '#e6e2ee',
+    frameTop: '#8fb6ec',
     lights: {
-      key: '#fff1e4',
-      keyIntensity: 2.4,
-      rim: '#b6b0dd',
-      rimIntensity: 1.6,
-      sky: '#6f6a8c',
-      ground: '#17151f',
-      ambient: 0.55,
+      key: '#fffaf4',
+      keyIntensity: 2.5,
+      fill: '#e4e8ff',
+      fillIntensity: 0.7,
+      sky: '#f1f0fa',
+      ground: '#3a3646',
+      ambient: 1.05,
       envIntensity: 0.55,
     },
-    bloom: 1,
   },
   light: {
     background: '#efe4db',
-    floor: '#ebdfd5',
-    floorLine: '#3a3649',
-    plinth: '#e2d4c9',
-    plinthDetached: '#e6d9cf',
-    states: {
-      NEUTRAL: { body: '#5d5874', text: '#f7efe9' },
-      EVALUATING: { body: '#d9853f', text: '#1e1c27' },
-      MODIFYING: { body: '#0f9fa6', text: '#17151f' },
-      TRAVERSING: { body: '#9d95e6', text: '#1e1c27' },
-      SUCCESS: { body: '#6a9a82', text: '#1e1c27' },
-      DISCARDED: { body: '#d9ccc2', text: '#565166' },
-      AUXILIARY: { body: '#e590b8', text: '#1e1c27' },
-      STRUCTURAL: { body: '#7a8fc4', text: '#1e1c27' },
-    },
-    edges: {
-      idle: '#9c94ad',
-      visit: '#9d95e6',
-      compare: '#d9853f',
-      mutate: '#0f9fa6',
-      settled: '#6a9a82',
-      discarded: '#d6c9bf',
-      marked: '#e590b8',
-    },
-    plate: '#57546a',
-    caption: '#615d75',
-    tag: '#3a3649',
-    frame: '#e4d7cc',
-    frameText: '#1e1c27',
-    frameTop: '#4a4396',
+    floor: '#efe4db',
+    floorLine: '#6f6878',
+    plinth: '#e7dbd1',
+    plinthLine: '#d6c8bd',
+    shadow: '#4a3a33',
+    shadowOpacity: 0.42,
+    states: STATES,
+    edges: { idle: '#8f8796', discarded: '#d3c6bc', ...STATE_EDGES },
+    plate: '#2a2833',
+    caption: '#6e6879',
+    tag: '#2a2833',
+    frame: '#e3d8ce',
+    frameText: '#2a2833',
+    frameTop: '#2f5fae',
     lights: {
-      key: '#fff6ee',
-      keyIntensity: 2.1,
-      rim: '#c9c3ea',
-      rimIntensity: 1.1,
-      sky: '#fbf4ee',
+      key: '#fffaf4',
+      keyIntensity: 2.3,
+      fill: '#f4ecff',
+      fillIntensity: 0.6,
+      sky: '#ffffff',
       ground: '#d9cabd',
-      ambient: 0.9,
-      envIntensity: 0.65,
+      ambient: 1.05,
+      envIntensity: 0.55,
     },
-    bloom: 0,
   },
 };
 

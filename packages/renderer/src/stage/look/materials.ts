@@ -1,6 +1,4 @@
 import {
-  AdditiveBlending,
-  NormalBlending,
   Color,
   DoubleSide,
   MeshBasicMaterial,
@@ -11,64 +9,53 @@ import {
 } from 'three';
 
 /**
- * Node bodies: a clear-coated resin with crisp bevels. Per instance it
- * takes a colour (instanceColor) and `aFx` = (glow, finish):
- *  - glow adds the body colour as emission (only a mutation goes past the bloom threshold);
- *  - finish blends from glossy clear coat (0) to matte and still (1, "settled").
- * A fresnel rim in the rim-light colour separates every body from the void.
+ * Node bodies: satin porcelain with soft rounded edges. Per instance it
+ * takes a colour (instanceColor) and `aFx` = (lit, finish):
+ *  - lit adds a little of the body colour as emission (hover; zero otherwise);
+ *  - finish blends from a light satin polish (0) to fully matte (1, "settled").
+ * No rim light and no glow: the shape reads from the lighting alone.
  */
-export function createNodeMaterial(rim: string, rimStrength: number): MeshPhysicalMaterial {
+export function createNodeMaterial(): MeshPhysicalMaterial {
   const material = new MeshPhysicalMaterial({
     color: 0xffffff,
-    roughness: 0.3,
+    roughness: 0.46,
     metalness: 0,
-    clearcoat: 1,
-    clearcoatRoughness: 0.12,
-    ior: 1.5,
-    specularIntensity: 0.6,
-    sheen: 0.25,
-    sheenRoughness: 0.6,
-    sheenColor: new Color(rim),
+    clearcoat: 0.3,
+    clearcoatRoughness: 0.42,
+    ior: 1.45,
+    specularIntensity: 0.45,
     envMapIntensity: 1,
   });
-  const rimColor = { value: new Color(rim) };
-  const rimAmount = { value: rimStrength };
   material.onBeforeCompile = (shader: WebGLProgramParametersWithUniforms) => {
-    shader.uniforms.uRimColor = rimColor;
-    shader.uniforms.uRimStrength = rimAmount;
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\nattribute vec2 aFx;\nvarying vec2 vFx;')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvFx = aFx;');
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\nvarying vec2 vFx;\nuniform vec3 uRimColor;\nuniform float uRimStrength;')
-      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = mix(roughnessFactor, 0.78, vFx.y);')
+      .replace('#include <common>', '#include <common>\nvarying vec2 vFx;')
+      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = mix(roughnessFactor, 0.8, vFx.y);')
       .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += diffuseColor.rgb * vFx.x;')
       .replace(
         '#include <lights_physical_fragment>',
         '#include <lights_physical_fragment>\n#ifdef USE_CLEARCOAT\nmaterial.clearcoat *= (1.0 - vFx.y);\n#endif',
-      )
-      .replace(
-        '#include <lights_fragment_begin>',
-        '#include <lights_fragment_begin>\nfloat rimF = pow(1.0 - saturate(dot(geometryNormal, geometryViewDir)), 3.0);\ntotalEmissiveRadiance += uRimColor * rimF * uRimStrength * (1.0 - 0.6 * vFx.y);',
       );
   };
-  material.customProgramCacheKey = () => 'aqvl-node-v2';
+  material.customProgramCacheKey = () => 'aqvl-node-v3';
   return material;
 }
 
 /** Edge rods: satin, lit, coloured per instance. */
 export function createEdgeMaterial(): MeshStandardMaterial {
-  return new MeshStandardMaterial({ color: 0xffffff, roughness: 0.42, metalness: 0.1, envMapIntensity: 0.8 });
+  return new MeshStandardMaterial({ color: 0xffffff, roughness: 0.55, metalness: 0, envMapIntensity: 0.6 });
 }
 
-/** Travelling light on an edge: unlit and bright enough to bloom only when it is a mutation (added on a dark ground, painted on a light one). */
-export function createPulseMaterial(additive = true): MeshBasicMaterial {
-  return new MeshBasicMaterial({ color: 0xffffff, toneMapped: false, transparent: true, depthWrite: false, blending: additive ? AdditiveBlending : NormalBlending });
+/** The dot that travels along an edge a step uses: flat colour, painted (never added as light). */
+export function createPulseMaterial(): MeshBasicMaterial {
+  return new MeshBasicMaterial({ color: 0xffffff, transparent: true, depthWrite: false });
 }
 
 /** Call-stack frame slabs. */
 export function createSlabMaterial(color: string): MeshPhysicalMaterial {
-  return new MeshPhysicalMaterial({ color, roughness: 0.55, metalness: 0, clearcoat: 0.5, clearcoatRoughness: 0.3 });
+  return new MeshPhysicalMaterial({ color, roughness: 0.6, metalness: 0, clearcoat: 0.2, clearcoatRoughness: 0.4 });
 }
 
 const DECAL_VERTEX = /* glsl */ `
@@ -157,14 +144,14 @@ void main() {
   vec2 g5 = abs(fract(p / 5.0 - 0.5) - 0.5) / fwidth(p / 5.0);
   float major = 1.0 - min(min(g5.x, g5.y), 1.0);
   float fade = 1.0 - smoothstep(uRadius * 0.35, uRadius, distance(p, uCenter));
-  float a = (line * 0.3 + major * 0.75) * uAlpha * fade;
+  float a = (line * 0.35 + major * 0.65) * uAlpha * fade;
   if (a <= 0.002) discard;
   gl_FragColor = vec4(uColor, a);
   #include <colorspace_fragment>
 }
 `;
 
-/** A hairline grid that fades out around the scene, like the site's hairlines. */
+/** A faint hairline grid that fades out around the scene: it gives the floor scale without adding noise. */
 export function createGridMaterial(color: string, alpha: number): ShaderMaterial {
   return new ShaderMaterial({
     uniforms: {

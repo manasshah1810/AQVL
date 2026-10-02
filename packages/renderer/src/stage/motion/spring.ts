@@ -6,8 +6,8 @@
 
 /** Base stiffness of every node spring (N/m, unit mass). */
 export const STIFFNESS = 210;
-/** Damping ratio: medium damping, a visible but small overshoot. */
-export const DAMPING_RATIO = 0.58;
+/** Damping ratio: well damped, a barely visible overshoot (physical, never bouncy). */
+export const DAMPING_RATIO = 0.78;
 
 /**
  * Displacement left over `t` seconds after a unit step, for a damped spring
