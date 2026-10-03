@@ -232,4 +232,16 @@ END
   - Linear Search — verified successfully via `compile()`
   - For Loop Basics — verified successfully via `compile()`
   
-*(Note: Verification was performed directly against the existing compiler pipeline via a Node script, rather than automated browser testing in the Playground UI.)*
+## 13. Playground Verification
+
+The three reference programs were manually verified in the existing AQVL Playground:
+
+- Bubble Sort — PASS
+- Linear Search — PASS
+- For Loop Basics — PASS
+
+Each program compiled and executed successfully in the Playground, with the expected visualization behavior and no runtime errors.
+
+The examples were also independently verified through the existing compiler pipeline using `compile()`.
+
+No compiler, runtime, renderer, shared, or demo source files were modified.
