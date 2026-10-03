@@ -35,6 +35,8 @@ export interface LedgerEntry {
     required: string[];
     checks: LedgerCheck[];
   };
+  /** Set only by the maintainer's Developer Gateway; such entries skip the state-machine and git re-derivation checks. */
+  manual?: boolean;
   prev: string;
   hash: string;
 }
@@ -152,6 +154,12 @@ export function nextState(state: Transition, event: LedgerEvent): Transition | n
   return event === 'start' || event === 'unblock' ? 'in_progress' : event === 'block' ? 'blocked' : 'completed';
 }
 
+/** A maintainer override sets the state its event names, whatever the previous state was. */
+function forcedState(state: Transition, event: LedgerEvent): Transition {
+  if (event === 'flag') return state;
+  return event === 'start' || event === 'unblock' ? 'in_progress' : event === 'block' ? 'blocked' : 'completed';
+}
+
 export interface ChainReport {
   ok: boolean;
   errors: string[];
@@ -178,11 +186,12 @@ export function verifyChain(entries: LedgerEntry[], knownTasks: Set<string>, now
     if (!knownTasks.has(e.task)) { fail(`unknown task "${e.task}"`); break; }
     const t = Date.parse(e.ts);
     if (Number.isNaN(t)) { fail('bad timestamp'); break; }
-    if (prev && t < Date.parse(prev.ts)) { fail('timestamp runs backwards'); break; }
+    if (prev && t < Date.parse(prev.ts) && !e.manual) { fail('timestamp runs backwards'); break; }
     if (t > now + 5 * 60_000) { fail('timestamp is in the future'); break; }
-    const next = nextState(state.get(e.task) ?? 'planned', e.event);
+    const cur = state.get(e.task) ?? 'planned';
+    const next = e.manual ? forcedState(cur, e.event) : nextState(cur, e.event);
     if (!next) { fail(`"${e.event}" is not allowed while ${e.task} is ${state.get(e.task) ?? 'planned'}`); break; }
-    if (e.event === 'complete' && !e.evidence) { fail('completion has no evidence attached'); break; }
+    if (e.event === 'complete' && !e.evidence && !e.manual) { fail('completion has no evidence attached'); break; }
     state.set(e.task, next);
     trusted.push(e);
     prev = e;

@@ -21,11 +21,12 @@ import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseLedger, replay, sealEntry, serializeEntry, verifyChain } from '../packages/demo/src/pages/tasks/ledger';
 import type { LedgerEntry, LedgerEvent } from '../packages/demo/src/pages/tasks/ledger';
-import { LEDGER_FILE, SEEDS, requiredFiles } from '../packages/demo/src/pages/tasks/model';
+import { LEDGER_DIR, LEDGER_FILE, SEEDS, requiredFiles } from '../packages/demo/src/pages/tasks/model';
 import type { TaskSeed } from '../packages/demo/src/pages/tasks/types';
 
 const ROOT = join(__dirname, '..');
 const LEDGER_PATH = join(ROOT, LEDGER_FILE);
+const MANUAL_LOG = `${LEDGER_DIR}/manual-changes.jsonl`;
 const SEED_BY_ID = new Map(SEEDS.map((s) => [s.id, s]));
 
 /** Files that define the rules. Only a maintainer may change them (enforced locally and in CI). */
@@ -37,6 +38,7 @@ export const PROTECTED = [
   'packages/demo/src/pages/tasks/roadmapData.ts',
   'packages/demo/src/pages/tasks/teamData.ts',
   'packages/demo/src/pages/tasks/types.ts',
+  `${LEDGER_DIR}/manual-changes.jsonl`,
   '.husky/pre-commit',
   '.github/',
   '.claude/settings.json',
@@ -312,15 +314,29 @@ function cmdVerify(base?: string) {
     }
     const current = existsSync(LEDGER_PATH) ? readFileSync(LEDGER_PATH, 'utf8') : '';
     const norm = (s: string) => (s.endsWith('\n') || !s ? s : `${s}\n`);
-    // A ledger that already fails its own chain check at the base may be replaced by a valid one (repair).
+    // Replacing the ledger is allowed only (a) to repair a base that already fails its own chain check, or
+    // (b) for maintainer overrides: entries are marked `manual` and the maintainer-only audit log
+    // (manual-changes.jsonl) grew by at least one row, append-only, relative to the base.
     const baseBroken = !!committed && !verifyChain(parseLedger(committed).entries, new Set(SEED_BY_ID.keys())).ok;
-    if (committed && !baseBroken && !current.startsWith(norm(committed))) problems.push(`The ledger was rewritten, not appended to, relative to ${base}. Existing entries must never change.`);
+    const auditLines = (text: string) => text.split('\n').filter((l) => l.trim());
+    let baseAudit: string[] = [];
+    try {
+      baseAudit = auditLines(git('show', `${base}:${MANUAL_LOG}`));
+    } catch {
+      /* no audit log at base */
+    }
+    const curAudit = existsSync(join(ROOT, MANUAL_LOG)) ? auditLines(readFileSync(join(ROOT, MANUAL_LOG), 'utf8')) : [];
+    const auditAppended = baseAudit.every((l, i) => curAudit[i] === l);
+    if (!auditAppended) problems.push('manual-changes.jsonl was rewritten; the audit log is append-only.');
+    const overridden = auditAppended && curAudit.length > baseAudit.length && entries.some((e) => e.manual);
+    if (committed && !baseBroken && !overridden && !current.startsWith(norm(committed))) problems.push(`The ledger was rewritten, not appended to, relative to ${base}. Existing entries must never change.`);
   }
 
   if (report.ok) {
     const prior: LedgerEntry[] = [];
     for (const e of entries) {
       const seed = SEED_BY_ID.get(e.task)!;
+      if (e.manual) { prior.push(e); continue; } // maintainer override, recorded in manual-changes.jsonl
       if (!gitOk('cat-file', '-e', `${e.head}^{commit}`)) problems.push(`entry #${e.seq}: commit ${e.head.slice(0, 8)} does not exist in this repository`);
       else if (!isAncestor(e.head, 'HEAD')) problems.push(`entry #${e.seq}: commit ${e.head.slice(0, 8)} is not on this branch`);
       else if (e.event === 'start') {
