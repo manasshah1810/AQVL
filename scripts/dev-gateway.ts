@@ -144,9 +144,11 @@ function addEntry(body: Record<string, unknown>) {
   const list = readEntries();
   const after = body.insertAfter === undefined ? list.length : Number(body.insertAfter);
   if (!Number.isInteger(after) || after < 0 || after > list.length) throw new Bad('"insertAfter" must be a seq number or 0');
+  const given = body.evidence;
+  if (given !== undefined && (typeof given !== 'object' || given === null || Array.isArray(given) || JSON.stringify(given).length > 20_000)) throw new Bad('"evidence" must be an object (max 20 KB)');
   const entry = {
     ...f,
-    ...(f.event === 'complete' ? { evidence: { startHead: f.head!, elapsedMin: 0, files: [], linesAdded: 0, required: [], checks: [] } } : {}),
+    ...(f.event === 'complete' ? { evidence: given ?? { startHead: f.head!, elapsedMin: 0, files: [], linesAdded: 0, required: [], checks: [] } } : {}),
   } as LedgerEntry;
   const next = rechain([...list.slice(0, after), withManual(entry), ...list.slice(after)]);
   save(next);
