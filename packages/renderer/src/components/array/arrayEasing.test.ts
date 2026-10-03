@@ -7,38 +7,37 @@ function sample(fn: (t: number) => number) {
   return POINTS.map((t) => fn(t));
 }
 
-describe('swapEasing (easeOutBack — weighted overshoot-and-settle)', () => {
+describe('swapEasing (easeInOutQuad — smooth, no overshoot to avoid jarring snaps)', () => {
   it('starts at exactly 0 and ends at exactly 1', () => {
     const [start, , , , end] = sample(swapEasing);
     expect(start).toBe(0);
     expect(end).toBeCloseTo(1, 5);
   });
 
-  it('overshoots past 1.0 in the middle of the curve', () => {
+  it('never exceeds 1 or drops below 0 at any sampled point', () => {
+    for (const v of sample(swapEasing)) {
+      expect(v).toBeGreaterThanOrEqual(0);
+      expect(v).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it('is exactly 0.5 at the midpoint (symmetric ease-in-out)', () => {
     const [, , mid] = sample(swapEasing);
-    expect(mid).toBeGreaterThan(1);
+    expect(mid).toBeCloseTo(0.5, 5);
   });
 
-  it('is still above 1.0 late in the curve, then settles back down toward it by t=1', () => {
-    const [, , mid, late, end] = sample(swapEasing);
-    expect(late).toBeGreaterThan(1); // still overshooting
-    expect(late).toBeLessThan(mid); // settling back down from the peak
-    expect(end).toBeLessThan(late); // and fully settled to 1.0 by the end
-  });
-
-  it('rises quickly early on (25% time already covers most of the approach to 1.0)', () => {
-    const [, quarter] = sample(swapEasing);
-    expect(quarter).toBeGreaterThan(0.5);
-    expect(quarter).toBeLessThan(1); // hasn't overshot yet this early
-  });
-
-  it('matches the known easeOutBack values at each sample point (regression pin)', () => {
+  it('is monotonically increasing across all sample points', () => {
     const values = sample(swapEasing);
-    expect(values[0]).toBeCloseTo(0, 4);
-    expect(values[1]).toBeCloseTo(0.85938, 4);
-    expect(values[2]).toBeCloseTo(1.125, 4);
-    expect(values[3]).toBeCloseTo(1.07813, 4);
-    expect(values[4]).toBeCloseTo(1, 4);
+    for (let i = 1; i < values.length; i++) {
+      expect(values[i]).toBeGreaterThan(values[i - 1]);
+    }
+  });
+
+  it('matches the known easeInOutQuad values at each sample point (regression pin)', () => {
+    const values = sample(swapEasing);
+    expect(values[1]).toBeCloseTo(0.125, 4);
+    expect(values[2]).toBeCloseTo(0.5, 4);
+    expect(values[3]).toBeCloseTo(0.875, 4);
   });
 });
 
