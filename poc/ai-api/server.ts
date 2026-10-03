@@ -27,18 +27,11 @@ const PROVIDER_API_KEY = process.env.PROVIDER_API_KEY;
 const PROVIDER_URL = process.env.PROVIDER_URL || 'https://api.openai.com/v1/chat/completions';
 const MODEL = process.env.MODEL || 'gpt-4o-mini';
 
-async function generateAQVL(topic: string): Promise<string> {
-  const messages = [
-    { role: 'system', content: SYSTEM_PROMPT }
-  ];
+import { validateAQVL } from './validate';
 
-  for (const ex of FEW_SHOT_EXAMPLES) {
-    messages.push({ role: 'user', content: ex.topic });
-    messages.push({ role: 'assistant', content: ex.aqvl });
-  }
+type Message = { role: string; content: string };
 
-  messages.push({ role: 'user', content: topic });
-
+export async function callLLM(messages: Message[]): Promise<string> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 30000);
 
@@ -83,7 +76,63 @@ async function generateAQVL(topic: string): Promise<string> {
   }
 }
 
-const server = http.createServer((req, res) => {
+// Exported for test stubbing
+export let generateModelOutput = callLLM;
+export function setModelOutputFn(fn: typeof callLLM) {
+  generateModelOutput = fn;
+}
+
+export async function generateAndValidateAQVL(topic: string) {
+  const messages: Message[] = [
+    { role: 'system', content: SYSTEM_PROMPT }
+  ];
+
+  for (const ex of FEW_SHOT_EXAMPLES) {
+    messages.push({ role: 'user', content: ex.topic });
+    messages.push({ role: 'assistant', content: ex.aqvl });
+  }
+
+  messages.push({ role: 'user', content: topic });
+
+  let attempts = 0;
+  let lastAqvl = '';
+  let lastErrors: string[] = [];
+
+  while (attempts < 3) {
+    attempts++;
+    
+    const aqvl = await generateModelOutput(messages);
+    lastAqvl = aqvl;
+    
+    const validationResult = validateAQVL(aqvl);
+    if (validationResult.valid) {
+      return {
+        aqvl,
+        valid: true,
+        attempts,
+        errors: []
+      };
+    }
+    
+    lastErrors = validationResult.errors;
+
+    // Add failure feedback to the messages for the next retry
+    messages.push({ role: 'assistant', content: aqvl });
+    messages.push({
+      role: 'user',
+      content: `Previous AQVL failed validation.\n\nCompiler/validation errors:\n${validationResult.errors.map((e: string) => '- ' + e).join('\n')}\n\nGenerate corrected AQVL that satisfies the AQVL language contract.\nReturn only AQVL source code, with no Markdown fences or explanation.`
+    });
+  }
+
+  return {
+    aqvl: lastAqvl,
+    valid: false,
+    attempts,
+    errors: lastErrors
+  };
+}
+
+export const server = http.createServer((req, res) => {
   res.setHeader('Content-Type', 'application/json');
 
   if (req.method !== 'POST' || req.url !== '/generate') {
@@ -112,15 +161,15 @@ const server = http.createServer((req, res) => {
         return res.end(JSON.stringify({ error: 'Missing or invalid "topic" in request body' }));
       }
 
-      if (!PROVIDER_API_KEY) {
+      if (!PROVIDER_API_KEY && generateModelOutput === callLLM) {
         res.statusCode = 500;
         return res.end(JSON.stringify({ error: 'PROVIDER_API_KEY is not configured on the server' }));
       }
 
-      const aqvl = await generateAQVL(payload.topic);
+      const result = await generateAndValidateAQVL(payload.topic);
       
       res.statusCode = 200;
-      res.end(JSON.stringify({ aqvl }));
+      res.end(JSON.stringify(result));
       
     } catch (err: any) {
       if (err.name === 'AbortError') {
@@ -134,6 +183,9 @@ const server = http.createServer((req, res) => {
   });
 });
 
-server.listen(PORT, () => {
-  console.log(`AI API PoC server running on http://localhost:${PORT}`);
-});
+// Start the server if it's run directly (not imported by a test)
+if (require.main === module) {
+  server.listen(PORT, () => {
+    console.log(`AI API PoC server running on http://localhost:${PORT}`);
+  });
+}
