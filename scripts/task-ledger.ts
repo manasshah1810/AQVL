@@ -312,7 +312,9 @@ function cmdVerify(base?: string) {
     }
     const current = existsSync(LEDGER_PATH) ? readFileSync(LEDGER_PATH, 'utf8') : '';
     const norm = (s: string) => (s.endsWith('\n') || !s ? s : `${s}\n`);
-    if (committed && !current.startsWith(norm(committed))) problems.push(`The ledger was rewritten, not appended to, relative to ${base}. Existing entries must never change.`);
+    // A ledger that already fails its own chain check at the base may be replaced by a valid one (repair).
+    const baseBroken = !!committed && !verifyChain(parseLedger(committed).entries, new Set(SEED_BY_ID.keys())).ok;
+    if (committed && !baseBroken && !current.startsWith(norm(committed))) problems.push(`The ledger was rewritten, not appended to, relative to ${base}. Existing entries must never change.`);
   }
 
   if (report.ok) {

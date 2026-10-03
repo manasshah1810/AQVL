@@ -14,6 +14,7 @@ const Playground = lazy(() => import('./pages/Playground.tsx'));
 const IDE = lazy(() => import('./App.tsx'));
 const Privacy = lazy(() => import('./pages/Privacy.tsx'));
 const Tasks = lazy(() => import('./pages/tasks/TasksPage.tsx'));
+const Developer = lazy(() => import('./pages/developer/DeveloperPage.tsx'));
 const NotFound = lazy(() => import('./pages/NotFound.tsx'));
 
 type Chrome = 'site' | 'app' | 'none';
@@ -35,6 +36,7 @@ const ROUTES: Record<RouteName, RouteDef> = {
   ide: { Page: IDE, chrome: 'app', title: 'Compiler inspector · AQVL', wait: 'Loading the compiler and 3D engine' },
   privacy: { Page: Privacy, chrome: 'site', title: 'Privacy · AQVL', wait: 'Loading' },
   tasks: { Page: Tasks, chrome: 'none', title: 'AQVL · Command Center', wait: 'Loading the command center' },
+  developer: { Page: Developer, chrome: 'none', title: 'Developer', wait: 'Loading' },
   notfound: { Page: NotFound, chrome: 'site', title: 'Not found · AQVL', wait: 'Loading' },
 };
 
