@@ -58,8 +58,8 @@ function fromAnime(name: string): EasingFunction {
   return (t: number) => fn(Math.max(0, Math.min(1, t)));
 }
 
-/** Weighted arrival with a slight overshoot-and-settle — see the module doc comment. */
-export const swapEasing: EasingFunction = fromAnime('easeOutBack');
+/** Weighted arrival with a smooth, no-overshoot curve to avoid jarring snaps. */
+export const swapEasing: EasingFunction = fromAnime('easeInOutQuad');
 
 /** Smooth, symmetric, no overshoot — for moving several elements at once (compaction/shift). */
 export const shiftEasing: EasingFunction = fromAnime('easeInOutQuad');
