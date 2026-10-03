@@ -1,6 +1,8 @@
 import React, { useRef, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
-import { Text, RoundedBox, Sphere, Cylinder } from '@react-three/drei';
+import { Text as DreiText, RoundedBox, Sphere, Cylinder } from '@react-three/drei';
+
+const Text = DreiText as any;
 import {
   isElementActive,
   getHighlightAccentColor,
@@ -202,7 +204,6 @@ export const PrimitiveNode: React.FC<PrimitiveNodeProps> = ({
               color="#ffffff"
               outlineWidth={0.04}
               outlineColor="#0b1120"
-              // @ts-ignore
               anchorX="center"
               anchorY="middle"
             >
@@ -219,7 +220,6 @@ export const PrimitiveNode: React.FC<PrimitiveNodeProps> = ({
               color={tagColor(tag)}
               outlineWidth={0.02}
               outlineColor="#0b1120"
-              // @ts-ignore
               backgroundColor="#0f172a"
               backgroundOpacity={0.85}
               anchorX="center"
@@ -238,7 +238,6 @@ export const PrimitiveNode: React.FC<PrimitiveNodeProps> = ({
               color="#aaaaaa"
               outlineWidth={0.015}
               outlineColor="#0b1120"
-              // @ts-ignore
               backgroundColor="#0f172a"
               backgroundOpacity={0.85}
               anchorX="center"

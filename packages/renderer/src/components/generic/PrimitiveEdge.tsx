@@ -1,6 +1,8 @@
 import React, { useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
-import { Line, Text } from '@react-three/drei';
+import { Line, Text as DreiText } from '@react-three/drei';
+
+const Text = DreiText as any;
 import {
   isElementActive,
   getUnifiedMaterialConfig,
@@ -199,7 +201,6 @@ export const PrimitiveEdge: React.FC<PrimitiveEdgeProps> = ({
             color="#fbbf24"
             outlineWidth={0.015}
             outlineColor="#0b1120"
-            // @ts-ignore: troika-three-text supports backgroundColor but three types might clash
             backgroundColor="#0f172a"
             backgroundOpacity={0.85}
             anchorX="center"
