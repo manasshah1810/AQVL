@@ -196,13 +196,13 @@ export const PrimitiveNode: React.FC<PrimitiveNodeProps> = ({
 
         {value !== undefined && (
           <>
-            {/* @ts-ignore */}
             <Text
               position={[0, 0, labelZOffset]}
               fontSize={0.45}
               color="#ffffff"
               outlineWidth={0.04}
               outlineColor="#0b1120"
+              // @ts-ignore
               anchorX="center"
               anchorY="middle"
             >
@@ -213,13 +213,13 @@ export const PrimitiveNode: React.FC<PrimitiveNodeProps> = ({
 
         {tags?.map((tag, i) => (
           <React.Fragment key={`${tag}-${i}`}>
-            {/* @ts-ignore */}
             <Text
               position={tagPlacement === 'below' ? [0, -1.0 - i * 0.32, 0] : [0, 1.1 + i * 0.36, 0]}
               fontSize={0.25}
               color={tagColor(tag)}
               outlineWidth={0.02}
               outlineColor="#0b1120"
+              // @ts-ignore
               backgroundColor="#0f172a"
               backgroundOpacity={0.85}
               anchorX="center"
@@ -232,13 +232,13 @@ export const PrimitiveNode: React.FC<PrimitiveNodeProps> = ({
 
         {label && (
           <>
-            {/* @ts-ignore */}
             <Text
               position={[0, -0.95, 0]}
               fontSize={0.22}
               color="#aaaaaa"
               outlineWidth={0.015}
               outlineColor="#0b1120"
+              // @ts-ignore
               backgroundColor="#0f172a"
               backgroundOpacity={0.85}
               anchorX="center"

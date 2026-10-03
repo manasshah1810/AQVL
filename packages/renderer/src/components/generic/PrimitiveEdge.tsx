@@ -193,13 +193,13 @@ export const PrimitiveEdge: React.FC<PrimitiveEdgeProps> = ({
       />
       {label && (
         <>
-          {/* @ts-ignore: troika-three-text supports backgroundColor but three types might clash */}
           <Text
             position={[labelPoint.x, labelPoint.y + 0.45, labelPoint.z + 0.05]}
             fontSize={0.22}
             color="#fbbf24"
             outlineWidth={0.015}
             outlineColor="#0b1120"
+            // @ts-ignore: troika-three-text supports backgroundColor but three types might clash
             backgroundColor="#0f172a"
             backgroundOpacity={0.85}
             anchorX="center"
