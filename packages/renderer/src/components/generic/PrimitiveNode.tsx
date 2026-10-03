@@ -1,6 +1,8 @@
 import React, { useRef, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
-import { Text, RoundedBox, Sphere, Cylinder } from '@react-three/drei';
+import { Text as DreiText, RoundedBox, Sphere, Cylinder } from '@react-three/drei';
+
+const Text = DreiText as any;
 import {
   isElementActive,
   getHighlightAccentColor,
@@ -195,42 +197,55 @@ export const PrimitiveNode: React.FC<PrimitiveNodeProps> = ({
         />
 
         {value !== undefined && (
-          <Text
-            position={[0, 0, labelZOffset]}
-            fontSize={0.4}
-            color="#ffffff"
-            anchorX="center"
-            anchorY="middle"
-          >
-            {String(value)}
-          </Text>
+          <>
+            <Text
+              position={[0, 0, labelZOffset]}
+              fontSize={0.45}
+              color="#ffffff"
+              outlineWidth={0.04}
+              outlineColor="#0b1120"
+              anchorX="center"
+              anchorY="middle"
+            >
+              {String(value)}
+            </Text>
+          </>
         )}
 
         {tags?.map((tag, i) => (
-          <Text
-            key={`${tag}-${i}`}
-            position={tagPlacement === 'below' ? [0, -0.9 - i * 0.32, 0] : [0, 0.98 + i * 0.36, 0]}
-            fontSize={0.27}
-            color={tagColor(tag)}
-            outlineWidth={0.025}
-            outlineColor="#0b1120"
-            anchorX="center"
-            anchorY="middle"
-          >
-            {tag}
-          </Text>
+          <React.Fragment key={`${tag}-${i}`}>
+            <Text
+              position={tagPlacement === 'below' ? [0, -1.0 - i * 0.32, 0] : [0, 1.1 + i * 0.36, 0]}
+              fontSize={0.25}
+              color={tagColor(tag)}
+              outlineWidth={0.02}
+              outlineColor="#0b1120"
+              backgroundColor="#0f172a"
+              backgroundOpacity={0.85}
+              anchorX="center"
+              anchorY="middle"
+            >
+              {tag}
+            </Text>
+          </React.Fragment>
         ))}
 
         {label && (
-          <Text
-            position={[0, -0.8, 0]}
-            fontSize={0.25}
-            color="#aaaaaa"
-            anchorX="center"
-            anchorY="middle"
-          >
-            {label}
-          </Text>
+          <>
+            <Text
+              position={[0, -0.95, 0]}
+              fontSize={0.22}
+              color="#aaaaaa"
+              outlineWidth={0.015}
+              outlineColor="#0b1120"
+              backgroundColor="#0f172a"
+              backgroundOpacity={0.85}
+              anchorX="center"
+              anchorY="middle"
+            >
+              {label}
+            </Text>
+          </>
         )}
       </group>
     </group>

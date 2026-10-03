@@ -1,6 +1,8 @@
 import React, { useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
-import { Line, Text } from '@react-three/drei';
+import { Line, Text as DreiText } from '@react-three/drei';
+
+const Text = DreiText as any;
 import {
   isElementActive,
   getUnifiedMaterialConfig,
@@ -192,17 +194,21 @@ export const PrimitiveEdge: React.FC<PrimitiveEdgeProps> = ({
         gapSize={style === 'dashed' ? 0.1 : undefined}
       />
       {label && (
-        <Text
-          position={[labelPoint.x, labelPoint.y + 0.22, labelPoint.z + 0.05]}
-          fontSize={0.3}
-          color="#fbbf24"
-          outlineWidth={0.03}
-          outlineColor="#0b1120"
-          anchorX="center"
-          anchorY="middle"
-        >
-          {label}
-        </Text>
+        <>
+          <Text
+            position={[labelPoint.x, labelPoint.y + 0.45, labelPoint.z + 0.05]}
+            fontSize={0.22}
+            color="#fbbf24"
+            outlineWidth={0.015}
+            outlineColor="#0b1120"
+            backgroundColor="#0f172a"
+            backgroundOpacity={0.85}
+            anchorX="center"
+            anchorY="middle"
+          >
+            {label}
+          </Text>
+        </>
       )}
       {style === 'arrow' && (
         <mesh ref={arrowRef}>

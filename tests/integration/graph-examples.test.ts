@@ -59,7 +59,7 @@ const edgesOf = (r: RunResult, graph: string) =>
   (r.engine.sceneManager.getSceneGraph() as any[]).filter((e) => e.originalType === 'GRAPH_EDGE' && e.logicalParent === graph);
 const edgeName = (r: RunResult, e: any) => `${el(r, e.sourceId).value}-${el(r, e.targetId).value}`;
 /** SUCCESS in the semantic palette: visited vertices and tree edges. */
-const GREEN = '#10b981';
+const GREEN = '#0b815a';
 
 const EXPECTED_OUTPUT: Record<string, string[]> = {
   GraphBasics: [
