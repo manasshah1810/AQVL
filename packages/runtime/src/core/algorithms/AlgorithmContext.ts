@@ -28,6 +28,8 @@ export interface AlgorithmContext {
 
   // Expose the current tree being operated on
   activeTreeName?: string | null;
+  /** Whether the active tree is a BST (set by a TREE / BINARY_TREE / BST statement). */
+  activeTreeIsBST?: boolean;
   defaultColor: string;
   /**
    * Significance-to-duration-multiplier mapping (docs/design/array-narrative-ux-spec.md §4).
