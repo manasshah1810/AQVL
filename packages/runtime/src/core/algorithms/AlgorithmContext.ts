@@ -1,6 +1,6 @@
 /**
- * Shared contract every structure's AlgorithmHandler (HeapEngine, BSTAlgorithms,
- * GraphAlgorithms, HashMapVisualizer, TrieVisualizer, ...) implements and is
+ * Shared contract every structure's AlgorithmHandler (HeapEngine, BSTEngine,
+ * GraphEngine, HashMapEngine, TrieEngine, ...) implements and is
  * called with. See docs/design/algorithm-engine-pattern.md for the full
  * pure-data-structure + AlgorithmHandler engine pattern these are built on —
  * read that before adding a new engine (e.g. for Array/Stack/Queue/LinkedList)

@@ -9,33 +9,25 @@ import { EventDispatcher } from './EventDispatcher';
 
 import { LifecycleManager } from './LifecycleManager';
 import { RelationshipManager } from './RelationshipManager';
-import { AlgorithmRegistry, AlgorithmContext, BinaryTreeEngine, BSTAlgorithms, SortAlgorithms, GraphAlgorithms, HeapEngine, HashMapVisualizer, TrieVisualizer, ArrayEngine, StackEngine, QueueEngine, LinkedListEngine } from './algorithms';
-import { Graph } from '../data-structures/Graph';
+import { AlgorithmRegistry, AlgorithmContext, AlgorithmHandler, BinaryTreeEngine, BSTEngine, SortEngine, GraphEngine, HeapEngine, HashMapEngine, TrieEngine, ArrayEngine, StackEngine, QueueEngine, LinkedListEngine } from './algorithms';
 
-// Register TREE_NODE tree algorithms (MIRROR, the views, the aggregates); the tree statements whose
-// names other structures share (SEARCH, SIZE, INORDER, ...) reach the same engine through GENERIC_ACTION routing.
+// Every structure's built-in statements go to its engine (see docs/design/algorithm-engine-pattern.md).
+// TREE_NODE tree algorithms (MIRROR, the views, the aggregates); the tree statements whose names other
+// structures share (SEARCH, SIZE, INORDER, ...) reach the same engine through GENERIC_ACTION routing.
 const _binaryTreeEngine = new BinaryTreeEngine();
 AlgorithmRegistry.register(BinaryTreeEngine.ALGORITHMS, _binaryTreeEngine);
-
-// Register BST CRUD operations
-const _bstAlgorithmsInstance = new BSTAlgorithms();
-AlgorithmRegistry.register([
-  'BST_INSERT', 'BST_DELETE', 'BST_SEARCH', 'BST_CLEAR', 'ROTATE'
-], _bstAlgorithmsInstance);
-
-// Register array sorting algorithms
-AlgorithmRegistry.register([
-  'BUBBLE_SORT', 'SELECTION_SORT', 'INSERTION_SORT', 'MERGE_SORT', 'QUICK_SORT'
-], new SortAlgorithms());
-
-// Register graph traversal / shortest-path / MST / topological-sort algorithms
-AlgorithmRegistry.register(['DFS', 'BFS', 'DIJKSTRA', 'BELLMAN_FORD', 'ASTAR', 'PRIM', 'KRUSKAL', 'TOPO_SORT'], new GraphAlgorithms());
-
-// Register heap operations (real insert/extract/decrease-key/build-heap/heapify, backed by MinHeap)
-AlgorithmRegistry.register(['HEAP_INSERT', 'HEAP_EXTRACT', 'HEAP_DECREASE', 'BUILD_HEAP', 'HEAPIFY'], new HeapEngine());
-
-// Register hash map operations (real chaining/resize/rehash, backed by HashMap)
-AlgorithmRegistry.register(['HASHMAP_INIT', 'HASHMAP_INSERT', 'HASHMAP_LOOKUP', 'HASHMAP_DELETE'], new HashMapVisualizer());
+// BST_* statements; the shared ones (INSERT, SEARCH, ...) reach BSTEngine when they target a BST.
+const _bstEngine = new BSTEngine();
+AlgorithmRegistry.register(BSTEngine.ALGORITHMS, _bstEngine);
+AlgorithmRegistry.register(SortEngine.ALGORITHMS, new SortEngine());
+AlgorithmRegistry.register(GraphEngine.ALGORITHMS, new GraphEngine());
+AlgorithmRegistry.register(HeapEngine.ALGORITHMS, new HeapEngine());
+AlgorithmRegistry.register(HashMapEngine.ALGORITHMS, new HashMapEngine());
+AlgorithmRegistry.register(TrieEngine.ALGORITHMS, new TrieEngine());
+// Stacks / queues of STACK_ELEMENT / QUEUE_ELEMENT objects. Compiled STACK / QUEUE declarations are
+// TreeEngine containers, routed before the registry is consulted.
+AlgorithmRegistry.register(StackEngine.ALGORITHMS, new StackEngine());
+AlgorithmRegistry.register(QueueEngine.ALGORITHMS, new QueueEngine());
 
 // Instruction-level tracing is off by default since it runs on every instruction and
 // JSON.stringify's the payload; opt in with window.__AQVL_DEBUG_ANIMATION__ = true
@@ -43,22 +35,13 @@ AlgorithmRegistry.register(['HASHMAP_INIT', 'HASHMAP_INSERT', 'HASHMAP_LOOKUP', 
 const DEBUG_ANIMATION: boolean =
   typeof globalThis !== 'undefined' && !!(globalThis as any).__AQVL_DEBUG_ANIMATION__;
 
-// Register trie operations (real insert/search/startsWith/delete/autocomplete, backed by Trie)
-AlgorithmRegistry.register(['TRIE_INIT', 'TRIE_INSERT', 'TRIE_SEARCH', 'TRIE_STARTSWITH', 'TRIE_DELETE', 'TRIE_AUTOCOMPLETE'], new TrieVisualizer());
-
-// Register stack / queue operations on STACK_ELEMENT / QUEUE_ELEMENT scenes (backed by Stack / Queue).
-// Compiled STACK / QUEUE declarations are TreeEngine containers, routed before the registry is consulted.
-AlgorithmRegistry.register(['PUSH', 'POP', 'PEEK'], new StackEngine());
-AlgorithmRegistry.register(['ENQUEUE', 'DEQUEUE', 'FRONT', 'REAR'], new QueueEngine());
-
-import { AnticipationAnimation } from './animations';
 import type { LinkedListContext } from './algorithms/LinkedListProgramEngine';
 import { LinkedListProgramEngine } from './algorithms/LinkedListProgramEngine';
 import { PrimitiveAnimator } from './algorithms/PrimitiveAnimator';
 import { ArrayIndexOutOfRangeError } from './algorithms/ArrayEngine';
 import { formatPrintValue } from './algorithms/formatValue';
-import { TreeEngine, TreeError, type TreeContext } from './algorithms/TreeEngine';
-import { HeapProgramEngine, HeapIndexError } from './algorithms/HeapProgramEngine';
+import { TreeEngine, type TreeContext } from './algorithms/TreeEngine';
+import { HeapProgramEngine } from './algorithms/HeapProgramEngine';
 import { HashMapProgramEngine } from './algorithms/HashMapProgramEngine';
 import { TrieProgramEngine } from './algorithms/TrieProgramEngine';
 import { GraphProgramEngine } from './algorithms/GraphProgramEngine';
@@ -71,10 +54,10 @@ export { ArrayIndexOutOfRangeError };
 export class AnimationController {
   private defaultColor = getSemanticColorToken('NEUTRAL').color;
   private activeTreeName: string | null = null;
-  /** Tracks whether the current active tree is a BST (so INSERT/DELETE/SEARCH/CLEAR route to BSTAlgorithms) */
+  /** Tracks whether the current active tree is a BST (so INSERT/DELETE/SEARCH/CLEAR route to BSTEngine) */
   private activeTreeIsBST: boolean = false;
-  /** Shared BSTAlgorithms instance used for dispatch-based BST routing */
-  private bstAlgorithms: BSTAlgorithms = _bstAlgorithmsInstance;
+  /** Shared BSTEngine instance used for dispatch-based BST routing */
+  private bstEngine: BSTEngine = _bstEngine;
   /** Trees of TREE_NODE objects: TREE / ROOT / CHILD, traversals, measures, ... (see BinaryTreeEngine.ts) */
   private binaryTreeEngine: BinaryTreeEngine = _binaryTreeEngine;
   /** Arrays: the array-targeted INSERT / DELETE / UPDATE, and the reads a program makes of an array (see ArrayEngine.ts) */
@@ -114,8 +97,8 @@ export class AnimationController {
     private relationshipManager: RelationshipManager
   ) {
     // SET_PARTITION_BOUNDARY / CLEAR_PARTITION_BOUNDARY / MARK_SORTED_REGION are dispatched by
-    // algorithm handlers (e.g. SortAlgorithms) as generic AQIR_INSTRUCTION events, deferred to
-    // land in sync with the animation beat they describe (see SortAlgorithms.dispatchInstruction).
+    // algorithm handlers (e.g. SortEngine) as generic AQIR_INSTRUCTION events, deferred to
+    // land in sync with the animation beat they describe (see SortEngine.dispatchInstruction).
     // Apply them to sticky StateManager state and re-broadcast STATE_UPDATED so the renderer's
     // partition boundary / sorted region indicators (array-visual-language-spec.md §4.2/§4.3)
     // pick up the change on the next frame.
@@ -164,85 +147,19 @@ export class AnimationController {
   }
 
   /**
-   * Scan the scene for a BST or TREE anchor object and auto-configure
-   * activeTreeName / activeTreeIsBST.  This is called at the start of every
-   * instruction so context is always in sync even before any explicit
-   * TREE/BST sequence action is encountered (e.g. when BST is declared in
-   * the DECLARE block and operations start immediately).
+   * Keeps activeTreeName / activeTreeIsBST in sync with the scene's tree
+   * anchor (see BSTEngine.detectActiveTree). Called at the start of every
+   * instruction so context is set even before any explicit TREE/BST
+   * sequence action (e.g. a BST declared in the DECLARE block whose
+   * operations start immediately). Once set it is kept.
    */
   private autoDetectActiveTree(): void {
-    // If already set, keep it — only override when scene changes
     if (this.activeTreeName) return;
-
-    const graph = this.sceneManager.getSceneGraph() as any[];
-    // Look for BST anchor first (BST takes priority over TREE)
-    const bstEl = graph.find(el => el.type === 'BST' || el.originalType === 'BST');
-    if (bstEl) {
-      this.activeTreeName = bstEl.logicalParent || bstEl.label || bstEl.id;
-      this.activeTreeIsBST = true;
-      return;
+    const detected = BSTEngine.detectActiveTree(this.sceneManager);
+    if (detected) {
+      this.activeTreeName = detected.name;
+      this.activeTreeIsBST = detected.isBST;
     }
-    // Fallback: any TREE or BINARY_TREE anchor
-    const treeEl = graph.find(el => el.type === 'TREE' || el.type === 'BINARY_TREE');
-    if (treeEl) {
-      this.activeTreeName = treeEl.logicalParent || treeEl.label || treeEl.id;
-      this.activeTreeIsBST = false;
-    }
-  }
-
-  /**
-   * Determines whether the structure named `targetName` (as carried in an
-   * instruction's payload.logicalParent) is a BST anchor in the current
-   * scene. Falls back to activeTreeIsBST only when no explicit target name
-   * is available, so bare INSERT/DELETE/SEARCH instructions are routed by
-   * what they actually target rather than a scene-global flag.
-   */
-  private isTargetBST(targetName: string | undefined): boolean {
-    if (!targetName) return this.activeTreeIsBST;
-    const graph = this.sceneManager.getSceneGraph() as any[];
-    const anchor = graph.find(
-      el => el.logicalParent === targetName && (el.type === 'BST' || el.originalType === 'BST')
-    );
-    if (anchor) return true;
-    const nonBstAnchor = graph.find(
-      el =>
-        el.logicalParent === targetName &&
-        (el.type === 'TREE' || el.type === 'BINARY_TREE' || el.originalType === 'TREE' || el.originalType === 'BINARY_TREE' ||
-         el.type === 'ARRAY' || el.originalType === 'ARRAY_ELEMENT' || el.originalType === 'ARRAY')
-    );
-    if (nonBstAnchor) return false;
-    // No matching anchor found for this target name — fall back to the
-    // scene-global flag rather than guessing.
-    return this.activeTreeIsBST;
-  }
-
-  /**
-   * Builds a `Graph` instance from the VERTEX / GRAPH_EDGE (or EDGE) scene
-   * elements belonging to `graphName`, so algorithm code (GraphAlgorithm)
-   * has an adjacency-list view to operate on instead of querying the scene
-   * directly. Vertex/edge scene elements are created elsewhere (graph
-   * declaration handling); this only reads them.
-   */
-  public buildGraphFromScene(graphName: string, directed = false, weighted = false): Graph {
-    const sceneElements = this.sceneManager.getSceneGraph() as any[];
-    const vertexElements = sceneElements.filter(
-      el => el.logicalParent === graphName && el.originalType === 'VERTEX'
-    );
-    const edgeElements = sceneElements.filter(
-      el =>
-        el.logicalParent === graphName &&
-        (el.originalType === 'GRAPH_EDGE' || el.originalType === 'EDGE')
-    );
-
-    const graph = new Graph<any>([], [], directed, weighted);
-    for (const el of vertexElements) {
-      graph.addVertex(el.id, el);
-    }
-    for (const el of edgeElements) {
-      graph.addEdge(el.sourceId, el.targetId, el.weight);
-    }
-
-    return graph;
   }
 
   /**
@@ -427,6 +344,14 @@ export class AnimationController {
     };
   }
 
+  /** Runs a registered-style engine on `gen`; a TREE / BST statement may change which tree is active, so that is read back. */
+  private runEngine(engine: AlgorithmHandler, gen: GenericActionInstruction): void {
+    const context = this.algorithmContext();
+    engine.execute(context, gen);
+    this.activeTreeName = context.activeTreeName ?? null;
+    this.activeTreeIsBST = context.activeTreeIsBST ?? false;
+  }
+
   /** Context for the program engines (lists, heaps, maps, ...): the usual handler context plus access to the running program's variables. */
   private llContext(): LinkedListContext {
     return {
@@ -477,71 +402,12 @@ export class AnimationController {
   }
 
   /**
-   * Runs a statement whose operands are cells of a HEAP (`SWAP h[i] h[j]`,
-   * `COMPARE`, `HIGHLIGHT`, `h[i] = v` / UPDATE, `INSERT h v`, `DELETE h[i]`)
-   * on HeapProgramEngine. Returns false for anything that is not about a heap.
-   */
-  private executeHeapStatement(instruction: AQIRInstruction): boolean {
-    const ctx = this.llContext();
-    if (!this.heapEngine.hasAnyHeap(ctx)) return false;
-    const heapSlot = (id: unknown) => {
-      const slot = this.resolveArraySlot(id);
-      return slot && this.heapEngine.isHeap(ctx, slot.arrayName) ? { heap: slot.arrayName, index: slot.index } : null;
-    };
-    const action = instruction.action as string;
-
-    if (action === 'SWAP_OBJECTS' || action === 'COMPARE_OBJECTS') {
-      const i = instruction as SwapObjectsInstruction;
-      const left = heapSlot(i.leftId);
-      const right = heapSlot(i.rightId);
-      if (!left && !right) return false;
-      if (!left || !right) {
-        throw new HeapIndexError(`${action === 'SWAP_OBJECTS' ? 'SWAP' : 'COMPARE'} needs two heap cells, e.g. ${action === 'SWAP_OBJECTS' ? 'SWAP' : 'COMPARE'} h[i] h[j]. To use a heap value elsewhere, copy it into a variable first (x = h[0]).`);
-      }
-      if (action === 'SWAP_OBJECTS') this.heapEngine.swap(ctx, left, right);
-      else this.heapEngine.compare(ctx, left, right);
-      return true;
-    }
-    if (action === 'HIGHLIGHT_OBJECT') {
-      const hl = instruction as HighlightObjectInstruction;
-      const slot = heapSlot(hl.targetId);
-      if (!slot) return false;
-      this.heapEngine.highlight(ctx, slot.heap, slot.index, hl.color || 'SUCCESS');
-      return true;
-    }
-    if (action === 'GENERIC_ACTION') {
-      const gen = instruction as GenericActionInstruction;
-      const name = gen.actionName.toUpperCase();
-      const args = gen.args ?? [];
-      const value = () => (this.currentVM ? this.currentVM.evaluateExpression(args[args.length - 1]) : args[args.length - 1]);
-      if (name === 'INSERT' && this.heapEngine.isHeap(ctx, args[0])) {
-        if (args.length < 2) throw new HeapIndexError(`INSERT needs a value, e.g. INSERT ${args[0]} 42`);
-        this.heapEngine.append(ctx, String(args[0]), value());
-        return true;
-      }
-      const slot = heapSlot(args[0]);
-      if (!slot) return false;
-      if (name === 'UPDATE') {
-        this.heapEngine.update(ctx, slot.heap, slot.index, value());
-      } else if (name === 'DELETE') {
-        this.heapEngine.removeLast(ctx, slot.heap, slot.index);
-      } else if (name === 'INSERT') {
-        throw new HeapIndexError(`A heap only grows at its end: write INSERT ${slot.heap} value (it becomes ${slot.heap}[LENGTH(${slot.heap}) - 1]), then sift it up.`);
-      } else {
-        return false;
-      }
-      return true;
-    }
-    return false;
-  }
-
-  /**
    * Before an assignment, condition, call or RETURN runs, animates each read
-   * it will make that is a step of its own: a hash-map lookup (`m[key]`,
-   * CONTAINS(m, key)) or a trie check (`HAS_CHILD(node, ch)`, `node.isEnd`),
-   * in the order the VM evaluates them — the right side of AND / OR only
-   * when it will be evaluated. A read that cannot be worked out here (a
-   * missing key inside another key) is left for the real evaluation to report.
+   * it will make that is a step of its own (a hash-map lookup, a trie check:
+   * see the engines' `readStep`), in the order the VM evaluates them — the
+   * right side of AND / OR only when it will be evaluated. A read that
+   * cannot be worked out here (a missing key inside another key) is left for
+   * the real evaluation to report.
    */
   private async animateReads(vm: AQVLVirtualMachine, instr: any): Promise<void> {
     const ctx = this.llContext();
@@ -553,21 +419,17 @@ export class AnimationController {
         : instr.opcode === AQIROpcode.JUMP_IF_FALSE ? [instr.condition]
           : instr.opcode === AQIROpcode.CALL ? instr.args ?? []
             : [instr.returnValue];
+    const evaluate = (expr: unknown) => vm.evaluateExpression(expr);
     const reads: any[] = [];
+    const add = (read: Record<string, unknown> | null) => {
+      if (read) reads.push(read);
+    };
     const walk = (expr: any): void => {
       if (expr === null || typeof expr !== 'object') return;
       if ('gfn' in expr) {
         (expr.args ?? []).forEach(walk);
-        if (maps && (expr.gfn === 'MAP_GET' || expr.gfn === 'CONTAINS')) {
-          const map = vm.evaluateExpression(expr.args[0]);
-          if (this.hashMapEngine.isHashMap(ctx, map)) reads.push({ action: 'MAP_LOOKUP', map: String(map), key: vm.evaluateExpression(expr.args[1]) });
-        }
-        if (tries && expr.gfn === 'HAS_CHILD') {
-          const node = vm.evaluateExpression(expr.args[0]);
-          if (TrieProgramEngine.isNodeRef(node)) {
-            reads.push({ action: 'TRIE_CHECK', kind: 'HAS_CHILD', node, ch: vm.evaluateExpression(expr.args[1]), text: expr.source });
-          }
-        }
+        if (maps) add(this.hashMapEngine.readStep(ctx, expr, evaluate));
+        if (tries) add(this.trieEngine.readStep(expr, evaluate));
         return;
       }
       if ('op' in expr && 'left' in expr) {
@@ -582,13 +444,7 @@ export class AnimationController {
       if ('elem' in expr) walk(expr.index);
       if ('member' in expr) {
         walk(expr.object);
-        if (tries && String(expr.member).toLowerCase() === 'isend') {
-          const node = vm.evaluateExpression(expr.object);
-          if (TrieProgramEngine.isNodeRef(node)) {
-            const source = typeof expr.object === 'string' ? `${expr.object}.isEnd` : 'isEnd';
-            reads.push({ action: 'TRIE_CHECK', kind: 'IS_END', node, text: source });
-          }
-        }
+        if (tries) add(this.trieEngine.readStep(expr, evaluate));
       }
     };
     try {
@@ -598,7 +454,7 @@ export class AnimationController {
     }
     for (const read of reads) {
       this.currentVM = vm;
-      await this.executeInstruction(read);
+      await this.executeInstruction(read as any);
     }
   }
 
@@ -773,7 +629,8 @@ export class AnimationController {
       
       if (DEBUG_ANIMATION) console.log(`[AnimationController] Executing instruction:`, JSON.stringify(instruction));
 
-      if (this.executeHeapStatement(instruction)) {
+      const evaluate = (expr: unknown) => (this.currentVM ? this.currentVM.evaluateExpression(expr) : expr);
+      if (this.heapEngine.executeStatement(this.llContext(), instruction, (id) => this.resolveArraySlot(id), evaluate)) {
         this.animationScheduler.play();
         return;
       }
@@ -924,16 +781,9 @@ export class AnimationController {
           this.hashMapEngine.lookup(this.llContext(), i.map, i.key);
           break;
         }
-        case 'CONTAINER_READ': {
-          const i = instruction as any;
-          if (!this.treeEngine.isContainer(this.treeContext(), i.container)) {
-            throw new TreeError(
-              `${i.op}(${i.container}): '${i.container}' is not a declared QUEUE or STACK.`
-            );
-          }
-          this.treeEngine.containerTake(this.treeContext(), i);
+        case 'CONTAINER_READ':
+          this.treeEngine.containerRead(this.treeContext(), instruction as any);
           break;
-        }
 
         case 'HIGHLIGHT_OBJECT': {
           const hl = instruction as HighlightObjectInstruction;
@@ -972,79 +822,34 @@ export class AnimationController {
           const gen = instruction as GenericActionInstruction;
           const actionName = gen.actionName.toUpperCase();
           if (DEBUG_ANIMATION) console.log(`[AnimationController] Executing GENERIC_ACTION ${actionName} with targetId ${gen.targetId}`, gen);
+          const target = (gen as any).payload?.logicalParent;
 
-          // A queue / stack (holds values, or node pointers in a tree program).
-          if (['ENQUEUE', 'PUSH', 'DEQUEUE', 'POP', 'FRONT', 'PEEK', 'REAR'].includes(actionName) &&
-              this.treeEngine.isContainer(this.treeContext(), gen.args?.[0])) {
-            const name = String(gen.args[0]);
-            if (actionName === 'ENQUEUE' || actionName === 'PUSH') {
-              if (gen.args.length < 2) throw new TreeError(`${actionName} needs a value, e.g. ${actionName} ${name} node.left`);
-              this.treeEngine.containerAdd(this.treeContext(), name, actionName, gen.args[1], `${actionName} ${name} ${this.describeOperand(gen.args[1])}`);
-            } else {
-              this.treeEngine.containerTake(this.treeContext(), { op: actionName, container: name });
-            }
-            break;
-          }
-          if (['SIZE', 'IS_EMPTY', 'CLEAR'].includes(actionName) && this.treeEngine.isContainer(this.treeContext(), gen.args?.[0])) {
-            const name = String(gen.args[0]);
-            if (actionName === 'CLEAR') this.treeEngine.containerClear(this.treeContext(), name);
-            else this.treeEngine.containerReport(this.treeContext(), actionName as 'SIZE' | 'IS_EMPTY', name);
-            break;
-          }
-          const treeTarget = this.treeEngine.resolveBuiltin(this.treeContext(), gen);
-          if (treeTarget) {
-            this.treeEngine.execute(this.treeContext(), gen, treeTarget.tree, treeTarget.args);
-            break;
-          }
-          const namedTree = (gen as any).payload?.logicalParent;
-          if (namedTree && this.treeEngine.isTree(this.treeContext(), namedTree)) {
-            throw new TreeError(
-              `${actionName} is not a built-in for the tree '${namedTree}'. Trees support INSERT, SEARCH, DELETE, INORDER, PREORDER, POSTORDER, LEVELORDER, HEIGHT, SIZE, LEAVES, MIN, MAX, MIRROR, ROTATE, CLEAR — anything else can be written as pointer code (see the Trees examples).`
-            );
-          }
+          // Pointer trees and the queues / stacks they draw.
+          if (this.treeEngine.dispatch(this.treeContext(), gen, (operand) => this.describeOperand(operand))) break;
 
-          const listName = (gen as any).payload?.logicalParent;
-          if (listName && this.linkedListProgram.isList(this.llContext(), listName)) {
+          // Built-in operations on a linked list.
+          if (target && this.linkedListProgram.isList(this.llContext(), target)) {
             this.linkedListEngine.execute(this.llContext(), gen);
             break;
           }
-          
+
+          // Registered engines; a statement naming its structure makes it the active tree.
           const handler = AlgorithmRegistry.getHandler(actionName);
           if (handler) {
-            // Allow instruction payload to override activeTreeName (e.g. compiler-generated
-            // BST_INSERT instructions from initialElements carry payload.logicalParent).
-            const payloadTree = (gen as any).payload?.logicalParent;
-            if (payloadTree) {
-              this.activeTreeName = payloadTree;
-              // If this is a BST action, ensure the flag is set
-              if (['BST_INSERT', 'BST_DELETE', 'BST_SEARCH', 'BST_CLEAR'].includes(actionName)) {
-                this.activeTreeIsBST = true;
-              }
-            }
-
-            const context = this.algorithmContext();
-            handler.execute(context, gen);
-            this.activeTreeName = context.activeTreeName ?? null; // Sync back in case it changed
+            if (target) this.activeTreeName = target;
+            this.runEngine(handler, gen);
             break;
           }
 
-          
-          const payloadTreeForRouting = (gen as any).payload?.logicalParent;
-          if (
-            ['INSERT', 'DELETE', 'SEARCH', 'CLEAR', 'INORDER', 'PREORDER', 'POSTORDER', 'LEVELORDER', 'MIN', 'MIN_VALUE', 'MAX', 'MAX_VALUE', 'HEIGHT', 'SIZE', 'ROOT', 'IS_EMPTY'].includes(actionName) &&
-            this.isTargetBST(payloadTreeForRouting)
-          ) {
-            // Allow instruction payload to override the active tree name so
-            // un-prefixed ops (INSERT 50 in a BST scene) resolve correctly.
-            if (payloadTreeForRouting) this.activeTreeName = payloadTreeForRouting;
-
-            const context = this.algorithmContext();
-            this.bstAlgorithms.execute(context, gen);
+          // Statements shared with other structures, aimed at a BST.
+          if (BSTEngine.SHARED_ACTIONS.includes(actionName) && BSTEngine.isBSTTarget(this.sceneManager, target, this.activeTreeIsBST)) {
+            if (target) this.activeTreeName = target;
+            this.runEngine(this.bstEngine, gen);
             break;
           }
 
           const ctx = this.algorithmContext();
-          if (['INSERT', 'DELETE', 'UPDATE'].includes(actionName) && this.arrayEngine.targetsSlot(ctx, gen)) {
+          if (this.arrayEngine.targetsSlot(ctx, gen)) {
             this.arrayEngine.execute(ctx, gen);
           } else if (actionName === 'UPDATE') {
             let targetEl = gen.targetId ? this.sceneManager.getElement(gen.targetId) as any : null;
@@ -1057,9 +862,7 @@ export class AnimationController {
             const targetId = gen.args[1];
             if (typeof sourceId === 'string' && typeof targetId === 'string') this.primitives.unlink(ctx, sourceId, targetId);
           } else if (this.binaryTreeEngine.handles(actionName)) {
-            this.binaryTreeEngine.execute(ctx, gen);
-            this.activeTreeName = ctx.activeTreeName ?? null;
-            this.activeTreeIsBST = ctx.activeTreeIsBST ?? false;
+            this.runEngine(this.binaryTreeEngine, gen);
           }
           // Anything else (e.g. a bare INSERT that addresses no array slot) has nothing to animate.
           break;

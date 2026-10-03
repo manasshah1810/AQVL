@@ -23,7 +23,7 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { compile as compileAQVL } from '../../packages/compiler/src';
 import { createVM } from '../../packages/runtime/src';
-import { SortAlgorithm } from '../../packages/runtime/src/core/algorithms/SortEngine';
+import { SortAlgorithm } from '../../packages/runtime/src/data-structures/SortAlgorithm';
 
 beforeAll(() => {
   vi.spyOn(console, 'log').mockImplementation(() => {});

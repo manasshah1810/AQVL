@@ -17,6 +17,9 @@ import { GenericActionInstruction, StackUnderflowError } from '@aqvl/shared';
 import { Stack, StackStep } from '../../data-structures/Stack';
 
 export class StackEngine implements AlgorithmHandler {
+  /** The statements registered with AlgorithmRegistry. */
+  static readonly ALGORITHMS = ['PUSH', 'POP', 'PEEK'];
+
   static readonly NODE_COLOR = '#4caf50';
 
   execute(context: AlgorithmContext, instruction: GenericActionInstruction): void {

@@ -1,6 +1,6 @@
 /**
  * TrieProgramEngine — a TRIE driven by real code instead of the one-line
- * built-ins (TRIE_INSERT, TRIE_SEARCH, ... stay with TrieVisualizer, which
+ * built-ins (TRIE_INSERT, TRIE_SEARCH, ... stay with TrieEngine, which
  * also builds a declared trie).
  *
  * A trie lives entirely in the scene graph, so stepping back (which restores
@@ -225,6 +225,26 @@ export class TrieProgramEngine {
   // ---------------------------------------------------------------------
   // Reads (pure — the animation of a check comes from `check`)
   // ---------------------------------------------------------------------
+
+  /**
+   * The check an expression read makes that is a step of its own —
+   * `HAS_CHILD(node, ch)` on a trie node, or `node.isEnd` — as the
+   * TRIE_CHECK instruction that animates it; null for any other read.
+   */
+  public readStep(expr: any, evaluate: (expr: unknown) => unknown): Record<string, unknown> | null {
+    if ('gfn' in expr) {
+      if (expr.gfn !== 'HAS_CHILD') return null;
+      const node = evaluate(expr.args[0]);
+      return TrieProgramEngine.isNodeRef(node) ? { action: 'TRIE_CHECK', kind: 'HAS_CHILD', node, ch: evaluate(expr.args[1]), text: expr.source } : null;
+    }
+    if ('member' in expr && String(expr.member).toLowerCase() === 'isend') {
+      const node = evaluate(expr.object);
+      if (!TrieProgramEngine.isNodeRef(node)) return null;
+      const source = typeof expr.object === 'string' ? `${expr.object}.isEnd` : 'isEnd';
+      return { action: 'TRIE_CHECK', kind: 'IS_END', node, text: source };
+    }
+    return null;
+  }
 
   /** `HAS_CHILD(node, "a")`, `GET_CHILD(node, ch)`, `CHILD_AT(node, i)`, ... with already-evaluated arguments. */
   public read(ctx: AlgorithmContext, fn: string, args: unknown[], text: string, argTexts: string[] = []): unknown {

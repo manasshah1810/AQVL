@@ -1212,6 +1212,55 @@ export class TreeEngine {
   // ---------------------------------------------------------------------
 
   /**
+   * Runs a GENERIC_ACTION that belongs to this engine: an operation on a
+   * queue / stack it draws (ENQUEUE / PUSH / DEQUEUE / POP / FRONT / PEEK /
+   * REAR / SIZE / IS_EMPTY / CLEAR), or a tree built-in. Throws for a
+   * statement aimed at a tree that is not one of its built-ins. Returns
+   * false when the action is not this engine's. `describe` renders an
+   * operand as the program wrote it, for the console.
+   */
+  public dispatch(ctx: TreeContext, gen: GenericActionInstruction, describe: (operand: unknown) => string): boolean {
+    const actionName = gen.actionName.toUpperCase();
+    // A queue / stack (holds values, or node pointers in a tree program).
+    if (['ENQUEUE', 'PUSH', 'DEQUEUE', 'POP', 'FRONT', 'PEEK', 'REAR'].includes(actionName) && this.isContainer(ctx, gen.args?.[0])) {
+      const name = String(gen.args[0]);
+      if (actionName === 'ENQUEUE' || actionName === 'PUSH') {
+        if (gen.args.length < 2) throw new TreeError(`${actionName} needs a value, e.g. ${actionName} ${name} node.left`);
+        this.containerAdd(ctx, name, actionName, gen.args[1], `${actionName} ${name} ${describe(gen.args[1])}`);
+      } else {
+        this.containerTake(ctx, { op: actionName, container: name });
+      }
+      return true;
+    }
+    if (['SIZE', 'IS_EMPTY', 'CLEAR'].includes(actionName) && this.isContainer(ctx, gen.args?.[0])) {
+      const name = String(gen.args[0]);
+      if (actionName === 'CLEAR') this.containerClear(ctx, name);
+      else this.containerReport(ctx, actionName as 'SIZE' | 'IS_EMPTY', name);
+      return true;
+    }
+    const target = this.resolveBuiltin(ctx, gen);
+    if (target) {
+      this.execute(ctx, gen, target.tree, target.args);
+      return true;
+    }
+    const namedTree = (gen as any).payload?.logicalParent;
+    if (namedTree && this.isTree(ctx, namedTree)) {
+      throw new TreeError(
+        `${actionName} is not a built-in for the tree '${namedTree}'. Trees support INSERT, SEARCH, DELETE, INORDER, PREORDER, POSTORDER, LEVELORDER, HEIGHT, SIZE, LEAVES, MIN, MAX, MIRROR, ROTATE, CLEAR — anything else can be written as pointer code (see the Trees examples).`
+      );
+    }
+    return false;
+  }
+
+  /** `DEQUEUE(q)` / `POP(s)` / ... read inside an expression; the container must be one this engine draws. */
+  public containerRead(ctx: TreeContext, instr: { op: string; container: string; resultVar?: string; assignTo?: string; sourceText?: string }): void {
+    if (!this.isContainer(ctx, instr.container)) {
+      throw new TreeError(`${instr.op}(${instr.container}): '${instr.container}' is not a declared QUEUE or STACK.`);
+    }
+    this.containerTake(ctx, instr);
+  }
+
+  /**
    * Which tree a GENERIC_ACTION targets and its remaining operands:
    * `INSERT t 65` names it; a bare `INSERT 65` / `INORDER` means the only
    * tree in the program. Returns null when the action isn't a tree built-in.

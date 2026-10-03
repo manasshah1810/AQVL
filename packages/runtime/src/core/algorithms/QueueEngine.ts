@@ -18,6 +18,9 @@ import { GenericActionInstruction, StackUnderflowError } from '@aqvl/shared';
 import { Queue, QueueStep } from '../../data-structures/Queue';
 
 export class QueueEngine implements AlgorithmHandler {
+  /** The statements registered with AlgorithmRegistry. */
+  static readonly ALGORITHMS = ['ENQUEUE', 'DEQUEUE', 'FRONT', 'REAR'];
+
   static readonly NODE_COLOR = '#5c6bc0';
 
   execute(context: AlgorithmContext, instruction: GenericActionInstruction): void {

@@ -1,19 +1,19 @@
 /**
  * Integration tests for TRIE / TRIE_INSERT / TRIE_SEARCH / TRIE_DELETE /
  * TRIE_AUTOCOMPLETE: source -> lex -> parse -> validate -> optimize -> AQIR,
- * and (separately) TrieVisualizer executing those GENERIC_ACTION
+ * and (separately) TrieEngine executing those GENERIC_ACTION
  * instructions against a real SceneManager/LayoutManager, animating real
  * path/insert/search/delete/autocomplete behavior.
  *
  * Like heap.test.ts and hashmap.test.ts, full AnimationController execution
- * (a real anime.js timeline) is out of scope; TrieVisualizer mutates scene
+ * (a real anime.js timeline) is out of scope; TrieEngine mutates scene
  * state synchronously and only defers logging into `complete` callbacks, so
  * a lightweight scheduler stub that runs those callbacks immediately is
  * enough to observe every frame it schedules.
  */
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { compileLowered } from '../utils/testHelpers';
-import { TrieVisualizer } from '../../packages/runtime/src/core/algorithms/TrieVisualizer';
+import { TrieEngine } from '../../packages/runtime/src/core/algorithms/TrieEngine';
 import { SceneManager } from '../../packages/runtime/src/core/SceneManager';
 import { LayoutManager } from '../../packages/runtime/src/core/LayoutManager';
 import { RelationshipManager } from '../../packages/runtime/src/core/RelationshipManager';
@@ -43,7 +43,7 @@ END
 `;
 }
 
-// Same stub-scheduler pattern as heap.test.ts/hashmap.test.ts: TrieVisualizer
+// Same stub-scheduler pattern as heap.test.ts/hashmap.test.ts: TrieEngine
 // mutates scene state synchronously; `complete` callbacks (logging) run immediately.
 function makeStubScheduler() {
   const frames: any[] = [];
@@ -140,10 +140,10 @@ describe('Trie built-ins: parsing to GENERIC_ACTION', () => {
   });
 });
 
-describe('TrieVisualizer: executing trie operations against a live scene', () => {
+describe('TrieEngine: executing trie operations against a live scene', () => {
   it('TRIE_INSERT builds a real char-by-char path and marks the final node as a word end', () => {
     const { sceneManager, context, frames } = setup();
-    const engine = new TrieVisualizer();
+    const engine = new TrieEngine();
     engine.execute(context, { action: 'GENERIC_ACTION', actionName: 'TRIE_INSERT', args: ['t', 'cat'] } as any);
 
     const nodes = sceneManager.getSceneGraph().filter((el: any) => el.logicalParent === 't' && el.originalType === 'TRIE_NODE');
@@ -155,7 +155,7 @@ describe('TrieVisualizer: executing trie operations against a live scene', () =>
 
   it('inserting words that share a prefix reuses the shared path nodes', () => {
     const { sceneManager, context } = setup();
-    const engine = new TrieVisualizer();
+    const engine = new TrieEngine();
     ['cat', 'car', 'card'].forEach((w) => {
       engine.execute(context, { action: 'GENERIC_ACTION', actionName: 'TRIE_INSERT', args: ['t', w] } as any);
     });
@@ -168,7 +168,7 @@ describe('TrieVisualizer: executing trie operations against a live scene', () =>
 
   it('TRIE_SEARCH finds an inserted word and correctly rejects a non-word prefix', () => {
     const { context } = setup();
-    const engine = new TrieVisualizer();
+    const engine = new TrieEngine();
     engine.execute(context, { action: 'GENERIC_ACTION', actionName: 'TRIE_INSERT', args: ['t', 'car'] } as any);
 
     const logs: string[] = [];
@@ -183,7 +183,7 @@ describe('TrieVisualizer: executing trie operations against a live scene', () =>
 
   it('TRIE_AUTOCOMPLETE returns every matching word for a shared prefix', () => {
     const { context } = setup();
-    const engine = new TrieVisualizer();
+    const engine = new TrieEngine();
     ['cat', 'car', 'card', 'care'].forEach((w) => {
       engine.execute(context, { action: 'GENERIC_ACTION', actionName: 'TRIE_INSERT', args: ['t', w] } as any);
     });
@@ -197,7 +197,7 @@ describe('TrieVisualizer: executing trie operations against a live scene', () =>
 
   it('TRIE_DELETE removes a word and prunes now-unused nodes, leaving sibling words intact', () => {
     const { sceneManager, context } = setup();
-    const engine = new TrieVisualizer();
+    const engine = new TrieEngine();
     engine.execute(context, { action: 'GENERIC_ACTION', actionName: 'TRIE_INSERT', args: ['t', 'cat'] } as any);
     engine.execute(context, { action: 'GENERIC_ACTION', actionName: 'TRIE_INSERT', args: ['t', 'car'] } as any);
 
@@ -211,7 +211,7 @@ describe('TrieVisualizer: executing trie operations against a live scene', () =>
 
   it('a realistic end-to-end sequence (insert x4, delete, autocomplete, search) stays consistent', () => {
     const { sceneManager, context } = setup();
-    const engine = new TrieVisualizer();
+    const engine = new TrieEngine();
     ['apple', 'app', 'apply', 'banana'].forEach((w) => {
       engine.execute(context, { action: 'GENERIC_ACTION', actionName: 'TRIE_INSERT', args: ['t', w] } as any);
     });

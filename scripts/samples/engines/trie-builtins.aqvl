@@ -1,0 +1,20 @@
+SCENE TrieBuiltins
+DECLARE
+  TRIE t = ["car", "cat", "cart", "dog", "do"]
+
+SEQUENCE
+  TRIE_INSERT t "cat"
+  TRIE_INSERT t "dot"
+  TRIE_SEARCH t "cart"
+  TRIE_SEARCH t "ca"
+  TRIE_SEARCH t "cow"
+  TRIE_STARTSWITH t "do"
+  TRIE_STARTSWITH t "x"
+  TRIE_AUTOCOMPLETE t "ca"
+  TRIE_AUTOCOMPLETE t "zz"
+  TRIE_DELETE t "cart"
+  TRIE_DELETE t "do"
+  TRIE_DELETE t "ca"
+  TRIE_DELETE t "zebra"
+  TRIE_SEARCH t "car"
+END

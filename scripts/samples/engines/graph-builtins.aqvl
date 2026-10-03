@@ -1,0 +1,13 @@
+SCENE GraphBuiltins
+DECLARE
+  GRAPH g = ["A-B", "A-C", "B-D", "C-D", "D-E"]
+
+SEQUENCE
+  DFS g FROM A
+  BFS g FROM A
+  DIJKSTRA g FROM A
+  BELLMAN_FORD g FROM A
+  PRIM g FROM A
+  KRUSKAL g
+  TOPO_SORT g
+END

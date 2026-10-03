@@ -1,605 +1,588 @@
 /**
- * GraphAlgorithm — traversal, shortest-path, MST, and topological-sort
- * algorithms over a graph: depthFirstSearch, breadthFirstSearch,
- * getComponentsViaDFS, dijkstra, bellmanFord, aStar (+ reconstructPath),
- * prim, kruskal, and topologicalSort.
+ * GraphEngine — Animation handler for graph traversal operations.
  *
- * Wraps a pure `Graph` instance (see ../../data-structures/Graph) — no
- * scene or animation dependency here, matching SortEngine's design. The
- * core algorithm entry points (depthFirstSearch, breadthFirstSearch,
- * dijkstra, bellmanFord, aStar, prim, kruskal, topologicalSort) each return
- * both their result and a list of replayable animation steps
- * (GraphTraversalStep / ShortestPathStep / MSTStep / TopoSortStep) for the
- * animation layer (GraphAlgorithms) to walk and turn into scene mutations.
- * Two helpers built on top of those don't carry their own animation steps:
- * getComponentsViaDFS (composes repeated depthFirstSearch calls into a plain
- * Set<Set<string>> of components) and reconstructPath (walks a
- * dijkstra/bellmanFord/aStar predecessor map into a plain string[] path).
+ * Registered with AlgorithmRegistry for: DFS, BFS
+ *
+ * Builds a pure `Graph` (see ../../data-structures/Graph) from the VERTEX /
+ * GRAPH_EDGE scene elements belonging to the named graph, delegates the
+ * actual traversal to the pure GraphAlgorithm (../../data-structures/GraphAlgorithm), then replays its step
+ * list against the scene:
+ *  - VISIT highlights the vertex (TRAVERSING, matching BSTEngine's
+ *    traversal color language), pulsing on visit then settling.
+ *  - EDGE highlights the edge used to reach a newly-visited vertex.
+ *
+ * Vertices are declared with a scene value/label equal to their AQVL name
+ * (e.g. `DFS graph FROM A` resolves "A" against VERTEX elements' `value`/
+ * `label`, not a generated object id), so `resolveStartVertex` matches on
+ * id, value, or label to accept either form.
  */
+
+import { AlgorithmContext, AlgorithmHandler } from './AlgorithmContext';
+import { GenericActionInstruction, getSemanticColorToken } from '@aqvl/shared';
+import { SceneManager } from '../SceneManager';
+import { AnticipationAnimation } from '../animations';
 import { Graph } from '../../data-structures/Graph';
-import { Vertex } from '../../data-structures/Vertex';
-import { Edge } from '../../data-structures/Edge';
-import { MinHeap } from '../../data-structures/PriorityQueue';
-import { UnionFind } from '../../data-structures/UnionFind';
+import { GraphAlgorithm, GraphTraversalStep, ShortestPathStep, MSTStep, TopoSortStep } from '../../data-structures/GraphAlgorithm';
 
-export interface AnimationFrame {
-  action: string;
-  [key: string]: any;
-}
+type TraversalKind = 'DFS' | 'BFS';
+type ShortestPathKind = 'DIJKSTRA' | 'BELLMAN_FORD' | 'ASTAR';
+type MSTKind = 'PRIM' | 'KRUSKAL';
 
-/**
- * A single replayable step of a traversal, in the same "pure step list"
- * spirit as SortEngine's SortStep — the animation layer (GraphAlgorithms)
- * walks this list and turns each entry into scene mutations/animations.
- */
-export type GraphTraversalStep =
-  | { type: 'VISIT'; vertexId: string; level?: number }
-  | { type: 'EDGE'; fromId: string; toId: string };
+const TRAVERSAL_LABELS: Record<TraversalKind, string> = {
+  DFS: 'Depth-First Search',
+  BFS: 'Breadth-First Search',
+};
 
-export interface DFSResult {
-  /** Every vertex id reached from the start vertex. */
-  visited: Set<string>;
-  /** Vertex ids in the order they were visited. */
-  order: string[];
-  animationFrames: GraphTraversalStep[];
-}
+const SHORTEST_PATH_LABELS: Record<ShortestPathKind, string> = {
+  DIJKSTRA: "Dijkstra's Algorithm",
+  BELLMAN_FORD: 'Bellman-Ford Algorithm',
+  ASTAR: 'A* Search',
+};
 
-export interface BFSResult {
-  visited: Set<string>;
-  order: string[];
-  /** Distance (in edges) of each visited vertex from the start vertex. */
-  level: Map<string, number>;
-  animationFrames: GraphTraversalStep[];
-}
+const MST_LABELS: Record<MSTKind, string> = {
+  PRIM: "Prim's Algorithm",
+  KRUSKAL: "Kruskal's Algorithm",
+};
 
-/**
- * A single replayable step of a shortest-path run. VISIT marks a vertex as
- * settled/expanded; RELAX marks a distance improvement across an edge (the
- * animation layer uses this to flash the edge and update the vertex's
- * distance label).
- */
-export type ShortestPathStep =
-  | { type: 'VISIT'; vertexId: string }
-  | { type: 'RELAX'; fromId: string; toId: string; distance: number };
-
-export interface DijkstraResult {
-  distances: Map<string, number>;
-  predecessor: Map<string, string | null>;
-  animationFrames: ShortestPathStep[];
-}
-
-export interface BellmanFordResult {
-  distances: Map<string, number>;
-  predecessor: Map<string, string | null>;
-  hasNegativeCycle: boolean;
-  animationFrames: ShortestPathStep[];
-}
-
-export interface AStarResult {
-  path: string[];
-  distance: number;
-  animationFrames: ShortestPathStep[];
-}
-
-export type Heuristic = (vertexId: string, goalId: string) => number;
-
-/**
- * A single replayable step of a Prim/Kruskal MST run. CONSIDER marks an edge
- * being weighed against the current frontier/sort order; ADD_EDGE marks it
- * accepted into the MST; ADD_VERTEX marks a vertex joining Prim's tree;
- * REJECT marks a Kruskal edge skipped because it would close a cycle; SORTED
- * carries Kruskal's edge list once sorted by weight (for an up-front "sorting"
- * animation beat).
- */
-export type MSTStep =
-  | { type: 'CONSIDER'; fromId: string; toId: string; weight: number }
-  | { type: 'ADD_EDGE'; fromId: string; toId: string; weight: number }
-  | { type: 'ADD_VERTEX'; vertexId: string }
-  | { type: 'REJECT'; fromId: string; toId: string; weight: number }
-  | { type: 'SORTED'; order: Array<{ fromId: string; toId: string; weight: number }> };
-
-export interface MSTEdgeResult {
-  source: string;
-  target: string;
-  weight: number;
-}
-
-export interface PrimResult {
-  mstEdges: MSTEdgeResult[];
-  totalWeight: number;
-  animationFrames: MSTStep[];
-}
-
-export interface KruskalResult {
-  mstEdges: MSTEdgeResult[];
-  totalWeight: number;
-  animationFrames: MSTStep[];
-}
-
-/**
- * A single replayable step of a topological sort's DFS pass. VISIT marks a
- * vertex entering the recursion stack (gray); FINISH marks it fully explored
- * (black) and appended to the ordering; CYCLE marks a back-edge to a vertex
- * still on the stack (gray), which is what makes the graph not a DAG.
- */
-export type TopoSortStep =
-  | { type: 'VISIT'; vertexId: string }
-  | { type: 'FINISH'; vertexId: string }
-  | { type: 'CYCLE'; vertexId: string };
-
-export interface TopologicalSortResult {
-  ordering: string[];
-  hasCycle: boolean;
-  animationFrames: TopoSortStep[];
-}
-
-export class GraphAlgorithm<T = any> {
-  graph: Graph<T>;
-  animationFrames: AnimationFrame[] = [];
-
-  constructor(graph: Graph<T>) {
-    this.graph = graph;
-  }
+export class GraphEngine implements AlgorithmHandler {
+  /** The algorithms registered with AlgorithmRegistry. */
+  static readonly ALGORITHMS = ['DFS', 'BFS', 'DIJKSTRA', 'BELLMAN_FORD', 'ASTAR', 'PRIM', 'KRUSKAL', 'TOPO_SORT'];
 
   /**
-   * Iterative depth-first search using an explicit stack (no recursion, so
-   * arbitrarily deep/cyclic graphs never blow the call stack). Each
-   * neighbor is pushed in reverse adjacency order so visitation order
-   * matches the natural (recursive) DFS order.
+   * Builds a pure `Graph` from the VERTEX / GRAPH_EDGE (or EDGE) scene
+   * elements belonging to `graphName`, so algorithm code (GraphAlgorithm)
+   * has an adjacency-list view to operate on instead of querying the scene
+   * directly. Only reads the scene.
    */
-  depthFirstSearch(startVertex: string): DFSResult {
-    const visited = new Set<string>();
-    const order: string[] = [];
-    const animationFrames: GraphTraversalStep[] = [];
+  static buildGraphFromScene(sceneManager: SceneManager, graphName: string, directed = false, weighted = false): Graph {
+    const sceneElements = sceneManager.getSceneGraph() as any[];
+    const vertexElements = sceneElements.filter(
+      el => el.logicalParent === graphName && el.originalType === 'VERTEX'
+    );
+    const edgeElements = sceneElements.filter(
+      el =>
+        el.logicalParent === graphName &&
+        (el.originalType === 'GRAPH_EDGE' || el.originalType === 'EDGE')
+    );
 
-    if (!this.graph.vertices.has(startVertex)) {
-      return { visited, order, animationFrames };
+    const graph = new Graph<any>([], [], directed, weighted);
+    for (const el of vertexElements) {
+      graph.addVertex(el.id, el);
+    }
+    for (const el of edgeElements) {
+      graph.addEdge(el.sourceId, el.targetId, el.weight);
     }
 
-    const stack: Array<{ id: string; from: string | null }> = [{ id: startVertex, from: null }];
-
-    while (stack.length > 0) {
-      const { id, from } = stack.pop()!;
-      if (visited.has(id)) continue;
-
-      visited.add(id);
-      order.push(id);
-      if (from) animationFrames.push({ type: 'EDGE', fromId: from, toId: id });
-      animationFrames.push({ type: 'VISIT', vertexId: id });
-
-      const neighbors = this.graph.getNeighbors(id);
-      for (let i = neighbors.length - 1; i >= 0; i--) {
-        const neighbor = neighbors[i];
-        if (!visited.has(neighbor.id)) {
-          stack.push({ id: neighbor.id, from: id });
-        }
-      }
-    }
-
-    return { visited, order, animationFrames };
+    return graph;
   }
 
-  /**
-   * Iterative breadth-first search using an explicit queue. Vertices are
-   * marked visited at enqueue time (not dequeue time) so the same vertex
-   * is never queued twice, which is what keeps cyclic graphs from looping.
-   */
-  breadthFirstSearch(startVertex: string): BFSResult {
-    const visited = new Set<string>();
-    const order: string[] = [];
-    const level = new Map<string, number>();
-    const animationFrames: GraphTraversalStep[] = [];
+  execute(context: AlgorithmContext, instruction: GenericActionInstruction): void {
+    const action = instruction.actionName.toUpperCase();
 
-    if (!this.graph.vertices.has(startVertex)) {
-      return { visited, order, level, animationFrames };
+    if (action === 'DFS' || action === 'BFS') {
+      this.runTraversal(context, instruction, action);
+    } else if (action === 'DIJKSTRA' || action === 'BELLMAN_FORD' || action === 'ASTAR') {
+      this.runShortestPath(context, instruction, action);
+    } else if (action === 'PRIM' || action === 'KRUSKAL') {
+      this.runMST(context, instruction, action);
+    } else if (action === 'TOPO_SORT') {
+      this.runTopoSort(context, instruction);
     }
-
-    const queue: Array<{ id: string; from: string | null; depth: number }> = [
-      { id: startVertex, from: null, depth: 0 },
-    ];
-    visited.add(startVertex);
-
-    while (queue.length > 0) {
-      const { id, from, depth } = queue.shift()!;
-
-      order.push(id);
-      level.set(id, depth);
-      if (from) animationFrames.push({ type: 'EDGE', fromId: from, toId: id });
-      animationFrames.push({ type: 'VISIT', vertexId: id, level: depth });
-
-      for (const neighbor of this.graph.getNeighbors(id)) {
-        if (!visited.has(neighbor.id)) {
-          visited.add(neighbor.id);
-          queue.push({ id: neighbor.id, from: id, depth: depth + 1 });
-        }
-      }
-    }
-
-    return { visited, order, level, animationFrames };
   }
 
-  /** Finds every connected component by running DFS from each not-yet-visited vertex. */
-  getComponentsViaDFS(): Set<Set<string>> {
-    const globallyVisited = new Set<string>();
-    const components = new Set<Set<string>>();
+  private runTraversal(context: AlgorithmContext, instruction: GenericActionInstruction, kind: TraversalKind): void {
+    const label = TRAVERSAL_LABELS[kind];
+    const graphName = (instruction as any).payload?.logicalParent || (instruction.args?.[0] as string | undefined);
 
-    for (const vertexId of this.graph.vertices.keys()) {
-      if (globallyVisited.has(vertexId)) continue;
-
-      const { order } = this.depthFirstSearch(vertexId);
-      const component = new Set(order);
-      for (const id of component) globallyVisited.add(id);
-      components.add(component);
+    if (!graphName) {
+      this.log(context, 'ERROR', `${label} requires a graph argument.`, 'warning');
+      return;
     }
 
-    return components;
-  }
+    const sceneElements = context.sceneManager.getSceneGraph() as any[];
+    const vertexElements = sceneElements.filter(
+      (el) => el.logicalParent === graphName && el.originalType === 'VERTEX'
+    );
+    const edgeElements = sceneElements.filter(
+      (el) => el.logicalParent === graphName && (el.originalType === 'GRAPH_EDGE' || el.originalType === 'EDGE')
+    );
 
-  /**
-   * Dijkstra's algorithm via an indexed min-heap (see ../../data-structures/PriorityQueue).
-   * Assumes non-negative edge weights (unweighted edges default to weight 1);
-   * negative weights should use `bellmanFord` instead.
-   */
-  dijkstra(sourceVertex: string): DijkstraResult {
-    const distances = new Map<string, number>();
-    const predecessor = new Map<string, string | null>();
-    const animationFrames: ShortestPathStep[] = [];
-
-    if (!this.graph.vertices.has(sourceVertex)) {
-      return { distances, predecessor, animationFrames };
+    if (vertexElements.length === 0) {
+      this.log(context, kind, `Graph "${graphName}" has no vertices. Nothing to traverse.`, 'warning');
+      return;
     }
 
-    for (const id of this.graph.vertices.keys()) {
-      distances.set(id, Infinity);
-      predecessor.set(id, null);
+    const directed = edgeElements.some((el) => el.directed === true);
+    const graph = new Graph<any>([], [], directed, false);
+    for (const el of vertexElements) graph.addVertex(el.id, el);
+    for (const el of edgeElements) graph.addEdge(el.sourceId, el.targetId);
+
+    const startArg = instruction.args && instruction.args.length > 1 ? String(instruction.args[instruction.args.length - 1]) : undefined;
+    const startEl = startArg
+      ? vertexElements.find((el) => el.id === startArg || String(el.value) === startArg || el.label === startArg)
+      : vertexElements[0];
+
+    if (!startEl) {
+      this.log(context, 'ERROR', `${label}: start vertex "${startArg}" not found in "${graphName}".`, 'warning');
+      return;
     }
-    distances.set(sourceVertex, 0);
 
-    const pq = new MinHeap<string>();
-    pq.push(sourceVertex, 0);
-    const settled = new Set<string>();
+    this.log(context, kind, `Starting ${label} on ${graphName} from ${startEl.value ?? startEl.label}...`, 'operation');
 
-    while (!pq.isEmpty()) {
-      const currentId = pq.pop()!;
-      if (settled.has(currentId)) continue;
-      settled.add(currentId);
-      animationFrames.push({ type: 'VISIT', vertexId: currentId });
+    const algorithm = new GraphAlgorithm<any>(graph);
+    const result = kind === 'DFS' ? algorithm.depthFirstSearch(startEl.id) : algorithm.breadthFirstSearch(startEl.id);
 
-      const currentDist = distances.get(currentId)!;
-      if (currentDist === Infinity) continue;
+    const traversingToken = getSemanticColorToken('TRAVERSING');
+    const evaluatingToken = getSemanticColorToken('EVALUATING');
+    const neutralColor = context.defaultColor;
 
-      for (const neighbor of this.graph.getNeighbors(currentId)) {
-        if (settled.has(neighbor.id)) continue;
+    const getVertexEl = (id: string): any => vertexElements.find((el) => el.id === id);
+    const getEdgeEl = (fromId: string, toId: string): any =>
+      edgeElements.find(
+        (el) =>
+          (el.sourceId === fromId && el.targetId === toId) ||
+          (!directed && el.sourceId === toId && el.targetId === fromId)
+      );
 
-        const weight = this.graph.getEdgeWeight(currentId, neighbor.id) ?? 1;
-        const newDist = currentDist + weight;
+    const visitOrder: any[] = [];
 
-        if (newDist < (distances.get(neighbor.id) ?? Infinity)) {
-          distances.set(neighbor.id, newDist);
-          predecessor.set(neighbor.id, currentId);
-          animationFrames.push({ type: 'RELAX', fromId: currentId, toId: neighbor.id, distance: newDist });
+    result.steps.forEach((step: GraphTraversalStep) => {
+      if (step.type === 'EDGE') {
+        const edgeEl = getEdgeEl(step.fromId, step.toId);
+        if (!edgeEl) return;
 
-          if (pq.contains(neighbor.id)) {
-            pq.updatePriority(neighbor.id, newDist);
-          } else {
-            pq.push(neighbor.id, newDist);
-          }
-        }
+        context.scheduler.enqueue({ targets: edgeEl, color: traversingToken.color, emissiveColor: traversingToken.emissiveColor, emissiveIntensity: 0.7, duration: 250 });
+        context.scheduler.commitGroup(true);
+        context.scheduler.advanceCursor(200);
+      } else if (step.type === 'VISIT') {
+        const el = getVertexEl(step.vertexId);
+        if (!el) return;
+
+        AnticipationAnimation.applyAnticipation(context.scheduler, [el], 'TRAVERSAL');
+        context.scheduler.enqueue({ targets: el, color: evaluatingToken.color, emissiveColor: evaluatingToken.emissiveColor, emissiveIntensity: 0.8, duration: 250 });
+        context.scheduler.enqueue({ targets: el.scale, x: 1.2, y: 1.2, z: 1.2, duration: 250 });
+        context.scheduler.commitGroup(true);
+        context.scheduler.advanceCursor(250);
+
+        visitOrder.push(el.value ?? el.label);
+        this.log(context, kind, `Visit ${el.value ?? el.label}${step.level !== undefined ? ` (level ${step.level})` : ''}`, 'step');
+
+        context.scheduler.enqueue({ targets: el, color: traversingToken.color, emissiveColor: traversingToken.emissiveColor, emissiveIntensity: 0.4, duration: 200 });
+        context.scheduler.enqueue({ targets: el.scale, x: 1, y: 1, z: 1, duration: 200 });
+        context.scheduler.commitGroup(true);
       }
-    }
-
-    return { distances, predecessor, animationFrames };
-  }
-
-  /**
-   * Bellman-Ford: relaxes every edge |V|-1 times (tolerating negative
-   * weights, unlike Dijkstra), then does one more relaxation pass to detect
-   * a negative-weight cycle reachable from the source.
-   */
-  bellmanFord(sourceVertex: string): BellmanFordResult {
-    const distances = new Map<string, number>();
-    const predecessor = new Map<string, string | null>();
-    const animationFrames: ShortestPathStep[] = [];
-    let hasNegativeCycle = false;
-
-    if (!this.graph.vertices.has(sourceVertex)) {
-      return { distances, predecessor, hasNegativeCycle, animationFrames };
-    }
-
-    for (const id of this.graph.vertices.keys()) {
-      distances.set(id, Infinity);
-      predecessor.set(id, null);
-    }
-    distances.set(sourceVertex, 0);
-
-    // Undirected edges relax in both directions; directed edges relax once.
-    const directedEdges: Array<{ source: string; target: string; weight: number }> = [];
-    for (const edge of this.graph.edges) {
-      const weight = edge.weight ?? 1;
-      directedEdges.push({ source: edge.source.id, target: edge.target.id, weight });
-      if (!this.graph.directed) {
-        directedEdges.push({ source: edge.target.id, target: edge.source.id, weight });
-      }
-    }
-
-    const vertexCount = this.graph.vertices.size;
-    for (let i = 0; i < vertexCount - 1; i++) {
-      let relaxedAny = false;
-
-      for (const { source, target, weight } of directedEdges) {
-        const sourceDist = distances.get(source)!;
-        if (sourceDist === Infinity) continue;
-
-        const newDist = sourceDist + weight;
-        if (newDist < distances.get(target)!) {
-          distances.set(target, newDist);
-          predecessor.set(target, source);
-          animationFrames.push({ type: 'RELAX', fromId: source, toId: target, distance: newDist });
-          relaxedAny = true;
-        }
-      }
-
-      if (!relaxedAny) break;
-    }
-
-    for (const { source, target, weight } of directedEdges) {
-      const sourceDist = distances.get(source)!;
-      if (sourceDist === Infinity) continue;
-      if (sourceDist + weight < distances.get(target)!) {
-        hasNegativeCycle = true;
-        break;
-      }
-    }
-
-    return { distances, predecessor, hasNegativeCycle, animationFrames };
-  }
-
-  /**
-   * A* search: Dijkstra guided by an admissible `heuristic(vertexId, goalId)`
-   * (defaults to 0, which degrades to plain Dijkstra restricted to the goal).
-   * Stops as soon as the goal is popped off the frontier rather than
-   * computing distances to every vertex.
-   */
-  aStar(sourceVertex: string, goalVertex: string, heuristic?: Heuristic): AStarResult {
-    const animationFrames: ShortestPathStep[] = [];
-
-    if (!this.graph.vertices.has(sourceVertex) || !this.graph.vertices.has(goalVertex)) {
-      return { path: [], distance: Infinity, animationFrames };
-    }
-
-    const h = heuristic ?? (() => 0);
-
-    const gScore = new Map<string, number>();
-    const predecessor = new Map<string, string | null>();
-    for (const id of this.graph.vertices.keys()) {
-      gScore.set(id, Infinity);
-      predecessor.set(id, null);
-    }
-    gScore.set(sourceVertex, 0);
-
-    const pq = new MinHeap<string>();
-    pq.push(sourceVertex, h(sourceVertex, goalVertex));
-    const closed = new Set<string>();
-
-    while (!pq.isEmpty()) {
-      const currentId = pq.pop()!;
-
-      if (currentId === goalVertex) {
-        const path = this.reconstructPath(predecessor, sourceVertex, goalVertex);
-        return { path, distance: gScore.get(goalVertex)!, animationFrames };
-      }
-
-      if (closed.has(currentId)) continue;
-      closed.add(currentId);
-      animationFrames.push({ type: 'VISIT', vertexId: currentId });
-
-      const currentG = gScore.get(currentId)!;
-      for (const neighbor of this.graph.getNeighbors(currentId)) {
-        if (closed.has(neighbor.id)) continue;
-
-        const weight = this.graph.getEdgeWeight(currentId, neighbor.id) ?? 1;
-        const tentativeG = currentG + weight;
-
-        if (tentativeG < (gScore.get(neighbor.id) ?? Infinity)) {
-          gScore.set(neighbor.id, tentativeG);
-          predecessor.set(neighbor.id, currentId);
-          animationFrames.push({ type: 'RELAX', fromId: currentId, toId: neighbor.id, distance: tentativeG });
-
-          const priority = tentativeG + h(neighbor.id, goalVertex);
-          if (pq.contains(neighbor.id)) {
-            pq.updatePriority(neighbor.id, priority);
-          } else {
-            pq.push(neighbor.id, priority);
-          }
-        }
-      }
-    }
-
-    return { path: [], distance: Infinity, animationFrames };
-  }
-
-  /** Traces a path from `start` to `end` via a predecessor map (as produced by dijkstra/bellmanFord/aStar). Returns [] if unreachable. */
-  reconstructPath(predecessor: Map<string, string | null>, start: string, end: string): string[] {
-    if (start === end) return [start];
-
-    const path: string[] = [];
-    const seen = new Set<string>();
-    let current: string | null = end;
-
-    while (current !== null) {
-      if (seen.has(current)) return []; // cycle in predecessor chain — bail out
-      seen.add(current);
-      path.unshift(current);
-      if (current === start) return path;
-      current = predecessor.get(current) ?? null;
-    }
-
-    return []; // end is unreachable from start
-  }
-
-  /**
-   * Prim's algorithm: grows a single tree from `startVertex` (defaulting to
-   * an arbitrary vertex), repeatedly adding the cheapest edge that connects
-   * the tree to a new vertex. Only reaches the start vertex's connected
-   * component, matching depthFirstSearch/breadthFirstSearch's behavior on
-   * disconnected graphs.
-   */
-  prim(startVertex?: string): PrimResult {
-    const animationFrames: MSTStep[] = [];
-    const mstEdges: MSTEdgeResult[] = [];
-    let totalWeight = 0;
-
-    if (this.graph.vertices.size === 0) {
-      return { mstEdges, totalWeight, animationFrames };
-    }
-
-    const start = startVertex && this.graph.vertices.has(startVertex)
-      ? startVertex
-      : (this.graph.vertices.keys().next().value as string);
-
-    const inMST = new Set<string>();
-    const bestEdgeTo = new Map<string, { from: string; weight: number }>();
-    const pq = new MinHeap<string>();
-
-    inMST.add(start);
-    animationFrames.push({ type: 'ADD_VERTEX', vertexId: start });
-
-    const addFrontierEdges = (vertexId: string) => {
-      for (const neighbor of this.graph.getNeighbors(vertexId)) {
-        if (inMST.has(neighbor.id)) continue;
-
-        const weight = this.graph.getEdgeWeight(vertexId, neighbor.id) ?? 1;
-        animationFrames.push({ type: 'CONSIDER', fromId: vertexId, toId: neighbor.id, weight });
-
-        const existing = bestEdgeTo.get(neighbor.id);
-        if (!existing || weight < existing.weight) {
-          bestEdgeTo.set(neighbor.id, { from: vertexId, weight });
-          if (pq.contains(neighbor.id)) {
-            pq.updatePriority(neighbor.id, weight);
-          } else {
-            pq.push(neighbor.id, weight);
-          }
-        }
-      }
-    };
-
-    addFrontierEdges(start);
-
-    while (!pq.isEmpty()) {
-      const nextId = pq.pop()!;
-      if (inMST.has(nextId)) continue;
-
-      const best = bestEdgeTo.get(nextId)!;
-      inMST.add(nextId);
-      mstEdges.push({ source: best.from, target: nextId, weight: best.weight });
-      totalWeight += best.weight;
-      animationFrames.push({ type: 'ADD_EDGE', fromId: best.from, toId: nextId, weight: best.weight });
-      animationFrames.push({ type: 'ADD_VERTEX', vertexId: nextId });
-
-      addFrontierEdges(nextId);
-    }
-
-    return { mstEdges, totalWeight, animationFrames };
-  }
-
-  /**
-   * Kruskal's algorithm: sorts every edge by weight, then greedily accepts
-   * each one that connects two different components (tracked via UnionFind),
-   * rejecting any that would close a cycle. Builds a minimum spanning
-   * *forest* across the whole graph, not just one component — so on a
-   * disconnected graph its total weight differs from prim()'s.
-   */
-  kruskal(): KruskalResult {
-    const animationFrames: MSTStep[] = [];
-    const mstEdges: MSTEdgeResult[] = [];
-    let totalWeight = 0;
-
-    const uf = new UnionFind(this.graph.vertices.keys());
-
-    const seen = new Set<string>();
-    const edgeList: MSTEdgeResult[] = [];
-    for (const edge of this.graph.edges) {
-      const a = edge.source.id;
-      const b = edge.target.id;
-      const key = this.graph.directed ? `${a}->${b}` : [a, b].sort().join('|');
-      if (seen.has(key)) continue;
-      seen.add(key);
-      edgeList.push({ source: a, target: b, weight: edge.weight ?? 1 });
-    }
-
-    edgeList.sort((x, y) => x.weight - y.weight);
-    animationFrames.push({
-      type: 'SORTED',
-      order: edgeList.map((e) => ({ fromId: e.source, toId: e.target, weight: e.weight })),
     });
 
-    for (const edge of edgeList) {
-      animationFrames.push({ type: 'CONSIDER', fromId: edge.source, toId: edge.target, weight: edge.weight });
-
-      if (uf.connected(edge.source, edge.target)) {
-        animationFrames.push({ type: 'REJECT', fromId: edge.source, toId: edge.target, weight: edge.weight });
-        continue;
+    context.scheduler.enqueue({
+      targets: {}, duration: 1, complete: () => {
+        vertexElements.forEach((el) => {
+          el.color = neutralColor;
+          el.emissiveIntensity = 0;
+        });
+        edgeElements.forEach((el) => {
+          el.color = neutralColor;
+          el.emissiveIntensity = 0;
+        });
+        context.eventDispatcher.dispatch('RUNTIME_LOG', {
+          keyword: kind,
+          message: `${label} complete. Order: ${visitOrder.join(' → ')}`,
+          kind: 'result',
+          timestamp: Date.now(),
+        });
+        if (context.stateManager) {
+          context.stateManager.saveState(context.sceneManager.getSceneGraph(), `${label} on ${graphName}`, context.scheduler.getCurrentTime());
+          context.eventDispatcher.dispatch('STATE_UPDATED', context.stateManager.getCurrentState());
+        }
       }
-
-      uf.union(edge.source, edge.target);
-      mstEdges.push(edge);
-      totalWeight += edge.weight;
-      animationFrames.push({ type: 'ADD_EDGE', fromId: edge.source, toId: edge.target, weight: edge.weight });
-    }
-
-    return { mstEdges, totalWeight, animationFrames };
+    });
+    context.scheduler.commitSequential();
   }
 
-  /**
-   * Topological sort via iterative DFS (explicit stack, so it shares the
-   * same "no recursion" safety as depthFirstSearch) with white/gray/black
-   * vertex coloring: a gray-to-gray edge is a back edge, which means the
-   * graph has a cycle and no valid topological ordering exists. Vertices are
-   * appended to `ordering` as they finish (post-order), then reversed.
-   */
-  topologicalSort(): TopologicalSortResult {
-    const animationFrames: TopoSortStep[] = [];
-    const ordering: string[] = [];
-    let hasCycle = false;
+  private runShortestPath(context: AlgorithmContext, instruction: GenericActionInstruction, kind: ShortestPathKind): void {
+    const label = SHORTEST_PATH_LABELS[kind];
+    const graphName = (instruction as any).payload?.logicalParent || (instruction.args?.[0] as string | undefined);
 
-    const WHITE = 0, GRAY = 1, BLACK = 2;
-    const color = new Map<string, number>();
-    for (const id of this.graph.vertices.keys()) color.set(id, WHITE);
+    if (!graphName) {
+      this.log(context, kind, `${label} requires a graph argument.`, 'warning');
+      return;
+    }
 
-    for (const startId of this.graph.vertices.keys()) {
-      if (color.get(startId) !== WHITE) continue;
+    const sceneElements = context.sceneManager.getSceneGraph() as any[];
+    const vertexElements = sceneElements.filter(
+      (el) => el.logicalParent === graphName && el.originalType === 'VERTEX'
+    );
+    const edgeElements = sceneElements.filter(
+      (el) => el.logicalParent === graphName && (el.originalType === 'GRAPH_EDGE' || el.originalType === 'EDGE')
+    );
 
-      const stack: Array<{ id: string; neighbors: Vertex<T>[]; idx: number }> = [
-        { id: startId, neighbors: this.graph.getNeighbors(startId), idx: 0 },
-      ];
-      color.set(startId, GRAY);
-      animationFrames.push({ type: 'VISIT', vertexId: startId });
+    if (vertexElements.length === 0) {
+      this.log(context, kind, `Graph "${graphName}" has no vertices. Nothing to traverse.`, 'warning');
+      return;
+    }
 
-      while (stack.length > 0) {
-        const frame = stack[stack.length - 1];
+    const directed = edgeElements.some((el) => el.directed === true);
+    const graph = new Graph<any>([], [], directed, true);
+    for (const el of vertexElements) graph.addVertex(el.id, el);
+    for (const el of edgeElements) {
+      const rawWeight = el.properties?.label ?? el.label;
+      const weight = rawWeight !== undefined && rawWeight !== null && rawWeight !== '' && !isNaN(Number(rawWeight))
+        ? Number(rawWeight)
+        : undefined;
+      graph.addEdge(el.sourceId, el.targetId, weight);
+    }
 
-        if (frame.idx < frame.neighbors.length) {
-          const neighbor = frame.neighbors[frame.idx++];
-          const neighborColor = color.get(neighbor.id);
+    const argRest = (instruction.args || []).slice(1).map((a) => String(a));
+    const sourceArg = argRest[0];
+    const goalArg = kind === 'ASTAR' ? argRest[1] : undefined;
 
-          if (neighborColor === WHITE) {
-            color.set(neighbor.id, GRAY);
-            animationFrames.push({ type: 'VISIT', vertexId: neighbor.id });
-            stack.push({ id: neighbor.id, neighbors: this.graph.getNeighbors(neighbor.id), idx: 0 });
-          } else if (neighborColor === GRAY) {
-            hasCycle = true;
-            animationFrames.push({ type: 'CYCLE', vertexId: neighbor.id });
+    const findVertexEl = (arg: string | undefined): any =>
+      arg ? vertexElements.find((el) => el.id === arg || String(el.value) === arg || el.label === arg) : undefined;
+
+    const startEl = sourceArg ? findVertexEl(sourceArg) : vertexElements[0];
+    if (!startEl) {
+      this.log(context, 'ERROR', `${label}: source vertex "${sourceArg}" not found in "${graphName}".`, 'warning');
+      return;
+    }
+
+    let goalEl: any | undefined;
+    if (kind === 'ASTAR') {
+      goalEl = findVertexEl(goalArg);
+      if (!goalEl) {
+        this.log(context, 'ERROR', `${label}: goal vertex "${goalArg}" not found in "${graphName}".`, 'warning');
+        return;
+      }
+    }
+
+    this.log(context, kind, `Starting ${label} on ${graphName} from ${startEl.value ?? startEl.label}${goalEl ? ` to ${goalEl.value ?? goalEl.label}` : ''}...`, 'operation');
+
+    const algorithm = new GraphAlgorithm<any>(graph);
+    let frames: ShortestPathStep[];
+    let distances: Map<string, number> | undefined;
+    let predecessor: Map<string, string | null> | undefined;
+    let hasNegativeCycle = false;
+    let path: string[] = [];
+    let pathDistance: number | undefined;
+
+    if (kind === 'DIJKSTRA') {
+      const result = algorithm.dijkstra(startEl.id);
+      frames = result.steps;
+      distances = result.distances;
+      predecessor = result.predecessor;
+    } else if (kind === 'BELLMAN_FORD') {
+      const result = algorithm.bellmanFord(startEl.id);
+      frames = result.steps;
+      distances = result.distances;
+      predecessor = result.predecessor;
+      hasNegativeCycle = result.hasNegativeCycle;
+    } else {
+      const result = algorithm.aStar(startEl.id, goalEl.id);
+      frames = result.steps;
+      path = result.path;
+      pathDistance = result.distance;
+    }
+
+    const evaluatingToken = getSemanticColorToken('EVALUATING');
+    const traversingToken = getSemanticColorToken('TRAVERSING');
+    const pathToken = getSemanticColorToken('SUCCESS');
+    const neutralColor = context.defaultColor;
+
+    const getVertexEl = (id: string): any => vertexElements.find((el) => el.id === id);
+    const getEdgeEl = (fromId: string, toId: string): any =>
+      edgeElements.find(
+        (el) =>
+          (el.sourceId === fromId && el.targetId === toId) ||
+          (!directed && el.sourceId === toId && el.targetId === fromId)
+      );
+
+    frames.forEach((step) => {
+      if (step.type === 'RELAX') {
+        const edgeEl = getEdgeEl(step.fromId, step.toId);
+        if (edgeEl) {
+          context.scheduler.enqueue({ targets: edgeEl, color: evaluatingToken.color, emissiveColor: evaluatingToken.emissiveColor, emissiveIntensity: 0.7, duration: 200 });
+          context.scheduler.commitGroup(true);
+        }
+        this.log(context, kind, `Relax ${step.fromId} → ${step.toId}: distance = ${step.distance}`, 'step');
+        context.scheduler.advanceCursor(150);
+      } else if (step.type === 'VISIT') {
+        const el = getVertexEl(step.vertexId);
+        if (!el) return;
+
+        AnticipationAnimation.applyAnticipation(context.scheduler, [el], 'TRAVERSAL');
+        context.scheduler.enqueue({ targets: el, color: traversingToken.color, emissiveColor: traversingToken.emissiveColor, emissiveIntensity: 0.8, duration: 250 });
+        context.scheduler.enqueue({ targets: el.scale, x: 1.2, y: 1.2, z: 1.2, duration: 250 });
+        context.scheduler.commitGroup(true);
+        context.scheduler.advanceCursor(200);
+        context.scheduler.enqueue({ targets: el.scale, x: 1, y: 1, z: 1, duration: 150 });
+        context.scheduler.commitGroup(true);
+      }
+    });
+
+    if (kind === 'ASTAR' && path.length > 0) {
+      for (let i = 0; i < path.length; i++) {
+        const el = getVertexEl(path[i]);
+        if (el) {
+          context.scheduler.enqueue({ targets: el, color: pathToken.color, emissiveColor: pathToken.emissiveColor, emissiveIntensity: 0.8, duration: 200 });
+          context.scheduler.commitGroup(true);
+        }
+        if (i > 0) {
+          const edgeEl = getEdgeEl(path[i - 1], path[i]);
+          if (edgeEl) {
+            context.scheduler.enqueue({ targets: edgeEl, color: pathToken.color, emissiveColor: pathToken.emissiveColor, emissiveIntensity: 0.8, duration: 200 });
+            context.scheduler.commitGroup(true);
           }
-        } else {
-          color.set(frame.id, BLACK);
-          animationFrames.push({ type: 'FINISH', vertexId: frame.id });
-          ordering.push(frame.id);
-          stack.pop();
         }
       }
     }
 
-    ordering.reverse();
-    return { ordering, hasCycle, animationFrames };
+    context.scheduler.enqueue({
+      targets: {}, duration: 1, complete: () => {
+        vertexElements.forEach((el) => {
+          el.color = neutralColor;
+          el.emissiveIntensity = 0;
+        });
+        edgeElements.forEach((el) => {
+          el.color = neutralColor;
+          el.emissiveIntensity = 0;
+        });
+
+        let resultMessage: string;
+        if (kind === 'ASTAR') {
+          resultMessage = path.length > 0
+            ? `${label} complete. Path: ${path.join(' → ')} (distance ${pathDistance})`
+            : `${label} complete. No path found from ${startEl.value ?? startEl.label} to ${goalEl.value ?? goalEl.label}.`;
+        } else if (hasNegativeCycle) {
+          resultMessage = `${label} complete. Negative-weight cycle detected — distances are unreliable.`;
+        } else {
+          const distSummary = distances
+            ? Array.from(distances.entries()).map(([id, d]) => `${(getVertexEl(id)?.value ?? id)}=${d === Infinity ? '∞' : d}`).join(', ')
+            : '';
+          resultMessage = `${label} complete. Distances: ${distSummary}`;
+        }
+
+        context.eventDispatcher.dispatch('RUNTIME_LOG', {
+          keyword: kind,
+          message: resultMessage,
+          kind: 'result',
+          timestamp: Date.now(),
+        });
+        if (context.stateManager) {
+          context.stateManager.saveState(context.sceneManager.getSceneGraph(), `${label} on ${graphName}`, context.scheduler.getCurrentTime());
+          context.eventDispatcher.dispatch('STATE_UPDATED', context.stateManager.getCurrentState());
+        }
+      }
+    });
+    context.scheduler.commitSequential();
+  }
+
+  private runMST(context: AlgorithmContext, instruction: GenericActionInstruction, kind: MSTKind): void {
+    const label = MST_LABELS[kind];
+    const graphName = (instruction as any).payload?.logicalParent || (instruction.args?.[0] as string | undefined);
+
+    if (!graphName) {
+      this.log(context, kind, `${label} requires a graph argument.`, 'warning');
+      return;
+    }
+
+    const sceneElements = context.sceneManager.getSceneGraph() as any[];
+    const vertexElements = sceneElements.filter(
+      (el) => el.logicalParent === graphName && el.originalType === 'VERTEX'
+    );
+    const edgeElements = sceneElements.filter(
+      (el) => el.logicalParent === graphName && (el.originalType === 'GRAPH_EDGE' || el.originalType === 'EDGE')
+    );
+
+    if (vertexElements.length === 0) {
+      this.log(context, kind, `Graph "${graphName}" has no vertices. Nothing to process.`, 'warning');
+      return;
+    }
+
+    const graph = new Graph<any>([], [], false, true);
+    for (const el of vertexElements) graph.addVertex(el.id, el);
+    for (const el of edgeElements) {
+      const rawWeight = el.properties?.label ?? el.label;
+      const weight = rawWeight !== undefined && rawWeight !== null && rawWeight !== '' && !isNaN(Number(rawWeight))
+        ? Number(rawWeight)
+        : undefined;
+      graph.addEdge(el.sourceId, el.targetId, weight);
+    }
+
+    const startArg = kind === 'PRIM' && instruction.args && instruction.args.length > 1
+      ? String(instruction.args[instruction.args.length - 1])
+      : undefined;
+    const startEl = startArg
+      ? vertexElements.find((el) => el.id === startArg || String(el.value) === startArg || el.label === startArg)
+      : vertexElements[0];
+
+    if (kind === 'PRIM' && startArg && !startEl) {
+      this.log(context, 'ERROR', `${label}: start vertex "${startArg}" not found in "${graphName}".`, 'warning');
+      return;
+    }
+
+    this.log(context, kind, `Starting ${label} on ${graphName}${startEl ? ` from ${startEl.value ?? startEl.label}` : ''}...`, 'operation');
+
+    const algorithm = new GraphAlgorithm<any>(graph);
+    const result = kind === 'PRIM' ? algorithm.prim(startEl?.id) : algorithm.kruskal();
+
+    const evaluatingToken = getSemanticColorToken('EVALUATING');
+    const traversingToken = getSemanticColorToken('TRAVERSING');
+    const successToken = getSemanticColorToken('SUCCESS');
+    const discardedToken = getSemanticColorToken('DISCARDED');
+    const neutralColor = context.defaultColor;
+
+    const getVertexEl = (id: string): any => vertexElements.find((el) => el.id === id);
+    const getEdgeEl = (fromId: string, toId: string): any =>
+      edgeElements.find(
+        (el) =>
+          (el.sourceId === fromId && el.targetId === toId) ||
+          (el.sourceId === toId && el.targetId === fromId)
+      );
+
+    result.steps.forEach((step: MSTStep) => {
+      if (step.type === 'SORTED') {
+        this.log(context, kind, `Sorted ${step.order.length} edge(s) by weight.`, 'step');
+      } else if (step.type === 'CONSIDER') {
+        const edgeEl = getEdgeEl(step.fromId, step.toId);
+        if (edgeEl) {
+          context.scheduler.enqueue({ targets: edgeEl, color: evaluatingToken.color, emissiveColor: evaluatingToken.emissiveColor, emissiveIntensity: 0.7, duration: 200 });
+          context.scheduler.commitGroup(true);
+        }
+        context.scheduler.advanceCursor(150);
+      } else if (step.type === 'REJECT') {
+        const edgeEl = getEdgeEl(step.fromId, step.toId);
+        if (edgeEl) {
+          context.scheduler.enqueue({ targets: edgeEl, color: discardedToken.color, emissiveColor: discardedToken.emissiveColor, emissiveIntensity: 0.5, duration: 150 });
+          context.scheduler.commitGroup(true);
+        }
+        this.log(context, kind, `Reject ${step.fromId} - ${step.toId} (would form a cycle).`, 'step');
+      } else if (step.type === 'ADD_EDGE') {
+        const edgeEl = getEdgeEl(step.fromId, step.toId);
+        if (edgeEl) {
+          context.scheduler.enqueue({ targets: edgeEl, color: successToken.color, emissiveColor: successToken.emissiveColor, emissiveIntensity: 0.8, duration: 250 });
+          context.scheduler.commitGroup(true);
+        }
+        this.log(context, kind, `Add edge ${step.fromId} - ${step.toId} (weight ${step.weight}) to MST.`, 'step');
+      } else if (step.type === 'ADD_VERTEX') {
+        const el = getVertexEl(step.vertexId);
+        if (!el) return;
+        AnticipationAnimation.applyAnticipation(context.scheduler, [el], 'TRAVERSAL');
+        context.scheduler.enqueue({ targets: el, color: traversingToken.color, emissiveColor: traversingToken.emissiveColor, emissiveIntensity: 0.8, duration: 250 });
+        context.scheduler.commitGroup(true);
+      }
+    });
+
+    context.scheduler.enqueue({
+      targets: {}, duration: 1, complete: () => {
+        vertexElements.forEach((el) => {
+          el.color = neutralColor;
+          el.emissiveIntensity = 0;
+        });
+        edgeElements.forEach((el) => {
+          el.color = neutralColor;
+          el.emissiveIntensity = 0;
+        });
+        context.eventDispatcher.dispatch('RUNTIME_LOG', {
+          keyword: kind,
+          message: `${label} complete. MST weight: ${result.totalWeight}, edges: ${result.mstEdges.map((e) => `${e.source}-${e.target}`).join(', ')}`,
+          kind: 'result',
+          timestamp: Date.now(),
+        });
+        if (context.stateManager) {
+          context.stateManager.saveState(context.sceneManager.getSceneGraph(), `${label} on ${graphName}`, context.scheduler.getCurrentTime());
+          context.eventDispatcher.dispatch('STATE_UPDATED', context.stateManager.getCurrentState());
+        }
+      }
+    });
+    context.scheduler.commitSequential();
+  }
+
+  private runTopoSort(context: AlgorithmContext, instruction: GenericActionInstruction): void {
+    const label = 'Topological Sort';
+    const graphName = (instruction as any).payload?.logicalParent || (instruction.args?.[0] as string | undefined);
+
+    if (!graphName) {
+      this.log(context, 'TOPO_SORT', `${label} requires a graph argument.`, 'warning');
+      return;
+    }
+
+    const sceneElements = context.sceneManager.getSceneGraph() as any[];
+    const vertexElements = sceneElements.filter(
+      (el) => el.logicalParent === graphName && el.originalType === 'VERTEX'
+    );
+    const edgeElements = sceneElements.filter(
+      (el) => el.logicalParent === graphName && (el.originalType === 'GRAPH_EDGE' || el.originalType === 'EDGE')
+    );
+
+    if (vertexElements.length === 0) {
+      this.log(context, 'TOPO_SORT', `Graph "${graphName}" has no vertices. Nothing to sort.`, 'warning');
+      return;
+    }
+
+    const graph = new Graph<any>([], [], true, false);
+    for (const el of vertexElements) graph.addVertex(el.id, el);
+    for (const el of edgeElements) graph.addEdge(el.sourceId, el.targetId);
+
+    this.log(context, 'TOPO_SORT', `Starting ${label} on ${graphName}...`, 'operation');
+
+    const algorithm = new GraphAlgorithm<any>(graph);
+    const result = algorithm.topologicalSort();
+
+    const evaluatingToken = getSemanticColorToken('EVALUATING');
+    const traversingToken = getSemanticColorToken('TRAVERSING');
+    const discardedToken = getSemanticColorToken('DISCARDED');
+    const neutralColor = context.defaultColor;
+
+    const getVertexEl = (id: string): any => vertexElements.find((el) => el.id === id);
+
+    result.steps.forEach((step: TopoSortStep) => {
+      const el = getVertexEl(step.vertexId);
+      if (!el) return;
+
+      if (step.type === 'VISIT') {
+        AnticipationAnimation.applyAnticipation(context.scheduler, [el], 'TRAVERSAL');
+        context.scheduler.enqueue({ targets: el, color: evaluatingToken.color, emissiveColor: evaluatingToken.emissiveColor, emissiveIntensity: 0.8, duration: 250 });
+        context.scheduler.commitGroup(true);
+        context.scheduler.advanceCursor(200);
+      } else if (step.type === 'FINISH') {
+        context.scheduler.enqueue({ targets: el, color: traversingToken.color, emissiveColor: traversingToken.emissiveColor, emissiveIntensity: 0.4, duration: 200 });
+        context.scheduler.commitGroup(true);
+        this.log(context, 'TOPO_SORT', `Finish ${el.value ?? el.label}`, 'step');
+      } else if (step.type === 'CYCLE') {
+        context.scheduler.enqueue({ targets: el, color: discardedToken.color, emissiveColor: discardedToken.emissiveColor, emissiveIntensity: 0.9, duration: 250 });
+        context.scheduler.commitGroup(true);
+        this.log(context, 'TOPO_SORT', `Cycle detected at ${el.value ?? el.label}.`, 'step');
+      }
+    });
+
+    context.scheduler.enqueue({
+      targets: {}, duration: 1, complete: () => {
+        vertexElements.forEach((el) => {
+          el.color = neutralColor;
+          el.emissiveIntensity = 0;
+        });
+        const resultMessage = result.hasCycle
+          ? `${label} complete. Graph "${graphName}" has a cycle — no valid ordering exists.`
+          : `${label} complete. Order: ${result.ordering.map((id) => getVertexEl(id)?.value ?? id).join(' → ')}`;
+        context.eventDispatcher.dispatch('RUNTIME_LOG', {
+          keyword: 'TOPO_SORT',
+          message: resultMessage,
+          kind: 'result',
+          timestamp: Date.now(),
+        });
+        if (context.stateManager) {
+          context.stateManager.saveState(context.sceneManager.getSceneGraph(), `${label} on ${graphName}`, context.scheduler.getCurrentTime());
+          context.eventDispatcher.dispatch('STATE_UPDATED', context.stateManager.getCurrentState());
+        }
+      }
+    });
+    context.scheduler.commitSequential();
+  }
+
+  private log(context: AlgorithmContext, keyword: string, message: string, kind: string = 'operation'): void {
+    context.scheduler.enqueue({
+      targets: {}, duration: 1, complete: () => {
+        context.eventDispatcher.dispatch('RUNTIME_LOG', { keyword, message, kind, timestamp: Date.now() });
+      }
+    });
+    context.scheduler.commitGroup(true);
   }
 }

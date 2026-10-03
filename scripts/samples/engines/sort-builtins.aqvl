@@ -1,0 +1,15 @@
+SCENE SortBuiltins
+DECLARE
+  ARRAY a = [5, 2, 9, 1, 7]
+  ARRAY b = [3, 8, 1, 6]
+  ARRAY c = [4, 4, 2, 9, 0]
+  ARRAY d = [10, 3, 7, 1]
+  ARRAY e = [6, 5, 4, 3, 2, 1]
+
+SEQUENCE
+  BUBBLE_SORT a
+  SELECTION_SORT b
+  INSERTION_SORT c
+  MERGE_SORT d
+  QUICK_SORT e
+END

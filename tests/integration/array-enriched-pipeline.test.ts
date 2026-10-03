@@ -15,7 +15,7 @@
  * array-animation-excellence-spec.md §2.
  */
 import { describe, expect, it } from 'vitest';
-import { SortAlgorithm, type SortStep, type AlgorithmName, type OperationSignificance } from '../../packages/runtime/src/core/algorithms/SortEngine';
+import { SortAlgorithm, type SortStep, type AlgorithmName, type OperationSignificance } from '../../packages/runtime/src/data-structures/SortAlgorithm';
 import { ArrayNarrativeGenerator, type StructureState } from '../../packages/runtime/src/narrative/ArrayNarrativeGenerator';
 import { DEFAULT_PACING_CONFIG } from '../../packages/runtime/src/narrative/PacingConfig';
 
@@ -97,7 +97,7 @@ function assertBoundariesWellNestedThroughoutRun(steps: SortStep[]): { setCount:
   return { setCount, maxDepth };
 }
 
-/** Replays a step stream against a live values array (mirroring how SortAlgorithms.ts resolves logicalIndex during real playback), producing narrative text with values true to each moment in time, not the final sorted array. */
+/** Replays a step stream against a live values array (mirroring how SortEngine.ts resolves logicalIndex during real playback), producing narrative text with values true to each moment in time, not the final sorted array. */
 function replayWithNarrative(
   originalArray: number[],
   steps: SortStep[],

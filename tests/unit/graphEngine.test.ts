@@ -1,11 +1,18 @@
 /**
- * Unit tests for GraphAlgorithm (packages/runtime/src/core/algorithms/GraphEngine.ts) —
+ * Unit tests for GraphAlgorithm (packages/runtime/src/data-structures/GraphAlgorithm.ts) —
  * the pure, scene-free DFS / BFS / connected-components implementations that
  * back the AQVL DFS / BFS built-ins.
  */
 import { describe, expect, it } from 'vitest';
 import { Graph } from '../../packages/runtime/src/data-structures/Graph';
-import { GraphAlgorithm } from '../../packages/runtime/src/core/algorithms/GraphEngine';
+import {
+  GraphAlgorithm,
+  GRAPH_TRAVERSAL_STEP_PRIMITIVES,
+  SHORTEST_PATH_STEP_PRIMITIVES,
+  MST_STEP_PRIMITIVES,
+  TOPO_SORT_STEP_PRIMITIVES,
+} from '../../packages/runtime/src/data-structures/GraphAlgorithm';
+import { isPrimitive } from '../../packages/runtime/src/data-structures/steps';
 
 describe('GraphAlgorithm.depthFirstSearch', () => {
   it('visits a linear graph (A -> B -> C) in order', () => {
@@ -58,7 +65,7 @@ describe('GraphAlgorithm.depthFirstSearch', () => {
     const algo = new GraphAlgorithm(g);
     const result = algo.depthFirstSearch('A');
     expect(result.order).toEqual(['A']);
-    expect(result.animationFrames).toEqual([{ type: 'VISIT', vertexId: 'A' }]);
+    expect(result.steps).toEqual([{ type: 'VISIT', vertexId: 'A' }]);
   });
 
   it('handles an empty graph (start vertex does not exist)', () => {
@@ -67,7 +74,7 @@ describe('GraphAlgorithm.depthFirstSearch', () => {
     const result = algo.depthFirstSearch('A');
     expect(result.order).toEqual([]);
     expect(result.visited.size).toBe(0);
-    expect(result.animationFrames).toEqual([]);
+    expect(result.steps).toEqual([]);
   });
 });
 
@@ -133,7 +140,7 @@ describe('GraphAlgorithm.breadthFirstSearch', () => {
     const result = algo.breadthFirstSearch('A');
     expect(result.order).toEqual([]);
     expect(result.level.size).toBe(0);
-    expect(result.animationFrames).toEqual([]);
+    expect(result.steps).toEqual([]);
   });
 });
 
@@ -177,7 +184,7 @@ describe('GraphAlgorithm.dijkstra', () => {
     const algo = new GraphAlgorithm(g);
     const result = algo.dijkstra('A');
     expect(result.distances.get('A')).toBe(0);
-    expect(result.animationFrames).toEqual([{ type: 'VISIT', vertexId: 'A' }]);
+    expect(result.steps).toEqual([{ type: 'VISIT', vertexId: 'A' }]);
   });
 
   it('reconstructs the shortest path from the predecessor map', () => {
@@ -435,7 +442,7 @@ describe('GraphAlgorithm.kruskal', () => {
     const result = algo.kruskal();
     expect(result.mstEdges).toHaveLength(3);
     expect(result.totalWeight).toBe(1 + 2 + 4);
-    const rejects = result.animationFrames.filter((f) => f.type === 'REJECT');
+    const rejects = result.steps.filter((f) => f.type === 'REJECT');
     expect(rejects.length).toBeGreaterThan(0);
   });
 
@@ -508,5 +515,14 @@ describe('GraphAlgorithm.topologicalSort', () => {
     const result = algo.topologicalSort();
     expect(result.hasCycle).toBe(false);
     expect(result.ordering).toEqual(['A']);
+  });
+});
+
+describe('Graph step primitives', () => {
+  it('every step type of every graph algorithm is an AQIR primitive', () => {
+    for (const table of [GRAPH_TRAVERSAL_STEP_PRIMITIVES, SHORTEST_PATH_STEP_PRIMITIVES, MST_STEP_PRIMITIVES, TOPO_SORT_STEP_PRIMITIVES]) {
+      for (const p of Object.values(table)) expect(isPrimitive(p)).toBe(true);
+    }
+    expect(SHORTEST_PATH_STEP_PRIMITIVES.RELAX).toEqual({ kind: 'MUTATE', verb: 'set' });
   });
 });
