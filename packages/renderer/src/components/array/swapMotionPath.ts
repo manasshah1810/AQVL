@@ -14,10 +14,10 @@
 import type { Vec3 } from '../../core/AnimationInterpolator';
 
 /** Peak height (world units) an arcing element rises to above its start/end `y`. */
-export const SWAP_ARC_LIFT = 1.8;
+export const SWAP_ARC_LIFT = 1.0;
 
 /** Peak depth offset (world units) an arcing element is pushed to on either side of Z=0. */
-export const SWAP_ARC_DEPTH = 1.5;
+export const SWAP_ARC_DEPTH = 0.8;
 
 /** Which side of the baseline an element's arc bulges toward — see module doc comment. */
 export type SwapArcSide = 'front' | 'back';
