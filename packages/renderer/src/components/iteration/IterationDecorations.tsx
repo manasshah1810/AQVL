@@ -1,19 +1,14 @@
-import React, { useRef } from 'react';
-import { useFrame } from '@react-three/fiber';
-import * as THREE from 'three';
+import React from 'react';
 import type { SceneElement } from '@aqvl/runtime';
 import type { IterationOverlayState } from './IterationDirector';
 import { IterationCursor } from './IterationCursor';
 import { SortedRegionIndicator } from '../array/SortedRegionIndicator';
 import { getIterationTreatment, iterationStateFor } from './iterationStates';
-import type { RenderableElement, Vec3 } from '../generic/types';
+import type { RenderableElement } from '../generic/types';
+import { findElementPosition as positionOf } from '../generic/scenePositions';
 
-const LIFT_LERP_RATE = 9;
-
-function positionOf(elements: SceneElement[], structureId: string, index: number): Vec3 | null {
-  const el = elements.find((e) => (e as any).logicalParent === structureId && (e as any).logicalIndex === index);
-  return el ? el.position : null;
-}
+/** Moved to generic/LiftGroup.tsx (any decoration provider's node treatment can lift); re-exported for existing importers. */
+export { LiftGroup } from '../generic/LiftGroup';
 
 /**
  * Applies the iteration state table (iterationStates.ts) to an array cell: the
@@ -43,16 +38,6 @@ export function applyIterationTreatment(
     liftY: treatment.liftY,
   };
 }
-
-/** Eases its children up/down by `liftY` — the cell rises under the cursor instead of teleporting. */
-export const LiftGroup: React.FC<{ liftY: number; children: React.ReactNode }> = ({ liftY, children }) => {
-  const ref = useRef<THREE.Group>(null);
-  useFrame((_s, delta) => {
-    if (!ref.current) return;
-    ref.current.position.y = THREE.MathUtils.lerp(ref.current.position.y, liftY, Math.min(1, delta * LIFT_LERP_RATE));
-  });
-  return <group ref={ref}>{children}</group>;
-};
 
 /** Loop cursors and the binary-search window band. */
 export const IterationDecorations: React.FC<{ elements: SceneElement[]; overlay: IterationOverlayState }> = ({ elements, overlay }) => (

@@ -1,30 +1,25 @@
 import React from 'react';
-import { Line, Text } from '@react-three/drei';
-import type { SceneState, SceneElement, EdgeElement, PartitionBoundaryRegion, SortedRegion } from '@aqvl/runtime';
+import type { SceneState, SceneElement, EdgeElement } from '@aqvl/runtime';
 import { PrimitiveNode } from './PrimitiveNode';
 import { PrimitiveEdge } from './PrimitiveEdge';
-import { EdgeRoute, PrimitiveShape, RenderableConnection, RenderableElement, Vec3 } from './types';
+import { EdgeRoute, PrimitiveShape, RenderableConnection, RenderableElement } from './types';
 import { CameraController, CameraControllerHandle } from '../camera/CameraController';
-import { PartitionBoundary } from '../array/PartitionBoundary';
-import { SortedRegionIndicator } from '../array/SortedRegionIndicator';
 import type { CameraChoreographer } from '../camera/BaseCameraChoreographer';
-import type { IterationOverlayState } from '../iteration/IterationDirector';
-import { IterationDecorations, LiftGroup, applyIterationTreatment } from '../iteration/IterationDecorations';
-import type { LinearOverlayState } from '../linear/LinearDirector';
-import { LinearDecorations, applyLinearTreatment } from '../linear/LinearDecorations';
-import { LinearPointerLayer } from '../linear/LinearPointerLayer';
+import { LiftGroup } from './LiftGroup';
+import { resolveDecorations, type SceneMetadata, type TreatedNode } from './decorationProviders';
+import { restingPosition } from './scenePositions';
+// The default decoration set registers itself through the provider seam; nothing below names it.
+import '../decorations/builtinProviders';
 
 export interface GenericSceneRendererProps {
   sceneState: SceneState | null;
   /** Forwarded to the mounted CameraController so callers (e.g. a reset-camera button) can drive it imperatively. */
   cameraControllerRef?: React.Ref<CameraControllerHandle>;
   onAutoFollowChange?: (autoFollow: boolean) => void;
-  /** Forwarded to CameraController's AUTO_FIT branch — see ArrayCameraChoreographer.ts. */
-  arrayCameraChoreographer?: CameraChoreographer;
-  /** Loops / Searching only: cursors, search window and state treatments from an IterationDirector. Absent = unchanged rendering. */
-  iterationOverlay?: IterationOverlayState | null;
-  /** Stacks / Queues / Linked Lists only: element roles, active-end markers and drawn pointers from a LinearDirector. Absent = unchanged rendering. */
-  linearOverlay?: LinearOverlayState | null;
+  /** Camera emphasis for CameraController's AUTO_FIT branch — any BaseCameraChoreographer subclass. */
+  cameraChoreographer?: CameraChoreographer;
+  /** Per-frame data for registered decoration providers, keyed by provider key (see decorationProviders.ts). Absent = only scene-driven decorations. */
+  sceneMetadata?: SceneMetadata | null;
 }
 
 const NODE_SHAPES: PrimitiveShape[] = ['box', 'sphere', 'cylinder'];
@@ -88,11 +83,6 @@ function toRenderableConnection(
   };
 }
 
-/** Where a node will settle (its layout target), falling back to where it is now. */
-function restingPosition(el: SceneElement): Vec3 {
-  return (el as any).worldTarget ?? el.position;
-}
-
 /**
  * Chooses a path for every linked-list pointer (`next` / `prev` edge):
  * - two opposite arrows between the same nodes (a doubly-linked pair, or a
@@ -134,208 +124,12 @@ function routePointerEdges(connections: RenderableConnection[], elements: Map<st
   }
 }
 
-/** Linked-list extras: each list's name, and the heap-memory box around its unlinked nodes. */
-const LinkedListDecorations: React.FC<{ elements: SceneElement[] }> = ({ elements }) => {
-  const anchors = elements.filter((el) => el.originalType === 'LINKEDLIST');
-  if (anchors.length === 0) return null;
-  return (
-    <>
-      {anchors.map((anchor) => {
-        const list = (anchor as any).logicalParent as string;
-        const at = restingPosition(anchor);
-        const isEmpty = !(anchor as any).headId;
-        const heapNodes = elements.filter(
-          (el) => el.originalType === 'LINKEDLIST_NODE' && (el as any).logicalParent === list && (el as any).inHeap
-        );
-        let box: { minX: number; maxX: number; y: number; z: number } | null = null;
-        if (heapNodes.length > 0) {
-          const xs = heapNodes.map((n) => restingPosition(n).x);
-          const p = restingPosition(heapNodes[0]);
-          box = { minX: Math.min(...xs), maxX: Math.max(...xs), y: p.y, z: p.z };
-        }
-        return (
-          <group key={`ll-deco-${anchor.id}`}>
-            <Text
-              position={[at.x + 0.9, at.y, at.z]}
-              fontSize={0.36}
-              color={isEmpty ? '#94a3b8' : '#e2e8f0'}
-              outlineWidth={0.02}
-              outlineColor="#0b1120"
-              anchorX="right"
-              anchorY="middle"
-            >
-              {isEmpty ? `${list}: head = NULL` : list}
-            </Text>
-            {box && (
-              <>
-                <Line
-                  points={[
-                    [box.minX - 1.1, box.y + 1.35, box.z],
-                    [box.maxX + 1.1, box.y + 1.35, box.z],
-                    [box.maxX + 1.1, box.y - 0.95, box.z],
-                    [box.minX - 1.1, box.y - 0.95, box.z],
-                    [box.minX - 1.1, box.y + 1.35, box.z],
-                  ]}
-                  color="#a78bfa"
-                  lineWidth={1.5}
-                  dashed
-                  dashSize={0.25}
-                  gapSize={0.15}
-                  transparent
-                  opacity={0.8}
-                />
-                <Text
-                  position={[box.minX - 1.0, box.y - 1.2, box.z]}
-                  fontSize={0.24}
-                  color="#c4b5fd"
-                  anchorX="left"
-                  anchorY="middle"
-                >
-                  {`Heap memory (${list}): nodes not in the list — FREE releases them`}
-                </Text>
-              </>
-            )}
-          </group>
-        );
-      })}
-    </>
-  );
-};
-
-/**
- * Pointer-tree extras (BINARY_TREE / BST, see the runtime's TreeEngine): each
- * tree's name, its call-stack panel while a recursive function runs, the
- * heap-memory box around its unlinked nodes; and the name of each queue /
- * stack row of a tree program.
- */
-const TreeDecorations: React.FC<{ elements: SceneElement[] }> = ({ elements }) => {
-  const trees = elements.filter((el) => el.originalType === 'BINARYTREE');
-  const containers = elements.filter((el) => el.originalType === 'CONTAINER');
-  if (trees.length === 0 && containers.length === 0) return null;
-  return (
-    <>
-      {trees.map((anchor, treeIndex) => {
-        const tree = (anchor as any).logicalParent as string;
-        const at = restingPosition(anchor);
-        const isEmpty = !(anchor as any).rootId;
-        const heapNodes = elements.filter(
-          (el) => el.originalType === 'TREE_NODE' && (el as any).logicalParent === tree && (el as any).inHeap
-        );
-        let box: { minX: number; maxX: number; y: number; z: number } | null = null;
-        if (heapNodes.length > 0) {
-          const xs = heapNodes.map((n) => restingPosition(n).x);
-          const p = restingPosition(heapNodes[0]);
-          const minX = Math.min(...xs);
-          // Wide enough for its caption even around a single node.
-          box = { minX, maxX: Math.max(Math.max(...xs), minX + 5.6), y: p.y, z: p.z };
-        }
-        // One call-stack panel (the program's), under the first tree's name.
-        const stack: string[] = treeIndex === 0 ? ((anchor as any).callStack ?? []) : [];
-        const shown = [...stack].reverse().slice(0, 9);
-        return (
-          <group key={`tree-deco-${anchor.id}`}>
-            <Text
-              position={[at.x, at.y, at.z]}
-              fontSize={0.4}
-              color={isEmpty ? '#94a3b8' : '#e2e8f0'}
-              outlineWidth={0.02}
-              outlineColor="#0b1120"
-              anchorX="right"
-              anchorY="middle"
-            >
-              {isEmpty ? `${tree}: root = NULL` : tree}
-            </Text>
-            {stack.length > 0 && (
-              <group>
-                <Text position={[at.x, at.y - 0.75, at.z]} fontSize={0.24} color="#a5b4fc" anchorX="right" anchorY="middle">
-                  Call stack (top = running)
-                </Text>
-                {shown.map((call, i) => (
-                  <Text
-                    key={`${call}-${i}`}
-                    position={[at.x, at.y - 1.15 - i * 0.34, at.z]}
-                    fontSize={0.26}
-                    color={i === 0 ? '#67e8f9' : '#818cf8'}
-                    outlineWidth={0.015}
-                    outlineColor="#0b1120"
-                    anchorX="right"
-                    anchorY="middle"
-                  >
-                    {i === 0 ? `> ${call}` : call}
-                  </Text>
-                ))}
-                {stack.length > shown.length && (
-                  <Text position={[at.x, at.y - 1.15 - shown.length * 0.34, at.z]} fontSize={0.22} color="#818cf8" anchorX="right" anchorY="middle">
-                    {`... ${stack.length - shown.length} more`}
-                  </Text>
-                )}
-              </group>
-            )}
-            {box && (
-              <>
-                <Line
-                  points={[
-                    [box.minX - 1.0, box.y + 1.25, box.z],
-                    [box.maxX + 1.0, box.y + 1.25, box.z],
-                    [box.maxX + 1.0, box.y - 1.3, box.z],
-                    [box.minX - 1.0, box.y - 1.3, box.z],
-                    [box.minX - 1.0, box.y + 1.25, box.z],
-                  ]}
-                  color="#a78bfa"
-                  lineWidth={1.5}
-                  dashed
-                  dashSize={0.25}
-                  gapSize={0.15}
-                  transparent
-                  opacity={0.8}
-                />
-                <Text position={[box.minX - 0.9, box.y + 1.05, box.z]} fontSize={0.22} color="#c4b5fd" anchorX="left" anchorY="middle">
-                  {`Heap memory (${tree}): not in the tree — FREE releases them`}
-                </Text>
-              </>
-            )}
-          </group>
-        );
-      })}
-      {containers.map((anchor) => {
-        const name = (anchor as any).logicalParent as string;
-        const kind = (anchor as any).kind === 'STACK' ? 'stack' : 'queue';
-        const at = restingPosition(anchor);
-        const empty = !((anchor as any).itemCount > 0);
-        return (
-          <Text
-            key={`ctr-deco-${anchor.id}`}
-            position={[at.x, at.y, at.z]}
-            fontSize={0.3}
-            color="#fcd34d"
-            outlineWidth={0.02}
-            outlineColor="#0b1120"
-            anchorX="right"
-            anchorY="middle"
-          >
-            {`${name} (${kind})${empty ? ': empty' : ''}`}
-          </Text>
-        );
-      })}
-    </>
-  );
-};
-
-/** Resolves the live position of a structure's element at `index` — never a cached/fixed value, since layout can reposition elements between frames. */
-function findElementPosition(elements: SceneElement[], structureId: string, index: number): Vec3 | null {
-  const el = elements.find(
-    (e) => (e as any).logicalParent === structureId && (e as any).logicalIndex === index
-  );
-  return el ? el.position : null;
-}
-
 export const GenericSceneRenderer: React.FC<GenericSceneRendererProps> = ({
   sceneState,
   cameraControllerRef,
   onAutoFollowChange,
-  arrayCameraChoreographer,
-  iterationOverlay,
-  linearOverlay,
+  cameraChoreographer,
+  sceneMetadata,
 }) => {
   if (!sceneState || !sceneState.elements) {
     return (
@@ -343,50 +137,45 @@ export const GenericSceneRenderer: React.FC<GenericSceneRendererProps> = ({
         ref={cameraControllerRef}
         sceneState={sceneState}
         onAutoFollowChange={onAutoFollowChange}
-        arrayCameraChoreographer={arrayCameraChoreographer}
+        arrayCameraChoreographer={cameraChoreographer}
       />
     );
   }
 
+  const decorations = resolveDecorations(sceneState, sceneMetadata);
+  const treating = decorations.find((d) => d.provider.treatNode);
+
   const elements = Array.from(sceneState.elements.values());
   const nodes = elements
-    .map((el) => {
+    .map((el): TreatedNode | null => {
       const node = toRenderableElement(el);
       if (!node) return null;
-      if (iterationOverlay) return applyIterationTreatment(node, el, iterationOverlay);
-      if (linearOverlay) return applyLinearTreatment(node, el, linearOverlay);
-      return { node, liftY: 0 };
+      return treating ? treating.provider.treatNode!(node, el, treating.data) : { node, liftY: 0 };
     })
-    .filter((n): n is { node: RenderableElement; liftY: number } => n !== null);
+    .filter((n): n is TreatedNode => n !== null);
   const connections = elements
     .map((el) => toRenderableConnection(el, sceneState.elements))
     .filter((c): c is RenderableConnection => c !== null);
   routePointerEdges(connections, sceneState.elements);
-  // With a linear overlay, list pointers are drawn by LinearPointerLayer (they draw / retract / re-aim visibly).
-  const drawnPointers = linearOverlay ? connections.filter((c) => c.pointer) : [];
-  const plainConnections = linearOverlay ? connections.filter((c) => !c.pointer) : connections;
 
-  const partitionBoundaries = (sceneState.partitionBoundaries ?? [])
-    .map((b: PartitionBoundaryRegion) => ({
-      boundary: b,
-      startPosition: findElementPosition(elements, b.structureId, b.startIndex),
-      endPosition: findElementPosition(elements, b.structureId, b.endIndex),
-    }))
-    .filter(
-      (b): b is { boundary: PartitionBoundaryRegion; startPosition: Vec3; endPosition: Vec3 } =>
-        b.startPosition !== null && b.endPosition !== null
-    );
-
-  const sortedRegions = (sceneState.sortedRegions ?? [])
-    .map((r: SortedRegion) => ({
-      region: r,
-      startPosition: findElementPosition(elements, r.structureId, r.startIndex),
-      endPosition: findElementPosition(elements, r.structureId, r.endIndex),
-    }))
-    .filter(
-      (r): r is { region: SortedRegion; startPosition: Vec3; endPosition: Vec3 } =>
-        r.startPosition !== null && r.endPosition !== null
-    );
+  // A provider may claim connections to draw itself; the rest are plain edges.
+  const claimed = new Map<number, RenderableConnection[]>(decorations.map((_, i) => [i, []]));
+  const plainConnections = connections.filter((c) => {
+    const owner = decorations.findIndex((d) => d.provider.claimsConnection?.(c, d.data));
+    if (owner < 0) return true;
+    claimed.get(owner)!.push(c);
+    return false;
+  });
+  const layer = (which: 'renderUnderlay' | 'renderOverlay') =>
+    decorations.map((d, i) => {
+      const render = d.provider[which];
+      if (!render) return null;
+      return (
+        <React.Fragment key={`${which}-${d.provider.key}`}>
+          {render({ sceneState, elements, data: d.data, connections: claimed.get(i)! })}
+        </React.Fragment>
+      );
+    });
 
   return (
     <>
@@ -394,25 +183,9 @@ export const GenericSceneRenderer: React.FC<GenericSceneRendererProps> = ({
         ref={cameraControllerRef}
         sceneState={sceneState}
         onAutoFollowChange={onAutoFollowChange}
-        arrayCameraChoreographer={arrayCameraChoreographer}
+        arrayCameraChoreographer={cameraChoreographer}
       />
-      {partitionBoundaries.map(({ boundary, startPosition, endPosition }) => (
-        <PartitionBoundary
-          key={`partition-${boundary.structureId}-${boundary.depth}`}
-          startPosition={startPosition}
-          endPosition={endPosition}
-          depth={boundary.depth}
-          label={boundary.label}
-        />
-      ))}
-      {sortedRegions.map(({ region, startPosition, endPosition }) => (
-        <SortedRegionIndicator
-          key={`sorted-region-${region.structureId}`}
-          startPosition={startPosition}
-          endPosition={endPosition}
-        />
-      ))}
-      {linearOverlay && <LinearPointerLayer connections={drawnPointers} />}
+      {layer('renderUnderlay')}
       {plainConnections.map((c) => (
         <PrimitiveEdge
           key={c.id}
@@ -428,10 +201,7 @@ export const GenericSceneRenderer: React.FC<GenericSceneRendererProps> = ({
           label={c.label}
         />
       ))}
-      <LinkedListDecorations elements={elements} />
-      <TreeDecorations elements={elements} />
-      {iterationOverlay && <IterationDecorations elements={elements} overlay={iterationOverlay} />}
-      {linearOverlay && <LinearDecorations elements={sceneState.elements} overlay={linearOverlay} />}
+      {layer('renderOverlay')}
       {nodes.map(({ node: n, liftY }) => {
         const primitive = (
           <PrimitiveNode
@@ -451,8 +221,8 @@ export const GenericSceneRenderer: React.FC<GenericSceneRendererProps> = ({
             tagPlacement={n.tagPlacement}
           />
         );
-        // Only iteration / linear topics get the lift wrapper, so every other scene's tree is unchanged.
-        return iterationOverlay || linearOverlay ? <LiftGroup key={n.id} liftY={liftY}>{primitive}</LiftGroup> : primitive;
+        // Only scenes with a node-treating provider get the lift wrapper, so every other scene's tree is unchanged.
+        return treating ? <LiftGroup key={n.id} liftY={liftY}>{primitive}</LiftGroup> : primitive;
       })}
     </>
   );

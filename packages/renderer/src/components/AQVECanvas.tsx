@@ -5,25 +5,25 @@ import type { SceneState } from '@aqvl/runtime';
 import { GenericSceneRenderer } from './generic/GenericSceneRenderer';
 import type { CameraControllerHandle } from './camera/CameraController';
 import type { CameraChoreographer } from './camera/BaseCameraChoreographer';
-import type { IterationOverlayState } from './iteration/IterationDirector';
-import type { LinearOverlayState } from './linear/LinearDirector';
+import type { SceneMetadata } from './generic/decorationProviders';
 import type { CharacterController } from './character/CharacterController';
 import { CharacterAnchorTracker, type CharacterAnchorBridge } from './character/CharacterAnchor';
 import { isArrayDominantScene, computeArrayLightingProfile, DEFAULT_LIGHTING_PROFILE } from './array/arraySceneLighting';
 
 export interface AQVECanvasProps {
   sceneState: SceneState | null;
-  /** Optional array-operation camera emphasis — see ArrayCameraChoreographer.ts. */
-  arrayCameraChoreographer?: CameraChoreographer;
-  /** Loops / Searching: cursors, search window and element treatments (see iteration/IterationDirector.ts). */
-  iterationOverlay?: IterationOverlayState | null;
-  /** Stacks / Queues / Linked Lists: roles, active ends and drawn pointers (see linear/LinearDirector.ts). */
-  linearOverlay?: LinearOverlayState | null;
+  /** Optional operation camera emphasis — any BaseCameraChoreographer subclass (e.g. ArrayCameraChoreographer.ts). */
+  cameraChoreographer?: CameraChoreographer;
+  /**
+   * Per-frame data for decoration providers, keyed by provider key — e.g.
+   * `{ [ITERATION_OVERLAY_KEY]: useIterationOverlay(director) }` (see decorations/builtinProviders.tsx).
+   */
+  sceneMetadata?: SceneMetadata | null;
   /** Lets the teaching character reach for the element its current line is about (see character/CharacterAnchor.tsx). */
   narratorAnchor?: { controller: CharacterController; bridge: CharacterAnchorBridge };
 }
 
-export const AQVECanvas: React.FC<AQVECanvasProps> = ({ sceneState, arrayCameraChoreographer, iterationOverlay, linearOverlay, narratorAnchor }) => {
+export const AQVECanvas: React.FC<AQVECanvasProps> = ({ sceneState, cameraChoreographer, sceneMetadata, narratorAnchor }) => {
   const [autoFollow, setAutoFollow] = useState(true);
   const controlsRef = useRef<any>(null);
   const cameraControllerRef = useRef<CameraControllerHandle>(null);
@@ -128,9 +128,8 @@ export const AQVECanvas: React.FC<AQVECanvasProps> = ({ sceneState, arrayCameraC
           sceneState={sceneState}
           cameraControllerRef={cameraControllerRef}
           onAutoFollowChange={setAutoFollow}
-          arrayCameraChoreographer={arrayCameraChoreographer}
-          iterationOverlay={iterationOverlay}
-          linearOverlay={linearOverlay}
+          cameraChoreographer={cameraChoreographer}
+          sceneMetadata={sceneMetadata}
         />
         {narratorAnchor && (
           <CharacterAnchorTracker controller={narratorAnchor.controller} bridge={narratorAnchor.bridge} elements={sceneState?.elements} />

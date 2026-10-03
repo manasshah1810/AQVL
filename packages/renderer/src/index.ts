@@ -1,6 +1,9 @@
 export { AQVECanvas } from './components/AQVECanvas';
 export { GenericSceneRenderer } from './components/generic/GenericSceneRenderer';
 export type { GenericSceneRendererProps } from './components/generic/GenericSceneRenderer';
+export { registerDecorationProvider, getDecorationProviders } from './components/generic/decorationProviders';
+export type { DecorationProvider, DecorationContext, SceneMetadata, TreatedNode } from './components/generic/decorationProviders';
+export { ITERATION_OVERLAY_KEY, LINEAR_OVERLAY_KEY } from './components/decorations/builtinProviders';
 export { PrimitiveNode } from './components/generic/PrimitiveNode';
 export { PrimitiveEdge } from './components/generic/PrimitiveEdge';
 export type {

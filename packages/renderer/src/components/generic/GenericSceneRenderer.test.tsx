@@ -1,8 +1,9 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import React from 'react';
 import ReactThreeTestRenderer from '@react-three/test-renderer';
 import type { SceneState, SceneElement } from '@aqvl/runtime';
 import { GenericSceneRenderer, toRenderableElement, toRenderableConnection } from './GenericSceneRenderer';
+import { registerDecorationProvider, type DecorationProvider } from './decorationProviders';
 
 function makeEl(partial: Partial<SceneElement> & { id: string; type: string }): SceneElement {
   return {
@@ -280,5 +281,108 @@ describe('generic scene mapping (structure-agnostic)', () => {
     expect(connection?.from).toEqual({ x: 0, y: 0, z: 0 });
     expect(connection?.to).toEqual({ x: 9, y: 9, z: 9 });
     expect(connection?.style).toBe('arrow');
+  });
+});
+
+/**
+ * Rehearsal for Phase 3's adversarial test: a decoration with no DSA meaning
+ * at all (a weather overlay) attaches through the provider seam alone —
+ * GenericSceneRenderer.tsx has no knowledge of it.
+ */
+describe('decoration providers (non-DSA)', () => {
+  interface Forecast {
+    hotIds: string[];
+    windIds: string[];
+    stormAt: { x: number; y: number; z: number }[];
+  }
+  const HOT = '#ff5500';
+  const forecastProvider: DecorationProvider<Forecast> = {
+    key: 'forecast',
+    treatNode: (node, el, data) =>
+      data.hotIds.includes(el.id) ? { node: { ...node, color: HOT, emissiveColor: HOT }, liftY: 0.5 } : { node, liftY: 0 },
+    claimsConnection: (c, data) => data.windIds.includes(c.id),
+    renderOverlay: ({ data, connections }) => (
+      <group name="forecast-overlay">
+        {data.stormAt.map((p, i) => (
+          <mesh key={i} position={[p.x, p.y, p.z]}>
+            <torusGeometry args={[0.5, 0.1, 8, 16]} />
+            <meshBasicMaterial color="#ffffff" />
+          </mesh>
+        ))}
+        {connections.map((c) => (
+          <group key={c.id} name={`claimed-${c.id}`} />
+        ))}
+      </group>
+    ),
+  };
+
+  const weatherScene = () =>
+    sceneStateOf([
+      makeEl({ id: 'city-a', type: 'sphere', position: { x: 0, y: 0, z: 0 } }),
+      makeEl({ id: 'city-b', type: 'sphere', position: { x: 4, y: 0, z: 0 } }),
+      makeEl({
+        id: 'wind',
+        type: 'edge',
+        sourceId: 'city-a',
+        targetId: 'city-b',
+        directed: true,
+      } as any),
+    ]);
+  const forecast: Forecast = { hotIds: ['city-a'], windIds: ['wind'], stormAt: [{ x: 2, y: 3, z: 0 }, { x: 6, y: 3, z: 0 }] };
+
+  let unregister: (() => void) | null = null;
+  afterEach(() => {
+    unregister?.();
+    unregister = null;
+  });
+
+  const torusCount = (renderer: any) =>
+    renderer.scene.findAllByType('Mesh').filter((m: any) => m.instance.geometry?.type === 'TorusGeometry').length;
+
+  it('renders a registered provider from host metadata: overlay, node treatment, lift and claimed connections', async () => {
+    unregister = registerDecorationProvider(forecastProvider);
+
+    const renderer = await ReactThreeTestRenderer.create(
+      <GenericSceneRenderer sceneState={weatherScene()} sceneMetadata={{ forecast }} />
+    );
+    await renderer.advanceFrames(1, 0.016);
+
+    expect(torusCount(renderer)).toBe(2);
+    // The claimed connection reaches the provider and is not drawn as a plain edge.
+    expect(renderer.scene.findAll((n: any) => n.instance?.name === 'claimed-wind').length).toBe(1);
+    expect(renderer.scene.findAllByType('Line2').length).toBe(0);
+
+    const colors = renderer.scene
+      .findAllByType('Mesh')
+      .filter((m: any) => m.instance.geometry?.type === 'SphereGeometry')
+      .map((m: any) => '#' + m.instance.material.color.getHexString());
+    expect(colors).toContain(HOT);
+    expect(colors).toContain('#4488ff');
+  });
+
+  it("reads provider data from the scene's own metadata bag too", async () => {
+    unregister = registerDecorationProvider(forecastProvider);
+    const scene = { ...weatherScene(), metadata: { forecast } } as SceneState;
+
+    const renderer = await ReactThreeTestRenderer.create(<GenericSceneRenderer sceneState={scene} />);
+    await renderer.advanceFrames(1, 0.016);
+
+    expect(torusCount(renderer)).toBe(2);
+  });
+
+  it('draws nothing for the provider when its key is absent, and nothing once unregistered', async () => {
+    unregister = registerDecorationProvider(forecastProvider);
+    const absent = await ReactThreeTestRenderer.create(<GenericSceneRenderer sceneState={weatherScene()} />);
+    await absent.advanceFrames(1, 0.016);
+    expect(torusCount(absent)).toBe(0);
+    expect(absent.scene.findAllByType('Line2').length).toBeGreaterThan(0);
+
+    unregister();
+    unregister = null;
+    const removed = await ReactThreeTestRenderer.create(
+      <GenericSceneRenderer sceneState={weatherScene()} sceneMetadata={{ forecast }} />
+    );
+    await removed.advanceFrames(1, 0.016);
+    expect(torusCount(removed)).toBe(0);
   });
 });
