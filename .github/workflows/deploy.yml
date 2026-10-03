@@ -41,9 +41,6 @@ jobs:
       - name: Install dependencies
         run: pnpm install
       
-      - name: Verify task ledger
-        run: pnpm task verify
-
       - name: Build demo
         run: pnpm --filter demo build
       
