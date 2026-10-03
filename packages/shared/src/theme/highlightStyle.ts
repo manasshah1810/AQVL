@@ -29,27 +29,27 @@ export interface HighlightStyleConfig {
 
 export const HIGHLIGHT_PALETTE: Record<HighlightType, { color: string; emissiveColor: string }> = {
   EVALUATING: {
-    color: '#fbbf24', // Radiant Amber Gold - evaluation / comparison
+    color: '#8f6d14', // Radiant Amber Gold - evaluation / comparison
     emissiveColor: '#f59e0b',
   },
   MODIFYING: {
-    color: '#f472b6', // Electric Pink - swap / modify / write
+    color: '#b35486', // Electric Pink - swap / modify / write
     emissiveColor: '#ec4899',
   },
   TRAVERSING: {
-    color: '#22d3ee', // Vivid Cyan - pointer / traversal / scan
+    color: '#147e8e', // Vivid Cyan - pointer / traversal / scan
     emissiveColor: '#06b6d4',
   },
   SUCCESS: {
-    color: '#34d399', // Emerald Green - target match / sorted / found
+    color: '#218560', // Emerald Green - target match / sorted / found
     emissiveColor: '#10b981',
   },
   FOCUS: {
-    color: '#a78bfa', // Luminous Purple - focus / mid element / boundary
+    color: '#7b66b8', // Luminous Purple - focus / mid element / boundary
     emissiveColor: '#8b5cf6',
   },
   DEFAULT: {
-    color: '#38bdf8', // Crisp Sky Blue - default highlight
+    color: '#257da5', // Crisp Sky Blue - default highlight
     emissiveColor: '#0284c7',
   },
 };
