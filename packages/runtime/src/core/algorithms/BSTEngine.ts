@@ -1,33 +1,38 @@
 /**
- * BSTEngine — Pure Binary Search Tree data structure engine.
+ * BSTEngine — Animation handler for BST operations.
  *
- * This module is intentionally free of animation or renderer
- * dependencies.  It manages the logical BST structure stored
- * inside the AQVL SceneManager and provides helpers that the
- * BSTAlgorithms animation layer can call.
+ * Registered with AlgorithmRegistry for:
+ *   BST_INSERT, BST_DELETE, BST_SEARCH, BST_CLEAR, ROTATE
  *
- * Design goals:
- *  - Maintain strict BST ordering at all times
- *  - Maintain parent / left / right pointers
- *  - Expose step-by-step traversal paths for animation
- *  - Support all three delete cases
- *  - Produce Reingold-Tilford-style layout coordinates
+ * Also reached from AnimationController when generic INSERT / DELETE /
+ * SEARCH / CLEAR / INORDER / ... are dispatched inside a BST context (i.e.
+ * when the active data structure is a BST rather than an array).
+ *
+ * The tree lives in the scene as TREE_NODE elements linked by EDGE elements
+ * labelled 'L' / 'R'; the scene is the source of truth. Every operation
+ * rehydrates the pure BinarySearchTree (../../data-structures/BST.ts) from
+ * it, runs there, and the steps it recorded are replayed onto the scene by
+ * `replaySteps`. The scene-side work a step implies — adding a node and its
+ * edge, rewiring edges for a rotation, removing nodes, the Reingold-Tilford
+ * style layout — is done by the static scene helpers below.
+ *
+ * Visual color semantics:
+ *   Visiting node     → TRAVERSING (blue glow)
+ *   Comparison active → EVALUATING (yellow)
+ *   Insert point      → SUCCESS / MODIFYING (green)
+ *   Delete target     → red pulse
+ *   Found             → SUCCESS (green pulse)
+ *   Successor         → ACTIVE (orange/amber)
  */
 
+import { AlgorithmContext, AlgorithmHandler } from './AlgorithmContext';
+import { GenericActionInstruction, getSemanticColorToken } from '@aqvl/shared';
+import { AnticipationAnimation } from '../animations';
 import { SceneManager } from '../SceneManager';
 import { RelationshipManager } from '../RelationshipManager';
-import { getSemanticColorToken } from '@aqvl/shared';
+import { BinarySearchTree, BSTNodeRef, BSTSide, BSTStep, DepthFirstOrder } from '../../data-structures/BST';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Types
-// ─────────────────────────────────────────────────────────────────────────────
-
-export interface BSTNodeRef {
-  /** Scene-graph element ID */
-  id: string;
-  /** Numeric BST key */
-  value: number;
-}
+export type { BSTNodeRef, DeleteCase } from '../../data-structures/BST';
 
 export interface BSTInsertResult {
   /** Whether the insert succeeded */
@@ -38,97 +43,42 @@ export interface BSTInsertResult {
   traversalPath: BSTNodeRef[];
   /** Direction taken at each node: 'L' = left, 'R' = right */
   directions: string[];
-  /** The newly created node (when success = true) */
-  newNode?: BSTNodeRef;
-  /** Parent of the new node (null for root) */
+  /** The node the new key hangs from (null: it becomes the root) */
   parentNode?: BSTNodeRef | null;
-  /** Edge label: 'L' or 'R' (null for root) */
+  /** Edge label from parent to new node */
   edgeLabel?: 'L' | 'R' | null;
 }
 
 export interface BSTSearchResult {
   /** Whether the value was found */
   found: boolean;
-  /** Node where the search ended (found node or last visited null position) */
+  /** The found node (if any) */
   targetNode?: BSTNodeRef;
-  /** Nodes visited during traversal */
+  /** Nodes visited during the search */
   traversalPath: BSTNodeRef[];
-  /** Comparison results at each step */
+  /** Human-readable comparison at each step */
   comparisons: string[];
 }
 
-export type DeleteCase = 'LEAF' | 'ONE_CHILD' | 'TWO_CHILDREN';
-
-export interface BSTDeleteResult {
-  /** Whether the deletion succeeded */
-  success: boolean;
-  /** Error message when success is false */
-  error?: string;
-  /** The node being deleted */
-  targetNode?: BSTNodeRef;
-  /** Delete case */
-  deleteCase?: DeleteCase;
-  /** Traversal path to find the node */
-  traversalPath: BSTNodeRef[];
-  /** Inorder successor (only for TWO_CHILDREN case) */
-  successor?: BSTNodeRef;
-  /** Successor traversal path (only for TWO_CHILDREN case) */
-  successorPath: BSTNodeRef[];
-  /** Parent of the deleted node */
-  parentNode?: BSTNodeRef | null;
-  /** The child that replaces the deleted node (ONE_CHILD case) */
-  replacementNode?: BSTNodeRef | null;
-  /** Edge label to parent: 'L' or 'R' */
-  edgeLabel?: 'L' | 'R' | null;
-}
-
-export interface BSTLayoutNode {
-  id: string;
-  x: number;
-  y: number;
-}
-
-export interface BSTTraversalStep {
-  action: 'VISIT' | 'PROCESS' | 'MOVE_LEFT' | 'MOVE_RIGHT' | 'BACKTRACK';
-  node: BSTNodeRef;
-  targetNode?: BSTNodeRef; // For MOVE/BACKTRACK
-}
-
-export interface BSTLevelOrderStep {
-  action: 'ENQUEUE' | 'DEQUEUE' | 'PROCESS';
-  node: BSTNodeRef;
-  queueState: BSTNodeRef[];
-}
-
-export interface BSTMinMaxResult {
-  path: BSTNodeRef[];
-  resultNode: BSTNodeRef | null;
-}
-
-/** O(1)-lookup child/parent index built once per operation via BSTEngine.buildIndex */
 export interface BSTIndex {
   left: Map<string, any>;
   right: Map<string, any>;
   parent: Map<string, any>;
   edgeLabel: Map<string, 'L' | 'R'>;
-  /** Same node getRoot returns: the first node with no incoming edge. */
+  /** Root element (node with no incoming edge), or null */
   root: any | null;
 }
-
-export interface BSTHeightStep {
-  action: 'VISIT' | 'RETURN';
-  node: BSTNodeRef;
-  height?: number;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Engine class
-// ─────────────────────────────────────────────────────────────────────────────
 
 /** Last index per scene manager and tree, reused until the scene's revision moves. */
 const indexCache = new WeakMap<SceneManager, Map<string, { revision: number; index: BSTIndex }>>();
 
-export class BSTEngine {
+const DELETE_CASE_MESSAGE: Record<string, (value: number) => string> = {
+  LEAF: (value) => `Node ${value} is a leaf node.\nSimply removing it.`,
+  ONE_CHILD: (value) => `Node ${value} has one child.\nBypassing node, connecting parent to child.`,
+  TWO_CHILDREN: (value) => `Node ${value} has two children.\nFinding inorder successor...`,
+};
+
+export class BSTEngine implements AlgorithmHandler {
   /** Node color used for all BST sphere nodes */
   static readonly NODE_COLOR = '#4facfe';
   static readonly NODE_EMISSIVE = '#000000';
@@ -137,6 +87,948 @@ export class BSTEngine {
   // ── Layout parameters ──────────────────────────────────────────────────────
   private static readonly LEVEL_SPACING = 2.0;
   private static readonly MIN_SIBLING_SPACING = 1.8;
+
+  /** The BST_* statements registered with AlgorithmRegistry. */
+  static readonly ALGORITHMS = ['BST_INSERT', 'BST_DELETE', 'BST_SEARCH', 'BST_CLEAR', 'ROTATE'];
+
+  /** Statements shared with other structures, handled here when they target a BST (see `isBSTTarget`). */
+  static readonly SHARED_ACTIONS = [
+    'INSERT', 'DELETE', 'SEARCH', 'CLEAR', 'INORDER', 'PREORDER', 'POSTORDER', 'LEVELORDER',
+    'MIN', 'MIN_VALUE', 'MAX', 'MAX_VALUE', 'HEIGHT', 'SIZE', 'ROOT', 'IS_EMPTY',
+  ];
+
+  /**
+   * The tree a scene's statements act on by default: its BST anchor (a BST
+   * takes priority), else any TREE / BINARY_TREE anchor; null when there is
+   * neither.
+   */
+  static detectActiveTree(sceneManager: SceneManager): { name: string; isBST: boolean } | null {
+    const graph = sceneManager.getSceneGraph() as any[];
+    const bstEl = graph.find(el => el.type === 'BST' || el.originalType === 'BST');
+    if (bstEl) return { name: bstEl.logicalParent || bstEl.label || bstEl.id, isBST: true };
+    const treeEl = graph.find(el => el.type === 'TREE' || el.type === 'BINARY_TREE');
+    if (treeEl) return { name: treeEl.logicalParent || treeEl.label || treeEl.id, isBST: false };
+    return null;
+  }
+
+  /**
+   * Whether the structure named `targetName` (an instruction's
+   * payload.logicalParent) is a BST anchor in the scene, so bare INSERT /
+   * DELETE / SEARCH instructions are routed by what they actually target.
+   * Falls back to `fallback` (the scene-wide flag) when there is no name, or
+   * no anchor of either kind for it.
+   */
+  static isBSTTarget(sceneManager: SceneManager, targetName: string | undefined, fallback: boolean): boolean {
+    if (!targetName) return fallback;
+    const graph = sceneManager.getSceneGraph() as any[];
+    const anchor = graph.find(
+      el => el.logicalParent === targetName && (el.type === 'BST' || el.originalType === 'BST')
+    );
+    if (anchor) return true;
+    const nonBstAnchor = graph.find(
+      el =>
+        el.logicalParent === targetName &&
+        (el.type === 'TREE' || el.type === 'BINARY_TREE' || el.originalType === 'TREE' || el.originalType === 'BINARY_TREE' ||
+         el.type === 'ARRAY' || el.originalType === 'ARRAY_ELEMENT' || el.originalType === 'ARRAY')
+    );
+    if (nonBstAnchor) return false;
+    return fallback;
+  }
+
+  execute(context: AlgorithmContext, instruction: GenericActionInstruction): void {
+    const action = instruction.actionName.toUpperCase();
+    // A BST_* statement naming its tree marks the active tree as a BST.
+    if ((instruction as any).payload?.logicalParent && ['BST_INSERT', 'BST_DELETE', 'BST_SEARCH', 'BST_CLEAR'].includes(action)) {
+      context.activeTreeIsBST = true;
+    }
+
+    if (action === 'BST_INSERT' || action === 'INSERT') {
+      this.bstInsert(context, instruction);
+    } else if (action === 'BST_DELETE' || action === 'DELETE') {
+      this.bstDelete(context, instruction);
+    } else if (action === 'BST_SEARCH' || action === 'SEARCH') {
+      this.bstSearch(context, instruction);
+    } else if (action === 'BST_CLEAR' || action === 'CLEAR') {
+      this.bstClear(context);
+    } else if (action === 'ROTATE') {
+      this.bstRotate(context, instruction);
+    } else if (action === 'INORDER' || action === 'PREORDER' || action === 'POSTORDER') {
+      this.traversal(context, action);
+    } else if (action === 'LEVELORDER') {
+      this.levelOrder(context);
+    } else if (action === 'MIN' || action === 'MIN_VALUE') {
+      this.minMax(context, 'MIN');
+    } else if (action === 'MAX' || action === 'MAX_VALUE') {
+      this.minMax(context, 'MAX');
+    } else if (action === 'HEIGHT') {
+      this.height(context);
+    } else if (action === 'SIZE') {
+      this.size(context);
+    } else if (action === 'ROOT') {
+      this.showRoot(context);
+    } else if (action === 'IS_EMPTY') {
+      this.isEmpty(context);
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Operations: rehydrate, run the pure operation, replay its steps
+  // ─────────────────────────────────────────────────────────────────────────
+
+  private treeName(context: AlgorithmContext): string {
+    return context.activeTreeName || 'defaultBST';
+  }
+
+  /** The numeric key in args[0], or null after logging why it is not one. */
+  private keyArg(context: AlgorithmContext, instruction: GenericActionInstruction, op: string): number | null {
+    const rawValue = (instruction as any).args?.[0];
+    const value = Number(rawValue);
+    if (isNaN(value)) {
+      this.log(context, 'ERROR', `Invalid value: "${rawValue}". ${op} requires a numeric argument.`, 'warning');
+      return null;
+    }
+    return value;
+  }
+
+  private bstInsert(context: AlgorithmContext, instruction: GenericActionInstruction): void {
+    const treeName = this.treeName(context);
+    const value = this.keyArg(context, instruction, 'INSERT');
+    if (value === null) return;
+
+    const tree = BSTEngine.rehydrate(context.sceneManager, treeName);
+    if (!tree.insert(value)) {
+      // A duplicate shows only where the key was met.
+      this.replaySteps(context, treeName, tree.steps.filter((step) => step.type === 'DUPLICATE'));
+      this.log(context, 'INSERT_ERROR', `Value ${value} already exists.`, 'warning');
+      return;
+    }
+
+    this.log(context, 'INSERT', `Inserting ${value}...`, 'operation');
+    this.replaySteps(context, treeName, tree.steps);
+
+    const attach = tree.steps.find((step) => step.type === 'ATTACH') as Extract<BSTStep, { type: 'ATTACH' }>;
+    context.scheduler.enqueue({
+      targets: {}, duration: 1, complete: () => {
+        const loc = attach.parent
+          ? `as ${attach.side === 'L' ? 'Left' : 'Right'} child of ${attach.parent.value}`
+          : 'as Root';
+        context.eventDispatcher.dispatch('RUNTIME_LOG', {
+          keyword: 'INSERT',
+          message: `Inserted ${value} successfully ${loc}.`,
+          kind: 'result',
+          timestamp: Date.now(),
+        });
+        if (context.stateManager) {
+          context.stateManager.saveState(context.sceneManager.getSceneGraph(), `Inserted ${value}`, context.scheduler.getCurrentTime());
+          context.eventDispatcher.dispatch('STATE_UPDATED', context.stateManager.getCurrentState());
+        }
+      }
+    });
+    context.scheduler.commitSequential();
+  }
+
+  private bstSearch(context: AlgorithmContext, instruction: GenericActionInstruction): void {
+    const treeName = this.treeName(context);
+    const value = this.keyArg(context, instruction, 'SEARCH');
+    if (value === null) return;
+
+    const tree = BSTEngine.rehydrate(context.sceneManager, treeName);
+    if (!tree.root) {
+      this.log(context, 'SEARCH', 'Tree is empty. Nothing to search.', 'warning');
+      return;
+    }
+    const found = tree.search(value) !== null;
+
+    this.log(context, 'SEARCH', `Searching for ${value}...`, 'operation');
+    this.replaySteps(context, treeName, tree.steps);
+
+    context.scheduler.enqueue({
+      targets: {}, duration: 1, complete: () => {
+        context.eventDispatcher.dispatch('RUNTIME_LOG', found
+          ? { keyword: 'SEARCH_SUCCESS', message: `Value ${value} found!`, kind: 'result', timestamp: Date.now() }
+          : { keyword: 'SEARCH_FAIL', message: `Value ${value} does not exist in the BST.`, kind: 'warning', timestamp: Date.now() });
+      }
+    });
+    context.scheduler.commitGroup(true);
+  }
+
+  private bstDelete(context: AlgorithmContext, instruction: GenericActionInstruction): void {
+    const treeName = this.treeName(context);
+    const value = this.keyArg(context, instruction, 'DELETE');
+    if (value === null) return;
+
+    const tree = BSTEngine.rehydrate(context.sceneManager, treeName);
+    if (!tree.root) {
+      this.log(context, 'DELETE', 'Tree is empty. Nothing to delete.', 'warning');
+      return;
+    }
+
+    if (!tree.delete(value)) {
+      this.replaySteps(context, treeName, tree.steps);
+      this.log(context, 'DELETE_ERROR', `Value ${value} not found.`, 'warning');
+      return;
+    }
+
+    this.log(context, 'DELETE', `Deleting ${value}...`, 'operation');
+    this.replaySteps(context, treeName, tree.steps);
+
+    context.scheduler.enqueue({
+      targets: {}, duration: 1, complete: () => {
+        context.eventDispatcher.dispatch('RUNTIME_LOG', {
+          keyword: 'DELETE',
+          message: `Deleted ${value} successfully. BST property maintained.`,
+          kind: 'result',
+          timestamp: Date.now(),
+        });
+        if (context.stateManager) {
+          context.stateManager.saveState(context.sceneManager.getSceneGraph(), `Deleted ${value}`, context.scheduler.getCurrentTime());
+          context.eventDispatcher.dispatch('STATE_UPDATED', context.stateManager.getCurrentState());
+        }
+      }
+    });
+    context.scheduler.commitSequential();
+  }
+
+  private bstClear(context: AlgorithmContext): void {
+    const treeName = this.treeName(context);
+    if (BSTEngine.getNodes(context.sceneManager, treeName).length === 0) {
+      this.log(context, 'CLEAR', 'BST is already empty.', 'info');
+      return;
+    }
+    const tree = BSTEngine.rehydrate(context.sceneManager, treeName);
+    tree.clear();
+
+    this.log(context, 'CLEAR', 'Clearing BST...', 'operation');
+    this.replaySteps(context, treeName, tree.steps);
+
+    context.scheduler.enqueue({
+      targets: {}, duration: 1, complete: () => {
+        BSTEngine.performClear(context.sceneManager, treeName);
+        context.eventDispatcher.dispatch('RUNTIME_LOG', {
+          keyword: 'CLEAR',
+          message: 'BST cleared.',
+          kind: 'result',
+          timestamp: Date.now(),
+        });
+        if (context.stateManager) {
+          context.stateManager.saveState(context.sceneManager.getSceneGraph(), 'Cleared BST', context.scheduler.getCurrentTime());
+          context.eventDispatcher.dispatch('STATE_UPDATED', context.stateManager.getCurrentState());
+        }
+      }
+    });
+    context.scheduler.commitSequential();
+  }
+
+  /**
+   * `ROTATE <value> <LEFT|RIGHT>` — rotates the subtree rooted at the node
+   * holding `value`. Actually rewires parent/child edges and re-lays out
+   * every node so the visible result is the real post-rotation shape, not an
+   * acknowledgment tween.
+   */
+  private bstRotate(context: AlgorithmContext, instruction: GenericActionInstruction): void {
+    const treeName = this.treeName(context);
+    const rawValue = (instruction as any).args?.[0];
+    const rawDirection = (instruction as any).args?.[1];
+    const value = Number(rawValue);
+    const direction = String(rawDirection ?? '').toUpperCase();
+
+    if (isNaN(value)) {
+      this.log(context, 'ERROR', `Invalid value: "${rawValue}". ROTATE requires a numeric node value.`, 'warning');
+      return;
+    }
+    if (direction !== 'LEFT' && direction !== 'RIGHT') {
+      this.log(context, 'ERROR', `ROTATE requires a direction: "ROTATE ${rawValue} LEFT" or "ROTATE ${rawValue} RIGHT".`, 'warning');
+      return;
+    }
+
+    const pivot = BSTEngine.findNodeByValue(context.sceneManager, treeName, value);
+    if (!pivot) {
+      this.log(context, 'ERROR', `Value ${value} not found in "${treeName}".`, 'warning');
+      return;
+    }
+
+    const tree = BSTEngine.rehydrate(context.sceneManager, treeName);
+    const result = tree.rotate(pivot.id, direction === 'LEFT' ? 'L' : 'R');
+    if (!result.success) {
+      this.log(context, 'ERROR', result.error!, 'warning');
+      return;
+    }
+
+    this.log(context, 'ROTATE', `Rotating ${direction} at ${value}...`, 'operation');
+    this.replaySteps(context, treeName, tree.steps);
+
+    this.log(context, 'ROTATE', `Rotated ${direction} at ${value} in "${treeName}".`, 'result');
+    if (context.stateManager) {
+      context.stateManager.saveState(context.sceneManager.getSceneGraph(), `Rotated ${direction} at ${value}`, context.scheduler.getCurrentTime());
+      context.eventDispatcher.dispatch('STATE_UPDATED', context.stateManager.getCurrentState());
+    }
+  }
+
+  /** The rehydrated tree, or null after reporting that it is empty. */
+  private nonEmptyTree(context: AlgorithmContext, treeName: string): BinarySearchTree | null {
+    const tree = BSTEngine.rehydrate(context.sceneManager, treeName);
+    if (!tree.root) {
+      this.log(context, 'ERROR', 'Tree is empty.\nOperation cannot be performed.', 'warning');
+      return null;
+    }
+    return tree;
+  }
+
+  /** Every node a run of steps lit up, to fade back to neutral at the end. */
+  private fadeNodesBack(context: AlgorithmContext, steps: BSTStep[], scale: boolean): void {
+    steps.forEach((step) => {
+      if (!('node' in step)) return;
+      const el = context.sceneManager.getElement(step.node.id) as any;
+      if (!el) return;
+      context.scheduler.enqueue({ targets: el, color: BSTEngine.NODE_COLOR, emissiveIntensity: 0, duration: 400 });
+      if (scale) context.scheduler.enqueue({ targets: el.scale, x: 1, y: 1, z: 1, duration: 400 });
+    });
+  }
+
+  private traversal(context: AlgorithmContext, order: DepthFirstOrder): void {
+    const treeName = this.treeName(context);
+    const tree = this.nonEmptyTree(context, treeName);
+    if (!tree) return;
+    tree.traverse(order);
+
+    this.log(context, order, `Starting ${order} Traversal...`, 'operation');
+    this.replaySteps(context, treeName, tree.steps);
+
+    // Cleanup colors
+    context.scheduler.enqueue({
+      targets: {}, duration: 500, complete: () => {
+        this.fadeNodesBack(context, tree.steps, false);
+        context.scheduler.commitGroup(true);
+      }
+    });
+    this.log(context, order, 'Traversal Complete', 'operation');
+    context.scheduler.commitSequential();
+  }
+
+  private levelOrder(context: AlgorithmContext): void {
+    const treeName = this.treeName(context);
+    const tree = this.nonEmptyTree(context, treeName);
+    if (!tree) return;
+    tree.levelOrder();
+
+    this.log(context, 'LEVELORDER', 'Starting Level-Order Traversal...', 'operation');
+    this.replaySteps(context, treeName, tree.steps);
+
+    context.scheduler.enqueue({
+      targets: {}, duration: 500, complete: () => {
+        this.fadeNodesBack(context, tree.steps, false);
+        context.scheduler.commitGroup(true);
+      }
+    });
+    this.log(context, 'LEVELORDER', 'Traversal Complete', 'operation');
+    context.scheduler.commitSequential();
+  }
+
+  private minMax(context: AlgorithmContext, type: 'MIN' | 'MAX'): void {
+    const treeName = this.treeName(context);
+    const tree = this.nonEmptyTree(context, treeName);
+    if (!tree) return;
+    if (type === 'MIN') tree.min();
+    else tree.max();
+
+    this.log(context, type, `Finding ${type}imum value...`, 'operation');
+    this.replaySteps(context, treeName, tree.steps);
+
+    context.scheduler.enqueue({
+      targets: {}, duration: 1, complete: () => {
+        this.fadeNodesBack(context, tree.steps.filter((step) => step.type === 'DESCEND'), true);
+        const edges = BSTEngine.getEdges(context.sceneManager, treeName);
+        edges.forEach(e => context.scheduler.enqueue({ targets: e, color: '#888888', scale: { x: 1, y: 1, z: 1 }, duration: 400 }));
+        context.scheduler.commitGroup(true);
+      }
+    });
+    context.scheduler.commitSequential();
+  }
+
+  private height(context: AlgorithmContext): void {
+    const treeName = this.treeName(context);
+    const tree = this.nonEmptyTree(context, treeName);
+    if (!tree) return;
+    const totalHeight = tree.height();
+
+    this.log(context, 'HEIGHT', 'Computing tree height recursively...', 'operation');
+    this.replaySteps(context, treeName, tree.steps);
+    this.log(context, 'HEIGHT', `Height = ${totalHeight}`, 'result');
+
+    context.scheduler.enqueue({
+      targets: {}, duration: 1, complete: () => {
+        this.fadeNodesBack(context, tree.steps, false);
+        context.scheduler.commitGroup(true);
+      }
+    });
+    context.scheduler.commitSequential();
+  }
+
+  private size(context: AlgorithmContext): void {
+    const treeName = this.treeName(context);
+    const tree = this.nonEmptyTree(context, treeName);
+    if (!tree) return;
+    const totalSize = tree.size();
+
+    this.log(context, 'SIZE', 'Computing tree size...', 'operation');
+    this.replaySteps(context, treeName, tree.steps);
+    this.log(context, 'SIZE', `Total Nodes = ${totalSize}`, 'result');
+
+    context.scheduler.enqueue({
+      targets: {}, duration: 1, complete: () => {
+        this.fadeNodesBack(context, tree.steps, false);
+        context.scheduler.commitGroup(true);
+      }
+    });
+    context.scheduler.commitSequential();
+  }
+
+  private showRoot(context: AlgorithmContext): void {
+    const treeName = this.treeName(context);
+    const tree = this.nonEmptyTree(context, treeName);
+    if (!tree) return;
+
+    const el = context.sceneManager.getElement(tree.root!.id) as any;
+    const successToken = getSemanticColorToken('SUCCESS');
+
+    this.log(context, 'ROOT', 'Root Highlight', 'step');
+    context.scheduler.enqueue({ targets: el, color: successToken.color, emissiveColor: successToken.emissiveColor, emissiveIntensity: 0.9, duration: 400 });
+    context.scheduler.enqueue({ targets: el.scale, x: 1.3, y: 1.3, z: 1.3, duration: 400 });
+    context.scheduler.commitGroup(true);
+    context.scheduler.advanceCursor(400);
+
+    this.log(context, 'ROOT', `Root = ${tree.root!.value}`, 'result');
+    context.scheduler.advanceCursor(500);
+
+    context.scheduler.enqueue({ targets: el, color: BSTEngine.NODE_COLOR, emissiveIntensity: 0, duration: 400 });
+    context.scheduler.enqueue({ targets: el.scale, x: 1, y: 1, z: 1, duration: 400 });
+    context.scheduler.commitGroup(true);
+    context.scheduler.commitSequential();
+  }
+
+  private isEmpty(context: AlgorithmContext): void {
+    const tree = BSTEngine.rehydrate(context.sceneManager, this.treeName(context));
+    if (!tree.root) {
+      this.log(context, 'IS_EMPTY', 'BST is Empty', 'result');
+      return;
+    }
+
+    this.log(context, 'IS_EMPTY', 'BST is Not Empty', 'result');
+
+    const el = context.sceneManager.getElement(tree.root.id) as any;
+    const evaluatingToken = getSemanticColorToken('EVALUATING');
+
+    context.scheduler.enqueue({ targets: el, color: evaluatingToken.color, emissiveColor: evaluatingToken.emissiveColor, emissiveIntensity: 0.7, duration: 300 });
+    context.scheduler.commitGroup(true);
+    context.scheduler.advanceCursor(400);
+
+    context.scheduler.enqueue({ targets: el, color: BSTEngine.NODE_COLOR, emissiveIntensity: 0, duration: 400 });
+    context.scheduler.commitGroup(true);
+    context.scheduler.commitSequential();
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Replay
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Turns the steps a pure BinarySearchTree recorded into scheduler animation
+   * and scene changes on the tree `treeName`. Every operation funnels through
+   * here; a step is drawn the same way whichever operation recorded it,
+   * except where the step itself names the walk / traversal it belongs to.
+   */
+  replaySteps(context: AlgorithmContext, treeName: string, steps: BSTStep[]): void {
+    const traversingToken = getSemanticColorToken('TRAVERSING');
+    const evaluatingToken = getSemanticColorToken('EVALUATING');
+    const successToken = getSemanticColorToken('SUCCESS');
+    const element = (node: BSTNodeRef) => context.sceneManager.getElement(node.id) as any;
+    // A delete that will not find its key walks the path plainly, without anticipation.
+    const deleteFails = steps.some((step) => step.type === 'NOT_FOUND' && step.walk === 'DELETE');
+    const order: number[] = [];
+
+    steps.forEach((step, index) => {
+      switch (step.type) {
+        case 'COMPARE': {
+          const el = element(step.node);
+          if (!el) return;
+          if (step.walk === 'INSERT') {
+            const comparison = step.side === 'L'
+              ? `${step.value} < ${step.node.value} → Go Left`
+              : `${step.value} > ${step.node.value} → Go Right`;
+            AnticipationAnimation.applyAnticipation(context.scheduler, [el], 'TRAVERSAL');
+            el.state = 'TRAVERSING';
+            context.scheduler.enqueue({ targets: el, color: traversingToken.color, emissiveColor: traversingToken.emissiveColor, emissiveIntensity: 0.8, duration: 300, easing: 'easeOutExpo' });
+            context.scheduler.enqueue({ targets: el.scale, x: 1.2, y: 1.2, z: 1.2, duration: 300, easing: 'easeOutExpo' });
+            context.scheduler.commitGroup(true);
+            this.log(context, 'INSERT', `Compare with ${step.node.value}\n${comparison}`, 'step');
+            context.scheduler.advanceCursor(350);
+            el.state = 'NEUTRAL';
+            context.scheduler.enqueue({ targets: el, color: BSTEngine.NODE_COLOR, emissiveColor: BSTEngine.NODE_EMISSIVE, emissiveIntensity: 0, duration: 250, easing: 'easeInOutQuad' });
+            context.scheduler.enqueue({ targets: el.scale, x: 1, y: 1, z: 1, duration: 250, easing: 'easeInOutQuad' });
+            context.scheduler.commitGroup(true);
+          } else if (step.walk === 'SEARCH') {
+            AnticipationAnimation.applyAnticipation(context.scheduler, [el], 'TRAVERSAL');
+            el.state = traversingToken.name;
+            context.scheduler.enqueue({ targets: el, color: traversingToken.color, emissiveColor: traversingToken.emissiveColor, emissiveIntensity: 0.9, duration: 350, easing: 'easeOutExpo' });
+            context.scheduler.enqueue({ targets: el.scale, x: 1.25, y: 1.25, z: 1.25, duration: 350, easing: 'easeOutExpo' });
+            context.scheduler.commitGroup(true);
+            this.log(context, 'SEARCH', `${step.value} ${step.side === 'L' ? '<' : '>'} ${step.node.value} → Go ${step.side === 'L' ? 'Left' : 'Right'}`, 'step');
+            context.scheduler.advanceCursor(400);
+            el.state = 'NEUTRAL';
+            context.scheduler.enqueue({ targets: el, color: BSTEngine.NODE_COLOR, emissiveColor: BSTEngine.NODE_EMISSIVE, emissiveIntensity: 0, duration: 250 });
+            context.scheduler.enqueue({ targets: el.scale, x: 1, y: 1, z: 1, duration: 250 });
+            context.scheduler.commitGroup(true);
+          } else {
+            if (!deleteFails) AnticipationAnimation.applyAnticipation(context.scheduler, [el], 'TRAVERSAL');
+            context.scheduler.enqueue({ targets: el, color: traversingToken.color, emissiveColor: traversingToken.emissiveColor, emissiveIntensity: 0.8, duration: 280 });
+            context.scheduler.enqueue({ targets: el.scale, x: 1.15, y: 1.15, z: 1.15, duration: 280 });
+            context.scheduler.commitGroup(true);
+            context.scheduler.advanceCursor(250);
+            context.scheduler.enqueue({ targets: el, color: BSTEngine.NODE_COLOR, emissiveColor: BSTEngine.NODE_EMISSIVE, emissiveIntensity: 0, duration: 200 });
+            context.scheduler.enqueue({ targets: el.scale, x: 1, y: 1, z: 1, duration: 200 });
+            context.scheduler.commitGroup(true);
+          }
+          return;
+        }
+
+        case 'FOUND': {
+          const el = element(step.node);
+          if (step.walk === 'SEARCH') {
+            if (!el) return;
+            AnticipationAnimation.applyAnticipation(context.scheduler, [el], 'TRAVERSAL');
+            el.state = successToken.name;
+            context.scheduler.enqueue({ targets: el, color: successToken.color, emissiveColor: successToken.emissiveColor, emissiveIntensity: 0.9, duration: 350, easing: 'easeOutExpo' });
+            context.scheduler.enqueue({ targets: el.scale, x: 1.25, y: 1.25, z: 1.25, duration: 350, easing: 'easeOutExpo' });
+            context.scheduler.commitGroup(true);
+            this.log(context, 'SEARCH', `${step.value} = ${step.node.value} → Found!`, 'step');
+            context.scheduler.advanceCursor(600);
+            // Pulse effect for found node
+            context.scheduler.enqueue({ targets: el.scale, x: 1.4, y: 1.4, z: 1.4, duration: 200, easing: 'easeOutQuad' });
+            context.scheduler.commitGroup(true);
+            context.scheduler.advanceCursor(150);
+            context.scheduler.enqueue({ targets: el.scale, x: 1.1, y: 1.1, z: 1.1, duration: 200, easing: 'easeInOutQuad' });
+            context.scheduler.commitGroup(true);
+            context.scheduler.advanceCursor(200);
+            context.scheduler.enqueue({ targets: el, color: BSTEngine.NODE_COLOR, emissiveColor: BSTEngine.NODE_EMISSIVE, emissiveIntensity: 0, duration: 600 });
+            context.scheduler.enqueue({ targets: el.scale, x: 1, y: 1, z: 1, duration: 400 });
+            context.scheduler.commitGroup(true);
+            return;
+          }
+          // DELETE: the target turns red, then the case is announced.
+          if (el) {
+            AnticipationAnimation.applyAnticipation(context.scheduler, [el], 'DELETION');
+            context.scheduler.enqueue({ targets: el, color: '#f56565', emissiveColor: '#f56565', emissiveIntensity: 0.9, duration: 400 });
+            context.scheduler.enqueue({ targets: el.scale, x: 1.3, y: 1.3, z: 1.3, duration: 400 });
+            context.scheduler.commitGroup(true);
+          }
+          const removal = steps.find((s) => s.type === 'REMOVE') as Extract<BSTStep, { type: 'REMOVE' }> | undefined;
+          if (removal) this.log(context, 'DELETE', DELETE_CASE_MESSAGE[removal.deleteCase](step.value), 'step');
+          context.scheduler.advanceCursor(500);
+          return;
+        }
+
+        case 'NOT_FOUND':
+          return;
+
+        case 'DUPLICATE': {
+          const el = element(step.node);
+          if (!el) return;
+          const errorToken = getSemanticColorToken('DISCARDED');
+          context.scheduler.enqueue({ targets: el, color: errorToken.color, emissiveColor: errorToken.emissiveColor, emissiveIntensity: 0.9, duration: 400 });
+          context.scheduler.enqueue({ targets: el.scale, x: 1.3, y: 1.3, z: 1.3, duration: 400 });
+          context.scheduler.commitGroup(true);
+          context.scheduler.advanceCursor(400);
+          context.scheduler.enqueue({ targets: el, color: BSTEngine.NODE_COLOR, emissiveColor: BSTEngine.NODE_EMISSIVE, emissiveIntensity: 0, duration: 300 });
+          context.scheduler.enqueue({ targets: el.scale, x: 1, y: 1, z: 1, duration: 300 });
+          context.scheduler.commitGroup(true);
+          return;
+        }
+
+        case 'ATTACH':
+          this.attach(context, treeName, step);
+          return;
+
+        case 'SUCCESSOR_WALK':
+        case 'SUCCESSOR': {
+          const el = element(step.node);
+          if (!el) return;
+          const isSuccessor = step.type === 'SUCCESSOR';
+          const token = isSuccessor ? getSemanticColorToken('ACTIVE') : traversingToken;
+          context.scheduler.enqueue({ targets: el, color: token.color, emissiveColor: token.emissiveColor, emissiveIntensity: 0.8, duration: 300 });
+          context.scheduler.enqueue({ targets: el.scale, x: 1.2, y: 1.2, z: 1.2, duration: 300 });
+          context.scheduler.commitGroup(true);
+          context.scheduler.advanceCursor(isSuccessor ? 0 : 300);
+          if (!isSuccessor) {
+            context.scheduler.enqueue({ targets: el, color: BSTEngine.NODE_COLOR, emissiveColor: BSTEngine.NODE_EMISSIVE, emissiveIntensity: 0, duration: 200 });
+            context.scheduler.enqueue({ targets: el.scale, x: 1, y: 1, z: 1, duration: 200 });
+            context.scheduler.commitGroup(true);
+          }
+          return;
+        }
+
+        case 'REMOVE':
+          if (step.deleteCase === 'LEAF') this.removeLeaf(context, treeName, step);
+          else if (step.deleteCase === 'ONE_CHILD') this.removeWithOneChild(context, treeName, step);
+          else this.removeWithTwoChildren(context, treeName, step);
+          return;
+
+        case 'ROTATE':
+          this.rotate(context, treeName, step);
+          return;
+
+        case 'VISIT': {
+          const el = element(step.node);
+          if (!el) return;
+          AnticipationAnimation.applyAnticipation(context.scheduler, [el], 'TRAVERSAL');
+          context.scheduler.enqueue({ targets: el, color: evaluatingToken.color, emissiveColor: evaluatingToken.emissiveColor, emissiveIntensity: 0.8, duration: 250 });
+          context.scheduler.enqueue({ targets: el.scale, x: 1.15, y: 1.15, z: 1.15, duration: 250 });
+          this.log(context, step.order, `Visit ${step.node.value}`, 'step');
+          context.scheduler.commitGroup(true);
+          context.scheduler.advanceCursor(250);
+          context.scheduler.enqueue({ targets: el, color: traversingToken.color, emissiveColor: traversingToken.emissiveColor, emissiveIntensity: 0.4, duration: 200 });
+          context.scheduler.enqueue({ targets: el.scale, x: 1, y: 1, z: 1, duration: 200 });
+          context.scheduler.commitGroup(true);
+          return;
+        }
+
+        case 'PROCESS': {
+          const el = element(step.node);
+          if (!el) return;
+          order.push(step.node.value);
+          context.scheduler.enqueue({ targets: el, color: successToken.color, emissiveColor: successToken.emissiveColor, emissiveIntensity: 0.9, duration: 300 });
+          context.scheduler.enqueue({ targets: el.scale, x: 1.25, y: 1.25, z: 1.25, duration: 300 });
+          if (step.order === 'LEVELORDER') {
+            this.log(context, 'LEVELORDER', `Visit ${step.node.value}\nOrder: ${order.join(' → ')}`, 'result');
+            context.scheduler.commitGroup(true);
+            context.scheduler.advanceCursor(350);
+            context.scheduler.enqueue({ targets: el.scale, x: 1, y: 1, z: 1, duration: 200 });
+            context.scheduler.commitGroup(true);
+          } else {
+            context.scheduler.commitGroup(true);
+            context.scheduler.advanceCursor(350);
+            context.scheduler.enqueue({ targets: el.scale, x: 1, y: 1, z: 1, duration: 200 });
+            context.scheduler.commitGroup(true);
+            this.log(context, step.order, `Order: ${order.join(' → ')}`, 'result');
+          }
+          return;
+        }
+
+        case 'MOVE_LEFT':
+        case 'MOVE_RIGHT':
+        case 'BACKTRACK': {
+          if (!element(step.node)) return;
+          const edge = BSTEngine.getEdgeBetween(context.sceneManager, treeName, step.node.id, step.targetNode.id);
+          const back = step.type === 'BACKTRACK';
+          if (edge) {
+            context.scheduler.enqueue(back
+              ? { targets: edge, color: '#888888', scale: { x: 1, y: 1, z: 1 }, duration: 200 }
+              : { targets: edge, color: traversingToken.color, scale: { x: 1.5, y: 1.5, z: 1.5 }, duration: 200 });
+          }
+          this.log(context, step.order, back ? 'Backtrack' : `Move ${step.type === 'MOVE_LEFT' ? 'Left' : 'Right'}`, 'step');
+          context.scheduler.commitGroup(true);
+          context.scheduler.advanceCursor(200);
+          return;
+        }
+
+        case 'ENQUEUE': {
+          const el = element(step.node);
+          if (!el) return;
+          context.scheduler.enqueue({ targets: el, color: traversingToken.color, emissiveColor: traversingToken.emissiveColor, emissiveIntensity: 0.5, duration: 200 });
+          this.log(context, 'LEVELORDER', `Push ${step.node.value}\nQueue: [${step.queue.map(n => n.value).join(', ')}]`, 'step');
+          context.scheduler.commitGroup(true);
+          context.scheduler.advanceCursor(200);
+          return;
+        }
+
+        case 'DEQUEUE':
+          if (!element(step.node)) return;
+          this.log(context, 'LEVELORDER', `Dequeue ${step.node.value}\nQueue: [${step.queue.map(n => n.value).join(', ')}]`, 'step');
+          context.scheduler.advanceCursor(100);
+          return;
+
+        case 'DESCEND': {
+          const el = element(step.node);
+          if (!el) return;
+          context.scheduler.enqueue({ targets: el, color: evaluatingToken.color, emissiveColor: evaluatingToken.emissiveColor, emissiveIntensity: 0.8, duration: 250 });
+          context.scheduler.enqueue({ targets: el.scale, x: 1.15, y: 1.15, z: 1.15, duration: 250 });
+          this.log(context, step.toward, `Visit ${step.node.value}`, 'step');
+          if (step.from) {
+            const edge = BSTEngine.getEdgeBetween(context.sceneManager, treeName, step.from.id, step.node.id);
+            if (edge) context.scheduler.enqueue({ targets: edge, color: evaluatingToken.color, scale: { x: 1.5, y: 1.5, z: 1.5 }, duration: 200 });
+          }
+          context.scheduler.commitGroup(true);
+          context.scheduler.advanceCursor(250);
+          if (steps[index + 1]?.type === 'DESCEND') {
+            this.log(context, step.toward, `Move ${step.toward === 'MIN' ? 'Left' : 'Right'}`, 'step');
+            context.scheduler.enqueue({ targets: el, color: BSTEngine.NODE_COLOR, emissiveIntensity: 0, duration: 200 });
+            context.scheduler.enqueue({ targets: el.scale, x: 1, y: 1, z: 1, duration: 200 });
+            context.scheduler.commitGroup(true);
+          }
+          return;
+        }
+
+        case 'EXTREME': {
+          const leaf = element(step.node);
+          this.log(context, step.toward, 'Stop', 'step');
+          context.scheduler.advanceCursor(150);
+          context.scheduler.enqueue({ targets: leaf, color: successToken.color, emissiveColor: successToken.emissiveColor, emissiveIntensity: 0.9, duration: 400 });
+          context.scheduler.enqueue({ targets: leaf.scale, x: 1.3, y: 1.3, z: 1.3, duration: 400 });
+          context.scheduler.commitGroup(true);
+          this.log(context, step.toward, `${step.toward}imum Found\n${step.toward}imum Value = ${step.node.value}`, 'result');
+          context.scheduler.advanceCursor(600);
+          return;
+        }
+
+        case 'MEASURE': {
+          const el = element(step.node);
+          if (!el) return;
+          context.scheduler.enqueue({ targets: el, color: evaluatingToken.color, emissiveColor: evaluatingToken.emissiveColor, emissiveIntensity: 0.6, duration: 200 });
+          this.log(context, 'HEIGHT', `Compute Height for ${step.node.value}`, 'step');
+          context.scheduler.commitGroup(true);
+          context.scheduler.advanceCursor(200);
+          return;
+        }
+
+        case 'HEIGHT': {
+          const el = element(step.node);
+          if (!el) return;
+          context.scheduler.enqueue({ targets: el, color: successToken.color, emissiveColor: successToken.emissiveColor, emissiveIntensity: 0.8, duration: 250 });
+          this.log(context, 'HEIGHT', `Return\nHeight for ${step.node.value} = ${step.height}`, 'result');
+          context.scheduler.commitGroup(true);
+          context.scheduler.advanceCursor(300);
+          context.scheduler.enqueue({ targets: el, color: evaluatingToken.color, emissiveIntensity: 0.3, duration: 200 });
+          context.scheduler.commitGroup(true);
+          return;
+        }
+
+        case 'COUNT': {
+          const el = element(step.node);
+          if (!el) return;
+          context.scheduler.enqueue({ targets: el, color: evaluatingToken.color, emissiveColor: evaluatingToken.emissiveColor, emissiveIntensity: 0.8, duration: 200 });
+          this.log(context, 'SIZE', `Visit Node ${step.node.value}\nCounter = ${step.count}`, 'step');
+          context.scheduler.commitGroup(true);
+          context.scheduler.advanceCursor(250);
+          context.scheduler.enqueue({ targets: el, color: successToken.color, emissiveIntensity: 0.5, duration: 200 });
+          context.scheduler.commitGroup(true);
+          return;
+        }
+
+        case 'CLEAR': {
+          // Nodes shrink out level by level (root-outward), in the order they are drawn.
+          BSTEngine.getClearOrder(context.sceneManager, treeName).forEach((node, idx) => {
+            const el = context.sceneManager.getElement(node.id) as any;
+            if (!el) return;
+            const delay = idx * 60; // stagger per node
+            context.scheduler.enqueue({ targets: el.scale, x: 0, y: 0, z: 0, duration: 350, easing: 'easeInBack', delay });
+            context.scheduler.enqueue({ targets: el, emissiveColor: '#f56565', emissiveIntensity: 0.6, duration: 200, delay });
+          });
+          context.scheduler.commitGroup(true);
+          context.scheduler.advanceCursor(200);
+          return;
+        }
+      }
+    });
+  }
+
+  /** ATTACH: the new node is created under its parent, every node glides to the new layout, and the new one pops in. */
+  private attach(context: AlgorithmContext, treeName: string, step: Extract<BSTStep, { type: 'ATTACH' }>): void {
+    const newEl = BSTEngine.insertNode(
+      context.sceneManager,
+      context.relationshipManager!,
+      treeName,
+      step.value,
+      step.parent,
+      step.side
+    );
+
+    // Recompute layout
+    const layoutMap = BSTEngine.computeLayout(context.sceneManager, treeName);
+    layoutMap.forEach((pos, id) => {
+      const el = context.sceneManager.getElement(id) as any;
+      if (el) el.worldTarget = pos;
+    });
+
+    // Place new node at its target x/z, start below the scene
+    if (newEl.worldTarget) {
+      newEl.position.x = newEl.worldTarget.x;
+      newEl.position.z = newEl.worldTarget.z;
+    }
+
+    // Animate ALL existing nodes to their new positions
+    const successToken = getSemanticColorToken('SUCCESS');
+    BSTEngine.getNodes(context.sceneManager, treeName).forEach(n => {
+      if (n.id === newEl.id) return;
+      const pos = layoutMap.get(n.id);
+      if (pos) {
+        context.scheduler.enqueue({ targets: n.position, x: pos.x, y: pos.y, z: pos.z, duration: 500, easing: 'easeOutCubic' });
+      }
+    });
+    context.scheduler.commitGroup(true);
+
+    // Pop in the new node
+    context.scheduler.enqueue({ targets: newEl.position, y: newEl.worldTarget?.y ?? 0, duration: 600, easing: 'easeOutBounce' });
+    context.scheduler.enqueue({ targets: newEl.scale, x: 1, y: 1, z: 1, duration: 600, easing: 'easeOutBack' });
+    context.scheduler.enqueue({ targets: newEl, color: successToken.color, emissiveColor: successToken.emissiveColor, emissiveIntensity: 0.9, duration: 400, easing: 'easeOutExpo' });
+    context.scheduler.commitGroup(true);
+    context.scheduler.advanceCursor(400);
+
+    // Fade new node to normal color
+    context.scheduler.enqueue({ targets: newEl, color: BSTEngine.NODE_COLOR, emissiveColor: BSTEngine.NODE_EMISSIVE, emissiveIntensity: 0, duration: 500 });
+    context.scheduler.enqueue({ targets: newEl.scale, x: 1, y: 1, z: 1, duration: 300 });
+    context.scheduler.commitGroup(true);
+  }
+
+  /** REMOVE of a leaf: it drops away and is removed with its parent edge. */
+  private removeLeaf(context: AlgorithmContext, treeName: string, step: Extract<BSTStep, { type: 'REMOVE' }>): void {
+    const targetEl = context.sceneManager.getElement(step.node.id) as any;
+    if (!targetEl) return;
+
+    context.scheduler.enqueue({ targets: targetEl.scale, x: 0, y: 0, z: 0, duration: 500, easing: 'easeInBack' });
+    context.scheduler.enqueue({ targets: targetEl.position, y: '-=2', duration: 500, easing: 'easeInBack' });
+    context.scheduler.commitGroup(true);
+
+    context.scheduler.enqueue({
+      targets: {}, duration: 1, complete: () => {
+        BSTEngine.performLeafDelete(context.sceneManager, context.relationshipManager!, treeName, step.node.id);
+        this.reLayoutAndAnimate(context, treeName);
+      }
+    });
+    context.scheduler.commitSequential();
+  }
+
+  /** REMOVE of a node with one child: the child is lit, the node shrinks away and the child takes its place. */
+  private removeWithOneChild(context: AlgorithmContext, treeName: string, step: Extract<BSTStep, { type: 'REMOVE' }>): void {
+    const targetEl = context.sceneManager.getElement(step.node.id) as any;
+    const replacement = step.replacement!;
+    const childEl = context.sceneManager.getElement(replacement.id) as any;
+
+    if (!targetEl) return;
+
+    if (childEl) {
+      const activeToken = getSemanticColorToken('ACTIVE');
+      context.scheduler.enqueue({ targets: childEl, color: activeToken.color, emissiveColor: activeToken.emissiveColor, emissiveIntensity: 0.8, duration: 350 });
+      context.scheduler.enqueue({ targets: childEl.scale, x: 1.2, y: 1.2, z: 1.2, duration: 350 });
+      context.scheduler.commitGroup(true);
+      context.scheduler.advanceCursor(300);
+      this.log(context, 'DELETE', `Child ${replacement.value} moves up to replace ${step.node.value}.`, 'step');
+    }
+
+    // Shrink and remove target
+    context.scheduler.enqueue({ targets: targetEl.scale, x: 0, y: 0, z: 0, duration: 400, easing: 'easeInBack' });
+    context.scheduler.enqueue({ targets: targetEl.position, y: '+=2', duration: 400, easing: 'easeInBack' });
+    context.scheduler.commitGroup(true);
+
+    context.scheduler.enqueue({
+      targets: {}, duration: 1, complete: () => {
+        BSTEngine.performOneChildDelete(
+          context.sceneManager,
+          context.relationshipManager!,
+          treeName,
+          step.node.id,
+          replacement.id,
+          step.parent?.id || null,
+          step.side
+        );
+        this.reLayoutAndAnimate(context, treeName);
+        if (childEl) {
+          childEl.color = BSTEngine.NODE_COLOR;
+          childEl.emissiveIntensity = 0;
+          childEl.scale = { x: 1, y: 1, z: 1 };
+        }
+      }
+    });
+    context.scheduler.commitSequential();
+  }
+
+  /** REMOVE of a node with two children: it takes its successor's key and the successor node shrinks away. */
+  private removeWithTwoChildren(context: AlgorithmContext, treeName: string, step: Extract<BSTStep, { type: 'REMOVE' }>): void {
+    const successor = step.successor!;
+    this.log(context, 'DELETE', `Inorder Successor = ${successor.value}\nReplacing ${step.node.value} with ${successor.value}.\nDeleting successor node.`, 'step');
+    context.scheduler.advanceCursor(500);
+
+    // Animate target node changing its value (successor takes over)
+    const targetEl = context.sceneManager.getElement(step.node.id) as any;
+    const successorEl = context.sceneManager.getElement(successor.id) as any;
+
+    if (targetEl) {
+      const modifyingToken = getSemanticColorToken('MODIFYING');
+      context.scheduler.enqueue({ targets: targetEl, color: modifyingToken.color, emissiveColor: modifyingToken.emissiveColor, emissiveIntensity: 0.9, duration: 350 });
+      context.scheduler.enqueue({ targets: targetEl.scale, x: 1.25, y: 1.25, z: 1.25, duration: 350 });
+      context.scheduler.commitGroup(true);
+      context.scheduler.advanceCursor(300);
+      context.scheduler.enqueue({ targets: targetEl, color: BSTEngine.NODE_COLOR, emissiveColor: BSTEngine.NODE_EMISSIVE, emissiveIntensity: 0, duration: 400 });
+      context.scheduler.enqueue({ targets: targetEl.scale, x: 1, y: 1, z: 1, duration: 400 });
+      context.scheduler.commitGroup(true);
+    }
+
+    // Shrink out the successor
+    if (successorEl) {
+      context.scheduler.enqueue({ targets: successorEl.scale, x: 0, y: 0, z: 0, duration: 400, easing: 'easeInBack' });
+      context.scheduler.enqueue({ targets: successorEl.position, y: '-=2', duration: 400, easing: 'easeInBack' });
+      context.scheduler.commitGroup(true);
+    }
+
+    context.scheduler.enqueue({
+      targets: {}, duration: 1, complete: () => {
+        BSTEngine.performTwoChildrenDelete(
+          context.sceneManager,
+          context.relationshipManager!,
+          treeName,
+          step.node.id,
+          successor.id
+        );
+        this.reLayoutAndAnimate(context, treeName);
+      }
+    });
+    context.scheduler.commitSequential();
+  }
+
+  /** ROTATE: the pivot is lit, the edges are rewired at once, every node glides to the new shape. */
+  private rotate(context: AlgorithmContext, treeName: string, step: Extract<BSTStep, { type: 'ROTATE' }>): void {
+    const pivotEl = context.sceneManager.getElement(step.pivot.id) as any;
+    const evaluatingToken = getSemanticColorToken('EVALUATING');
+    if (pivotEl) {
+      context.scheduler.enqueue({ targets: pivotEl, color: evaluatingToken.color, emissiveColor: evaluatingToken.emissiveColor, emissiveIntensity: 0.8, duration: 250 });
+      context.scheduler.commitGroup(true);
+    }
+
+    // The rewire is synchronous — like BST_INSERT's node/edge creation, it
+    // must not be gated behind an animation `complete` callback, since the
+    // tree's logical shape (what re-layout, subsequent operations, and tests
+    // observe) should be correct immediately.
+    BSTEngine.rewireRotation(context.sceneManager, context.relationshipManager!, treeName, step);
+    this.reLayoutAndAnimate(context, treeName);
+
+    const newRootEl = context.sceneManager.getElement(step.child.id) as any;
+    [newRootEl, pivotEl].forEach((el) => {
+      if (!el) return;
+      context.scheduler.enqueue({ targets: el, color: BSTEngine.NODE_COLOR, emissiveColor: BSTEngine.NODE_EMISSIVE, emissiveIntensity: 0, duration: 400 });
+    });
+    context.scheduler.commitGroup(true);
+  }
+
+  /** Recompute and animate all nodes to their new layout positions */
+  private reLayoutAndAnimate(context: AlgorithmContext, treeName: string): void {
+    const layoutMap = BSTEngine.computeLayout(context.sceneManager, treeName);
+    const allNodes = BSTEngine.getNodes(context.sceneManager, treeName);
+    allNodes.forEach(n => {
+      (n as any).worldTarget = layoutMap.get(n.id);
+      const pos = layoutMap.get(n.id);
+      if (pos) {
+        context.scheduler.enqueue({ targets: n.position, x: pos.x, y: pos.y, z: pos.z, duration: 600, easing: 'easeOutCubic' });
+      }
+    });
+    context.scheduler.commitGroup(true);
+  }
+
+  private log(context: AlgorithmContext, keyword: string, message: string, kind: string = 'operation'): void {
+    context.scheduler.enqueue({
+      targets: {}, duration: 1, complete: () => {
+        context.eventDispatcher.dispatch('RUNTIME_LOG', { keyword, message, kind, timestamp: Date.now() });
+      }
+    });
+    context.scheduler.commitGroup(true);
+  }
 
   // ─────────────────────────────────────────────────────────────────────────
   // Scene helpers
@@ -164,14 +1056,7 @@ export class BSTEngine {
 
   /** Find the root (node with no parent edge pointing to it) */
   static getRoot(sceneManager: SceneManager, treeName: string): any | null {
-    const nodes = this.getNodes(sceneManager, treeName);
-    const edges = this.getEdges(sceneManager, treeName);
-    const nodeIds = new Set(nodes.map((n: any) => n.id));
-    const hasParent = new Set<string>();
-    edges.forEach((e: any) => {
-      if (nodeIds.has(e.targetId)) hasParent.add(e.targetId);
-    });
-    return nodes.find((n: any) => !hasParent.has(n.id)) || null;
+    return this.buildIndex(sceneManager, treeName).root;
   }
 
   /** Get left child element of a node */
@@ -213,11 +1098,9 @@ export class BSTEngine {
   }
 
   /**
-   * Build an O(n) node-id → left/right/parent/edgeLabel index for the tree.
-   * Traversal/search/insert/delete/height/size all walk O(depth) nodes per
-   * call; without this index each step re-scans the full scene graph
-   * (getEdges) to find a single child/parent, turning O(depth) work into
-   * O(n·depth). Build the index once per operation and look up in O(1).
+   * Build an O(n) node-id → left/right/parent/edgeLabel index for the tree,
+   * reused until the scene's revision moves (rehydrating the pure tree for
+   * every operation of a lesson would otherwise rescan the scene each time).
    */
   static buildIndex(sceneManager: SceneManager, treeName: string): BSTIndex {
     const revision = sceneManager.getRevision();
@@ -231,8 +1114,7 @@ export class BSTEngine {
   }
 
   private static scanIndex(sceneManager: SceneManager, treeName: string): BSTIndex {
-    // One pass over the scene graph for both nodes and edges; search/insert
-    // run once per step of a lesson, so extra full scans add up.
+    // One pass over the scene graph for both nodes and edges.
     const nodes: any[] = [];
     const edges: any[] = [];
     for (const el of sceneManager.getSceneGraph() as any[]) {
@@ -263,182 +1145,58 @@ export class BSTEngine {
     return { left, right, parent, edgeLabel, root };
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // ROTATE
-  // ─────────────────────────────────────────────────────────────────────────
-
-  /**
-   * Validate a rotation at `pivotId` without mutating anything.
-   * `direction: 'L'` rotates left (the pivot's RIGHT child rises to take its
-   * place); `direction: 'R'` rotates right (the pivot's LEFT child rises).
-   */
-  static computeRotationPlan(
-    sceneManager: SceneManager,
-    treeName: string,
-    pivotId: string,
-    direction: 'L' | 'R'
-  ): { success: boolean; error?: string; childId?: string } {
-    const pivot = sceneManager.getElement(pivotId) as any;
-    if (!pivot) {
-      return { success: false, error: 'Node not found.' };
-    }
-    const child =
-      direction === 'L'
-        ? this.getRightChild(sceneManager, treeName, pivotId)
-        : this.getLeftChild(sceneManager, treeName, pivotId);
-    if (!child) {
-      const side = direction === 'L' ? 'right' : 'left';
-      return { success: false, error: `Cannot rotate ${direction === 'L' ? 'left' : 'right'}: node ${pivot.value} has no ${side} child.` };
-    }
-    return { success: true, childId: child.id };
-  }
-
-  /**
-   * Perform a standard BST rotation at `pivotId`, rewiring parent/child
-   * edges so the tree's logical structure actually changes (not just an
-   * acknowledgment animation). Mirrors the classic single-rotation case
-   * used by AVL/red-black rebalancing:
-   *
-   *  LEFT rotation at X (Y = X.right rises):
-   *    B = Y.left; X.right = B; Y.left = X; Y takes X's former slot.
-   *  RIGHT rotation at X (Y = X.left rises):
-   *    C = Y.right; X.left = C; Y.right = X; Y takes X's former slot.
-   *
-   * Does NOT recompute layout/positions — callers should follow with a
-   * layout pass (e.g. `computeLayout` + animate) to reflect the new shape.
-   */
-  static performRotation(
-    sceneManager: SceneManager,
-    relationshipManager: RelationshipManager,
-    treeName: string,
-    pivotId: string,
-    direction: 'L' | 'R'
-  ): { success: boolean; error?: string; newSubtreeRootId?: string } {
-    const plan = this.computeRotationPlan(sceneManager, treeName, pivotId, direction);
-    if (!plan.success) return plan;
-    const childId = plan.childId!;
-
-    const removeEdgeBetween = (sourceId: string, targetId: string) => {
-      const edge = this.getEdgeBetween(sceneManager, treeName, sourceId, targetId);
-      if (edge) sceneManager.removeElement(edge.id);
-    };
-    const addEdge = (sourceId: string, targetId: string, label: 'L' | 'R') => {
-      const edgeId = `bst_edge_${sourceId}_${targetId}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-      sceneManager.addElement({
-        id: edgeId,
-        type: 'edge',
-        originalType: 'EDGE',
-        logicalParent: treeName,
-        position: { x: 0, y: 0, z: 0 },
-        scale: { x: 1, y: 1, z: 1 },
-        color: '#888888',
-        sourceId,
-        targetId,
-        directed: true,
-        properties: { label },
-      } as any);
-      relationshipManager.addRelationship({ id: edgeId, sourceId, targetId, type: 'edge', directed: true });
-    };
-
-    const parent = this.getParent(sceneManager, treeName, pivotId);
-    const parentEdgeLabel = this.getEdgeLabel(sceneManager, treeName, pivotId);
-
-    if (direction === 'L') {
-      // Y = pivot's right child, rising. B = Y's left subtree, becomes X's right subtree.
-      const grandchild = this.getLeftChild(sceneManager, treeName, childId);
-      removeEdgeBetween(pivotId, childId);
-      if (grandchild) {
-        removeEdgeBetween(childId, grandchild.id);
-        addEdge(pivotId, grandchild.id, 'R');
-      }
-      addEdge(childId, pivotId, 'L');
-    } else {
-      // Y = pivot's left child, rising. C = Y's right subtree, becomes X's left subtree.
-      const grandchild = this.getRightChild(sceneManager, treeName, childId);
-      removeEdgeBetween(pivotId, childId);
-      if (grandchild) {
-        removeEdgeBetween(childId, grandchild.id);
-        addEdge(pivotId, grandchild.id, 'L');
-      }
-      addEdge(childId, pivotId, 'R');
-    }
-
-    if (parent) {
-      removeEdgeBetween(parent.id, pivotId);
-      addEdge(parent.id, childId, parentEdgeLabel ?? (direction === 'L' ? 'R' : 'L'));
-    }
-    // else: pivot was the root — childId is now the root, inferred automatically
-    // (computeLayout/getRoot find it by "no incoming edge").
-
-    return { success: true, newSubtreeRootId: childId };
-  }
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // INSERT
-  // ─────────────────────────────────────────────────────────────────────────
-
-  /**
-   * Compute the insertion path for `value` into the BST.
-   * Returns the traversal path, direction at each node, and metadata
-   * needed by the animation layer.  Does NOT mutate state.
-   */
-  static computeInsertPath(
-    sceneManager: SceneManager,
-    treeName: string,
-    value: number
-  ): BSTInsertResult {
+  /** The pure tree the scene currently draws for `treeName`. */
+  static rehydrate(sceneManager: SceneManager, treeName: string): BinarySearchTree {
     const index = this.buildIndex(sceneManager, treeName);
-    const root = index.root;
+    const toRef = (el: any): BSTNodeRef | null => (el ? { id: el.id, value: Number(el.value) } : null);
+    return BinarySearchTree.fromLinks(toRef(index.root), (id, side) => toRef((side === 'L' ? index.left : index.right).get(id)));
+  }
+
+  /**
+   * The path an insert of `value` takes and where the new node would hang,
+   * without changing anything (the pure insert runs on a rehydrated copy).
+   */
+  static computeInsertPath(sceneManager: SceneManager, treeName: string, value: number): BSTInsertResult {
+    const tree = this.rehydrate(sceneManager, treeName);
+    const inserted = tree.insert(value);
     const traversalPath: BSTNodeRef[] = [];
     const directions: string[] = [];
-
-    // Empty tree — insert as root
-    if (!root) {
-      return { success: true, traversalPath, directions, newNode: undefined, parentNode: null, edgeLabel: null };
-    }
-
-
-    let current: any = root;
-    while (current) {
-      const currentVal = Number(current.value);
-
-      // Duplicate check
-      if (value === currentVal) {
-        traversalPath.push({ id: current.id, value: currentVal });
-        return {
-          success: false,
-          error: `Value ${value} already exists.`,
-          traversalPath,
-          directions,
-        };
-      }
-
-      traversalPath.push({ id: current.id, value: currentVal });
-
-      if (value < currentVal) {
-        directions.push('L');
-        const lc = index.left.get(current.id) || null;
-        if (!lc) {
-          return { success: true, traversalPath, directions, parentNode: { id: current.id, value: currentVal }, edgeLabel: 'L' };
-        }
-        current = lc;
-      } else {
-        directions.push('R');
-        const rc = index.right.get(current.id) || null;
-        if (!rc) {
-          return { success: true, traversalPath, directions, parentNode: { id: current.id, value: currentVal }, edgeLabel: 'R' };
-        }
-        current = rc;
+    let attach: Extract<BSTStep, { type: 'ATTACH' }> | undefined;
+    for (const step of tree.steps) {
+      if (step.type === 'COMPARE') {
+        traversalPath.push(step.node);
+        directions.push(step.side);
+      } else if (step.type === 'DUPLICATE') {
+        traversalPath.push(step.node);
+      } else if (step.type === 'ATTACH') {
+        attach = step;
       }
     }
+    if (!inserted) return { success: false, error: `Value ${value} already exists.`, traversalPath, directions };
+    return { success: true, traversalPath, directions, parentNode: attach!.parent, edgeLabel: attach!.side };
+  }
 
-    // Should not reach here
-    return { success: false, error: 'Unexpected traversal error.', traversalPath, directions };
+  /** The path a search for `value` takes, with a comparison per node, without changing anything. */
+  static computeSearchPath(sceneManager: SceneManager, treeName: string, value: number): BSTSearchResult {
+    const tree = this.rehydrate(sceneManager, treeName);
+    const target = tree.search(value);
+    const traversalPath: BSTNodeRef[] = [];
+    const comparisons: string[] = [];
+    for (const step of tree.steps) {
+      if (step.type === 'COMPARE') {
+        traversalPath.push(step.node);
+        comparisons.push(`${value} ${step.side === 'L' ? '<' : '>'} ${step.node.value} → Go ${step.side === 'L' ? 'Left' : 'Right'}`);
+      } else if (step.type === 'FOUND') {
+        traversalPath.push(step.node);
+        comparisons.push(`${value} = ${step.node.value} → Found!`);
+      }
+    }
+    return target ? { found: true, targetNode: target, traversalPath, comparisons } : { found: false, traversalPath, comparisons };
   }
 
   /**
-   * Actually inserts a new node into the scene. Called after animations show
-   * the traversal path.  Returns the new element object.
+   * Actually inserts a new node into the scene, hung from `parentNode` on
+   * the `edgeLabel` side (no parent: the new root). Returns the new element.
    */
   static insertNode(
     sceneManager: SceneManager,
@@ -446,10 +1204,9 @@ export class BSTEngine {
     treeName: string,
     value: number,
     parentNode: BSTNodeRef | null,
-    edgeLabel: 'L' | 'R' | null
+    edgeLabel: BSTSide | null
   ): any {
     const newId = `bst_node_${treeName}_${value}_${Date.now()}`;
-    const neutralToken = getSemanticColorToken('NEUTRAL');
 
     const newEl: any = {
       id: newId,
@@ -511,7 +1268,7 @@ export class BSTEngine {
     revisionBefore: number,
     newEl: any,
     parentNode: BSTNodeRef | null,
-    edgeLabel: 'L' | 'R' | null
+    edgeLabel: BSTSide | null
   ): void {
     const cached = indexCache.get(sceneManager)?.get(treeName);
     if (!cached || cached.revision !== revisionBefore) return;
@@ -530,137 +1287,62 @@ export class BSTEngine {
     cached.revision = revision;
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // SEARCH
-  // ─────────────────────────────────────────────────────────────────────────
-
   /**
-   * Compute the BST search path for `value`.
-   * Returns traversal metadata for animation; does NOT mutate state.
+   * Rewires the scene's edges for a recorded rotation so the tree's logical
+   * structure actually changes. Mirrors the classic single rotation used by
+   * AVL / red-black rebalancing:
+   *
+   *  LEFT rotation at X (Y = X.right rises):
+   *    B = Y.left; X.right = B; Y.left = X; Y takes X's former slot.
+   *  RIGHT rotation at X (Y = X.left rises):
+   *    C = Y.right; X.left = C; Y.right = X; Y takes X's former slot.
+   *
+   * Does NOT recompute layout/positions.
    */
-  static computeSearchPath(
+  static rewireRotation(
     sceneManager: SceneManager,
+    relationshipManager: RelationshipManager,
     treeName: string,
-    value: number
-  ): BSTSearchResult {
-    const index = this.buildIndex(sceneManager, treeName);
-    const root = index.root;
-    const traversalPath: BSTNodeRef[] = [];
-    const comparisons: string[] = [];
-
-    if (!root) {
-      return { found: false, traversalPath, comparisons };
-    }
-
-
-    let current: any = root;
-    while (current) {
-      const currentVal = Number(current.value);
-      traversalPath.push({ id: current.id, value: currentVal });
-
-      if (value === currentVal) {
-        comparisons.push(`${value} = ${currentVal} → Found!`);
-        return { found: true, targetNode: { id: current.id, value: currentVal }, traversalPath, comparisons };
-      } else if (value < currentVal) {
-        comparisons.push(`${value} < ${currentVal} → Go Left`);
-        current = index.left.get(current.id) || null;
-      } else {
-        comparisons.push(`${value} > ${currentVal} → Go Right`);
-        current = index.right.get(current.id) || null;
-      }
-    }
-
-    return { found: false, traversalPath, comparisons };
-  }
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // DELETE
-  // ─────────────────────────────────────────────────────────────────────────
-
-  /**
-   * Compute the delete plan for `value`.
-   * Determines the case (leaf / one child / two children),
-   * inorder successor path, etc. Does NOT mutate state.
-   */
-  static computeDeletePlan(
-    sceneManager: SceneManager,
-    treeName: string,
-    value: number
-  ): BSTDeleteResult {
-    const traversalPath: BSTNodeRef[] = [];
-    const successorPath: BSTNodeRef[] = [];
-
-    // Find the node
-    const searchResult = this.computeSearchPath(sceneManager, treeName, value);
-    if (!searchResult.found || !searchResult.targetNode) {
-      return {
-        success: false,
-        error: `Value ${value} not found.`,
-        traversalPath: searchResult.traversalPath,
-        successorPath,
-      };
-    }
-
-    const targetNode = searchResult.targetNode;
-    const index = this.buildIndex(sceneManager, treeName);
-    const parentEl = index.parent.get(targetNode.id) || null;
-    const parentRef = parentEl ? { id: parentEl.id, value: Number(parentEl.value) } : null;
-    const edgeLabel = index.edgeLabel.get(targetNode.id) || null;
-
-    const leftChild = index.left.get(targetNode.id) || null;
-    const rightChild = index.right.get(targetNode.id) || null;
-
-    // CASE 1: Leaf node
-    if (!leftChild && !rightChild) {
-      return {
-        success: true,
-        targetNode,
-        deleteCase: 'LEAF',
-        traversalPath: searchResult.traversalPath,
-        successorPath,
-        parentNode: parentRef,
-        replacementNode: null,
-        edgeLabel,
-      };
-    }
-
-    // CASE 2: One child
-    if (!leftChild || !rightChild) {
-      const child = (leftChild || rightChild) as any;
-      return {
-        success: true,
-        targetNode,
-        deleteCase: 'ONE_CHILD',
-        traversalPath: searchResult.traversalPath,
-        successorPath,
-        parentNode: parentRef,
-        replacementNode: { id: child.id, value: Number(child.value) },
-        edgeLabel,
-      };
-    }
-
-    // CASE 3: Two children — find inorder successor (leftmost in right subtree)
-    successorPath.push(targetNode); // Start from deleted node itself in animation
-    let successor: any = rightChild;
-    successorPath.push({ id: successor.id, value: Number(successor.value) });
-
-    let successorLeft = index.left.get(successor.id) || null;
-    while (successorLeft) {
-      successor = successorLeft;
-      successorPath.push({ id: successor.id, value: Number(successor.value) });
-      successorLeft = index.left.get(successor.id) || null;
-    }
-
-    return {
-      success: true,
-      targetNode,
-      deleteCase: 'TWO_CHILDREN',
-      traversalPath: searchResult.traversalPath,
-      successorPath,
-      successor: { id: successor.id, value: Number(successor.value) },
-      parentNode: parentRef,
-      edgeLabel,
+    step: Extract<BSTStep, { type: 'ROTATE' }>
+  ): void {
+    const { direction, pivot, child, grandchild, parent, parentSide } = step;
+    const removeEdgeBetween = (sourceId: string, targetId: string) => {
+      const edge = this.getEdgeBetween(sceneManager, treeName, sourceId, targetId);
+      if (edge) sceneManager.removeElement(edge.id);
     };
+    const addEdge = (sourceId: string, targetId: string, label: BSTSide) => {
+      const edgeId = `bst_edge_${sourceId}_${targetId}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+      sceneManager.addElement({
+        id: edgeId,
+        type: 'edge',
+        originalType: 'EDGE',
+        logicalParent: treeName,
+        position: { x: 0, y: 0, z: 0 },
+        scale: { x: 1, y: 1, z: 1 },
+        color: '#888888',
+        sourceId,
+        targetId,
+        directed: true,
+        properties: { label },
+      } as any);
+      relationshipManager.addRelationship({ id: edgeId, sourceId, targetId, type: 'edge', directed: true });
+    };
+
+    // The inner subtree of the rising child moves over to the pivot; the pivot hangs from the child on the other side.
+    const inner: BSTSide = direction === 'L' ? 'R' : 'L';
+    removeEdgeBetween(pivot.id, child.id);
+    if (grandchild) {
+      removeEdgeBetween(child.id, grandchild.id);
+      addEdge(pivot.id, grandchild.id, inner);
+    }
+    addEdge(child.id, pivot.id, direction);
+
+    if (parent) {
+      removeEdgeBetween(parent.id, pivot.id);
+      addEdge(parent.id, child.id, parentSide ?? inner);
+    }
+    // else: pivot was the root — the child is now the root, inferred
+    // automatically (computeLayout/getRoot find it by "no incoming edge").
   }
 
   /**
@@ -688,7 +1370,7 @@ export class BSTEngine {
     targetId: string,
     childId: string,
     parentId: string | null,
-    edgeLabel: 'L' | 'R' | null
+    edgeLabel: BSTSide | null
   ): void {
     const edges = this.getEdges(sceneManager, treeName);
     // Remove all edges connected to targetId
@@ -763,12 +1445,9 @@ export class BSTEngine {
     }
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // CLEAR
-  // ─────────────────────────────────────────────────────────────────────────
-
   /**
-   * Returns all nodes ordered for a level-order clear animation.
+   * Returns all nodes ordered for a level-order clear animation, children in
+   * the order their edges were drawn.
    */
   static getClearOrder(sceneManager: SceneManager, treeName: string): any[] {
     const nodes = this.getNodes(sceneManager, treeName);
@@ -810,10 +1489,6 @@ export class BSTEngine {
     edges.forEach((e: any) => sceneManager.removeElement(e.id));
     nodes.forEach((n: any) => sceneManager.removeElement(n.id));
   }
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // LAYOUT
-  // ─────────────────────────────────────────────────────────────────────────
 
   /**
    * Compute Reingold-Tilford-style layout coordinates for all BST nodes.
@@ -890,218 +1565,5 @@ export class BSTEngine {
     assignY(root.id, 0);
 
     return map;
-  }
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // LAYER 2: TRAVERSALS
-  // ─────────────────────────────────────────────────────────────────────────
-
-  static computeInorderTraversal(sceneManager: SceneManager, treeName: string): BSTTraversalStep[] {
-    const root = this.getRoot(sceneManager, treeName);
-    const steps: BSTTraversalStep[] = [];
-    if (!root) return steps;
-    const index = this.buildIndex(sceneManager, treeName);
-
-    const traverse = (nodeId: string, value: number) => {
-      const nodeRef = { id: nodeId, value };
-      steps.push({ action: 'VISIT', node: nodeRef });
-
-      const lc = index.left.get(nodeId);
-      if (lc) {
-        const lcRef = { id: lc.id, value: Number(lc.value) };
-        steps.push({ action: 'MOVE_LEFT', node: nodeRef, targetNode: lcRef });
-        traverse(lc.id, Number(lc.value));
-        steps.push({ action: 'BACKTRACK', node: nodeRef, targetNode: lcRef });
-      }
-
-      steps.push({ action: 'PROCESS', node: nodeRef });
-
-      const rc = index.right.get(nodeId);
-      if (rc) {
-        const rcRef = { id: rc.id, value: Number(rc.value) };
-        steps.push({ action: 'MOVE_RIGHT', node: nodeRef, targetNode: rcRef });
-        traverse(rc.id, Number(rc.value));
-        steps.push({ action: 'BACKTRACK', node: nodeRef, targetNode: rcRef });
-      }
-    };
-
-    traverse(root.id, Number(root.value));
-    return steps;
-  }
-
-  static computePreorderTraversal(sceneManager: SceneManager, treeName: string): BSTTraversalStep[] {
-    const root = this.getRoot(sceneManager, treeName);
-    const steps: BSTTraversalStep[] = [];
-    if (!root) return steps;
-    const index = this.buildIndex(sceneManager, treeName);
-
-    const traverse = (nodeId: string, value: number) => {
-      const nodeRef = { id: nodeId, value };
-      steps.push({ action: 'VISIT', node: nodeRef });
-      steps.push({ action: 'PROCESS', node: nodeRef });
-
-      const lc = index.left.get(nodeId);
-      if (lc) {
-        const lcRef = { id: lc.id, value: Number(lc.value) };
-        steps.push({ action: 'MOVE_LEFT', node: nodeRef, targetNode: lcRef });
-        traverse(lc.id, Number(lc.value));
-        steps.push({ action: 'BACKTRACK', node: nodeRef, targetNode: lcRef });
-      }
-
-      const rc = index.right.get(nodeId);
-      if (rc) {
-        const rcRef = { id: rc.id, value: Number(rc.value) };
-        steps.push({ action: 'MOVE_RIGHT', node: nodeRef, targetNode: rcRef });
-        traverse(rc.id, Number(rc.value));
-        steps.push({ action: 'BACKTRACK', node: nodeRef, targetNode: rcRef });
-      }
-    };
-
-    traverse(root.id, Number(root.value));
-    return steps;
-  }
-
-  static computePostorderTraversal(sceneManager: SceneManager, treeName: string): BSTTraversalStep[] {
-    const root = this.getRoot(sceneManager, treeName);
-    const steps: BSTTraversalStep[] = [];
-    if (!root) return steps;
-    const index = this.buildIndex(sceneManager, treeName);
-
-    const traverse = (nodeId: string, value: number) => {
-      const nodeRef = { id: nodeId, value };
-      steps.push({ action: 'VISIT', node: nodeRef });
-
-      const lc = index.left.get(nodeId);
-      if (lc) {
-        const lcRef = { id: lc.id, value: Number(lc.value) };
-        steps.push({ action: 'MOVE_LEFT', node: nodeRef, targetNode: lcRef });
-        traverse(lc.id, Number(lc.value));
-        steps.push({ action: 'BACKTRACK', node: nodeRef, targetNode: lcRef });
-      }
-
-      const rc = index.right.get(nodeId);
-      if (rc) {
-        const rcRef = { id: rc.id, value: Number(rc.value) };
-        steps.push({ action: 'MOVE_RIGHT', node: nodeRef, targetNode: rcRef });
-        traverse(rc.id, Number(rc.value));
-        steps.push({ action: 'BACKTRACK', node: nodeRef, targetNode: rcRef });
-      }
-
-      steps.push({ action: 'PROCESS', node: nodeRef });
-    };
-
-    traverse(root.id, Number(root.value));
-    return steps;
-  }
-
-  static computeLevelorderTraversal(sceneManager: SceneManager, treeName: string): BSTLevelOrderStep[] {
-    const root = this.getRoot(sceneManager, treeName);
-    const steps: BSTLevelOrderStep[] = [];
-    if (!root) return steps;
-    const index = this.buildIndex(sceneManager, treeName);
-
-    const queue: BSTNodeRef[] = [{ id: root.id, value: Number(root.value) }];
-    steps.push({ action: 'ENQUEUE', node: queue[0], queueState: [...queue] });
-
-    while (queue.length > 0) {
-      const current = queue.shift()!;
-      steps.push({ action: 'DEQUEUE', node: current, queueState: [...queue] });
-      steps.push({ action: 'PROCESS', node: current, queueState: [...queue] });
-
-      const lc = index.left.get(current.id);
-      if (lc) {
-        const lcRef = { id: lc.id, value: Number(lc.value) };
-        queue.push(lcRef);
-        steps.push({ action: 'ENQUEUE', node: lcRef, queueState: [...queue] });
-      }
-
-      const rc = index.right.get(current.id);
-      if (rc) {
-        const rcRef = { id: rc.id, value: Number(rc.value) };
-        queue.push(rcRef);
-        steps.push({ action: 'ENQUEUE', node: rcRef, queueState: [...queue] });
-      }
-    }
-
-    return steps;
-  }
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // LAYER 3: INFORMATION QUERIES
-  // ─────────────────────────────────────────────────────────────────────────
-
-  static computeMin(sceneManager: SceneManager, treeName: string): BSTMinMaxResult {
-    const root = this.getRoot(sceneManager, treeName);
-    const path: BSTNodeRef[] = [];
-    if (!root) return { path, resultNode: null };
-    const index = this.buildIndex(sceneManager, treeName);
-
-    let current = root;
-    while (current) {
-      path.push({ id: current.id, value: Number(current.value) });
-      const lc = index.left.get(current.id);
-      if (!lc) break;
-      current = lc;
-    }
-    return { path, resultNode: path[path.length - 1] };
-  }
-
-  static computeMax(sceneManager: SceneManager, treeName: string): BSTMinMaxResult {
-    const root = this.getRoot(sceneManager, treeName);
-    const path: BSTNodeRef[] = [];
-    if (!root) return { path, resultNode: null };
-    const index = this.buildIndex(sceneManager, treeName);
-
-    let current = root;
-    while (current) {
-      path.push({ id: current.id, value: Number(current.value) });
-      const rc = index.right.get(current.id);
-      if (!rc) break;
-      current = rc;
-    }
-    return { path, resultNode: path[path.length - 1] };
-  }
-
-  static computeHeight(sceneManager: SceneManager, treeName: string): { steps: BSTHeightStep[], totalHeight: number } {
-    const root = this.getRoot(sceneManager, treeName);
-    const steps: BSTHeightStep[] = [];
-    if (!root) return { steps, totalHeight: 0 };
-    const index = this.buildIndex(sceneManager, treeName);
-
-    const traverse = (nodeId: string, value: number): number => {
-      const nodeRef = { id: nodeId, value };
-      steps.push({ action: 'VISIT', node: nodeRef });
-
-      const lc = index.left.get(nodeId);
-      const rc = index.right.get(nodeId);
-
-      const leftHeight = lc ? traverse(lc.id, Number(lc.value)) : 0;
-      const rightHeight = rc ? traverse(rc.id, Number(rc.value)) : 0;
-
-      const h = Math.max(leftHeight, rightHeight) + 1;
-      steps.push({ action: 'RETURN', node: nodeRef, height: h });
-      return h;
-    };
-
-    const totalHeight = traverse(root.id, Number(root.value));
-    return { steps, totalHeight };
-  }
-
-  static computeSize(sceneManager: SceneManager, treeName: string): { path: BSTNodeRef[], totalSize: number } {
-    const root = this.getRoot(sceneManager, treeName);
-    const path: BSTNodeRef[] = [];
-    if (!root) return { path, totalSize: 0 };
-    const index = this.buildIndex(sceneManager, treeName);
-
-    const traverse = (nodeId: string, value: number) => {
-      path.push({ id: nodeId, value });
-      const lc = index.left.get(nodeId);
-      if (lc) traverse(lc.id, Number(lc.value));
-      const rc = index.right.get(nodeId);
-      if (rc) traverse(rc.id, Number(rc.value));
-    };
-
-    traverse(root.id, Number(root.value));
-    return { path, totalSize: path.length };
   }
 }

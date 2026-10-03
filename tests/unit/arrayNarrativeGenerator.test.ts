@@ -11,7 +11,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { ArrayNarrativeGenerator, type StructureState } from '../../packages/runtime/src/narrative/ArrayNarrativeGenerator';
-import type { SortStep } from '../../packages/runtime/src/core/algorithms/SortEngine';
+import type { SortStep } from '../../packages/runtime/src/data-structures/SortAlgorithm';
 
 const generator = new ArrayNarrativeGenerator();
 

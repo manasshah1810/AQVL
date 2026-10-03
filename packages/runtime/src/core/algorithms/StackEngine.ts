@@ -1,212 +1,212 @@
 /**
- * StackEngine — animation logic for PUSH / POP / PEEK, extracted from
- * AnimationController.buildAnimations so it's unit-testable without the full
- * AnimationController (see tests/unit/stackEngine.test.ts).
+ * StackEngine — animation handler for PUSH / POP / PEEK on a stack of
+ * STACK_ELEMENT scene objects.
  *
- * buildAnimations pre-builds a whole instruction list's animations against a
- * `virtualGraph` snapshot (a plain-object clone of the scene graph) rather
- * than mutating the live scene graph directly the way executeInstruction's
- * handlers do, and defers actual scene spawn/remove to LifecycleManager
- * inside animation `complete` callbacks — so these methods take the
- * `virtualGraph` array and a `LifecycleManager` as explicit extra
- * parameters alongside the shared `AlgorithmContext`.
+ * Registered with AlgorithmRegistry for PUSH, POP, PEEK. Every operation runs
+ * on the pure Stack (../../data-structures/Stack.ts), rehydrated from the
+ * stack's elements, and its recorded step is replayed onto the scene:
+ * PUSH (MUTATE create) drops a new box onto the top, POP (MUTATE destroy)
+ * lifts the top away, PEEK (ANNOTATE focus) pulses the top.
+ *
+ * Compiled STACK declarations are TreeEngine containers, which
+ * AnimationController routes to TreeEngine before consulting the registry;
+ * this engine serves scenes whose stacks are STACK_ELEMENT objects.
  */
-import { AlgorithmContext } from './AlgorithmContext';
+import { AlgorithmContext, AlgorithmHandler } from './AlgorithmContext';
 import { GenericActionInstruction, StackUnderflowError } from '@aqvl/shared';
-import { LifecycleManager } from '../LifecycleManager';
+import { Stack, StackStep } from '../../data-structures/Stack';
 
-export interface StackAnimationContext extends AlgorithmContext {
-  lifecycleManager: LifecycleManager;
-}
+export class StackEngine implements AlgorithmHandler {
+  /** The statements registered with AlgorithmRegistry. */
+  static readonly ALGORITHMS = ['PUSH', 'POP', 'PEEK'];
 
-export class StackEngine {
-  push(context: StackAnimationContext, gen: GenericActionInstruction, virtualGraph: any[]): void {
-    const stackName = gen.args[0];
-    const val = gen.args[1];
+  static readonly NODE_COLOR = '#4caf50';
 
-    // Find current top index
-    const stackEls = context.sceneManager.getSceneGraph().filter((el: any) => el.logicalParent === stackName && el.originalType === 'STACK_ELEMENT');
-    const newIndex = stackEls.length;
+  execute(context: AlgorithmContext, instruction: GenericActionInstruction): void {
+    const action = instruction.actionName.toUpperCase();
+    if (action === 'PUSH') this.push(context, instruction);
+    else if (action === 'POP') this.pop(context, instruction);
+    else if (action === 'PEEK') this.peek(context, instruction);
+  }
 
-    const newId = `obj_${stackName}_new_${Date.now()}`;
+  // ─────────────────────────────────────────────────────────────────────────
+  // Scene helpers
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /** The stack's elements, bottom first. */
+  private getElements(context: AlgorithmContext, name: string): any[] {
+    return context.sceneManager
+      .getSceneGraph()
+      .filter((el: any) => el.logicalParent === name && el.originalType === 'STACK_ELEMENT')
+      .sort((a: any, b: any) => a.logicalIndex - b.logicalIndex);
+  }
+
+  private getValues(context: AlgorithmContext, name: string): unknown[] {
+    return this.getElements(context, name).map((el: any) => el.value);
+  }
+
+  private elementAt(context: AlgorithmContext, name: string, index: number): any {
+    return this.getElements(context, name).find((el: any) => el.logicalIndex === index);
+  }
+
+  private rehydrate(context: AlgorithmContext, name: string): Stack {
+    const stack = new Stack();
+    stack.elements = this.getValues(context, name);
+    return stack;
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // PUSH / POP / PEEK
+  // ─────────────────────────────────────────────────────────────────────────
+
+  private push(context: AlgorithmContext, gen: GenericActionInstruction): void {
+    const name = gen.args[0];
+    const stack = this.rehydrate(context, name);
+    stack.push(gen.args[1]);
+    this.replaySteps(context, name, stack);
+  }
+
+  /** @throws StackUnderflowError when the stack is empty. */
+  private pop(context: AlgorithmContext, gen: GenericActionInstruction): void {
+    const name = gen.args[0];
+    const stack = this.rehydrate(context, name);
+    if (stack.isEmpty()) {
+      throw new StackUnderflowError(`Cannot POP from empty stack "${name}".`);
+    }
+    stack.pop();
+    this.replaySteps(context, name, stack);
+  }
+
+  /** Does nothing on an empty stack. */
+  private peek(context: AlgorithmContext, gen: GenericActionInstruction): void {
+    const name = gen.args[0];
+    const stack = this.rehydrate(context, name);
+    stack.peek();
+    this.replaySteps(context, name, stack);
+  }
+
+  /** Turns the recorded steps of one stack operation into scene mutations and animation. */
+  private replaySteps(context: AlgorithmContext, name: string, stack: Stack): void {
+    for (const step of stack.steps) {
+      if (step.type === 'PUSH') this.animatePush(context, name, step, stack.size);
+      else if (step.type === 'POP') this.animatePop(context, name, step, stack.size);
+      else if (step.type === 'PEEK') this.animatePeek(context, name, step);
+    }
+  }
+
+  /** MUTATE create on top: a new box drops onto the stack and fades in. */
+  private animatePush(context: AlgorithmContext, name: string, step: StackStep, size: number): void {
+    const newId = `obj_${name}_new_${Date.now()}`;
     const newEl: any = {
       id: newId,
       type: 'box',
-      value: val,
-      logicalIndex: newIndex,
-      logicalParent: stackName,
+      value: step.value,
+      logicalIndex: step.index,
+      logicalParent: name,
       originalType: 'STACK_ELEMENT',
       position: { x: 0, y: 10, z: 0 }, // Will be laid out but starts high
       scale: { x: 1, y: 1, z: 1 },
-      color: '#4caf50',
+      color: StackEngine.NODE_COLOR,
       emissiveIntensity: 0.5,
-      emissiveColor: '#4caf50',
+      emissiveColor: StackEngine.NODE_COLOR,
       lifecycleState: 'ACTIVE',
       visible: true,
       opacity: 0,
     };
+    this.spawn(context, newEl);
 
-    virtualGraph.push(newEl);
+    const targetPos = context.layoutManager.updateLayout(context.sceneManager.getSceneGraph()).get(newId);
+    if (!targetPos) return;
+
+    newEl.position.x = targetPos.x;
+    newEl.position.y = targetPos.y + 5; // Drop from above
+    newEl.position.z = targetPos.z;
+    newEl.opacity = 0;
+
+    context.scheduler.enqueue({ targets: newEl.position, y: targetPos.y, duration: 500, easing: 'easeOutBounce' });
+    context.scheduler.enqueue({ targets: newEl, opacity: 1, duration: 300 });
+    context.scheduler.commitGroup(true);
+    context.scheduler.advanceCursor(100);
+
+    this.log(context, 'PUSH', `Pushed ${step.value} onto stack "${name}".\nStack size: ${size}`, 'operation');
+  }
+
+  /** MUTATE destroy of the top: it lifts off, turns red and fades, then leaves the scene. */
+  private animatePop(context: AlgorithmContext, name: string, step: StackStep, size: number): void {
+    const targetEl = this.elementAt(context, name, step.index);
+    if (!targetEl) return;
+
+    context.scheduler.enqueue({ targets: targetEl.position, y: targetEl.position.y + 3, duration: 400, easing: 'easeInQuad' });
+    context.scheduler.enqueue({
+      targets: targetEl,
+      opacity: 0,
+      color: '#f44336',
+      emissiveColor: '#f44336',
+      emissiveIntensity: 0.8,
+      duration: 400,
+    });
+    context.scheduler.commitGroup(true);
 
     context.scheduler.enqueue({
       targets: {},
       duration: 1,
       complete: () => {
-        context.lifecycleManager.spawn(newEl, true);
-        context.lifecycleManager.activate(newId);
-      }
+        this.despawn(context, targetEl.id);
+        context.eventDispatcher.dispatch('RUNTIME_LOG', {
+          keyword: 'POP',
+          message: `Popped "${step.value}" from stack "${name}".\nStack size: ${size}`,
+          kind: 'operation',
+          timestamp: Date.now(),
+        });
+      },
     });
     context.scheduler.commitGroup(true);
+    context.scheduler.advanceCursor(450);
+  }
 
-    const layoutMap = context.layoutManager.updateLayout(virtualGraph);
-    const targetPos = layoutMap.get(newId);
+  /** ANNOTATE focus on the top: it glows and pulses. */
+  private animatePeek(context: AlgorithmContext, name: string, step: StackStep): void {
+    const targetEl = this.elementAt(context, name, step.index);
+    if (!targetEl) return;
 
-    if (targetPos) {
-      context.scheduler.enqueue({
-        targets: {},
-        duration: 1,
-        complete: () => {
-          const targetEl = context.sceneManager.getElement(newId) as any;
-          if (targetEl) {
-            targetEl.position.x = targetPos.x;
-            targetEl.position.y = targetPos.y + 5; // Drop from above
-            targetEl.position.z = targetPos.z;
+    context.scheduler.enqueue({ targets: targetEl, emissiveColor: '#ff9800', emissiveIntensity: 0.8, duration: 200 });
+    context.scheduler.enqueue({ targets: targetEl.scale, x: 1.1, y: 1.1, z: 1.1, duration: 200 });
+    context.scheduler.commitSequential();
 
-            context.scheduler.enqueue({
-              targets: targetEl.position,
-              y: targetPos.y,
-              duration: 500,
-              easing: 'easeOutBounce'
-            });
-            context.scheduler.enqueue({
-              targets: targetEl,
-              opacity: 1,
-              duration: 300,
-            });
-            context.scheduler.commitGroup(true);
-          }
-        }
-      });
-      context.scheduler.commitGroup(true);
-      context.scheduler.advanceCursor(600);
-      // Log after drop animation
-      context.scheduler.enqueue({
-        targets: {},
-        duration: 1,
-        complete: () => {
-          context.eventDispatcher.dispatch('RUNTIME_LOG', {
-            keyword: 'PUSH',
-            message: `Pushed ${val} onto stack "${stackName}".\nStack size: ${newIndex + 1}`,
-            kind: 'operation',
-            timestamp: Date.now(),
-          });
-        }
-      });
-      context.scheduler.commitGroup(true);
+    context.scheduler.enqueue({ targets: targetEl, emissiveIntensity: 0, duration: 200 });
+    context.scheduler.enqueue({ targets: targetEl.scale, x: 1, y: 1, z: 1, duration: 200 });
+    context.scheduler.commitSequential();
+    context.scheduler.advanceCursor(100);
+
+    this.log(context, 'PEEK', `Top of stack "${name}": ${step.value}`, 'info');
+  }
+
+  private spawn(context: AlgorithmContext, el: any): void {
+    if (context.lifecycleManager) {
+      context.lifecycleManager.spawn(el, true);
+      context.lifecycleManager.activate(el.id);
+    } else {
+      context.sceneManager.addElement(el);
     }
   }
 
-  /** @throws StackUnderflowError when the target stack is empty. */
-  pop(context: StackAnimationContext, gen: GenericActionInstruction, virtualGraph: any[]): void {
-    const stackName = gen.args[0];
-
-    const stackEls = context.sceneManager.getSceneGraph().filter((el: any) => el.logicalParent === stackName && el.originalType === 'STACK_ELEMENT');
-    if (stackEls.length === 0) {
-      throw new StackUnderflowError(`Cannot POP from empty stack "${stackName}".`);
-    }
-    if (stackEls.length > 0) {
-      const topEl = stackEls.sort((a: any, b: any) => b.logicalIndex - a.logicalIndex)[0];
-      const targetId = topEl.id;
-
-      const targetEl = context.sceneManager.getElement(targetId) as any;
-      if (targetEl) {
-        context.scheduler.enqueue({
-          targets: targetEl.position,
-          y: targetEl.position.y + 3,
-          duration: 400,
-          easing: 'easeInQuad'
-        });
-        context.scheduler.enqueue({
-          targets: targetEl,
-          opacity: 0,
-          color: '#f44336',
-          emissiveColor: '#f44336',
-          emissiveIntensity: 0.8,
-          duration: 400
-        });
-        context.scheduler.commitGroup(true);
-      }
-
-      const vElIdx = virtualGraph.findIndex((el: any) => el.id === targetId);
-      if (vElIdx >= 0) virtualGraph.splice(vElIdx, 1);
-
-      context.scheduler.enqueue({
-        targets: {},
-        duration: 1,
-        complete: () => {
-          const poppedVal = (topEl as any).value;
-          const remainingSize = stackEls.length - 1;
-          context.lifecycleManager.remove(targetId);
-          context.lifecycleManager.destroy(targetId);
-          context.eventDispatcher.dispatch('RUNTIME_LOG', {
-            keyword: 'POP',
-            message: `Popped "${poppedVal}" from stack "${stackName}".\nStack size: ${remainingSize}`,
-            kind: 'operation',
-            timestamp: Date.now(),
-          });
-        }
-      });
-      context.scheduler.commitGroup(true);
-      context.scheduler.advanceCursor(450);
+  private despawn(context: AlgorithmContext, id: string): void {
+    if (context.lifecycleManager) {
+      context.lifecycleManager.remove(id);
+      context.lifecycleManager.destroy(id);
+    } else {
+      context.sceneManager.removeElement(id);
     }
   }
 
-  peek(context: StackAnimationContext, gen: GenericActionInstruction): void {
-    const stackName = gen.args[0];
-    const stackEls = context.sceneManager.getSceneGraph().filter((el: any) => el.logicalParent === stackName && el.originalType === 'STACK_ELEMENT');
-    if (stackEls.length > 0) {
-      const topEl = stackEls.sort((a: any, b: any) => b.logicalIndex - a.logicalIndex)[0];
-      const targetEl = context.sceneManager.getElement(topEl.id) as any;
-      if (targetEl) {
-        context.scheduler.enqueue({
-          targets: targetEl,
-          emissiveColor: '#ff9800',
-          emissiveIntensity: 0.8,
-          duration: 200
-        });
-        context.scheduler.enqueue({
-          targets: targetEl.scale,
-          x: 1.1, y: 1.1, z: 1.1,
-          duration: 200
-        });
-        context.scheduler.commitSequential();
-
-        context.scheduler.enqueue({
-          targets: targetEl,
-          emissiveIntensity: 0,
-          duration: 200
-        });
-        context.scheduler.enqueue({
-          targets: targetEl.scale,
-          x: 1, y: 1, z: 1,
-          duration: 200
-        });
-        context.scheduler.commitSequential();
-        context.scheduler.advanceCursor(100);
-        context.scheduler.enqueue({
-          targets: {},
-          duration: 1,
-          complete: () => {
-            context.eventDispatcher.dispatch('RUNTIME_LOG', {
-              keyword: 'PEEK',
-              message: `Top of stack "${stackName}": ${(topEl as any).value}`,
-              kind: 'info',
-              timestamp: Date.now(),
-            });
-          }
-        });
-        context.scheduler.commitGroup(true);
-      }
-    }
+  private log(context: AlgorithmContext, keyword: string, message: string, kind: string): void {
+    context.scheduler.enqueue({
+      targets: {},
+      duration: 1,
+      complete: () => {
+        context.eventDispatcher.dispatch('RUNTIME_LOG', { keyword, message, kind, timestamp: Date.now() });
+      },
+    });
+    context.scheduler.commitGroup(true);
   }
 }

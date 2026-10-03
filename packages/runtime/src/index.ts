@@ -40,10 +40,10 @@ export { Graph } from './data-structures/Graph';
 export { Vertex } from './data-structures/Vertex';
 export { Edge } from './data-structures/Edge';
 export { UnionFind } from './data-structures/UnionFind';
-export { GraphAlgorithm } from './core/algorithms/GraphEngine';
-export type { AnimationFrame } from './core/algorithms/GraphEngine';
-export { SortAlgorithm } from './core/algorithms/SortEngine';
-export type { SortStep, SortResult, OperationIntent, OperationSignificance, AlgorithmName, AlgorithmPhase } from './core/algorithms/SortEngine';
+export { GraphAlgorithm } from './data-structures/GraphAlgorithm';
+export type { AnimationFrame } from './data-structures/GraphAlgorithm';
+export { SortAlgorithm } from './data-structures/SortAlgorithm';
+export type { SortStep, SortResult, OperationIntent, OperationSignificance, AlgorithmName, AlgorithmPhase } from './data-structures/SortAlgorithm';
 
 // --- Narrative text generation (docs/design/array-narrative-ux-spec.md) ---
 export { ArrayNarrativeGenerator } from './narrative/ArrayNarrativeGenerator';

@@ -21,6 +21,9 @@ import { AnticipationAnimation } from '../animations';
 import { MinHeap, HeapStep } from '../../data-structures/Heap';
 
 export class HeapEngine implements AlgorithmHandler {
+  /** The statements registered with AlgorithmRegistry. */
+  static readonly ALGORITHMS = ['HEAP_INSERT', 'HEAP_EXTRACT', 'HEAP_DECREASE', 'BUILD_HEAP', 'HEAPIFY'];
+
   static readonly NODE_COLOR = '#7c4dff';
   static readonly NODE_EMISSIVE = '#000000';
 

@@ -2,7 +2,7 @@
  * Unit tests for Trie (packages/runtime/src/data-structures/Trie.ts) — the
  * prefix tree backing TRIE declarations and the TRIE_INSERT / TRIE_SEARCH /
  * TRIE_DELETE / TRIE_AUTOCOMPLETE runtime ops (see
- * ../../packages/runtime/src/core/algorithms/TrieVisualizer).
+ * ../../packages/runtime/src/core/algorithms/TrieEngine).
  */
 import { describe, expect, it } from 'vitest';
 import { Trie } from '../../packages/runtime/src/data-structures/Trie';

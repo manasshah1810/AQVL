@@ -1,12 +1,12 @@
 /**
  * Integration tests for HASH_MAP / HASHMAP_INSERT / HASHMAP_LOOKUP /
  * HASHMAP_DELETE: source -> lex -> parse -> validate -> optimize -> AQIR,
- * and (separately) HashMapVisualizer executing those GENERIC_ACTION
+ * and (separately) HashMapEngine executing those GENERIC_ACTION
  * instructions against a real SceneManager/LayoutManager, replaying real
  * hash/collision/resize behavior as animation frames.
  *
  * Like sorting.test.ts and heap.test.ts, full AnimationController execution
- * (a real anime.js timeline) is out of scope; HashMapVisualizer mutates
+ * (a real anime.js timeline) is out of scope; HashMapEngine mutates
  * scene state synchronously and only defers logging into `complete`
  * callbacks, so a lightweight scheduler stub that runs those callbacks
  * immediately is enough to observe every frame it schedules.
@@ -14,7 +14,7 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { compileLowered } from '../utils/testHelpers';
 import { HashMap } from '../../packages/runtime/src/data-structures/HashMap';
-import { HashMapVisualizer } from '../../packages/runtime/src/core/algorithms/HashMapVisualizer';
+import { HashMapEngine } from '../../packages/runtime/src/core/algorithms/HashMapEngine';
 import { SceneManager } from '../../packages/runtime/src/core/SceneManager';
 import { LayoutManager } from '../../packages/runtime/src/core/LayoutManager';
 import { RelationshipManager } from '../../packages/runtime/src/core/RelationshipManager';
@@ -44,7 +44,7 @@ END
 `;
 }
 
-// Same stub-scheduler pattern as heap.test.ts: HashMapVisualizer mutates
+// Same stub-scheduler pattern as heap.test.ts: HashMapEngine mutates
 // scene state synchronously; `complete` callbacks (logging) run immediately.
 function makeStubScheduler() {
   const frames: any[] = [];
@@ -145,17 +145,17 @@ describe('HashMap built-ins: parsing to GENERIC_ACTION', () => {
   });
 });
 
-describe('HashMapVisualizer: executing hash map operations against a live scene', () => {
+describe('HashMapEngine: executing hash map operations against a live scene', () => {
   it('HASHMAP_INIT creates the default bucket row', () => {
     const { sceneManager, context } = setup();
-    const engine = new HashMapVisualizer();
+    const engine = new HashMapEngine();
     engine.execute(context, { action: 'GENERIC_ACTION', actionName: 'HASHMAP_INIT', args: ['h'] } as any);
     expect(bucketCount(sceneManager, 'h')).toBe(HashMap.DEFAULT_CAPACITY);
   });
 
   it('HASHMAP_INSERT stores a new key/value and auto-initializes buckets if needed', () => {
     const { sceneManager, context, frames } = setup();
-    const engine = new HashMapVisualizer();
+    const engine = new HashMapEngine();
     engine.execute(context, { action: 'GENERIC_ACTION', actionName: 'HASHMAP_INSERT', args: ['h', 'a', 1] } as any);
 
     expect(bucketCount(sceneManager, 'h')).toBe(HashMap.DEFAULT_CAPACITY);
@@ -165,7 +165,7 @@ describe('HashMapVisualizer: executing hash map operations against a live scene'
 
   it('HASHMAP_INSERT on an existing key updates the value instead of duplicating the entry', () => {
     const { sceneManager, context } = setup();
-    const engine = new HashMapVisualizer();
+    const engine = new HashMapEngine();
     engine.execute(context, { action: 'GENERIC_ACTION', actionName: 'HASHMAP_INSERT', args: ['h', 'a', 1] } as any);
     engine.execute(context, { action: 'GENERIC_ACTION', actionName: 'HASHMAP_INSERT', args: ['h', 'a', 99] } as any);
 
@@ -176,7 +176,7 @@ describe('HashMapVisualizer: executing hash map operations against a live scene'
 
   it('collisions: two keys hashing to the same bucket both end up stored', () => {
     const { sceneManager, context } = setup();
-    const engine = new HashMapVisualizer();
+    const engine = new HashMapEngine();
     engine.execute(context, { action: 'GENERIC_ACTION', actionName: 'HASHMAP_INIT', args: ['h'] } as any);
 
     // Find two keys that collide under HashMap's string-sum hash at the default capacity.
@@ -200,7 +200,7 @@ describe('HashMapVisualizer: executing hash map operations against a live scene'
 
   it('resize: inserting past a load factor of 0.75 doubles the bucket count and preserves every entry', () => {
     const { sceneManager, context } = setup();
-    const engine = new HashMapVisualizer();
+    const engine = new HashMapEngine();
     engine.execute(context, { action: 'GENERIC_ACTION', actionName: 'HASHMAP_INIT', args: ['h'] } as any); // capacity 8
 
     const keys = ['a', 'b', 'c', 'd', 'e', 'f', 'g']; // 7th insert -> 7/8 > 0.75 -> resize to 16
@@ -218,7 +218,7 @@ describe('HashMapVisualizer: executing hash map operations against a live scene'
 
   it('HASHMAP_LOOKUP finds an existing key and reports a miss for a nonexistent one', () => {
     const { context } = setup();
-    const engine = new HashMapVisualizer();
+    const engine = new HashMapEngine();
     engine.execute(context, { action: 'GENERIC_ACTION', actionName: 'HASHMAP_INSERT', args: ['h', 'a', 1] } as any);
 
     const logs: string[] = [];
@@ -233,7 +233,7 @@ describe('HashMapVisualizer: executing hash map operations against a live scene'
 
   it('HASHMAP_DELETE removes an existing key and leaves a nonexistent key a no-op', () => {
     const { sceneManager, context } = setup();
-    const engine = new HashMapVisualizer();
+    const engine = new HashMapEngine();
     engine.execute(context, { action: 'GENERIC_ACTION', actionName: 'HASHMAP_INSERT', args: ['h', 'a', 1] } as any);
     engine.execute(context, { action: 'GENERIC_ACTION', actionName: 'HASHMAP_INSERT', args: ['h', 'b', 2] } as any);
 
@@ -248,7 +248,7 @@ describe('HashMapVisualizer: executing hash map operations against a live scene'
 
   it('a realistic sequence (insert x3, delete, insert past resize, lookup) leaves a fully consistent scene', () => {
     const { sceneManager, context } = setup();
-    const engine = new HashMapVisualizer();
+    const engine = new HashMapEngine();
 
     engine.execute(context, { action: 'GENERIC_ACTION', actionName: 'HASHMAP_INSERT', args: ['h', 'a', 1] } as any);
     engine.execute(context, { action: 'GENERIC_ACTION', actionName: 'HASHMAP_INSERT', args: ['h', 'b', 2] } as any);

@@ -1,5 +1,32 @@
 # Algorithm Engine Pattern
 
+> **Status (Phase 2.2, done):** every structure now follows the canonical
+> shape below, and the drift listed under "Known inconsistencies" has been
+> reconciled. Where each structure lives now:
+>
+> | Structure | Pure layer (`data-structures/`) | Step union / primitives table | Engine (`core/algorithms/`) |
+> |---|---|---|---|
+> | Array | `ArrayStructure.ts` | `ArrayStep` / `ARRAY_STEP_PRIMITIVES` | `ArrayEngine` |
+> | Stack | `Stack.ts` | `StackStep` / `STACK_STEP_PRIMITIVES` | `StackEngine` |
+> | Queue | `Queue.ts` | `QueueStep` / `QUEUE_STEP_PRIMITIVES` | `QueueEngine` |
+> | Linked list | `LinkedList.ts` | `LinkedListStep` / `LINKED_LIST_STEP_PRIMITIVES` | `LinkedListEngine` |
+> | Heap | `Heap.ts` (`MinHeap`) | `HeapStep` / `HEAP_STEP_PRIMITIVES` | `HeapEngine` |
+> | BST | `BST.ts` (`BinarySearchTree`) | `BSTStep` / `BST_STEP_PRIMITIVES` | `BSTEngine` (was `BSTAlgorithms`; the old scene-bound `BSTEngine` statics are now its scene helpers) |
+> | Graph | `GraphAlgorithm.ts` (was `core/algorithms/GraphEngine.ts`) | `GraphTraversalStep`, ... / `*_STEP_PRIMITIVES`; result field `steps` (was `animationFrames`) | `GraphEngine` (was `GraphAlgorithms`) |
+> | Sort | `SortAlgorithm.ts` (was `core/algorithms/SortEngine.ts`) | `SortStep` / `SORT_STEP_PRIMITIVES` | `SortEngine` (was `SortAlgorithms`) |
+> | Hash map | `HashMap.ts`, now recording `steps` | `HashMapStep` / `HASHMAP_STEP_PRIMITIVES` | `HashMapEngine` (was `HashMapVisualizer`) |
+> | Trie | `Trie.ts`, now recording `steps` | `TrieStep` / `TRIE_STEP_PRIMITIVES` | `TrieEngine` (was `TrieVisualizer`) |
+>
+> Each engine declares the statements it handles as `static ALGORITHMS` and
+> `AnimationController` registers it from that list; the controller keeps
+> only routing (which engine owns an operand) and lifecycle glue. A step that
+> different operations draw differently names its operation (`HASH.op`,
+> `COMPARE.walk`, `PROCESS.order`) so one `replaySteps` per engine still
+> replays every operation. The program engines (`*ProgramEngine`, structures
+> driven by real code rather than built-ins) are a separate layer and replay
+> the same steps where they share them (`HashMapProgramEngine` →
+> `HashMapEngine.replaySteps`). The text below is the original audit.
+
 Audit of how BST, Graph, Heap, HashMap, and Trie currently turn a data-structure
 operation into an animated scene mutation, written to fix one canonical pattern
 **before** Array/Stack/Queue/LinkedList get dedicated engine classes of their
@@ -240,7 +267,7 @@ compatibility isn't broken):
 | Queue | `Queue` | `QueueEngine` | `QUEUE_ELEMENT` (already used) | `ENQUEUE`, `DEQUEUE`, `PEEK` (or `FRONT`) |
 | Linked List | `LinkedList` | `LinkedListEngine` | `LINKEDLIST_NODE` (already used) | `LIST_INSERT`, `LIST_DELETE`, `LIST_TRAVERSE` |
 
-## Known inconsistencies in the existing five (do not propagate these)
+## Known inconsistencies in the existing five (resolved in Phase 2.2 — see the status table at the top)
 
 The five existing structures did **not** actually converge on one pattern —
 they drifted in three ways worth calling out explicitly so the new four don't

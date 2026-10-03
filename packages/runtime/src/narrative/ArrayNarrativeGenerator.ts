@@ -20,7 +20,7 @@
  * those (e.g. an ordinary, non-lock-in SWAP) fall through to the generic
  * fallback below instead.
  */
-import type { SortStep } from '../core/algorithms/SortEngine';
+import type { SortStep } from '../data-structures/SortAlgorithm';
 
 /** The instruction shape this generator narrates — SortEngine's enriched step model. */
 export type Instruction = SortStep;

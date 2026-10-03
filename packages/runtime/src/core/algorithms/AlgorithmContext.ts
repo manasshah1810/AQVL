@@ -1,6 +1,6 @@
 /**
- * Shared contract every structure's AlgorithmHandler (HeapEngine, BSTAlgorithms,
- * GraphAlgorithms, HashMapVisualizer, TrieVisualizer, ...) implements and is
+ * Shared contract every structure's AlgorithmHandler (HeapEngine, BSTEngine,
+ * GraphEngine, HashMapEngine, TrieEngine, ...) implements and is
  * called with. See docs/design/algorithm-engine-pattern.md for the full
  * pure-data-structure + AlgorithmHandler engine pattern these are built on —
  * read that before adding a new engine (e.g. for Array/Stack/Queue/LinkedList)
@@ -12,6 +12,7 @@ import { LayoutManager } from '../LayoutManager';
 import { StateManager } from '../StateManager';
 import { RelationshipManager } from '../RelationshipManager';
 import { EventDispatcher } from '../EventDispatcher';
+import { LifecycleManager } from '../LifecycleManager';
 import { GenericActionInstruction } from '@aqvl/shared';
 import { PacingConfig } from '../../narrative/PacingConfig';
 
@@ -22,9 +23,13 @@ export interface AlgorithmContext {
   eventDispatcher: EventDispatcher;
   stateManager?: StateManager;
   relationshipManager?: RelationshipManager;
+  /** Spawns / removes elements with their lifecycle state (StackEngine, QueueEngine). */
+  lifecycleManager?: LifecycleManager;
 
   // Expose the current tree being operated on
   activeTreeName?: string | null;
+  /** Whether the active tree is a BST (set by a TREE / BINARY_TREE / BST statement). */
+  activeTreeIsBST?: boolean;
   defaultColor: string;
   /**
    * Significance-to-duration-multiplier mapping (docs/design/array-narrative-ux-spec.md §4).

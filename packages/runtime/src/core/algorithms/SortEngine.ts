@@ -1,409 +1,358 @@
 /**
- * SortEngine — pure in-place sorting algorithms (Bubble, Selection, Insertion,
- * Merge, Quick).
+ * SortEngine — Animation handler for array sorting operations.
  *
- * Free of scene/animation dependencies, like BSTEngine. Each method mutates
- * `array` in place and returns the ordered list of steps (comparisons, swaps,
- * pivot picks, merge overwrites) so the animation layer (SortAlgorithms) can
- * replay them one at a time.
+ * Registered with AlgorithmRegistry for:
+ *   BUBBLE_SORT, SELECTION_SORT, INSERTION_SORT, MERGE_SORT, QUICK_SORT
  *
- * Merge sort and quick sort use real recursive calls (mergeSort/quickSort ->
- * a private recursive helper that calls itself on each half/partition) — the
- * same "true recursion, not unrolled" shape as AQVL's own FUNCTION/CALL/RET
- * recursion (fibonacci, factorial): the call stack does the work, nothing is
- * flattened into a fixed-size loop at compile time.
+ * Delegates the actual comparisons/swaps/merges to the pure SortAlgorithm
+ * (../../data-structures/SortAlgorithm) and replays its step list against the ARRAY_ELEMENT scene
+ * objects belonging to the named array:
+ *  - COMPARE / SWAP reuse the compare (yellow) / swap (orange, logicalIndex +
+ *    layout) animation language from COMPARE_OBJECTS / SWAP_OBJECTS.
+ *  - PIVOT (quick sort) highlights the chosen pivot element distinctly.
+ *  - OVERWRITE (merge sort's merge step) writes a value into a slot without
+ *    swapping identities — merging combines two sorted runs by copying
+ *    values through a temp buffer, it doesn't exchange elements pairwise.
+ *
+ * Each step is resolved against the *current* logicalIndex of the scene's
+ * ARRAY_ELEMENT objects (not a fixed id captured up front), since earlier
+ * steps in the same sort mutate logicalIndex synchronously as the timeline
+ * is built — the same approach SWAP_OBJECTS itself relies on.
  */
 
-export type Comparator<T> = (a: T, b: T) => number;
+import { AlgorithmContext, AlgorithmHandler } from './AlgorithmContext';
+import {
+  AQIRInstruction,
+  GenericActionInstruction,
+  getSemanticColorToken,
+  ShowComparisonLinkInstruction,
+  HideComparisonLinkInstruction,
+  SetPartitionBoundaryInstruction,
+  ClearPartitionBoundaryInstruction,
+  MarkSortedRegionInstruction,
+} from '@aqvl/shared';
+import { AnticipationAnimation } from '../animations';
+import { SortAlgorithm, SortStep } from '../../data-structures/SortAlgorithm';
+import { ArrayNarrativeGenerator, StructureState } from '../../narrative/ArrayNarrativeGenerator';
+import { DEFAULT_PACING_CONFIG } from '../../narrative/PacingConfig';
 
-/**
- * Why a step is happening, not just what kind it is. Vocabulary is per
- * docs/design/array-aqir-semantic-gap.md §1.5/§2 — these are the tags the
- * narrative/pacing layer (Phase 4/5) will key off of.
- */
-export type OperationIntent =
-  | 'adjacent-check'
-  | 'adjacent-swap'
-  | 'candidate-check'
-  | 'selection-swap'
-  | 'shift-check'
-  | 'shift'
-  | 'insertion-placement'
-  | 'pivot-selection'
-  | 'partition-boundary'
-  | 'partition-swap'
-  | 'final-placement'
-  | 'merge-comparison'
-  | 'merge-write';
+type SortKind = 'bubble' | 'selection' | 'insertion' | 'merge' | 'quick';
 
-/** Rough pacing tier: how much a renderer should slow down / call attention to this step. */
-export type OperationSignificance = 'routine' | 'notable' | 'pivotal';
+const SORT_LABELS: Record<SortKind, string> = {
+  bubble: 'Bubble Sort',
+  selection: 'Selection Sort',
+  insertion: 'Insertion Sort',
+  merge: 'Merge Sort',
+  quick: 'Quick Sort',
+};
 
-export type AlgorithmName = 'bubble-sort' | 'selection-sort' | 'insertion-sort' | 'merge-sort' | 'quick-sort';
+export class SortEngine implements AlgorithmHandler {
+  /** The statements registered with AlgorithmRegistry. */
+  static readonly ALGORITHMS = ['BUBBLE_SORT', 'SELECTION_SORT', 'INSERTION_SORT', 'MERGE_SORT', 'QUICK_SORT'];
 
-/** Only meaningful for multi-phase algorithms (merge sort's combine, quick sort's partition). */
-export type AlgorithmPhase = 'divide' | 'combine' | 'partition';
+  private static readonly narrativeGenerator = new ArrayNarrativeGenerator();
 
-/** Optional narrative metadata threaded onto every SortStep variant. Additive — omitting it changes nothing for existing consumers. */
-interface StepMeta {
-  intent?: OperationIntent;
-  significance?: OperationSignificance;
-  algorithmName?: AlgorithmName;
-  algorithmPhase?: AlgorithmPhase;
-  /**
-   * Active subrange bounds, when this step belongs to one — quick sort's current
-   * partition (`left`/`right`) or merge sort's current merge call (`left`/`mid`/`right`).
-   * Needed by docs/design/array-narrative-ux-spec.md templates 7 and 9 (pivot
-   * lock-in split, merge-range caption), which name the resulting sub-ranges.
-   */
-  left?: number;
-  mid?: number;
-  right?: number;
-}
+  execute(context: AlgorithmContext, instruction: GenericActionInstruction): void {
+    const action = instruction.actionName.toUpperCase();
 
-export type SortStep<T = number> =
-  | ({ type: 'COMPARE'; i: number; j: number; /** Selection sort: index of the current running-best candidate at comparison time. */ candidate?: number } & StepMeta)
-  | ({ type: 'SWAP'; i: number; j: number } & StepMeta)
-  /** A value is written into slot `i` without swapping identities (merge sort's merge step). */
-  | ({ type: 'OVERWRITE'; i: number; value: T } & StepMeta)
-  /** Marks index `i` as the chosen pivot (quick sort's partition step). */
-  | ({ type: 'PIVOT'; i: number } & StepMeta)
-  /** Marks index `i` as permanently placed in its final sorted position. */
-  | ({ type: 'FINALIZE'; i: number } & StepMeta)
-  /**
-   * Relationship/region steps — index-level counterparts of the AQIR
-   * instructions of the same name (packages/shared/src/aqir/types.ts),
-   * per docs/design/array-visual-language-spec.md §4. The runtime replay
-   * layer (SortAlgorithms.ts) resolves `i`/`j`/bounds to scene element ids
-   * and a structure id before dispatching the real AQIR instruction.
-   */
-  | ({ type: 'SHOW_COMPARISON_LINK'; i: number; j: number; style?: string } & StepMeta)
-  | ({ type: 'HIDE_COMPARISON_LINK'; i: number; j: number } & StepMeta)
-  | ({ type: 'SET_PARTITION_BOUNDARY'; startIndex: number; endIndex: number; label?: string } & StepMeta)
-  | ({ type: 'CLEAR_PARTITION_BOUNDARY'; startIndex: number; endIndex: number } & StepMeta)
-  /** The currently-confirmed-sorted contiguous range [startIndex, endIndex] (inclusive). */
-  | ({ type: 'MARK_SORTED_REGION'; startIndex: number; endIndex: number } & StepMeta);
+    if (action === 'BUBBLE_SORT') {
+      this.runSort(context, instruction, 'bubble');
+    } else if (action === 'SELECTION_SORT') {
+      this.runSort(context, instruction, 'selection');
+    } else if (action === 'INSERTION_SORT') {
+      this.runSort(context, instruction, 'insertion');
+    } else if (action === 'MERGE_SORT') {
+      this.runSort(context, instruction, 'merge');
+    } else if (action === 'QUICK_SORT') {
+      this.runSort(context, instruction, 'quick');
+    }
+  }
 
-export interface SortResult<T> {
-  /** Same array reference passed in, sorted in place. */
-  array: T[];
-  steps: SortStep<T>[];
-  comparisons: number;
-  swaps: number;
-}
+  private runSort(context: AlgorithmContext, instruction: GenericActionInstruction, kind: SortKind): void {
+    const arrayName = (instruction as any).payload?.logicalParent || (instruction.args?.[0] as string | undefined);
+    const label = SORT_LABELS[kind];
 
-/** Mutable accumulator threaded through recursive calls so every nested call contributes to one flat step list. */
-interface SortStats {
-  comparisons: number;
-  swaps: number;
-}
+    if (!arrayName) {
+      this.log(context, 'ERROR', `${label} requires an array argument.`, 'warning');
+      return;
+    }
 
-export class SortAlgorithm {
-  static readonly defaultComparator: Comparator<number> = (a, b) => a - b;
+    const elements = context.sceneManager
+      .getSceneGraph()
+      .filter((el: any) => el.logicalParent === arrayName && el.originalType === 'ARRAY_ELEMENT')
+      .sort((a: any, b: any) => a.logicalIndex - b.logicalIndex);
 
-  // ───────────────────────────────────────────────────────────────────────
-  // Bubble / Selection / Insertion (Phase 3.1)
-  // ───────────────────────────────────────────────────────────────────────
+    if (elements.length === 0) {
+      this.log(context, 'SORT', `Array "${arrayName}" is empty. Nothing to sort.`, 'warning');
+      return;
+    }
 
-  /** Bubble sort: repeated adjacent-pair comparisons, swapping out-of-order pairs. Stops early once a pass makes no swaps. */
-  static bubbleSort<T = number>(array: T[], comparator: Comparator<T> = SortAlgorithm.defaultComparator as unknown as Comparator<T>): SortResult<T> {
-    const steps: SortStep<T>[] = [];
-    let comparisons = 0;
-    let swaps = 0;
-    const n = array.length;
-    const algorithmName: AlgorithmName = 'bubble-sort';
+    this.log(context, 'SORT', `Starting ${label} on ${arrayName}...`, 'operation');
 
-    for (let i = 0; i < n - 1; i++) {
-      let swappedInPass = false;
-      for (let j = 0; j < n - i - 1; j++) {
-        steps.push({ type: 'SHOW_COMPARISON_LINK', i: j, j: j + 1, style: 'beam', algorithmName });
-        steps.push({ type: 'COMPARE', i: j, j: j + 1, algorithmName, intent: 'adjacent-check', significance: 'routine' });
-        comparisons++;
-        steps.push({ type: 'HIDE_COMPARISON_LINK', i: j, j: j + 1, algorithmName });
-        if (comparator(array[j], array[j + 1]) > 0) {
-          [array[j], array[j + 1]] = [array[j + 1], array[j]];
-          steps.push({ type: 'SWAP', i: j, j: j + 1, algorithmName, intent: 'adjacent-swap', significance: 'notable' });
-          swaps++;
-          swappedInPass = true;
+    const values = elements.map((el: any) => Number(el.value));
+    const comparator = SortAlgorithm.defaultComparator;
+
+    let result;
+    switch (kind) {
+      case 'bubble':
+        result = SortAlgorithm.bubbleSort(values, comparator);
+        break;
+      case 'selection':
+        result = SortAlgorithm.selectionSort(values, comparator);
+        break;
+      case 'insertion':
+        result = SortAlgorithm.insertionSort(values, comparator);
+        break;
+      case 'merge':
+        result = SortAlgorithm.mergeSort(values, comparator);
+        break;
+      case 'quick':
+        result = SortAlgorithm.quickSort(values, comparator);
+        break;
+    }
+
+    const evaluatingToken = getSemanticColorToken('EVALUATING');
+    const modifyingToken = getSemanticColorToken('MODIFYING');
+    const activeToken = getSemanticColorToken('ACTIVE');
+    const neutralColor = context.defaultColor;
+
+    const getAt = (idx: number): any =>
+      context.sceneManager
+        .getSceneGraph()
+        .find((el: any) => el.logicalParent === arrayName && el.originalType === 'ARRAY_ELEMENT' && el.logicalIndex === idx);
+
+    result.steps.forEach((step: SortStep) => {
+      if (step.type === 'COMPARE') {
+        const elA = getAt(step.i);
+        const elB = getAt(step.j);
+        if (!elA || !elB) return;
+
+        // Populated at the *start* of the comparison beat, per the narrative spec's
+        // timing rule (§1: caption updates in sync with the animation's start, not
+        // once it resolves) — the values are already known here, before any tween runs.
+        const narrativeText = SortEngine.narrativeGenerator.generateNarrative(
+          step,
+          this.stateFor(arrayName, [elA, elB])
+        );
+        const suggestedDurationMultiplier = this.pacingFor(context, step);
+
+        AnticipationAnimation.applyAnticipation(context.scheduler, [elA, elB], 'COMPARISON');
+        context.scheduler.enqueue({ targets: [elA, elB], color: evaluatingToken.color, emissiveColor: evaluatingToken.emissiveColor, emissiveIntensity: 0.8, duration: 250, narrativeText, suggestedDurationMultiplier });
+        context.scheduler.enqueue({ targets: [elA.scale, elB.scale], x: 1.15, y: 1.15, z: 1.15, duration: 250 });
+        context.scheduler.commitGroup(true);
+        context.scheduler.advanceCursor(250);
+
+        this.log(context, 'SORT', `Compare ${elA.value} and ${elB.value}`, 'step');
+
+        context.scheduler.enqueue({ targets: [elA, elB], color: neutralColor, emissiveIntensity: 0, duration: 200 });
+        context.scheduler.enqueue({ targets: [elA.scale, elB.scale], x: 1, y: 1, z: 1, duration: 200 });
+        context.scheduler.commitGroup(true);
+      } else if (step.type === 'SWAP') {
+        const elA = getAt(step.i);
+        const elB = getAt(step.j);
+        if (!elA || !elB) return;
+
+        // Only quick sort's pivot lock-in swap (intent 'final-placement') has backend-derived
+        // narration (template 7); an ordinary swap's caption is frontend-only per the spec's
+        // dependency table, so the generator gracefully falls back for it — harmless either way.
+        const narrativeText = SortEngine.narrativeGenerator.generateNarrative(
+          step,
+          this.stateFor(arrayName, [elA, elB])
+        );
+        const suggestedDurationMultiplier = this.pacingFor(context, step);
+
+        AnticipationAnimation.applyAnticipation(context.scheduler, [elA, elB], 'SWAP');
+        context.scheduler.enqueue({ targets: [elA, elB], color: modifyingToken.color, emissiveColor: modifyingToken.emissiveColor, emissiveIntensity: 0.9, duration: 300, narrativeText, suggestedDurationMultiplier });
+        context.scheduler.enqueue({ targets: [elA.scale, elB.scale], x: 1.2, y: 1.2, z: 1.2, duration: 300 });
+        context.scheduler.commitGroup(true);
+
+        const leftIndex = elA.logicalIndex;
+        const rightIndex = elB.logicalIndex;
+        elA.logicalIndex = rightIndex;
+        elB.logicalIndex = leftIndex;
+        context.layoutManager.updateLayout(context.sceneManager.getSceneGraph());
+
+        if (elA.worldTarget) {
+          context.scheduler.enqueue({ targets: elA.position, x: elA.worldTarget.x, y: elA.worldTarget.y, z: elA.worldTarget.z, duration: 450, easing: 'easeInOutSine' });
+        }
+        if (elB.worldTarget) {
+          context.scheduler.enqueue({ targets: elB.position, x: elB.worldTarget.x, y: elB.worldTarget.y, z: elB.worldTarget.z, duration: 450, easing: 'easeInOutSine' });
+        }
+        context.scheduler.commitGroup(true);
+        context.scheduler.advanceCursor(300);
+
+        context.scheduler.enqueue({ targets: [elA.scale, elB.scale], x: 1, y: 1, z: 1, duration: 250 });
+        context.scheduler.enqueue({ targets: [elA, elB], color: neutralColor, emissiveIntensity: 0, duration: 250 });
+        context.scheduler.commitGroup(true);
+
+        context.scheduler.enqueue({
+          targets: {}, duration: 1, complete: () => {
+            elA.label = `${arrayName}[${elA.logicalIndex}]`;
+            elB.label = `${arrayName}[${elB.logicalIndex}]`;
+            context.eventDispatcher.dispatch('RUNTIME_LOG', {
+              keyword: 'SORT',
+              message: `Swapped ${elA.value} and ${elB.value}`,
+              kind: 'swap',
+              timestamp: Date.now(),
+            });
+          }
+        });
+        context.scheduler.commitGroup(true);
+      } else if (step.type === 'PIVOT') {
+        const pivotEl = getAt(step.i);
+        if (!pivotEl) return;
+
+        const narrativeText = SortEngine.narrativeGenerator.generateNarrative(step, this.stateFor(arrayName, [pivotEl]));
+        const suggestedDurationMultiplier = this.pacingFor(context, step);
+
+        AnticipationAnimation.applyAnticipation(context.scheduler, [pivotEl], 'TRAVERSAL');
+        context.scheduler.enqueue({ targets: pivotEl, color: activeToken.color, emissiveColor: activeToken.emissiveColor, emissiveIntensity: 0.9, duration: 300, narrativeText, suggestedDurationMultiplier });
+        context.scheduler.enqueue({ targets: pivotEl.scale, x: 1.3, y: 1.3, z: 1.3, duration: 300 });
+        context.scheduler.commitGroup(true);
+        context.scheduler.advanceCursor(250);
+
+        this.log(context, 'SORT', `Pivot = ${pivotEl.value}`, 'step');
+
+        context.scheduler.enqueue({ targets: pivotEl.scale, x: 1, y: 1, z: 1, duration: 200 });
+        context.scheduler.commitGroup(true);
+      } else if (step.type === 'OVERWRITE') {
+        const el = getAt(step.i);
+        if (!el) return;
+
+        const narrativeText = SortEngine.narrativeGenerator.generateNarrative(step, this.stateFor(arrayName, [el]));
+        const suggestedDurationMultiplier = this.pacingFor(context, step);
+
+        AnticipationAnimation.applyAnticipation(context.scheduler, [el], 'INSERTION');
+        context.scheduler.enqueue({ targets: el, color: modifyingToken.color, emissiveColor: modifyingToken.emissiveColor, emissiveIntensity: 0.9, duration: 250, narrativeText, suggestedDurationMultiplier });
+        context.scheduler.enqueue({ targets: el.scale, x: 1.2, y: 1.2, z: 1.2, duration: 250 });
+        context.scheduler.commitGroup(true);
+        context.scheduler.advanceCursor(200);
+
+        context.scheduler.enqueue({
+          targets: {}, duration: 1, complete: () => {
+            el.value = step.value;
+            el.label = `${arrayName}[${el.logicalIndex}]`;
+            context.eventDispatcher.dispatch('RUNTIME_LOG', {
+              keyword: 'SORT',
+              message: `Write ${step.value} into ${arrayName}[${step.i}]`,
+              kind: 'step',
+              timestamp: Date.now(),
+            });
+          }
+        });
+        context.scheduler.commitGroup(true);
+
+        context.scheduler.enqueue({ targets: el.scale, x: 1, y: 1, z: 1, duration: 200 });
+        context.scheduler.enqueue({ targets: el, color: neutralColor, emissiveIntensity: 0, duration: 250 });
+        context.scheduler.commitGroup(true);
+      } else if (step.type === 'FINALIZE') {
+        // No dedicated visual yet (Phase 4/5 work) — this is purely a narrative-carrying
+        // marker frame, same zero-duration pattern as dispatchInstruction below.
+        const el = getAt(step.i);
+        if (!el) return;
+        const narrativeText = SortEngine.narrativeGenerator.generateNarrative(step, this.stateFor(arrayName, [el]));
+        const suggestedDurationMultiplier = this.pacingFor(context, step);
+        context.scheduler.enqueue({ targets: {}, duration: 1, narrativeText, suggestedDurationMultiplier });
+        context.scheduler.commitGroup(true);
+      } else if (step.type === 'SHOW_COMPARISON_LINK') {
+        const elA = getAt(step.i);
+        const elB = getAt(step.j);
+        if (!elA || !elB) return;
+        this.dispatchInstruction(context, {
+          action: 'SHOW_COMPARISON_LINK',
+          elementIdA: elA.id,
+          elementIdB: elB.id,
+          style: step.style || 'beam',
+        } as ShowComparisonLinkInstruction);
+      } else if (step.type === 'HIDE_COMPARISON_LINK') {
+        const elA = getAt(step.i);
+        const elB = getAt(step.j);
+        if (!elA || !elB) return;
+        this.dispatchInstruction(context, {
+          action: 'HIDE_COMPARISON_LINK',
+          elementIdA: elA.id,
+          elementIdB: elB.id,
+        } as HideComparisonLinkInstruction);
+      } else if (step.type === 'SET_PARTITION_BOUNDARY') {
+        this.dispatchInstruction(context, {
+          action: 'SET_PARTITION_BOUNDARY',
+          structureId: arrayName,
+          startIndex: step.startIndex,
+          endIndex: step.endIndex,
+          label: step.label,
+        } as SetPartitionBoundaryInstruction);
+      } else if (step.type === 'CLEAR_PARTITION_BOUNDARY') {
+        this.dispatchInstruction(context, {
+          action: 'CLEAR_PARTITION_BOUNDARY',
+          structureId: arrayName,
+        } as ClearPartitionBoundaryInstruction);
+      } else if (step.type === 'MARK_SORTED_REGION') {
+        this.dispatchInstruction(context, {
+          action: 'MARK_SORTED_REGION',
+          structureId: arrayName,
+          startIndex: step.startIndex,
+          endIndex: step.endIndex,
+        } as MarkSortedRegionInstruction);
+      }
+    });
+
+    context.scheduler.enqueue({
+      targets: {}, duration: 1, complete: () => {
+        context.eventDispatcher.dispatch('RUNTIME_LOG', {
+          keyword: 'SORT',
+          message: `${label} complete. ${result.comparisons} comparisons, ${result.swaps} swaps.`,
+          kind: 'result',
+          timestamp: Date.now(),
+        });
+        if (context.stateManager) {
+          context.stateManager.saveState(context.sceneManager.getSceneGraph(), `${label} on ${arrayName}`, context.scheduler.getCurrentTime());
+          context.eventDispatcher.dispatch('STATE_UPDATED', context.stateManager.getCurrentState());
         }
       }
-      // The inner loop just excluded index n-1-i from further comparison — it now holds
-      // the maximum of the unsorted prefix and is permanently in its final position.
-      steps.push({ type: 'FINALIZE', i: n - 1 - i, algorithmName, intent: 'final-placement', significance: 'pivotal' });
-      // Bubble sort confirms from the END backward — the sorted region always spans
-      // [n-1-i, n-1] and grows leftward (its start index shrinks) as passes complete.
-      steps.push({ type: 'MARK_SORTED_REGION', startIndex: n - 1 - i, endIndex: n - 1, algorithmName });
-      if (!swappedInPass) break;
-    }
-
-    return { array, steps, comparisons, swaps };
-  }
-
-  /** Selection sort: for each position, find the minimum of the remaining elements and swap it into place. */
-  static selectionSort<T = number>(array: T[], comparator: Comparator<T> = SortAlgorithm.defaultComparator as unknown as Comparator<T>): SortResult<T> {
-    const steps: SortStep<T>[] = [];
-    let comparisons = 0;
-    let swaps = 0;
-    const n = array.length;
-    const algorithmName: AlgorithmName = 'selection-sort';
-
-    for (let i = 0; i < n - 1; i++) {
-      let minIdx = i;
-      for (let j = i + 1; j < n; j++) {
-        const candidateBefore = minIdx;
-        steps.push({ type: 'SHOW_COMPARISON_LINK', i: candidateBefore, j, style: 'beam', algorithmName });
-        steps.push({ type: 'COMPARE', i: candidateBefore, j, candidate: candidateBefore, algorithmName, intent: 'candidate-check', significance: 'routine' });
-        comparisons++;
-        steps.push({ type: 'HIDE_COMPARISON_LINK', i: candidateBefore, j, algorithmName });
-        if (comparator(array[j], array[minIdx]) < 0) {
-          minIdx = j;
-        }
-      }
-      if (minIdx !== i) {
-        [array[i], array[minIdx]] = [array[minIdx], array[i]];
-        steps.push({ type: 'SWAP', i, j: minIdx, algorithmName, intent: 'selection-swap', significance: 'notable' });
-        swaps++;
-      }
-      // Whether or not a swap was needed, index i now holds its final sorted value.
-      steps.push({ type: 'FINALIZE', i, algorithmName, intent: 'final-placement', significance: 'pivotal' });
-      // Selection sort confirms from the BEGINNING forward — the sorted prefix [0, i]
-      // only ever grows (its end index increases) as outer iterations complete.
-      steps.push({ type: 'MARK_SORTED_REGION', startIndex: 0, endIndex: i, algorithmName });
-    }
-
-    return { array, steps, comparisons, swaps };
-  }
-
-  /** Insertion sort (swap-based/gnome-sort style): each new element bubbles left via adjacent swaps until it's in order. */
-  static insertionSort<T = number>(array: T[], comparator: Comparator<T> = SortAlgorithm.defaultComparator as unknown as Comparator<T>): SortResult<T> {
-    const steps: SortStep<T>[] = [];
-    let comparisons = 0;
-    let swaps = 0;
-    const n = array.length;
-    const algorithmName: AlgorithmName = 'insertion-sort';
-
-    for (let i = 1; i < n; i++) {
-      let j = i;
-      let lastShift: Extract<SortStep<T>, { type: 'SWAP' }> | null = null;
-      while (j > 0) {
-        steps.push({ type: 'SHOW_COMPARISON_LINK', i: j - 1, j, style: 'beam', algorithmName });
-        steps.push({ type: 'COMPARE', i: j - 1, j, algorithmName, intent: 'shift-check', significance: 'routine' });
-        comparisons++;
-        steps.push({ type: 'HIDE_COMPARISON_LINK', i: j - 1, j, algorithmName });
-        if (comparator(array[j - 1], array[j]) > 0) {
-          [array[j - 1], array[j]] = [array[j], array[j - 1]];
-          const swapStep: Extract<SortStep<T>, { type: 'SWAP' }> = { type: 'SWAP', i: j - 1, j, algorithmName, intent: 'shift', significance: 'routine' };
-          steps.push(swapStep);
-          lastShift = swapStep;
-          swaps++;
-          j--;
-        } else {
-          break;
-        }
-      }
-      // The last shift in this walk is the one that actually settles the element into its
-      // resting position — distinct from the routine shifts that only moved it partway.
-      if (lastShift) {
-        lastShift.intent = 'insertion-placement';
-        lastShift.significance = 'notable';
-      }
-      // Insertion sort confirms from the BEGINNING forward too: after this outer
-      // iteration, [0, i] is a fully sorted prefix (same growth direction as selection sort).
-      steps.push({ type: 'FINALIZE', i, algorithmName, intent: 'final-placement', significance: 'pivotal' });
-      steps.push({ type: 'MARK_SORTED_REGION', startIndex: 0, endIndex: i, algorithmName });
-    }
-
-    return { array, steps, comparisons, swaps };
-  }
-
-  // ───────────────────────────────────────────────────────────────────────
-  // Merge Sort (Phase 3.2) — true recursion: mergeSort calls itself on each half
-  // ───────────────────────────────────────────────────────────────────────
-
-  /**
-   * Merge sort over `array[left..right]` (defaults to the whole array).
-   * O(n log n) always, regardless of input order.
-   */
-  static mergeSort<T = number>(
-    array: T[],
-    comparator: Comparator<T> = SortAlgorithm.defaultComparator as unknown as Comparator<T>,
-    left: number = 0,
-    right: number = array.length - 1
-  ): SortResult<T> {
-    const steps: SortStep<T>[] = [];
-    const stats: SortStats = { comparisons: 0, swaps: 0 };
-    this.mergeSortRecurse(array, comparator, left, right, steps, stats);
-    return { array, steps, comparisons: stats.comparisons, swaps: stats.swaps };
-  }
-
-  /** Recursive divide step: `mergeSort` calls this, and this calls itself — real recursion, not an unrolled loop. */
-  private static mergeSortRecurse<T>(
-    array: T[],
-    comparator: Comparator<T>,
-    left: number,
-    right: number,
-    steps: SortStep<T>[],
-    stats: SortStats
-  ): void {
-    if (left >= right) return;
-    const mid = Math.floor((left + right) / 2);
-    this.mergeSortRecurse(array, comparator, left, mid, steps, stats);
-    this.mergeSortRecurse(array, comparator, mid + 1, right, steps, stats);
-    this.merge(array, left, mid, right, comparator, steps, stats);
+    });
+    context.scheduler.commitSequential();
   }
 
   /**
-   * Merges the two already-sorted runs `array[left..mid]` and `array[mid+1..right]`
-   * back into `array[left..right]` via a temp buffer, emitting an OVERWRITE
-   * step (not a swap — merge sort moves values, not element identities) per
-   * position written.
+   * Resolves the suggested duration multiplier for a step's significance tag, using
+   * whatever PacingConfig the caller supplied on the context (e.g. a future Phase 6
+   * user speed-control panel) or the built-in defaults otherwise.
    */
-  static merge<T = number>(
-    array: T[],
-    left: number,
-    mid: number,
-    right: number,
-    comparator: Comparator<T> = SortAlgorithm.defaultComparator as unknown as Comparator<T>,
-    steps: SortStep<T>[] = [],
-    stats: SortStats = { comparisons: 0, swaps: 0 }
-  ): void {
-    const algorithmName: AlgorithmName = 'merge-sort';
-    const algorithmPhase: AlgorithmPhase = 'combine';
-    // Named so the narrative layer (docs/design/array-narrative-ux-spec.md template 9)
-    // can say exactly which two runs are being merged.
-    const bounds = { left, mid, right };
-    // The current merge range being processed — set for the duration of this call only;
-    // sequential sibling/parent merge() calls never overlap, so SET/CLEAR pairs never interleave.
-    steps.push({ type: 'SET_PARTITION_BOUNDARY', startIndex: left, endIndex: right, label: 'merge', algorithmName, algorithmPhase });
-    const leftRun = array.slice(left, mid + 1);
-    const rightRun = array.slice(mid + 1, right + 1);
-    let i = 0;
-    let j = 0;
-    let k = left;
+  private pacingFor(context: AlgorithmContext, step: SortStep): number {
+    const pacingConfig = context.pacingConfig ?? DEFAULT_PACING_CONFIG;
+    return pacingConfig.getMultiplier(step.significance);
+  }
 
-    while (i < leftRun.length && j < rightRun.length) {
-      steps.push({ type: 'SHOW_COMPARISON_LINK', i: left + i, j: mid + 1 + j, style: 'beam', algorithmName, algorithmPhase });
-      steps.push({ type: 'COMPARE', i: left + i, j: mid + 1 + j, algorithmName, algorithmPhase, intent: 'merge-comparison', significance: 'routine', ...bounds });
-      stats.comparisons++;
-      steps.push({ type: 'HIDE_COMPARISON_LINK', i: left + i, j: mid + 1 + j, algorithmName, algorithmPhase });
-      if (comparator(leftRun[i], rightRun[j]) <= 0) {
-        array[k] = leftRun[i];
-        steps.push({ type: 'OVERWRITE', i: k, value: leftRun[i], algorithmName, algorithmPhase, intent: 'merge-write', significance: 'routine', ...bounds });
-        i++;
-      } else {
-        array[k] = rightRun[j];
-        steps.push({ type: 'OVERWRITE', i: k, value: rightRun[j], algorithmName, algorithmPhase, intent: 'merge-write', significance: 'routine', ...bounds });
-        j++;
+  /** Builds a StructureState populated only at the logical indices of the given (live) scene elements — cheap, and always reflects the array's current values at the moment of the call. */
+  private stateFor(arrayName: string, elements: Array<{ logicalIndex: number; value: unknown }>): StructureState {
+    const values: (number | undefined)[] = [];
+    for (const el of elements) {
+      values[el.logicalIndex] = Number(el.value);
+    }
+    return { structureName: arrayName, values };
+  }
+
+  private log(context: AlgorithmContext, keyword: string, message: string, kind: string = 'operation'): void {
+    context.scheduler.enqueue({
+      targets: {}, duration: 1, complete: () => {
+        context.eventDispatcher.dispatch('RUNTIME_LOG', { keyword, message, kind, timestamp: Date.now() });
       }
-      stats.swaps++;
-      k++;
-    }
-    while (i < leftRun.length) {
-      array[k] = leftRun[i];
-      steps.push({ type: 'OVERWRITE', i: k, value: leftRun[i], algorithmName, algorithmPhase, intent: 'merge-write', significance: 'routine', ...bounds });
-      stats.swaps++;
-      i++;
-      k++;
-    }
-    while (j < rightRun.length) {
-      array[k] = rightRun[j];
-      steps.push({ type: 'OVERWRITE', i: k, value: rightRun[j], algorithmName, algorithmPhase, intent: 'merge-write', significance: 'routine', ...bounds });
-      stats.swaps++;
-      j++;
-      k++;
-    }
-
-    steps.push({ type: 'CLEAR_PARTITION_BOUNDARY', startIndex: left, endIndex: right, algorithmName, algorithmPhase });
-  }
-
-  // ───────────────────────────────────────────────────────────────────────
-  // Quick Sort (Phase 3.2) — true recursion: quickSort calls itself on each partition
-  // ───────────────────────────────────────────────────────────────────────
-
-  /**
-   * Quick sort over `array[left..right]` (defaults to the whole array).
-   * O(n log n) average case, O(n^2) worst case (already-sorted input with a
-   * last-element pivot) — same asymptotic trade-off as the textbook algorithm.
-   */
-  static quickSort<T = number>(
-    array: T[],
-    comparator: Comparator<T> = SortAlgorithm.defaultComparator as unknown as Comparator<T>,
-    left: number = 0,
-    right: number = array.length - 1
-  ): SortResult<T> {
-    const steps: SortStep<T>[] = [];
-    const stats: SortStats = { comparisons: 0, swaps: 0 };
-    this.quickSortRecurse(array, comparator, left, right, steps, stats);
-    return { array, steps, comparisons: stats.comparisons, swaps: stats.swaps };
-  }
-
-  /** Recursive step: `quickSort` calls this, and this calls itself on each side of the pivot — real recursion. */
-  private static quickSortRecurse<T>(
-    array: T[],
-    comparator: Comparator<T>,
-    left: number,
-    right: number,
-    steps: SortStep<T>[],
-    stats: SortStats
-  ): void {
-    if (left >= right) return;
-    const algorithmName: AlgorithmName = 'quick-sort';
-    const algorithmPhase: AlgorithmPhase = 'partition';
-    // Scoped to this recursive call (not to partition() itself) so that the two
-    // recursive sub-calls' SET/CLEAR pairs are fully nested inside this one,
-    // reflecting the real call/return order: parent SET first, parent CLEAR last.
-    steps.push({ type: 'SET_PARTITION_BOUNDARY', startIndex: left, endIndex: right, algorithmName, algorithmPhase });
-    const pivotIndex = this.partition(array, left, right, comparator, steps, stats);
-    this.quickSortRecurse(array, comparator, left, pivotIndex - 1, steps, stats);
-    this.quickSortRecurse(array, comparator, pivotIndex + 1, right, steps, stats);
-    steps.push({ type: 'CLEAR_PARTITION_BOUNDARY', startIndex: left, endIndex: right, algorithmName, algorithmPhase });
+    });
+    context.scheduler.commitGroup(true);
   }
 
   /**
-   * Lomuto partition scheme: picks `array[right]` as the pivot, moves every
-   * element <= pivot to its left, then places the pivot in its final sorted
-   * position. Returns that final pivot index.
+   * Dispatches a relationship/region AQIR instruction (docs/design/array-visual-language-spec.md
+   * §4) to any listening frontend, scheduled at the current point in the timeline rather than
+   * fired immediately — matching how RUNTIME_LOG events are already deferred via a 1ms
+   * scheduler task so they land in sync with the animation they describe.
    */
-  static partition<T = number>(
-    array: T[],
-    left: number,
-    right: number,
-    comparator: Comparator<T> = SortAlgorithm.defaultComparator as unknown as Comparator<T>,
-    steps: SortStep<T>[] = [],
-    stats: SortStats = { comparisons: 0, swaps: 0 }
-  ): number {
-    const algorithmName: AlgorithmName = 'quick-sort';
-    const algorithmPhase: AlgorithmPhase = 'partition';
-    const pivot = array[right];
-    steps.push({ type: 'PIVOT', i: right, algorithmName, algorithmPhase, intent: 'pivot-selection', significance: 'notable', left, right });
-
-    let i = left - 1;
-    for (let j = left; j < right; j++) {
-      steps.push({ type: 'SHOW_COMPARISON_LINK', i: j, j: right, style: 'beam', algorithmName, algorithmPhase });
-      steps.push({ type: 'COMPARE', i: j, j: right, algorithmName, algorithmPhase, intent: 'partition-boundary', significance: 'routine' });
-      stats.comparisons++;
-      steps.push({ type: 'HIDE_COMPARISON_LINK', i: j, j: right, algorithmName, algorithmPhase });
-      if (comparator(array[j], pivot) <= 0) {
-        i++;
-        if (i !== j) {
-          [array[i], array[j]] = [array[j], array[i]];
-          steps.push({ type: 'SWAP', i, j, algorithmName, algorithmPhase, intent: 'partition-swap', significance: 'routine' });
-          stats.swaps++;
-        }
+  private dispatchInstruction(context: AlgorithmContext, instruction: AQIRInstruction): void {
+    context.scheduler.enqueue({
+      targets: {}, duration: 1, complete: () => {
+        context.eventDispatcher.dispatch('AQIR_INSTRUCTION', instruction);
       }
-    }
-
-    if (i + 1 !== right) {
-      [array[i + 1], array[right]] = [array[right], array[i + 1]];
-      steps.push({ type: 'SWAP', i: i + 1, j: right, algorithmName, algorithmPhase, intent: 'final-placement', significance: 'pivotal', left, right });
-      stats.swaps++;
-    }
-    // The pivot's swap-into-place above (or its already-correct resting spot, if no
-    // swap was needed) is provably permanent the instant partition() returns.
-    // left/right are carried so the narrative layer (template 7) can name the two
-    // resulting sub-partitions the pivot's lock-in splits this range into.
-    steps.push({ type: 'FINALIZE', i: i + 1, algorithmName, algorithmPhase, intent: 'final-placement', significance: 'pivotal', left, right });
-
-    return i + 1;
+    });
+    context.scheduler.commitGroup(true);
   }
 }

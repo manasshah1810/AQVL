@@ -6,7 +6,7 @@
  * compare, a swap's lock-in, FINALIZE, pivot selection/lock-in) deserve a
  * longer on-screen dwell so the viewer has time to register them.
  *
- * Today, every animation duration in SortAlgorithms.ts is a fixed literal
+ * Today, every animation duration in SortEngine.ts is a fixed literal
  * (e.g. 250ms for a compare, 300ms for a swap) — timing is not derived from
  * significance at all. This module doesn't change those literals; it adds a
  * *suggested multiplier* alongside them so a renderer can scale its own
@@ -20,7 +20,7 @@
  * this is a small class with overridable multipliers instead of exported
  * numeric literals referenced directly from handler code.
  */
-import type { OperationSignificance } from '../core/algorithms/SortEngine';
+import type { OperationSignificance } from '../data-structures/SortAlgorithm';
 
 export interface PacingMultipliers {
   routine: number;

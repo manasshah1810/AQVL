@@ -1,7 +1,7 @@
 /**
  * HashMapProgramEngine — a HASH_MAP driven by real code instead of the
  * one-line built-ins (HASHMAP_INSERT, HASHMAP_LOOKUP, ... stay with
- * HashMapVisualizer, which also builds a declared map).
+ * HashMapEngine, which also builds a declared map).
  *
  * The map is a row of buckets; each key lives in the bucket its hash picks,
  * in a chain under that bucket (separate chaining):
@@ -29,7 +29,7 @@
 import { getSemanticColorToken } from '@aqvl/shared';
 import { AlgorithmContext } from './AlgorithmContext';
 import { AnticipationAnimation } from '../animations';
-import { HashMapVisualizer } from './HashMapVisualizer';
+import { HashMapEngine } from './HashMapEngine';
 import { HashMap } from '../../data-structures/HashMap';
 
 export class HashMapKeyError extends Error {
@@ -43,10 +43,10 @@ export class HashMapProgramEngine {
   /** Reads compiled to `{ gfn, args }` whose first argument is the map. */
   static readonly READS = new Set(['MAP_GET', 'CONTAINS', 'KEY_AT', 'BUCKET_OF', 'CAPACITY']);
 
-  /** Vertical gap between chained entries, as in HashMapVisualizer. */
+  /** Vertical gap between chained entries, as in HashMapEngine. */
   static readonly CHAIN_SPACING = 1.1;
 
-  private visualizer = new HashMapVisualizer();
+  private engine = new HashMapEngine();
 
   // ─────────────────────────────────────────────────────────────────────────
   // Reading the scene
@@ -165,6 +165,17 @@ export class HashMapProgramEngine {
     }
   }
 
+  /**
+   * The lookup an expression read makes that is a step of its own —
+   * `m[key]` (MAP_GET) or CONTAINS(m, key) on a hash map — as the
+   * MAP_LOOKUP instruction that animates it; null for any other read.
+   */
+  readStep(context: AlgorithmContext, expr: { gfn: string; args: unknown[] }, evaluate: (expr: unknown) => unknown): Record<string, unknown> | null {
+    if (expr.gfn !== 'MAP_GET' && expr.gfn !== 'CONTAINS') return null;
+    const map = evaluate(expr.args[0]);
+    return this.isHashMap(context, map) ? { action: 'MAP_LOOKUP', map: String(map), key: evaluate(expr.args[1]) } : null;
+  }
+
   format(context: AlgorithmContext, name: string): string {
     return `{${this.entries(context, name).map((el) => `${HashMapProgramEngine.show(el.key)}: ${HashMapProgramEngine.show(el.value)}`).join(', ')}}`;
   }
@@ -186,7 +197,8 @@ export class HashMapProgramEngine {
     const chain = hm.table[index];
     if (chain.length > 0) {
       // Walk the chain comparing keys, as a real lookup does.
-      this.visualizer.visualizeLookup(context, name, key, index, existing !== undefined);
+      hm.lookup(key);
+      this.engine.replaySteps(context, name, hm.steps);
     }
 
     if (existing) {
@@ -197,7 +209,7 @@ export class HashMapProgramEngine {
       context.scheduler.enqueue({ targets: existing.scale, x: 1.2, y: 1.2, z: 1.2, duration: 280 });
       context.scheduler.commitGroup(true);
       existing.value = value;
-      existing.label = HashMapVisualizer.label(key, value);
+      existing.label = HashMapEngine.label(key, value);
       context.scheduler.enqueue({ targets: existing.scale, x: 1, y: 1, z: 1, duration: 250 });
       context.scheduler.commitGroup(true);
       this.finish(context, 'PUT', `${name}[${k}] = ${HashMapProgramEngine.show(value)} (was ${HashMapProgramEngine.show(old)}): the key was already in bucket ${index}, so only its value changed`, 'operation');
@@ -213,15 +225,17 @@ export class HashMapProgramEngine {
         'operation'
       );
       hm.set(key, value);
-      this.visualizer.visualizeResize(context, name, capacity, hm.capacity, hm, key);
+      this.engine.replaySteps(context, name, hm.steps);
       const moved = HashMapProgramEngine.hash(key, hm.capacity);
       this.finish(context, 'PUT', `Added ${name}[${k}] = ${HashMapProgramEngine.show(value)} into bucket ${moved.index} of ${hm.capacity} (${moved.working}); the map holds ${hm.size} keys`, 'operation', name);
       return;
     }
 
-    this.visualizer.visualizeInsert(context, name, key, value, index, chain.length);
-    const size = hm.size + 1;
-    const collision = chain.length > 0 ? `, chained after ${chain.length} other key${chain.length === 1 ? '' : 's'} (a collision)` : '';
+    const chained = chain.length;
+    hm.set(key, value);
+    this.engine.replaySteps(context, name, hm.steps);
+    const size = hm.size;
+    const collision = chained > 0 ? `, chained after ${chained} other key${chained === 1 ? '' : 's'} (a collision)` : '';
     this.finish(context, 'PUT', `Added ${name}[${k}] = ${HashMapProgramEngine.show(value)} into bucket ${index}${collision}; the map holds ${size} key${size === 1 ? '' : 's'}`, 'operation', name);
   }
 
@@ -236,7 +250,9 @@ export class HashMapProgramEngine {
     this.log(context, 'HASH', `hash(${k}): ${working} -> bucket ${index}`, 'step');
     const value = entry.value;
     const size = this.length(context, name) - 1;
-    this.visualizer.visualizeDelete(context, name, key, index);
+    const hm = this.model(context, name);
+    hm.delete(key);
+    this.engine.replaySteps(context, name, hm.steps);
     entry.pendingRemoval = true;
     this.finish(context, 'DELETE', `Removed ${k} (value ${HashMapProgramEngine.show(value)}) from bucket ${index}; the map holds ${size} key${size === 1 ? '' : 's'}`, 'operation', name);
   }
@@ -247,7 +263,9 @@ export class HashMapProgramEngine {
     const { index, working } = HashMapProgramEngine.hash(key, this.capacity(context, name));
     const chain = this.entries(context, name).filter((el) => el.bucketIndex === index);
     const position = chain.findIndex((el) => el.key === key);
-    this.visualizer.visualizeLookup(context, name, key, index, position >= 0);
+    const hm = this.model(context, name);
+    hm.lookup(key);
+    this.engine.replaySteps(context, name, hm.steps);
     const compared = position >= 0 ? position + 1 : chain.length;
     const comparisons = `${compared} key comparison${compared === 1 ? '' : 's'}`;
     this.finish(
@@ -272,7 +290,7 @@ export class HashMapProgramEngine {
     entry.isHighlighted = token.name !== 'NEUTRAL';
     entry.highlightType = color;
     entry.state = token.name;
-    entry.color = token.name === 'NEUTRAL' ? HashMapVisualizer.ENTRY_COLOR : token.color;
+    entry.color = token.name === 'NEUTRAL' ? HashMapEngine.ENTRY_COLOR : token.color;
     entry.emissiveColor = token.emissiveColor;
     entry.emissiveIntensity = token.name === 'NEUTRAL' ? 0 : token.emissiveIntensity;
     context.scheduler.enqueue({ targets: entry.scale, x: 1.15, y: 1.15, z: 1.15, duration: 300, easing: 'easeOutExpo' });
@@ -299,7 +317,7 @@ export class HashMapProgramEngine {
       if (el.state === 'EVALUATING' || el.state === 'MODIFYING' || el.state === 'TRAVERSING') {
         el.state = 'NEUTRAL';
         el.isHighlighted = false;
-        el.color = el.originalType === 'HASHMAP_ENTRY' ? HashMapVisualizer.ENTRY_COLOR : HashMapVisualizer.BUCKET_COLOR;
+        el.color = el.originalType === 'HASHMAP_ENTRY' ? HashMapEngine.ENTRY_COLOR : HashMapEngine.BUCKET_COLOR;
         el.emissiveColor = '#000000';
         el.emissiveIntensity = 0;
       }

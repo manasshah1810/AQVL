@@ -2,7 +2,7 @@
  * Unit tests for HashMap (packages/runtime/src/data-structures/HashMap.ts) —
  * a separate-chaining hash map backing HASH_MAP declarations and the
  * HASHMAP_INIT / HASHMAP_INSERT / HASHMAP_LOOKUP / HASHMAP_DELETE runtime
- * ops (see ../../packages/runtime/src/core/algorithms/HashMapVisualizer).
+ * ops (see ../../packages/runtime/src/core/algorithms/HashMapEngine).
  */
 import { describe, expect, it } from 'vitest';
 import { HashMap } from '../../packages/runtime/src/data-structures/HashMap';

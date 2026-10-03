@@ -13,6 +13,10 @@
  *   - every scene timeline frame the renderer can show (StateManager
  *     snapshots: elements, description, camera, partition/sorted regions),
  *   - every event the ExecutionEngine dispatches (name + payload),
+ *   - every animation keyframe the scheduler hands the timeline (start time,
+ *     tween parameters and which element / element sub-object it targets),
+ *     so a refactor that keeps scene snapshots but changes how a step is
+ *     animated still shows up as a difference,
  *   - the compile / runtime outcome.
  *
  * Usage:
@@ -37,6 +41,8 @@ interface Trace {
   frames: string[];
   /** One `name:hash` per dispatched event. */
   events: string[];
+  /** One line per timeline keyframe: `@<time> <target> <params>`. */
+  animations: string[];
 }
 
 /** JSON with sorted keys; `undefined` values are kept as a marker, cycles and functions made explicit. */
@@ -83,9 +89,23 @@ function pinClockAndRandom(): void {
   };
 }
 
+/** Names an animation target by the scene element it is (or is a sub-object of), so traces compare across runs. */
+function describeTarget(engine: ExecutionEngine, target: unknown): string {
+  if (target === null || typeof target !== 'object') return stable(target);
+  if (Array.isArray(target)) return `[${target.map((t) => describeTarget(engine, t)).join(',')}]`;
+  for (const el of engine.sceneManager.getSceneGraph() as any[]) {
+    if (el === target) return `el:${el.id}`;
+    for (const key of Object.keys(el)) {
+      if (el[key] === target) return `el:${el.id}.${key}`;
+    }
+  }
+  if ('id' in (target as any)) return `detached:${(target as any).id}`;
+  return Object.keys(target as object).length === 0 ? '{}' : `obj:${stable(target)}`;
+}
+
 async function traceOne(source: string): Promise<Trace> {
   pinClockAndRandom();
-  const trace: Trace = { outcome: 'pass', handled: [], frames: [], events: [] };
+  const trace: Trace = { outcome: 'pass', handled: [], frames: [], events: [], animations: [] };
   let aqir: any;
   try {
     aqir = compile(source);
@@ -100,6 +120,13 @@ async function traceOne(source: string): Promise<Trace> {
   controller.executeInstruction = (instruction: unknown) => {
     trace.handled.push(stable(instruction));
     return execute(instruction);
+  };
+  const timeline = engine.timelineEngine as any;
+  const addKeyframe = timeline.addKeyframe.bind(timeline);
+  timeline.addKeyframe = (params: any, time: number) => {
+    const { targets, complete, ...rest } = params ?? {};
+    trace.animations.push(`@${time} ${describeTarget(engine, targets)} ${stable(rest)}${complete ? ' +complete' : ''}`);
+    return addKeyframe(params, time);
   };
   const dispatch = engine.eventDispatcher.dispatch.bind(engine.eventDispatcher);
   engine.eventDispatcher.dispatch = (event: string, payload?: any) => {
@@ -191,8 +218,8 @@ async function main(): Promise<void> {
       }
       const channels: string[] = [];
       if (before.outcome !== after.outcome) channels.push(`outcome\n      baseline: ${before.outcome}\n      current:  ${after.outcome}`);
-      for (const channel of ['handled', 'frames', 'events'] as const) {
-        const d = firstDifference(before[channel], after[channel]);
+      for (const channel of ['handled', 'frames', 'events', 'animations'] as const) {
+        const d = firstDifference(before[channel] ?? [], after[channel] ?? []);
         if (d) channels.push(`${channel} ${d}`);
       }
       if (channels.length > 0) {

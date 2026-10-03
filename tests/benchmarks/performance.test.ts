@@ -13,9 +13,9 @@
  * captured from an actual run of this file.
  */
 import { describe, expect, it } from 'vitest';
-import { SortAlgorithm } from '../../packages/runtime/src/core/algorithms/SortEngine';
+import { SortAlgorithm } from '../../packages/runtime/src/data-structures/SortAlgorithm';
 import { Graph } from '../../packages/runtime/src/data-structures/Graph';
-import { GraphAlgorithm } from '../../packages/runtime/src/core/algorithms/GraphEngine';
+import { GraphAlgorithm } from '../../packages/runtime/src/data-structures/GraphAlgorithm';
 import { AVLTree } from '../../packages/runtime/src/data-structures/AVLTree';
 import { RedBlackTree } from '../../packages/runtime/src/data-structures/RedBlackTree';
 import { HashMap } from '../../packages/runtime/src/data-structures/HashMap';

@@ -11,7 +11,7 @@
  * fields are additive and optional.
  */
 import { describe, expect, it } from 'vitest';
-import { SortAlgorithm, type SortStep } from '../../packages/runtime/src/core/algorithms/SortEngine';
+import { SortAlgorithm, type SortStep } from '../../packages/runtime/src/data-structures/SortAlgorithm';
 
 function stepsOfType<K extends SortStep['type']>(steps: SortStep[], type: K): Extract<SortStep, { type: K }>[] {
   return steps.filter((s): s is Extract<SortStep, { type: K }> => s.type === type);

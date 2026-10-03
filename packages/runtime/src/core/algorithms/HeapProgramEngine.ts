@@ -21,6 +21,7 @@
  */
 
 import { getSemanticColorToken } from '@aqvl/shared';
+import type { AQIRInstruction, GenericActionInstruction, HighlightObjectInstruction, SwapObjectsInstruction } from '@aqvl/shared';
 import { AlgorithmContext } from './AlgorithmContext';
 import { AnticipationAnimation } from '../animations';
 
@@ -94,6 +95,70 @@ export class HeapProgramEngine {
   // ─────────────────────────────────────────────────────────────────────────
   // Statements
   // ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Runs a statement whose operands are cells of a HEAP (`SWAP h[i] h[j]`,
+   * `COMPARE`, `HIGHLIGHT`, `h[i] = v` / UPDATE, `INSERT h v`, `DELETE h[i]`).
+   * `slotOf` resolves a compiled `arr#index` operand, `evaluate` a value
+   * operand. Returns false for anything that is not about a heap.
+   */
+  executeStatement(
+    context: AlgorithmContext,
+    instruction: AQIRInstruction,
+    slotOf: (id: unknown) => { arrayName: string; index: number } | null,
+    evaluate: (expr: unknown) => unknown
+  ): boolean {
+    if (!this.hasAnyHeap(context)) return false;
+    const heapSlot = (id: unknown) => {
+      const slot = slotOf(id);
+      return slot && this.isHeap(context, slot.arrayName) ? { heap: slot.arrayName, index: slot.index } : null;
+    };
+    const action = instruction.action as string;
+
+    if (action === 'SWAP_OBJECTS' || action === 'COMPARE_OBJECTS') {
+      const i = instruction as SwapObjectsInstruction;
+      const left = heapSlot(i.leftId);
+      const right = heapSlot(i.rightId);
+      if (!left && !right) return false;
+      if (!left || !right) {
+        throw new HeapIndexError(`${action === 'SWAP_OBJECTS' ? 'SWAP' : 'COMPARE'} needs two heap cells, e.g. ${action === 'SWAP_OBJECTS' ? 'SWAP' : 'COMPARE'} h[i] h[j]. To use a heap value elsewhere, copy it into a variable first (x = h[0]).`);
+      }
+      if (action === 'SWAP_OBJECTS') this.swap(context, left, right);
+      else this.compare(context, left, right);
+      return true;
+    }
+    if (action === 'HIGHLIGHT_OBJECT') {
+      const hl = instruction as HighlightObjectInstruction;
+      const slot = heapSlot(hl.targetId);
+      if (!slot) return false;
+      this.highlight(context, slot.heap, slot.index, hl.color || 'SUCCESS');
+      return true;
+    }
+    if (action === 'GENERIC_ACTION') {
+      const gen = instruction as GenericActionInstruction;
+      const name = gen.actionName.toUpperCase();
+      const args = gen.args ?? [];
+      const value = () => evaluate(args[args.length - 1]);
+      if (name === 'INSERT' && this.isHeap(context, args[0])) {
+        if (args.length < 2) throw new HeapIndexError(`INSERT needs a value, e.g. INSERT ${args[0]} 42`);
+        this.append(context, String(args[0]), value());
+        return true;
+      }
+      const slot = heapSlot(args[0]);
+      if (!slot) return false;
+      if (name === 'UPDATE') {
+        this.update(context, slot.heap, slot.index, value());
+      } else if (name === 'DELETE') {
+        this.removeLast(context, slot.heap, slot.index);
+      } else if (name === 'INSERT') {
+        throw new HeapIndexError(`A heap only grows at its end: write INSERT ${slot.heap} value (it becomes ${slot.heap}[LENGTH(${slot.heap}) - 1]), then sift it up.`);
+      } else {
+        return false;
+      }
+      return true;
+    }
+    return false;
+  }
 
   compare(context: AlgorithmContext, a: { heap: string; index: number }, b: { heap: string; index: number }): void {
     const left = this.pairAt(context, a.heap, a.index);

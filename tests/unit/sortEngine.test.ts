@@ -1,10 +1,11 @@
 /**
- * Unit tests for SortAlgorithm (packages/runtime/src/core/algorithms/SortEngine.ts) —
+ * Unit tests for SortAlgorithm (packages/runtime/src/data-structures/SortAlgorithm.ts) —
  * the pure, scene-free bubble/selection/insertion sort implementations that
  * back the AQVL BUBBLE_SORT / SELECTION_SORT / INSERTION_SORT built-ins.
  */
 import { describe, expect, it } from 'vitest';
-import { SortAlgorithm, type SortResult } from '../../packages/runtime/src/core/algorithms/SortEngine';
+import { SortAlgorithm, SORT_STEP_PRIMITIVES, type SortResult } from '../../packages/runtime/src/data-structures/SortAlgorithm';
+import { isPrimitive } from '../../packages/runtime/src/data-structures/steps';
 
 type Runner = (array: number[]) => SortResult<number>;
 
@@ -260,5 +261,13 @@ describe('SortAlgorithm true recursion (mergeSort / quickSort)', () => {
     const array = [1, 3, 5, 2, 4, 6];
     SortAlgorithm.merge(array, 0, 2, 5);
     expect(array).toEqual([1, 2, 3, 4, 5, 6]);
+  });
+});
+
+describe('SortStep primitives', () => {
+  it('every step type is an AQIR primitive', () => {
+    for (const p of Object.values(SORT_STEP_PRIMITIVES)) expect(isPrimitive(p)).toBe(true);
+    expect(SORT_STEP_PRIMITIVES.SWAP).toEqual({ kind: 'MUTATE', verb: 'exchange' });
+    expect(SORT_STEP_PRIMITIVES.MARK_SORTED_REGION).toEqual({ kind: 'ANNOTATE', verb: 'region' });
   });
 });

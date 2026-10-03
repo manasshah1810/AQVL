@@ -8,13 +8,13 @@
  * AnimationController, not the VM itself. These tests verify the compiler
  * emits the right GENERIC_ACTION shape for `DFS`/`BFS`, and exercise
  * GraphEngine directly against a Graph built from the same edges the
- * compiled source declares (mirroring how GraphAlgorithms builds one from
+ * compiled source declares (mirroring how GraphEngine builds one from
  * the scene at runtime).
  */
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { compileLowered } from '../utils/testHelpers';
 import { Graph } from '../../packages/runtime/src/data-structures/Graph';
-import { GraphAlgorithm } from '../../packages/runtime/src/core/algorithms/GraphEngine';
+import { GraphAlgorithm } from '../../packages/runtime/src/data-structures/GraphAlgorithm';
 
 beforeAll(() => {
   vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -129,8 +129,8 @@ describe('DFS / BFS: execution produces correct order and levels', () => {
     const graph = graphFromEdgeStrings(edges);
     const result = new GraphAlgorithm(graph).depthFirstSearch('A');
 
-    const visits = result.animationFrames.filter((f) => f.type === 'VISIT');
-    const traversedEdges = result.animationFrames.filter((f) => f.type === 'EDGE');
+    const visits = result.steps.filter((f) => f.type === 'VISIT');
+    const traversedEdges = result.steps.filter((f) => f.type === 'EDGE');
     expect(visits).toHaveLength(3); // A, B, C
     expect(traversedEdges).toHaveLength(2); // A->B, B->C
   });
@@ -352,8 +352,8 @@ describe('PRIM / KRUSKAL / TOPO_SORT: execution produces correct results', () =>
   it('emits MST animation frames for edge consideration and acceptance', () => {
     const graph = weightedGraphFromEdgeStrings(['A-B:1', 'A-C:3', 'B-C:2']);
     const result = new GraphAlgorithm(graph).kruskal();
-    const sorted = result.animationFrames.filter((f) => f.type === 'SORTED');
-    const addEdges = result.animationFrames.filter((f) => f.type === 'ADD_EDGE');
+    const sorted = result.steps.filter((f) => f.type === 'SORTED');
+    const addEdges = result.steps.filter((f) => f.type === 'ADD_EDGE');
     expect(sorted).toHaveLength(1);
     expect(addEdges.length).toBeGreaterThan(0);
   });
