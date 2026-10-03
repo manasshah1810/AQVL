@@ -154,7 +154,7 @@ describe('GenericSceneRenderer', () => {
     ];
     const sceneState: SceneState = {
       ...sceneStateOf(elements),
-      partitionBoundaries: [{ structureId: 'arr', startIndex: 0, endIndex: 2, depth: 0 }],
+      metadata: { arrayRegions: { partitionBoundaries: [{ structureId: 'arr', startIndex: 0, endIndex: 2, depth: 0 }], sortedRegions: [] } },
     };
 
     const renderer = await ReactThreeTestRenderer.create(<GenericSceneRenderer sceneState={sceneState} />);
@@ -170,7 +170,7 @@ describe('GenericSceneRenderer', () => {
     const elements = [makeEl({ id: 'a0', type: 'box', position: { x: 0, y: 0, z: 0 }, logicalParent: 'arr', logicalIndex: 0 } as any)];
     const sceneState: SceneState = {
       ...sceneStateOf(elements),
-      partitionBoundaries: [{ structureId: 'arr', startIndex: 0, endIndex: 5, depth: 0 }],
+      metadata: { arrayRegions: { partitionBoundaries: [{ structureId: 'arr', startIndex: 0, endIndex: 5, depth: 0 }], sortedRegions: [] } },
     };
 
     const renderer = await ReactThreeTestRenderer.create(<GenericSceneRenderer sceneState={sceneState} />);
@@ -189,7 +189,7 @@ describe('GenericSceneRenderer', () => {
     ];
     const sceneState: SceneState = {
       ...sceneStateOf(elements),
-      sortedRegions: [{ structureId: 'arr', startIndex: 0, endIndex: 1 }],
+      metadata: { arrayRegions: { partitionBoundaries: [], sortedRegions: [{ structureId: 'arr', startIndex: 0, endIndex: 1 }] } },
     };
 
     const renderer = await ReactThreeTestRenderer.create(<GenericSceneRenderer sceneState={sceneState} />);

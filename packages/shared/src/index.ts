@@ -13,10 +13,10 @@ export type {
   UpdateLayoutInstruction,
   ShowComparisonLinkInstruction,
   HideComparisonLinkInstruction,
-  SetPartitionBoundaryInstruction,
-  ClearPartitionBoundaryInstruction,
-  MarkSortedRegionInstruction,
 } from './aqir/types';
+
+// Domain-owned instruction types (kept out of the generic aqir/types.ts).
+export type * from './domains/array/regionInstructions';
 
 export {
   SEMANTIC_PALETTE,

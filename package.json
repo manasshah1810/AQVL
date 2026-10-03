@@ -9,6 +9,7 @@
     "test:coverage": "pnpm --filter @aqvl/tests test:coverage",
     "task": "npx --yes tsx scripts/task-ledger.ts",
     "gateway": "npx --yes tsx scripts/dev-gateway.ts",
+    "audit:generic": "npx --yes tsx scripts/audit-generic-layer.ts",
     "inspect-aqir": "npx --yes tsx scripts/inspect-aqir.ts",
     "prepare": "husky"
   },

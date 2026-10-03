@@ -8,7 +8,7 @@
  * its own module; GenericSceneRenderer does not change.
  */
 import React from 'react';
-import type { SceneState } from '@aqvl/runtime';
+import { getArrayRegions, type SceneState } from '@aqvl/runtime';
 import { registerDecorationProvider } from '../generic/decorationProviders';
 import { ArrayRegionDecorations, type ArrayRegionAnnotations } from '../array/ArrayRegionDecorations';
 import { LinkedListDecorations } from '../linear/LinkedListDecorations';
@@ -28,8 +28,7 @@ export const LINEAR_OVERLAY_KEY = 'linear';
 registerDecorationProvider<ArrayRegionAnnotations>({
   key: 'arrayRegions',
   select: (scene: SceneState) => {
-    const partitionBoundaries = scene.partitionBoundaries ?? [];
-    const sortedRegions = scene.sortedRegions ?? [];
+    const { partitionBoundaries, sortedRegions } = getArrayRegions(scene);
     return partitionBoundaries.length > 0 || sortedRegions.length > 0 ? { partitionBoundaries, sortedRegions } : null;
   },
   renderUnderlay: ({ elements, data }) => <ArrayRegionDecorations elements={elements} annotations={data} />,

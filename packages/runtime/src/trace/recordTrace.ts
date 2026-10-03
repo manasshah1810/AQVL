@@ -3,6 +3,7 @@ import { ExecutionEngine, type AQIRProgram } from '../core/ExecutionEngine';
 import type { SceneElement } from '../models/SceneElement';
 import { SnapTimelineEngine } from './SnapTimelineEngine';
 import { classifyStep } from './classify';
+import { getArrayRegions } from '../domains/array/regions';
 import type {
   ExecutionTrace,
   TraceEdge,
@@ -325,14 +326,14 @@ export async function recordTrace(program: AQIRProgram, options: RecordTraceOpti
       edges,
       structures: structuresOf(graph, nodes, placed),
       regions: {
-        partitions: (state?.partitionBoundaries ?? []).map((b) => ({
+        partitions: getArrayRegions(state).partitionBoundaries.map((b) => ({
           structure: b.structureId,
           start: b.startIndex,
           end: b.endIndex,
           label: b.label,
           depth: b.depth,
         })),
-        sorted: (state?.sortedRegions ?? []).map((r) => ({ structure: r.structureId, start: r.startIndex, end: r.endIndex })),
+        sorted: getArrayRegions(state).sortedRegions.map((r) => ({ structure: r.structureId, start: r.startIndex, end: r.endIndex })),
       },
       vars: primitiveVars(engine.getVisibleVariables()),
       callStack: callStackOf(graph, engine, params),

@@ -1,5 +1,7 @@
 export type { SceneElement, BoxElement, EdgeElement } from './models/SceneElement';
-export type { SceneState, PartitionBoundaryRegion, SortedRegion } from './models/SceneState';
+export type { SceneState } from './models/SceneState';
+export { ARRAY_REGIONS_KEY, getArrayRegions } from './domains/array/regions';
+export type { PartitionBoundaryRegion, SortedRegion, ArrayRegionMetadata } from './domains/array/regions';
 export type {
   LayoutStrategyName,
   GeometryParamValue,

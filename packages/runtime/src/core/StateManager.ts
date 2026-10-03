@@ -1,43 +1,27 @@
-import { SceneState, PartitionBoundaryRegion, SortedRegion } from '../models/SceneState';
+import { SceneState } from '../models/SceneState';
+import { ArrayRegionTracker, ARRAY_REGIONS_KEY } from '../domains/array/regions';
 import { SceneElement } from '../models/SceneElement';
 
 export class StateManager {
   private timeline: SceneState[] = [];
   private currentIndex: number = -1;
 
-  /** structureId -> stack of active boundaries, outermost first (see PartitionBoundaryRegion). */
-  private partitionBoundaryStacks: Map<string, PartitionBoundaryRegion[]> = new Map();
-  /** structureId -> its current sorted range. */
-  private sortedRegions: Map<string, SortedRegion> = new Map();
+  /** Array-domain region bookkeeping; its snapshot rides in `SceneState.metadata`. */
+  private arrayRegions = new ArrayRegionTracker();
 
   constructor() {}
 
-  /** Pushes a new active boundary for `structureId` (SET_PARTITION_BOUNDARY). */
+  // Thin delegates for AnimationController's region dispatch; the state itself is domain-owned.
   public setPartitionBoundary(structureId: string, startIndex: number, endIndex: number, label?: string): void {
-    const stack = this.partitionBoundaryStacks.get(structureId) ?? [];
-    stack.push({ structureId, startIndex, endIndex, label, depth: stack.length });
-    this.partitionBoundaryStacks.set(structureId, stack);
+    this.arrayRegions.setPartitionBoundary(structureId, startIndex, endIndex, label);
   }
 
-  /** Pops the most recently set active boundary for `structureId` (CLEAR_PARTITION_BOUNDARY). */
   public clearPartitionBoundary(structureId: string): void {
-    const stack = this.partitionBoundaryStacks.get(structureId);
-    if (stack && stack.length > 0) stack.pop();
+    this.arrayRegions.clearPartitionBoundary(structureId);
   }
 
-  /** Replaces `structureId`'s current sorted range (MARK_SORTED_REGION). */
   public markSortedRegion(structureId: string, startIndex: number, endIndex: number): void {
-    this.sortedRegions.set(structureId, { structureId, startIndex, endIndex });
-  }
-
-  /** Snapshots the current region/boundary state, for baking into a SceneState. */
-  private currentRegions(): Pick<SceneState, 'partitionBoundaries' | 'sortedRegions'> {
-    const partitionBoundaries: PartitionBoundaryRegion[] = [];
-    this.partitionBoundaryStacks.forEach((stack) => partitionBoundaries.push(...stack.map((entry) => ({ ...entry }))));
-    return {
-      partitionBoundaries,
-      sortedRegions: Array.from(this.sortedRegions.values()).map((r) => ({ ...r })),
-    };
+    this.arrayRegions.markSortedRegion(structureId, startIndex, endIndex);
   }
 
   /**
@@ -90,7 +74,7 @@ export class StateManager {
       elements: clonedElements,
       description,
       timeMs,
-      ...this.currentRegions(),
+      metadata: { [ARRAY_REGIONS_KEY]: this.arrayRegions.snapshot() },
     };
   }
 
