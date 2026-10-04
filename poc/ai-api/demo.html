@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>AQVL AI Demo</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 2rem;
+      background: #f9fafb;
+      color: #111827;
+    }
+    h1 {
+      margin-top: 0;
+      color: #1f2937;
+    }
+    .card {
+      background: #ffffff;
+      padding: 1.5rem;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      margin-bottom: 1.5rem;
+    }
+    input[type="text"] {
+      width: 100%;
+      padding: 0.75rem;
+      font-size: 1rem;
+      border: 1px solid #d1d5db;
+      border-radius: 4px;
+      margin-bottom: 1rem;
+      box-sizing: border-box;
+    }
+    button {
+      background: #3b82f6;
+      color: white;
+      border: none;
+      padding: 0.75rem 1.5rem;
+      font-size: 1rem;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: 500;
+      transition: background 0.2s;
+    }
+    button:hover {
+      background: #2563eb;
+    }
+    button:disabled {
+      background: #9ca3af;
+      cursor: not-allowed;
+    }
+    button.secondary {
+      background: #4b5563;
+    }
+    button.secondary:hover {
+      background: #374151;
+    }
+    .button-group {
+      display: flex;
+      gap: 0.5rem;
+      margin-top: 1rem;
+    }
+    #status {
+      margin-top: 1rem;
+      padding: 1rem;
+      border-radius: 4px;
+      display: none;
+    }
+    .error {
+      background: #fee2e2;
+      color: #991b1b;
+      border: 1px solid #f87171;
+    }
+    .success {
+      background: #d1fae5;
+      color: #065f46;
+      border: 1px solid #34d399;
+    }
+    .loading {
+      background: #e0f2fe;
+      color: #075985;
+      border: 1px solid #7dd3fc;
+    }
+    #codeContainer {
+      display: none;
+      margin-top: 1.5rem;
+    }
+    pre {
+      background: #1f2937;
+      color: #f3f4f6;
+      padding: 1rem;
+      border-radius: 4px;
+      overflow-x: auto;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.875rem;
+      line-height: 1.5;
+    }
+    .instruction {
+      font-weight: 500;
+      color: #059669;
+      margin-bottom: 1rem;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>AQVL AI Demo</h1>
+  <p>Enter a topic and generate an AQVL visualization.</p>
+
+  <div class="card">
+    <input type="text" id="topicInput" placeholder="e.g. Bubble sort, Binary search, BFS..." />
+    <button id="generateBtn" onclick="generate()">Generate</button>
+
+    <div id="status"></div>
+
+    <div id="codeContainer">
+      <h3>Generated AQVL</h3>
+      <p class="instruction" id="instructionText">Copy the generated code, open Playground, paste it into the editor, and run the visualization.</p>
+      
+      <pre><code id="codeBlock"></code></pre>
+
+      <div class="button-group">
+        <button id="copyBtn" class="secondary" onclick="copyCode()">Copy code</button>
+        <button id="playgroundBtn" onclick="openPlayground()">Open Playground</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_URL = 'http://localhost:3000/generate';
+    const PLAYGROUND_URL = 'http://localhost:5173/#/playground';
+    
+    let currentCode = '';
+
+    async function generate() {
+      const topic = document.getElementById('topicInput').value.trim();
+      if (!topic) return;
+
+      const btn = document.getElementById('generateBtn');
+      const statusEl = document.getElementById('status');
+      const container = document.getElementById('codeContainer');
+      const codeBlock = document.getElementById('codeBlock');
+      const instruction = document.getElementById('instructionText');
+
+      // Reset state
+      btn.disabled = true;
+      container.style.display = 'none';
+      instruction.style.display = 'none';
+      currentCode = '';
+      
+      statusEl.style.display = 'block';
+      statusEl.className = 'loading';
+      statusEl.textContent = 'Generating AQVL (this may take up to 30 seconds)...';
+
+      try {
+        const response = await fetch(API_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ topic })
+        });
+
+        if (!response.ok) {
+          const errData = await response.json().catch(() => ({}));
+          throw new Error(errData.error || `HTTP ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        if (data.aqvl && data.aqvl.trim().length > 0) {
+          currentCode = data.aqvl;
+          codeBlock.textContent = currentCode;
+          container.style.display = 'block';
+          instruction.style.display = 'block';
+          
+          if (data.valid) {
+            statusEl.className = 'success';
+            statusEl.textContent = `Success! Generated valid AQVL in ${data.attempts} attempt(s).`;
+          } else {
+            statusEl.className = 'error';
+            statusEl.textContent = `Generated AQVL but it failed validation after ${data.attempts} attempts. Check the code.`;
+          }
+        } else {
+          throw new Error('Server returned empty AQVL output.');
+        }
+      } catch (error) {
+        statusEl.className = 'error';
+        statusEl.textContent = `Error: ${error.message}`;
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    async function copyCode() {
+      if (!currentCode) return;
+      const copyBtn = document.getElementById('copyBtn');
+      
+      try {
+        await navigator.clipboard.writeText(currentCode);
+        const originalText = copyBtn.textContent;
+        copyBtn.textContent = 'Copied!';
+        copyBtn.style.background = '#059669';
+        
+        setTimeout(() => {
+          copyBtn.textContent = originalText;
+          copyBtn.style.background = '';
+        }, 2000);
+      } catch (err) {
+        alert('Failed to copy to clipboard.');
+        console.error(err);
+      }
+    }
+
+    function openPlayground() {
+      window.open(PLAYGROUND_URL, '_blank');
+    }
+  </script>
+</body>
+</html>

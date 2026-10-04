@@ -175,6 +175,14 @@ export async function generateAndValidateAQVL(topic: string) {
 
 export const server = http.createServer((req, res) => {
   res.setHeader('Content-Type', 'application/json');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  if (req.method === 'OPTIONS') {
+    res.statusCode = 204;
+    return res.end();
+  }
 
   if (req.method !== 'POST' || req.url !== '/generate') {
     res.statusCode = 404;
