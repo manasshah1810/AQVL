@@ -325,6 +325,28 @@ export default function Playground() {
               </div>
             )}
           </div>
+          
+          {/* Disabled Transport Controls when no program is loaded */}
+          {(!run || compileError) && (
+            <div className="vz-transport" aria-hidden="true">
+              <div className="vz-transport__keys">
+                <button type="button" className="vz-btn" disabled>
+                  <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><rect x="1.5" y="2" width="2" height="10" rx="0.5" fill="currentColor" /><path d="M12.5 2 L5 7 L12.5 12 Z" fill="currentColor" /></svg>
+                </button>
+                <button type="button" className="vz-play" disabled>
+                  <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M3 1.5 L12 7 L3 12.5 Z" fill="currentColor" /></svg>
+                </button>
+                <button type="button" className="vz-btn" disabled>
+                  <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><rect x="10.5" y="2" width="2" height="10" rx="0.5" fill="currentColor" /><path d="M1.5 2 L9 7 L1.5 12 Z" fill="currentColor" /></svg>
+                </button>
+              </div>
+              <div className="vz-scrub" style={{ opacity: 0.4 }} />
+              <div className="vz-count" style={{ opacity: 0 }}><b>0</b><span>/ 0</span></div>
+              <div className="vz-speed" style={{ opacity: 0.4 }}>
+                <button type="button" className="vz-speed__opt is-on" disabled>1×</button>
+              </div>
+            </div>
+          )}
 
           <PlaygroundOutputConsole logs={logs} onClear={() => setClearedThrough(snap.step)} />
         </section>
