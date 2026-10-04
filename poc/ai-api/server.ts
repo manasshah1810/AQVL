@@ -26,6 +26,7 @@ const PROVIDER_API_KEY = process.env.PROVIDER_API_KEY;
 // Using OpenAI-compatible endpoint as the default provider format
 const PROVIDER_URL = process.env.PROVIDER_URL || 'https://api.openai.com/v1/chat/completions';
 const MODEL = process.env.MODEL || 'gpt-4o-mini';
+const MAX_COMPLETION_TOKENS = 4096;
 
 import { validateAQVL } from './validate';
 
@@ -45,17 +46,57 @@ export async function callLLM(messages: Message[]): Promise<string> {
       body: JSON.stringify({
         model: MODEL,
         messages: messages,
-        temperature: 0.2
+        temperature: 0.2,
+        max_completion_tokens: MAX_COMPLETION_TOKENS,
+        max_tokens: MAX_COMPLETION_TOKENS
       }),
       signal: controller.signal
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Provider API error: ${response.status} ${errorText}`);
+      let errorText = '';
+      try {
+        errorText = await response.text();
+      } catch (e) {
+        errorText = 'Failed to read response body';
+      }
+      
+      const safeErrorText = errorText.substring(0, 500);
+      console.error(`Provider error: ${response.status} - Body: ${safeErrorText}`);
+      throw new Error(`Provider returned HTTP ${response.status}: ${safeErrorText}`);
     }
 
     const data: any = await response.json();
+
+    const diagnostic = {
+      model: data?.model,
+      choices: Array.isArray(data?.choices)
+        ? data.choices.map((choice: any) => ({
+            finish_reason: choice?.finish_reason,
+            index: choice?.index,
+            role: choice?.message?.role,
+            has_content: typeof choice?.message?.content === 'string',
+            content_length:
+              typeof choice?.message?.content === 'string'
+                ? choice.message.content.length
+                : 0,
+            has_reasoning:
+              typeof choice?.message?.reasoning === 'string',
+            reasoning_length:
+              typeof choice?.message?.reasoning === 'string'
+                ? choice.message.reasoning.length
+                : 0,
+          }))
+        : [],
+      usage: data?.usage,
+      error: data?.error
+    };
+
+    console.error(
+      '[AI API] Provider response diagnostics:',
+      JSON.stringify(diagnostic, null, 2)
+    );
+
     const content = data.choices?.[0]?.message?.content;
     
     if (!content) {
