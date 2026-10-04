@@ -233,7 +233,10 @@
   }
 
   .pg-error {
+    display: flex;
+    flex-direction: column;
     width: min(620px, 100%);
+    max-height: 100%;
     border-radius: var(--r-panel);
     background: var(--panel);
     border: 1px solid color-mix(in srgb, #ef4444 30%, transparent);
@@ -243,6 +246,7 @@
   }
 
   .pg-error__header {
+    flex-shrink: 0;
     display: flex;
     align-items: center;
     gap: 12px;
@@ -263,8 +267,9 @@
   }
 
   .pg-error__body {
+    flex: 1;
+    min-height: 0;
     padding: 24px;
-    max-height: 40vh;
     overflow-y: auto;
   }
 
@@ -290,6 +295,7 @@
   }
 
   .pg-error__footer {
+    flex-shrink: 0;
     padding: 16px 24px;
     background: color-mix(in srgb, var(--ink) 50%, transparent);
     border-top: 1px solid var(--line);
