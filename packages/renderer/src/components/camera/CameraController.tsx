@@ -32,9 +32,9 @@ export interface CameraControllerHandle {
   getCameraPosition: () => Vec3Like;
 }
 
-const LERP_TARGET = 0.04;
-const LERP_ZOOM = 0.03;
-const LERP_POSITION = 0.05;
+const LERP_TARGET = 0.02;
+const LERP_ZOOM = 0.015;
+const LERP_POSITION = 0.03;
 const DEFAULT_ORBIT_SPEED = 0.3;
 const MIN_ORBIT_RADIUS = 6;
 
@@ -105,7 +105,7 @@ export function computeAutoFitTarget(sceneState: SceneState): { center: Vec3Like
 
   return {
     center: { x: totalX / count, y: hasTree && maxTreeY > 0 ? maxTreeY / 2 : 0, z: 0 },
-    spanX: maxX - minX,
+    spanX: Math.max(0, maxX - minX) + 3,
   };
 }
 

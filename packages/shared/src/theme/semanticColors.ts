@@ -19,35 +19,35 @@ export interface SemanticColorToken {
 export const SEMANTIC_PALETTE: Record<SemanticState, SemanticColorToken> = {
   NEUTRAL: {
     name: 'NEUTRAL',
-    color: '#38bdf8', // Sky Blue - crisp dark mode 3D idle state
+    color: '#257da5', // Sky Blue - crisp dark mode 3D idle state
     emissiveColor: '#0284c7',
     emissiveIntensity: 0.1,
     opacity: 1.0,
   },
   EVALUATING: {
     name: 'EVALUATING',
-    color: '#f59e0b', // Amber Gold - high contrast evaluation/comparison state
+    color: '#a36907', // Amber Gold - high contrast evaluation/comparison state
     emissiveColor: '#fbbf24',
     emissiveIntensity: 0.7,
     opacity: 1.0,
   },
   TRAVERSING: {
     name: 'TRAVERSING',
-    color: '#06b6d4', // Vivid Cyan - pointer navigation / traversal / active scan
+    color: '#047f94', // Vivid Cyan - pointer navigation / traversal / active scan
     emissiveColor: '#22d3ee',
     emissiveIntensity: 0.6,
     opacity: 1.0,
   },
   MODIFYING: {
     name: 'MODIFYING',
-    color: '#ec4899', // Electric Pink - swap / insert / update / structural modification
+    color: '#ca3e83', // Electric Pink - swap / insert / update / structural modification
     emissiveColor: '#f472b6',
     emissiveIntensity: 0.7,
     opacity: 1.0,
   },
   SUCCESS: {
     name: 'SUCCESS',
-    color: '#10b981', // Emerald Green - vivid confirmation / sorted / found state
+    color: '#0b815a', // Emerald Green - vivid confirmation / sorted / found state
     emissiveColor: '#34d399',
     emissiveIntensity: 0.5,
     opacity: 1.0,
@@ -61,14 +61,14 @@ export const SEMANTIC_PALETTE: Record<SemanticState, SemanticColorToken> = {
   },
   AUXILIARY: {
     name: 'AUXILIARY',
-    color: '#a855f7', // Royal Purple / Violet - helper / temporary structure / boundary
+    color: '#984ddf', // Royal Purple / Violet - helper / temporary structure / boundary
     emissiveColor: '#c084fc',
     emissiveIntensity: 0.4,
     opacity: 1.0,
   },
   STRUCTURAL: {
     name: 'STRUCTURAL',
-    color: '#6366f1', // Indigo Blue - hierarchy roles (Root / Leaf / Parent / Child / View)
+    color: '#5e61e5', // Indigo Blue - hierarchy roles (Root / Leaf / Parent / Child / View)
     emissiveColor: '#818cf8',
     emissiveIntensity: 0.5,
     opacity: 1.0,

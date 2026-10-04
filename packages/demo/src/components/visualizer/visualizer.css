@@ -424,8 +424,20 @@
     color: var(--cream);
   }
 
+  .vz-btn:active:not(:disabled) {
+    background: color-mix(in srgb, var(--row-hover) 80%, var(--ink));
+    transform: scale(0.92);
+  }
+
   .vz-btn:disabled {
     opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .vz-btn:focus-visible,
+  .vz-play:focus-visible {
+    outline: 2px solid var(--cream);
+    outline-offset: 2px;
   }
 
   .vz-play {
@@ -458,6 +470,7 @@
 
   .vz-play:disabled {
     opacity: 0.45;
+    cursor: not-allowed;
   }
 
   .vz-scrub {

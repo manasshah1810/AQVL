@@ -277,8 +277,10 @@ export default function Playground() {
             )}
 
             {busy && !run && (
-              <div className="pg-overlay">
-                <AlgoLoader variant="inline" label={tracing !== null && tracing > 0 ? `Tracing your program · step ${tracing}` : 'Compiling your program'} />
+              <div className="pg-overlay pg-overlay--blur">
+                <div className="pg-loading">
+                  <AlgoLoader variant="inline" label={tracing !== null && tracing > 0 ? `Tracing your program · step ${tracing}` : 'Compiling your program'} />
+                </div>
               </div>
             )}
             {busy && run && (
@@ -288,11 +290,23 @@ export default function Playground() {
             )}
 
             {compileError && !busy && (
-              <div className="pg-overlay" role="alert">
+              <div className="pg-overlay pg-overlay--blur" role="alert">
                 <div className="pg-error">
-                  <p className="pg-error__title">Compilation Error</p>
-                  <pre className="pg-error__body">{compileError}</pre>
-                  <p className="mono muted">The editor marks the line. Fix it and run again.</p>
+                  <div className="pg-error__header">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="pg-error__icon"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+                    <p className="pg-error__title">Compilation Error</p>
+                  </div>
+                  <div className="pg-error__body">
+                    {errorMarkers.length > 0 && (
+                      <div className="pg-error__line-badge">
+                        Line {errorMarkers[0].line}
+                      </div>
+                    )}
+                    <pre className="pg-error__message">{compileError}</pre>
+                  </div>
+                  <div className="pg-error__footer">
+                    <p className="mono muted">The editor marks the line. Fix it and run again.</p>
+                  </div>
                 </div>
               </div>
             )}
@@ -300,14 +314,39 @@ export default function Playground() {
             {!busy && !compileError && !run && (
               <div className="pg-overlay">
                 <div className="pg-empty">
-                  <p className="title">Nothing on stage yet.</p>
-                  <p className="muted mt-2">
+                  <div className="pg-empty__icon">
+                    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
+                  </div>
+                  <p className="pg-empty__title">Nothing on stage yet.</p>
+                  <p className="pg-empty__desc mt-2">
                     Write a program on the left, then press <span className="ic">Compile &amp; Run</span>.
                   </p>
                 </div>
               </div>
             )}
           </div>
+          
+          {/* Disabled Transport Controls when no program is loaded */}
+          {(!run || compileError) && (
+            <div className="vz-transport" aria-hidden="true">
+              <div className="vz-transport__keys">
+                <button type="button" className="vz-btn" disabled>
+                  <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><rect x="1.5" y="2" width="2" height="10" rx="0.5" fill="currentColor" /><path d="M12.5 2 L5 7 L12.5 12 Z" fill="currentColor" /></svg>
+                </button>
+                <button type="button" className="vz-play" disabled>
+                  <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M3 1.5 L12 7 L3 12.5 Z" fill="currentColor" /></svg>
+                </button>
+                <button type="button" className="vz-btn" disabled>
+                  <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><rect x="10.5" y="2" width="2" height="10" rx="0.5" fill="currentColor" /><path d="M1.5 2 L9 7 L1.5 12 Z" fill="currentColor" /></svg>
+                </button>
+              </div>
+              <div className="vz-scrub" style={{ opacity: 0.4 }} />
+              <div className="vz-count" style={{ opacity: 0 }}><b>0</b><span>/ 0</span></div>
+              <div className="vz-speed" style={{ opacity: 0.4 }}>
+                <button type="button" className="vz-speed__opt is-on" disabled>1×</button>
+              </div>
+            </div>
+          )}
 
           <PlaygroundOutputConsole logs={logs} onClear={() => setClearedThrough(snap.step)} />
         </section>

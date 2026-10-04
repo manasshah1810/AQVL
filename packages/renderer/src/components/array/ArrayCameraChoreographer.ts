@@ -70,9 +70,9 @@ export type ArrayBounds = StructureBounds;
 
 /** How strongly each significance tier pulls the camera toward the operation's participants (0 = no pull, 1 = full allowed pull). */
 export const EMPHASIS_LEVELS: Record<OperationSignificance, number> = {
-  routine: 0.15,
-  notable: 0.5,
-  pivotal: 1.0,
+  routine: 0.1,
+  notable: 0.35,
+  pivotal: 0.7,
 };
 
 /** Emphasis level used for an unrecognized/missing significance tag — treated as routine (safest, most subtle). */
