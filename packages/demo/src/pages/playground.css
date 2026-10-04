@@ -235,24 +235,22 @@
   .pg-error {
     display: flex;
     flex-direction: column;
-    width: min(620px, 100%);
+    width: min(560px, 100%);
     max-height: 100%;
+    padding: 20px 24px;
+    gap: 14px;
     border-radius: var(--r-panel);
     background: var(--panel);
     border: 1px solid color-mix(in srgb, #ef4444 30%, transparent);
     box-shadow: 0 12px 40px color-mix(in srgb, #ef4444 15%, transparent),
                 inset 3px 0 0 #ef4444;
-    overflow: hidden;
   }
 
   .pg-error__header {
     flex-shrink: 0;
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: 18px 24px;
-    background: color-mix(in srgb, #ef4444 10%, transparent);
-    border-bottom: 1px solid color-mix(in srgb, #ef4444 20%, transparent);
+    gap: 10px;
   }
 
   .pg-error__icon {
@@ -261,7 +259,7 @@
 
   .pg-error__title {
     font-family: var(--font-serif);
-    font-size: 1.25rem;
+    font-size: 1.15rem;
     font-weight: 500;
     color: #ef4444;
   }
@@ -269,8 +267,8 @@
   .pg-error__body {
     flex: 1;
     min-height: 0;
-    padding: 24px;
     overflow-y: auto;
+    padding-right: 8px; /* Room for scrollbar if needed */
   }
 
   .pg-error__line-badge {
@@ -296,9 +294,7 @@
 
   .pg-error__footer {
     flex-shrink: 0;
-    padding: 16px 24px;
-    background: color-mix(in srgb, var(--ink) 50%, transparent);
-    border-top: 1px solid var(--line);
+    margin-top: 4px;
   }
 
   .pg-loading {
