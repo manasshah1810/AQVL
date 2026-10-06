@@ -50,7 +50,7 @@ function point(sample: StageSample, e: number, q: number, into: Vector3): Vector
 export function EdgeRods({ model, driver }: { model: StageModel; driver: StageDriver }) {
   const E = model.edgeSlots.length;
   const parts = useMemo(() => {
-    const rodMaterial = createEdgeMaterial();
+    const rodMaterial = createEdgeMaterial(model.world === 'ocean');
     const rods = new InstancedMesh(new CylinderGeometry(1, 1, 1, 10, 1, true), rodMaterial, Math.max(1, E * SEGMENTS));
     const heads = new InstancedMesh(new ConeGeometry(1, 1, 18), rodMaterial, Math.max(1, E));
     const pulseMaterial = createPulseMaterial();
@@ -66,7 +66,7 @@ export function EdgeRods({ model, driver }: { model: StageModel; driver: StageDr
     pulses.renderOrder = 5;
     pulses.layers.set(NO_SHADOW_LAYER);
     return { rods, heads, pulses, rodMaterial, pulseMaterial };
-  }, [E]);
+  }, [E, model.world]);
 
   useEffect(
     () =>

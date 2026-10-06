@@ -50,7 +50,7 @@ function geometryFor(shape: TraceShape, sphereSegments: number): BufferGeometry 
  * however long the array or big the tree.
  */
 export function NodeBodies({ model, driver, sphereSegments }: { model: StageModel; driver: StageDriver; sphereSegments: number }) {
-  const finish = model.world === 'penguin' ? 'ice' : model.world === 'panda' ? 'bamboo' : 'porcelain';
+  const finish = model.world === 'penguin' ? 'ice' : model.world === 'panda' ? 'bamboo' : model.world === 'ocean' ? 'sea' : 'porcelain';
   const rolls = hasPhysics(model.world);
   const floorY = model.floorY;
   const material = useMemo<MeshPhysicalMaterial>(() => createNodeMaterial(finish), [finish]);

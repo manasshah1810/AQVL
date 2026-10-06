@@ -7,6 +7,8 @@ import { CastLayer } from './CastLayer';
 import type { Playhead } from '../../timeline/Playhead';
 import { PolarWorld } from './PolarWorld';
 import { BambooWorld } from './BambooWorld';
+import { ReefWorld } from '../ocean/three/ReefWorld';
+import { PodLayer } from '../ocean/three/PodLayer';
 
 /**
  * A world in place of the studio environment: its surroundings and its
@@ -34,6 +36,14 @@ export function WorldLayer({ model, bounds, driver, calm, playhead }: { model: S
     invalidate();
   });
   if (model.world === 'studio') return null;
+  if (model.world === 'ocean') {
+    return (
+      <>
+        <ReefWorld model={model} bounds={bounds} driver={driver} calm={calm} clock={clock} />
+        <PodLayer model={model} driver={driver} calm={calm} clock={clock} playhead={playhead} />
+      </>
+    );
+  }
   const World = model.world === 'penguin' ? PolarWorld : BambooWorld;
   return (
     <>
