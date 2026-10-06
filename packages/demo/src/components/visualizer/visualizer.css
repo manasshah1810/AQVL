@@ -307,6 +307,21 @@
     color: var(--peach);
   }
 
+  .vz-legend__crew {
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px solid var(--line-faint);
+    font-family: var(--font-serif);
+    font-size: 0.86rem;
+    line-height: 1.35;
+    color: var(--peach);
+  }
+
+  .vz-legend__crew b {
+    color: var(--cream);
+    font-weight: 600;
+  }
+
   .vz-legend__keys {
     margin-top: 10px;
     padding-top: 8px;

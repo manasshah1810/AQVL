@@ -47,7 +47,8 @@ function geometryFor(shape: TraceShape, sphereSegments: number): BufferGeometry 
  * however long the array or big the tree.
  */
 export function NodeBodies({ model, driver, sphereSegments }: { model: StageModel; driver: StageDriver; sphereSegments: number }) {
-  const material = useMemo<MeshPhysicalMaterial>(() => createNodeMaterial(), []);
+  const finish = model.world === 'penguin' ? 'ice' : model.world === 'panda' ? 'bamboo' : 'porcelain';
+  const material = useMemo<MeshPhysicalMaterial>(() => createNodeMaterial(finish), [finish]);
   const invalidate = useThree((s) => s.invalidate);
   // Hover: the node under the pointer brightens a touch, and a small tag says what it is.
   const hovered = useRef(-1);

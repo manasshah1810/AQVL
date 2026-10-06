@@ -1,11 +1,13 @@
 import type { SemanticState } from '@aqvl/shared';
 import type { ExecutionTrace, TraceEdge, TraceFrame, TraceNode, TraceShape } from '@aqvl/runtime';
-import { STAGE_PALETTES, edgeColorFor, type StagePalette, type StageTheme } from '../look/palette';
+import { edgeColorFor, type StagePalette, type StageTheme } from '../look/palette';
 import { STATE_TREATMENTS } from '../look/treatments';
 import { allocateAttention, isMutation } from '../motion/attention';
 import { massFor } from '../motion/spring';
 import { parseSourceStructure, type SourceStructure } from '../../components/iteration/sourceStructure';
 import { writeRgb } from './colors';
+import { paletteFor } from '../worlds/palettes';
+import { hasCast, type StageWorld } from '../worlds/types';
 
 /** One node identity across the whole run (an instance slot in the renderer). */
 export interface NodeSlot {
@@ -166,6 +168,9 @@ const VIEW_ASPECT = 1.35;
 const CAPTION_CLEARANCE = 0.75;
 /** How far in front of its node's face an index on the floor stands: far enough to clear the body on screen. */
 const INDEX_AHEAD = 0.95;
+/** Room kept for a world's crew beside (x) and in front of (z) every cell. */
+const CAST_ROOM_X = 0.95;
+const CAST_ROOM_Z = 1.95;
 
 interface GroupExtent {
   key: string;
@@ -215,8 +220,8 @@ export class StageModel {
   /** Structures spread across the floor (graphs, chained hash maps): looked down on, named at their back corner. */
   private readonly flatStructures = new Set<string>();
 
-  constructor(readonly trace: ExecutionTrace, readonly theme: StageTheme, source?: string) {
-    this.palette = STAGE_PALETTES[theme];
+  constructor(readonly trace: ExecutionTrace, readonly theme: StageTheme, source?: string, readonly world: StageWorld = 'studio') {
+    this.palette = paletteFor(theme, world);
     this.frames = trace.frames;
     this.source = source ? parseSourceStructure(source) : null;
 
@@ -1062,6 +1067,33 @@ export class StageModel {
     });
   }
 
+  /**
+   * The ground the whole run ever covers (node centres, half a cell either
+   * side) and how high above the floor anything ever reaches. Worlds lay out
+   * their scenery around this, so nothing they place stands in a structure.
+   */
+  private footprintCache: { minX: number; maxX: number; minZ: number; maxZ: number; top: number } | null = null;
+  footprint(): { minX: number; maxX: number; minZ: number; maxZ: number; top: number } {
+    if (!this.footprintCache) {
+      let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity, top = this.floorY;
+      for (const f of this.frames) {
+        for (const n of f.nodes) {
+          const x = this.px(n), z = this.pz(n);
+          minX = Math.min(minX, x - 0.6); maxX = Math.max(maxX, x + 0.6);
+          minZ = Math.min(minZ, z - 0.6); maxZ = Math.max(maxZ, z + 0.6);
+          top = Math.max(top, this.py(n) + this.heightOf(n) / 2);
+        }
+      }
+      if (!Number.isFinite(minX)) {
+        const lane = this.laneX();
+        minX = lane.x - 2; maxX = lane.x + 2; minZ = lane.z - 1; maxZ = lane.z + 1;
+        top = this.floorY + 1 + this.maxCallDepth * 0.62;
+      }
+      this.footprintCache = { minX, maxX, minZ, maxZ, top: top - this.floorY };
+    }
+    return this.footprintCache;
+  }
+
   /** Centre and radius of everything the whole run ever shows (lights, shadows, fog). */
   private boundsCache: { center: [number, number, number]; radius: number } | null = null;
   sceneBounds(): { center: [number, number, number]; radius: number } {
@@ -1165,6 +1197,17 @@ export class StageModel {
       const x = rest.pos[s * 3], y = rest.pos[s * 3 + 1], z = rest.pos[s * 3 + 2];
       grow(x - rest.dims[s * 3] / 2 - 0.15, y - rest.dims[s * 3 + 1] / 2, z - rest.dims[s * 3 + 2] / 2 - 0.15);
       grow(x + rest.dims[s * 3] / 2 + 0.15, y + rest.dims[s * 3 + 1] / 2, z + rest.dims[s * 3 + 2] / 2 + 0.15);
+    }
+    // A world's crew stands on the floor in the gaps in front of the cells: keep that strip in frame.
+    if (hasCast(this.world)) {
+      for (let s = 0; s < this.slots.length; s++) {
+        if (!rest.present[s]) continue;
+        if (focusStructure && this.slots[s].structure !== focusStructure && this.slots[s].id !== focusStructure) continue;
+        const x = rest.pos[s * 3], z = rest.pos[s * 3 + 2];
+        const hw = rest.dims[s * 3] / 2, hd = rest.dims[s * 3 + 2] / 2;
+        grow(x - hw - CAST_ROOM_X, this.floorY, z + hd + CAST_ROOM_Z);
+        grow(x + hw + CAST_ROOM_X, this.floorY + 1.1, z + hd + CAST_ROOM_Z);
+      }
     }
     // Captions printed on the floor in front of their node.
     for (const l of rest.labels) {

@@ -8,38 +8,83 @@ import {
   type WebGLProgramParametersWithUniforms,
 } from 'three';
 
+/** How a node body is finished: the studio's porcelain, a world's ice block or bamboo crate. */
+export type NodeFinish = 'porcelain' | 'ice' | 'bamboo';
+
+/** Ice: frosted edges, a cool rim where the face turns away, faint bubbles; the face centre stays clear for the value. */
+const ICE_FRAGMENT = /* glsl */ `
+{
+  vec3 q = abs(vObj) * 2.0;
+  float edge = smoothstep(0.62, 0.98, max(max(min(q.x, q.y), min(q.y, q.z)), min(q.x, q.z)));
+  float n = fract(sin(dot(floor(vObj * 38.0), vec3(12.9898, 78.233, 37.719))) * 43758.5453);
+  float speck = step(0.93, n) * 0.06;
+  float vertical = 1.0 - smoothstep(0.8, 0.95, abs(normalize(vNormal).y));
+  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.93, 0.97, 1.0), edge * 0.32 * vertical + speck);
+}
+`;
+const ICE_EMISSIVE = /* glsl */ `
+{
+  float rim = pow(1.0 - clamp(dot(normalize(vNormal), normalize(vViewPosition)), 0.0, 1.0), 3.0);
+  totalEmissiveRadiance += vec3(0.42, 0.72, 1.0) * rim * 0.14;
+}
+`;
+/** Bamboo crate: upright slats with dark seams, a little grain, and lashed bands top and bottom. */
+const BAMBOO_FRAGMENT = /* glsl */ `
+{
+  vec3 o = vObj;
+  float across = abs(o.z) > 0.49 ? o.x : (abs(o.x) > 0.49 ? o.z : o.x);
+  float seam = smoothstep(0.43, 0.5, abs(fract(across * 4.0 + 0.5) - 0.5));
+  float grain = 0.5 + 0.5 * sin(o.y * 46.0 + sin(across * 23.0) * 2.4);
+  float band = smoothstep(0.36, 0.4, abs(o.y)) * (1.0 - smoothstep(0.46, 0.5, abs(o.y)));
+  float face = 1.0 - smoothstep(0.18, 0.3, max(abs(across), abs(o.y)) - 0.12);
+  float k = 1.0 - seam * 0.22 - grain * 0.035 * (1.0 - face);
+  diffuseColor.rgb *= k;
+  diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.62, 0.52, 0.36), band * 0.75);
+}
+`;
+
 /**
  * Node bodies: satin porcelain with soft rounded edges. Per instance it
  * takes a colour (instanceColor) and `aFx` = (lit, finish):
  *  - lit adds a little of the body colour as emission (hover; zero otherwise);
  *  - finish blends from a light satin polish (0) to fully matte (1, "settled").
  * No rim light and no glow: the shape reads from the lighting alone.
+ * A world can ask for ice or bamboo instead; the state colours stay the same.
  */
-export function createNodeMaterial(): MeshPhysicalMaterial {
+export function createNodeMaterial(finish: NodeFinish = 'porcelain'): MeshPhysicalMaterial {
+  const ice = finish === 'ice';
   const material = new MeshPhysicalMaterial({
     color: 0xffffff,
-    roughness: 0.46,
+    roughness: ice ? 0.22 : finish === 'bamboo' ? 0.62 : 0.46,
     metalness: 0,
-    clearcoat: 0.3,
-    clearcoatRoughness: 0.42,
-    ior: 1.45,
-    specularIntensity: 0.45,
-    envMapIntensity: 1,
+    clearcoat: ice ? 0.55 : finish === 'bamboo' ? 0.12 : 0.3,
+    clearcoatRoughness: ice ? 0.2 : 0.42,
+    ior: ice ? 1.31 : 1.45,
+    specularIntensity: ice ? 0.75 : 0.45,
+    envMapIntensity: ice ? 1.05 : 1,
   });
   material.onBeforeCompile = (shader: WebGLProgramParametersWithUniforms) => {
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nattribute vec2 aFx;\nvarying vec2 vFx;')
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvFx = aFx;');
-    shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\nvarying vec2 vFx;')
+      .replace('#include <common>', '#include <common>\nattribute vec2 aFx;\nvarying vec2 vFx;\nvarying vec3 vObj;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvFx = aFx;\nvObj = position;');
+    let fragment = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying vec2 vFx;\nvarying vec3 vObj;')
       .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = mix(roughnessFactor, 0.8, vFx.y);')
       .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += diffuseColor.rgb * vFx.x;')
       .replace(
         '#include <lights_physical_fragment>',
         '#include <lights_physical_fragment>\n#ifdef USE_CLEARCOAT\nmaterial.clearcoat *= (1.0 - vFx.y);\n#endif',
       );
+    if (ice) {
+      fragment = fragment
+        .replace('#include <color_fragment>', `#include <color_fragment>\n${ICE_FRAGMENT}`)
+        .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>\n${ICE_EMISSIVE}`);
+    } else if (finish === 'bamboo') {
+      fragment = fragment.replace('#include <color_fragment>', `#include <color_fragment>\n${BAMBOO_FRAGMENT}`);
+    }
+    shader.fragmentShader = fragment;
   };
-  material.customProgramCacheKey = () => 'aqvl-node-v3';
+  material.customProgramCacheKey = () => `aqvl-node-v3-${finish}`;
   return material;
 }
 

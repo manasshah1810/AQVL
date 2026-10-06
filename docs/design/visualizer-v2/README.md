@@ -129,6 +129,52 @@ The first v2 pass measured 10.5 / 21.8 ms on High for bubble sort. Most of the d
 * **LAYOUT / POSITION / CAMERA** now work. They were silently ignored before.
 * **Loop cursors** (`i = 3`, `low … high` window) are derived from the source and the recorded variables for every array program, not only the Loops / Searching categories.
 
+## Worlds
+
+The **World** picker in the visualizer's toolbar (remembered per browser) puts the structures somewhere
+other than the studio. A world is not a skin: it brings a place, a crew of two animals who take part in
+every step, and things to click. The state colours never change, so a compared cell is the same amber
+everywhere, and the Key explains the crew.
+
+| Penguins: an ice shelf under the aurora | Pandas: a bamboo grove at dawn |
+|---|---|
+| ![](worlds/penguins-compare.png) Pip and Nori flank a compare | ![](worlds/pandas-swap.png) Bao and Mochi push a swap |
+| ![](worlds/penguins-slide.png) a long trip is a belly slide (with snow spray) | ![](worlds/pandas-roll.png) a trip is a roll, a whole number of turns |
+| ![](worlds/penguins-finale.png) everyone cheers when the run ends | ![](worlds/pandas-finale.png) the onlookers by the koi pond join in |
+
+**The crew** (`stage/worlds/cast.ts`) is a pure function of (step, time), like the rest of the stage, so
+scrubbing in any order gives the same picture. Each step has two *stations*: the step's first two actors
+are flanked from the gaps in front of them, each animal keeping its side so they never cross; with one
+actor the nearer animal attends and the other watches. At the start of a step the animal travels from its
+old station to the new one: penguins waddle, or belly-slide beyond 2.6 units; pandas shuffle, or curl up
+and roll a whole number of turns so they land upright. On arrival it acts out the step: *inspect* (compare),
+*push* (swap, move), *tap* (write, link), *present* (create), *shrug* (remove, discard), *point* (visit,
+traverse, mark), *cheer* (settle, and the last step). A short bubble says the same thing (`?`, `heave!`,
+`=12`, `sorted!`); hovering an animal names it and the cell it is attending to. Cells moving through an
+animal's spot push it forward, and the two never overlap. The camera's framing keeps room for the crew
+in front of every cell. Calm mode turns travel into plain glides and stops all ambient motion.
+
+**The places** (`stage/worlds/three/`) are laid out around everything the run ever covers
+(`StageModel.footprint()`), pushed back by a structure's height so scenery never appears inside a tall
+tree or graph on screen.
+
+* *Polar* (`PolarWorld.tsx`): polished dark ice with cracks of two sizes, a moon glint and aurora streaks
+  mirrored in it; packed snow and drifts; ice cliffs behind; snowfall; a night sky with stars, a moon and
+  aurora curtains for whoever orbits round. Ice-block cells: frosted vertical edges, a faint cool rim.
+  Click the igloo (a chick peeks out), the fishing hole (a fish leaps), the crystals (they chime with
+  sparkles), the onlookers (they hop) or the snow (a puff).
+* *Grove* (`BambooWorld.tsx`): a swept-earth clearing with raked rings and a pebble border; bamboo and
+  grass that sway (instanced, in the vertex shader); light shafts; drifting leaves and fireflies; stone
+  lanterns; a koi pond; a shishi-odoshi that fills, tips and pours on its own; hazy hills beyond.
+  Bamboo-crate cells: upright slats and lashed bands, the face centre left clear for the value. Click a
+  stalk (it shakes), a lantern (on / off), the pond (a koi leaps), the fountain (it tips), the onlookers
+  (they roll) or the ground (a swirl of leaves).
+
+Clicks no longer stop the camera following; only a real drag does. Bubbles are plain DOM placed by
+projecting each animal's head, not one React root per bubble. Measured as above (headless Chrome, High,
+playing bubble sort): studio 1.8 / 3.6 ms, penguins 5.5 / 10.3 ms, pandas 5.9 / 10.6 ms (median / p95).
+The sky and hills draw after the ground, so their shaders only run where they can be seen.
+
 ## Checks
 
 ```

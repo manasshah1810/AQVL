@@ -17,3 +17,8 @@ export { springResidual, springProgress, settleTime, massFor } from './motion/sp
 export { QUALITY, initialTier } from './three/quality';
 export type { QualityTier } from './three/quality';
 export type { StageFonts } from './three/LabelLayer';
+export { WORLDS, WORLD_IDS, isStageWorld, hasCast } from './worlds/types';
+export type { StageWorld, WorldInfo } from './worlds/types';
+export { WORLD_PALETTES, paletteFor } from './worlds/palettes';
+export { sampleCast, stationsAt, poseFor, createCast, CREW_SIZE } from './worlds/cast';
+export type { CastMember, CastPose, CastGait, CastStyle, Station } from './worlds/cast';

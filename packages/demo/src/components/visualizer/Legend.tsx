@@ -1,6 +1,6 @@
 import React from 'react';
-import type { StageTheme } from '@aqvl/renderer';
-import { STAGE_PALETTES } from '@aqvl/renderer';
+import type { StageTheme, StageWorld } from '@aqvl/renderer';
+import { STAGE_PALETTES, WORLDS } from '@aqvl/renderer';
 import type { EventTone } from './events';
 import { ToneGlyph } from './ToneGlyph';
 
@@ -15,7 +15,8 @@ const ROWS: { state: keyof (typeof STAGE_PALETTES)['dark']['states']; tone: Even
 ];
 
 /** What each colour means, and the shape or motion that says the same thing without colour. */
-export function Legend({ theme, id }: { theme: StageTheme; id: string }) {
+export function Legend({ theme, id, world = 'studio' }: { theme: StageTheme; id: string; world?: StageWorld }) {
+  const crew = WORLDS[world].crew;
   const palette = STAGE_PALETTES[theme];
   return (
     <aside className="vz-panel vz-legend" id={id} aria-label="Legend">
@@ -31,6 +32,12 @@ export function Legend({ theme, id }: { theme: StageTheme; id: string }) {
           </li>
         ))}
       </ul>
+      {world !== 'studio' && (
+        <p className="vz-legend__crew">
+          <b>{crew[0]}</b> and <b>{crew[1]}</b> stand beside the cells each step is about and act it out: they inspect a compare, push a swap, tap a write, point at a visit,
+          shrug at what is ruled out, and cheer when it settles. Click them, or the scenery.
+        </p>
+      )}
       <p className="vz-legend__keys">
         <kbd>Space</kbd> play · <kbd>←</kbd>
         <kbd>→</kbd> step · <kbd>Home</kbd>/<kbd>End</kbd> · <kbd>[</kbd>

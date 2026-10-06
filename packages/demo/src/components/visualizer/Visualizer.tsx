@@ -4,11 +4,15 @@ import type { ExecutionTrace } from '@aqvl/runtime';
 import {
   StageCanvas,
   initialTier,
+  isStageWorld,
   usePlayhead,
+  WORLDS,
+  WORLD_IDS,
   type Playhead,
   type QualityTier,
   type StageStatus,
   type StageTheme,
+  type StageWorld,
 } from '@aqvl/renderer';
 import monoFont from '@fontsource/jetbrains-mono/files/jetbrains-mono-latin-500-normal.woff?url';
 import monoItalicFont from '@fontsource/jetbrains-mono/files/jetbrains-mono-latin-400-italic.woff?url';
@@ -55,6 +59,17 @@ const GlyphReplay = () => (
   </svg>
 );
 
+const WORLD_KEY = 'aqvl-stage-world';
+
+function storedWorld(): StageWorld {
+  try {
+    const v = typeof localStorage === 'undefined' ? null : localStorage.getItem(WORLD_KEY);
+    return isStageWorld(v) ? v : 'studio';
+  } catch {
+    return 'studio';
+  }
+}
+
 function isTyping(target: EventTarget | null): boolean {
   const el = target as HTMLElement | null;
   if (!el) return false;
@@ -85,6 +100,15 @@ export function Visualizer({ trace, playhead, source, theme, reducedMotion, comp
   const toggleCalm = useCallback(() => setCalmOverride((v) => !(v ?? reducedMotion)), [reducedMotion]);
   const [follow, setFollow] = useState(true);
   const [tier, setTier] = useState<QualityTier>(initialTier);
+  const [world, setWorldState] = useState<StageWorld>(storedWorld);
+  const setWorld = useCallback((w: StageWorld) => {
+    setWorldState(w);
+    try {
+      localStorage.setItem(WORLD_KEY, w);
+    } catch {
+      // Private mode: the choice lasts for this visit only.
+    }
+  }, []);
   const [showKey, setShowKey] = useState(false);
   const [showWatch, setShowWatch] = useState(() => !compact && (typeof window === 'undefined' || window.innerWidth >= 900));
   const [status, setStatus] = useState<StageStatus>({ kind: 'ready' });
@@ -198,6 +222,7 @@ export function Visualizer({ trace, playhead, source, theme, reducedMotion, comp
           playhead={playhead}
           source={source}
           theme={theme}
+          world={world}
           calm={calm}
           follow={follow}
           onFollowChange={setFollow}
@@ -247,6 +272,16 @@ export function Visualizer({ trace, playhead, source, theme, reducedMotion, comp
           <button type="button" className={`vz-tool${calm ? ' is-on' : ''}`} aria-pressed={calm} onClick={toggleCalm} title="Calm motion: no arcs, ripples or travelling dots (C)">
             Calm
           </button>
+          <label className="vz-tool vz-tool--select" title={`World: ${WORLDS[world].blurb}`}>
+            <span className="sr-only">World</span>
+            <select value={world} onChange={(e) => setWorld(e.target.value as StageWorld)} aria-label="World">
+              {WORLD_IDS.map((w) => (
+                <option key={w} value={w}>
+                  {WORLDS[w].label}
+                </option>
+              ))}
+            </select>
+          </label>
           <label className="vz-tool vz-tool--select" title="Rendering quality (drops automatically when frames run long)">
             <span className="sr-only">Quality</span>
             <select value={tier} onChange={(e) => setTier(e.target.value as QualityTier)}>
@@ -268,7 +303,7 @@ export function Visualizer({ trace, playhead, source, theme, reducedMotion, comp
         </div>
 
         <div className="vz-side" ref={sideRef}>
-          {showKey && <Legend theme={theme} id={legendId} />}
+          {showKey && <Legend theme={theme} id={legendId} world={world} />}
           {showWatch && !showKey && <WatchPanel frame={shownFrame} previous={trace.frames[snap.step - 1]} />}
         </div>
 

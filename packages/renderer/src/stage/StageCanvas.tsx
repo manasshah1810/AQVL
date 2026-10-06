@@ -8,7 +8,7 @@ import { StageModel } from './model/StageModel';
 import { ENVELOPE_SECONDS } from './model/sampler';
 import type { Playhead } from './timeline/Playhead';
 import type { StageTheme } from './look/palette';
-import { STAGE_PALETTES } from './look/palette';
+import type { StageWorld } from './worlds/types';
 import { STAGE_FOV, StageScene } from './three/StageScene';
 import type { StageFonts } from './three/LabelLayer';
 import { QUALITY, lowerTier, type QualityTier } from './three/quality';
@@ -25,6 +25,8 @@ export interface StageCanvasProps {
   /** The program's source (for loop cursors and index names). */
   source?: string;
   theme: StageTheme;
+  /** Where the structures stand: the plain studio, or a world with a crew (penguins, pandas). */
+  world?: StageWorld;
   /** Reduced motion: no arcs, ripples or travelling dots. */
   calm: boolean;
   /** Camera follows the action (off while the viewer orbits by hand). */
@@ -89,9 +91,9 @@ function useFontsReady(fonts: StageFonts): { ready: boolean; error: string | nul
  * rebuilding the canvas, and drops quality tiers when frames run long.
  */
 export function StageCanvas(props: StageCanvasProps) {
-  const { trace, playhead, source, theme, calm, follow, onFollowChange, tier, onTierChange, fonts, onStatus } = props;
+  const { trace, playhead, source, theme, world = 'studio', calm, follow, onFollowChange, tier, onTierChange, fonts, onStatus } = props;
   const insets = useMemo(() => props.insets ?? { top: 0, right: 0 }, [props.insets]);
-  const model = useMemo(() => new StageModel(trace, theme, source), [trace, theme, source]);
+  const model = useMemo(() => new StageModel(trace, theme, source, world), [trace, theme, source, world]);
   const [shown, setShown] = useState<Shown>(() => ({ model, playhead, phase: 'in' }));
   const [canvasKey, setCanvasKey] = useState(0);
   const [lost, setLost] = useState(false);
@@ -132,10 +134,10 @@ export function StageCanvas(props: StageCanvasProps) {
   }, [tier, onTierChange]);
 
   const quality = QUALITY[tier];
-  const background = STAGE_PALETTES[theme].background;
+  const background = model.palette.background;
 
   return (
-    <div style={{ position: 'absolute', inset: 0, background }} data-stage-theme={theme}>
+    <div style={{ position: 'absolute', inset: 0, background }} data-stage-theme={theme} data-stage-world={world}>
       <WebGLBoundary onError={setNoWebgl}>
         {fontState.ready && !noWebgl && (
           <Canvas

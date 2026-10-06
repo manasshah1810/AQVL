@@ -16,6 +16,7 @@ import { LabelLayer, type StageFonts } from './LabelLayer';
 import { NO_SHADOW_LAYER, StageEnvironment } from './StageEnvironment';
 import { NodeShadows } from './NodeShadows';
 import { FrameProbe, QUALITY, type QualityTier } from './quality';
+import { WorldLayer } from '../worlds/three/WorldLayer';
 
 /** A long-ish lens: little perspective distortion, so rows stay rows and columns stay upright. */
 export const STAGE_FOV = 26;
@@ -52,6 +53,33 @@ export function StageScene({ model, playhead, tier, calm, follow, fonts, phase, 
   const probe = useMemo(() => new FrameProbe(), []);
   const phaseStart = useRef(performance.now());
   const lastFrame = useRef(0);
+  // Pointer gesture on the canvas: has it moved far enough to count as a drag?
+  const gesture = useRef({ active: false, moved: false });
+  const gl = useThree((s) => s.gl);
+  useEffect(() => {
+    const el = gl.domElement;
+    let x0 = 0, y0 = 0;
+    const down = (e: PointerEvent) => {
+      x0 = e.clientX;
+      y0 = e.clientY;
+      gesture.current.moved = false;
+    };
+    const move = (e: PointerEvent) => {
+      if (e.buttons && Math.hypot(e.clientX - x0, e.clientY - y0) > 4) gesture.current.moved = true;
+    };
+    const wheel = () => {
+      gesture.current.moved = true;
+    };
+    // Capture phase: seen before the orbit controls handle the same event.
+    el.addEventListener('pointerdown', down, true);
+    el.addEventListener('pointermove', move, true);
+    el.addEventListener('wheel', wheel, { passive: true, capture: true });
+    return () => {
+      el.removeEventListener('pointerdown', down, true);
+      el.removeEventListener('pointermove', move, true);
+      el.removeEventListener('wheel', wheel, true);
+    };
+  }, [gl]);
 
   useEffect(() => {
     phaseStart.current = performance.now();
@@ -114,7 +142,7 @@ export function StageScene({ model, playhead, tier, calm, follow, fonts, phase, 
 
   return (
     <>
-      <StageEnvironment model={model} bounds={bounds} />
+      {model.world === 'studio' ? <StageEnvironment model={model} bounds={bounds} /> : <WorldLayer model={model} bounds={bounds} driver={driver} calm={calm} />}
       <NodeBodies model={model} driver={driver} sphereSegments={quality.sphereSegments} />
       <EdgeRods model={model} driver={driver} />
       <FloorDecals driver={driver} floorY={model.floorY} />
@@ -130,7 +158,15 @@ export function StageScene({ model, playhead, tier, calm, follow, fonts, phase, 
         maxDistance={260}
         maxPolarAngle={Math.PI / 2 - 0.12}
         onStart={() => {
-          if (follow) onFollowChange(false);
+          gesture.current = { active: true, moved: false };
+        }}
+        onChange={() => {
+          // A click (on a node, an animal, the scenery) keeps the camera following; only a real drag takes over.
+          const g = gesture.current;
+          if (g.active && g.moved && follow) onFollowChange(false);
+        }}
+        onEnd={() => {
+          gesture.current.active = false;
         }}
       />
     </>
