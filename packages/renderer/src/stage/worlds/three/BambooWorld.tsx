@@ -5,6 +5,7 @@ import {
   AdditiveBlending,
   BackSide,
   BoxGeometry,
+  BufferGeometry,
   CircleGeometry,
   Color,
   ConeGeometry,
@@ -13,6 +14,7 @@ import {
   DoubleSide,
   DynamicDrawUsage,
   Euler,
+  Float32BufferAttribute,
   Group,
   InstancedBufferAttribute,
   InstancedMesh,
@@ -21,6 +23,7 @@ import {
   MeshStandardMaterial,
   PlaneGeometry,
   PointLight,
+  type DirectionalLight,
   Quaternion,
   ShaderMaterial,
   Shape,
@@ -32,7 +35,7 @@ import {
 import type { StageSample } from '../../model/sampler';
 import { NO_SHADOW_LAYER } from '../../three/StageEnvironment';
 import { FOG, NOISE, fogUniforms, rng } from './glsl';
-import { worldLayout } from './layout';
+import { pandaSpots, worldLayout } from './layout';
 import { buildPanda, createBlobShadow, type Rig } from './rigs';
 import { ParticlePool, hash } from './particles';
 import type { WorldProps } from './PolarWorld';
@@ -164,13 +167,18 @@ void main() {
 /** Sway shared by stalks, leaves and grass: the higher on the stalk, the further it moves. */
 const SWAY = /* glsl */ `
 uniform float uTime;
+uniform float uWind;
 vec2 sway(vec4 s, float h) {
   float since = uTime - s.w;
   float shake = since >= 0.0 && since < 3.0 ? 0.55 * exp(-since * 1.6) * sin(since * 13.0) : 0.0;
   float k = h * h;
-  return vec2(sin(uTime * 0.85 + s.x) * s.y + shake, cos(uTime * 0.63 + s.x * 1.3) * s.y * 0.6 + shake * 0.4) * k;
+  float gust = 1.0 + uWind * 2.2;
+  return vec2(sin(uTime * (0.85 + uWind * 0.5) + s.x) * s.y * gust + shake, cos(uTime * 0.63 + s.x * 1.3) * s.y * 0.6 * gust + shake * 0.4) * k;
 }
 `;
+
+/** Gusts of wind: shared by every swaying thing in the grove (stalks, leaves, grass). */
+const WIND = { value: 0 };
 
 const _m = new Matrix4();
 const _q = new Quaternion();
@@ -190,6 +198,7 @@ function leafShape(length: number, width: number): Shape {
 function swayingMaterial(base: MeshStandardMaterial, uniforms: { uTime: { value: number } }, opts: { stalk: boolean; flutter: boolean; key: string }): MeshStandardMaterial {
   base.onBeforeCompile = (shader: WebGLProgramParametersWithUniforms) => {
     shader.uniforms.uTime = uniforms.uTime;
+    shader.uniforms.uWind = WIND;
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', `#include <common>\nattribute vec4 aSway;\nattribute float aHeight;\nvarying float vH;\n${SWAY}`)
       .replace(
@@ -312,6 +321,17 @@ export function BambooWorld({ model, bounds, driver, calm, clock }: WorldProps) 
         });
       }
     }
+    // Clumps of bamboo that stand in the front strip, where pandas stop to eat: they rustle when a panda is at them.
+    const spots = pandaSpots(model);
+    const snackStalks: number[][] = [];
+    spots.snack.forEach((clump) => {
+      const ids: number[] = [];
+      clump.stalks.forEach(([x, z], i) => {
+        ids.push(stalks.length);
+        stalks.push({ x, z, h: 6.2 + i * 0.8, thick: 0.15 + i * 0.015, phase: r() * 6.28, amp: 0.05 + r() * 0.04, tint: r() });
+      });
+      snackStalks.push(ids);
+    });
     const nearStalks = stalks.length;
     // A second, deeper ring for density behind.
     for (let i = 0; i < 46; i++) {
@@ -596,11 +616,87 @@ export function BambooWorld({ model, bounds, driver, calm, clock }: WorldProps) 
     fountain.add(stream);
     group.add(fountain);
 
+    // The bamboo gym: a lashed deck on bamboo legs, a ladder of two poles with rungs, a beam with a rope and a bead.
+    const gym = spots.gym;
+    const strut = (ax: number, ay: number, az: number, bx: number, by: number, bz: number, radius: number, mat: MeshStandardMaterial) => {
+      const len = Math.hypot(bx - ax, by - ay, bz - az);
+      const mesh = new Mesh(keep(new CylinderGeometry(radius, radius * 1.06, len, 9)), mat);
+      mesh.position.set((ax + bx) / 2, floorY + (ay + by) / 2, (az + bz) / 2);
+      mesh.quaternion.setFromUnitVectors(new Vector3(0, 1, 0), new Vector3(bx - ax, by - ay, bz - az).normalize());
+      group.add(mesh);
+      return mesh;
+    };
+    const H = gym.height;
+    for (const sx of [-0.62, 0.62]) {
+      strut(gym.x + sx, 0, gym.z - 0.42, gym.x + sx, 2.15, gym.z - 0.42, 0.075, caneMat);
+      strut(gym.x + sx, 0, gym.z + 0.46, gym.x + sx, H - 0.04, gym.z + 0.46, 0.065, caneDark);
+      strut(gym.x + sx * 0.88, H - 0.1, gym.z - 0.5, gym.x + sx * 0.88, H - 0.1, gym.z + 0.55, 0.05, caneDark);
+    }
+    for (let i = 0; i < 8; i++) strut(gym.x - 0.7, H, gym.z - 0.46 + i * 0.13, gym.x + 0.7, H, gym.z - 0.46 + i * 0.13, 0.055, i % 2 ? caneMat : caneDark);
+    strut(gym.x - 0.7, 2.15, gym.z - 0.42, gym.x + 0.7, 2.15, gym.z - 0.42, 0.06, caneDark);
+    for (const ox of [-0.2, 0.2]) strut(gym.base[0] + ox, 0, gym.base[1], gym.top[0] + ox, H, gym.top[1], 0.055, caneMat);
+    for (let i = 1; i <= 4; i++) {
+      const u = i / 5;
+      strut(gym.base[0] - 0.2 + (gym.top[0] - gym.base[0]) * u, H * u, gym.base[1] + (gym.top[1] - gym.base[1]) * u, gym.base[0] + 0.2 + (gym.top[0] - gym.base[0]) * u, H * u, gym.base[1] + (gym.top[1] - gym.base[1]) * u, 0.032, caneDark);
+    }
+    // A rope with a bead hangs from the beam and sways in the wind.
+    const dangle = new Group();
+    dangle.position.set(gym.x + 0.25, floorY + 2.15, gym.z - 0.42);
+    const cord = new Mesh(keep(new CylinderGeometry(0.012, 0.012, 1.1, 5)), keep(new MeshStandardMaterial({ color: '#c9a66b', roughness: 0.9 })));
+    cord.position.y = -0.55;
+    dangle.add(cord);
+    const bead = new Mesh(keep(new SphereGeometry(0.1, 12, 10)), keep(new MeshStandardMaterial({ color: '#d9553b', roughness: 0.5 })));
+    bead.position.y = -1.12;
+    dangle.add(bead);
+    group.add(dangle);
+
+    // Butterflies in the clearing and birds far off over the grove, each a pair of wings that beat.
+    const flyer = (count: number, wing: number, seedBase: number, colors: string[], fog: boolean) => {
+      const geo = keep(new BufferGeometry());
+      // Two triangles meeting at the body: a V of wings (x is the span), flapped in the shader.
+      geo.setAttribute('position', new Float32BufferAttribute([0, 0, 0.5, -1, 0, 0.9, -0.85, 0, -0.55, 0, 0, 0.5, 1, 0, 0.9, 0.85, 0, -0.55], 3));
+      const phase = new InstancedBufferAttribute(new Float32Array(count), 1);
+      for (let i = 0; i < count; i++) phase.setX(i, hash(i + seedBase, 3) * 6.28);
+      geo.setAttribute('aPhase', phase);
+      const mat = keep(
+        new ShaderMaterial({
+          uniforms: { uTime: time, uWing: { value: wing } },
+          vertexShader: /* glsl */ `
+uniform float uTime;
+uniform float uWing;
+attribute float aPhase;
+varying vec3 vColor;
+void main() {
+  vec3 p = position * uWing;
+  float beat = sin(uTime * ${wing > 0.5 ? '4.2' : '15.0'} + aPhase);
+  p.y += beat * abs(position.x) * uWing * ${wing > 0.5 ? '0.35' : '0.9'};
+  vColor = instanceColor;
+  gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(p, 1.0);
+}`,
+          fragmentShader: /* glsl */ `
+varying vec3 vColor;
+void main() { gl_FragColor = vec4(vColor, 1.0); }`,
+          side: DoubleSide,
+          fog: false,
+          toneMapped: false,
+        }),
+      );
+      void fog;
+      const mesh = new InstancedMesh(geo, mat, count);
+      mesh.instanceMatrix.setUsage(DynamicDrawUsage);
+      for (let i = 0; i < count; i++) mesh.setColorAt(i, new Color(colors[i % colors.length]));
+      mesh.frustumCulled = false;
+      group.add(mesh);
+      return mesh;
+    };
+    const butterflies = flyer(5, 0.12, 100, ['#f4a52e', '#f7f3e3', '#e9728f', '#6fa8f0', '#f6d84a'], false);
+    const birds = flyer(7, 0.8, 200, ['#2e3a3f', '#3b474b'], true);
+
     group.traverse((o) => {
       o.frustumCulled = false;
     });
-    return { group, fountain, pivot, fx, fz, stalks, stalkMesh, stalkSway, leafMesh, leafSway, leavesOf, grassMesh, rockMesh, lanterns, px, pz, pondMat, koi, falling, disposables };
-  }, [cx, cz, halfX, halfZ, lift, clearX, clearZ, floorY, time]);
+    return { group, gym, snackStalks, dangle, butterflies, birds, fountain, pivot, fx, fz, stalks, stalkMesh, stalkSway, leafMesh, leafSway, leavesOf, grassMesh, rockMesh, lanterns, px, pz, pondMat, koi, falling, disposables };
+  }, [cx, cz, halfX, halfZ, lift, clearX, clearZ, floorY, time, model]);
 
   useEffect(
     () => () => {
@@ -672,6 +768,9 @@ void main() {
 
   const pool = useMemo(() => new ParticlePool(220, false), []);
   useEffect(() => () => pool.dispose(), [pool]);
+  const keyLight = useRef<DirectionalLight>(null);
+  const rustled = useRef<Float32Array>(new Float32Array(0));
+  const bursts = useRef<{ x: number; z: number; y: number; t: number }[]>([]);
   const events = useRef({ fountainAt: 0, koi: -100, lantern: [1, 1], lanternAt: [-100, -100], onlooker: [-100, -100], puffs: [] as { x: number; z: number; t: number }[], shakes: [] as { stalk: number; t: number }[], endAt: -1, lastK: -1 });
 
   useEffect(
@@ -681,6 +780,14 @@ void main() {
         const wall = performance.now() / 1000;
         const ev = events.current;
         time.value = now;
+
+        // Wind: now and then a gust sweeps through the bamboo, leaves and grass (still in calm mode).
+        WIND.value = calm ? 0 : Math.max(0, Math.sin(now * 0.31) + Math.sin(now * 0.17 + 2.0) - 0.85) * 0.55;
+        // Light: clouds drift over the sun, the grove brightens and dims a little.
+        if (keyLight.current && !calm) keyLight.current.intensity = palette.lights.keyIntensity * (1 + 0.07 * Math.sin(now * 0.13) * Math.sin(now * 0.07 + 1.0));
+        // The rope under the beam of the gym sways with the wind.
+        scene.dangle.rotation.z = calm ? 0 : 0.1 * Math.sin(now * 1.3) + WIND.value * 0.5;
+        scene.dangle.rotation.x = calm ? 0 : 0.06 * Math.sin(now * 0.9 + 1);
 
         const last = sample.k === model.frameCount - 1 && sample.k > 0;
         if (last && ev.lastK !== sample.k) ev.endAt = wall;
@@ -765,6 +872,61 @@ void main() {
           ev.shakes = [];
         }
 
+        // The grove reacts to the pandas: bamboo they brush past shakes and drops a few leaves; a stalk they chew from rustles now and then.
+        if (!calm) {
+          if (rustled.current.length !== scene.stalks.length) rustled.current = new Float32Array(scene.stalks.length).fill(-100);
+          const last = rustled.current;
+          const shake = (si: number, strong: boolean) => {
+            if (now - last[si] < 1.6) return;
+            last[si] = now;
+            ev.shakes.push({ stalk: si, t: now });
+            const st = scene.stalks[si];
+            bursts.current.push({ x: st.x, z: st.z, y: 2.2 + hash(si, 5) * 2.2, t: wall });
+            if (strong) bursts.current.push({ x: st.x + 0.1, z: st.z, y: 3 + hash(si, 6), t: wall + 0.2 });
+            if (bursts.current.length > 24) bursts.current.splice(0, bursts.current.length - 24);
+          };
+          clock.crew.forEach((c, i) => {
+            if (c.speed > 0.6) {
+              for (let si = 0; si < scene.stalks.length; si++) {
+                const st = scene.stalks[si];
+                if (Math.abs(st.x - c.x) < 1.15 && Math.abs(st.z - c.z) < 1.15) shake(si, c.speed > 2.4);
+              }
+            }
+            const patch = clock.chew[i];
+            if (patch >= 0 && scene.snackStalks[patch]) {
+              const ids = scene.snackStalks[patch];
+              shake(ids[Math.floor(now / 1.7 + i) % ids.length], false);
+            }
+          });
+        }
+
+        // Butterflies wander the clearing in loose loops; birds cross the sky far behind.
+        for (let i = 0; i < 5; i++) {
+          const a = now * (0.22 + hash(i, 7) * 0.2) + hash(i, 8) * 6.28;
+          const bx = cx + (hash(i, 9) - 0.5) * clearX * 1.5, bz = cz + clearZ * (0.1 + hash(i, 10) * 0.55);
+          const x = bx + Math.cos(a) * 1.7 + Math.sin(a * 2.3) * 0.6;
+          const z = bz + Math.sin(a * 1.3) * 1.2;
+          const y = floorY + 1.0 + hash(i, 11) * 1.1 + Math.sin(a * 3.1) * 0.35;
+          const dx = -Math.sin(a) * 1.7, dz = Math.cos(a * 1.3) * 1.56;
+          _p.set(x, y, z);
+          _q.setFromEuler(_e.set(0.25, Math.atan2(dx, dz), Math.sin(now * 2.2 + i) * 0.35, 'YXZ'));
+          _s.setScalar(calm ? 0 : 1);
+          scene.butterflies.setMatrixAt(i, _m.compose(_p, _q, _s));
+        }
+        scene.butterflies.instanceMatrix.needsUpdate = true;
+        for (let i = 0; i < 7; i++) {
+          const speed = 0.9 + hash(i, 12) * 0.6;
+          const f = (((now * speed * 0.012 + hash(i, 13)) % 1) + 1) % 1;
+          const x = cx - clearX * 3.4 + f * clearX * 6.8;
+          const z = cz - clearZ * 3.4 - hash(i, 14) * 12;
+          const y = floorY + 16 + hash(i, 15) * 9 + Math.sin(now * 0.4 + i) * 1.1;
+          _p.set(x, y, z);
+          _q.setFromEuler(_e.set(0, Math.PI / 2 + Math.sin(now * 0.3 + i) * 0.08, Math.sin(now * 0.5 + i * 2) * 0.12, 'YXZ'));
+          _s.setScalar(calm ? 0 : 1);
+          scene.birds.setMatrixAt(i, _m.compose(_p, _q, _s));
+        }
+        scene.birds.instanceMatrix.needsUpdate = true;
+
         // Falling leaves: drift down across the view, tumbling.
         const span = 7;
         for (let i = 0; i < 46; i++) {
@@ -819,9 +981,21 @@ void main() {
             pool.add(pf.x + Math.cos(a) * rr, y, pf.z + Math.sin(a) * rr, c[0], c[1], c[2], (1 - tt / 1.6) * 0.95, 0.13 + hash(p, 12) * 0.05);
           }
         }
+        // Leaves shaken loose from bamboo (by a passing panda or a chewing one) flutter down.
+        bursts.current = bursts.current.filter((b) => wall - b.t < 2.4);
+        for (const b of bursts.current) {
+          const tt = wall - b.t;
+          if (tt < 0) continue;
+          for (let p = 0; p < 7; p++) {
+            const f = tt / (1.6 + hash(p, 61) * 0.8);
+            if (f > 1) continue;
+            const y = floorY + b.y * (1 - f) + 0.05;
+            pool.add(b.x + (hash(p, 62) - 0.5) * 0.9 + Math.sin(tt * 3 + p) * 0.18, y, b.z + 0.2 + (hash(p, 63) - 0.5) * 0.7, 0.5 + hash(p, 64) * 0.25, 0.7 + hash(p, 65) * 0.12, 0.28, (1 - f) * 0.85, 0.075);
+          }
+        }
         pool.end();
 
-        const busy = kt < 3 || ev.puffs.length > 0 || ev.lanternAt.some((t0) => wall - t0 < 0.7) || ev.onlooker.some((t0) => wall - t0 < 1.3);
+        const busy = bursts.current.length > 0 || kt < 3 || ev.puffs.length > 0 || ev.lanternAt.some((t0) => wall - t0 < 0.7) || ev.onlooker.some((t0) => wall - t0 < 1.3);
         if (busy) invalidate();
       }),
     [driver, model, time, scene, onlookers, pool, clock, calm, cx, cz, clearX, clearZ, floorY, invalidate],
@@ -870,7 +1044,7 @@ void main() {
       </mesh>
 
       <hemisphereLight args={[palette.lights.sky, palette.lights.ground, palette.lights.ambient]} />
-      <directionalLight color={palette.lights.key} intensity={palette.lights.keyIntensity} position={[cx - R * 0.6 - 4, floorY + R * 1.4 + 8, cz + R + 8]} />
+      <directionalLight ref={keyLight} color={palette.lights.key} intensity={palette.lights.keyIntensity} position={[cx - R * 0.6 - 4, floorY + R * 1.4 + 8, cz + R + 8]} />
       <directionalLight color={palette.lights.fill} intensity={palette.lights.fillIntensity} position={[cx + R + 6, floorY + R * 0.6 + 3, cz - R * 0.4 - 6]} />
       <Environment resolution={128} frames={1} environmentIntensity={palette.lights.envIntensity}>
         <Lightformer form="rect" color="#fff4dc" intensity={2} position={[-3, 7, 8]} scale={[14, 6, 1]} target={[0, 0, 0]} />

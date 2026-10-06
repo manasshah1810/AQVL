@@ -21,6 +21,7 @@
 
 @import './styles/editor.css' layer(components);
 @import './styles/world-penguin.css';
+@import './styles/world-panda.css';
 
 /* ── Tokens ─────────────────────────────────────────────────── */
 :root {

@@ -87,3 +87,23 @@ describe('Settings page', () => {
     expect(getSettings()).toEqual(DEFAULT_SETTINGS);
   });
 });
+
+describe('the panda world carries across the site', () => {
+  it('shows panda-specific switches, a panda mascot and the tab icon, and drops them again in the studio', () => {
+    const link = document.createElement('link');
+    link.setAttribute('rel', 'icon');
+    link.setAttribute('href', '/favicon.svg');
+    document.head.appendChild(link);
+    setWorld('panda');
+    expect(link.getAttribute('href')).toMatch(/^data:image\/svg\+xml/);
+    expect(document.documentElement.getAttribute('data-world')).toBe('panda');
+    expect(document.querySelector('meta[name="theme-color"]')?.getAttribute('content')).toBe('#121C17');
+    const { container } = render(<Settings />);
+    expect(screen.getByRole('switch', { name: /Falling leaves/ })).toBeTruthy();
+    expect(screen.getByRole('switch', { name: /Panda mascots/ })).toBeTruthy();
+    expect(container.querySelector('.pnd')).toBeTruthy();
+    setWorld('studio');
+    expect(link.getAttribute('href')).toBe('/favicon.svg');
+    link.remove();
+  });
+});

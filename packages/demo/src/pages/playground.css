@@ -558,8 +558,10 @@
       border-bottom: 1px solid var(--line);
     }
 
+    /* Visualization first: on a narrow screen the stage comes before the code. */
     .pg-stage {
       flex: none;
+      order: -1;
     }
 
     .pg-viewport {

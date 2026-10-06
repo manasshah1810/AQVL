@@ -1,4 +1,5 @@
 import type { IdleAct } from './three/rigs';
+import { ROLL_RADIUS } from './cast';
 
 /**
  * What the animals do when nobody asks anything of them. Not a pure
@@ -22,7 +23,13 @@ export interface Spots {
   bucket?: [number, number];
   hole?: [number, number];
   igloo?: { door: [number, number]; approach: [number, number]; center: [number, number] };
+  /** Pandas: stalks to chew (the animal stands in front of each, `at`, facing `face`), the bamboo gym, the pond's edge. */
+  snack?: { at: [number, number]; face: number }[];
+  gym?: { base: [number, number]; top: [number, number]; deck: [number, number]; height: number; drop: [number, number] };
+  pond?: { at: [number, number]; face: number };
 }
+
+export type IdleStyle = 'penguin' | 'panda';
 
 export interface IdleContext {
   /** The animal may roam (the run is stopped and the step is at rest). */
@@ -46,8 +53,14 @@ export interface IdleOut {
   x: number;
   z: number;
   yaw: number;
-  gait: 'stand' | 'walk' | 'glide';
+  gait: 'stand' | 'walk' | 'glide' | 'roll' | 'climb' | 'tumble';
   gaitPhase: number;
+  /** Height of the feet above the floor (on the bamboo gym's deck), the lean of a climb, and whether it is on a prop of the world (so no climbing gear is drawn). */
+  y: number;
+  climbSlope: number;
+  onProp: boolean;
+  /** Pandas: which snack stalk it is chewing (-1: none), so the grove can shake it. */
+  stalk: number;
   gaitWeight: number;
   act: IdleAct;
   actT: number;
@@ -64,11 +77,16 @@ export interface IdleOut {
 type Task =
   | { k: 'walk'; x: number; z: number; speed: number; face?: number }
   | { k: 'go'; x: number; z: number; speed: number }
-  | { k: 'act'; act: IdleAct; dur: number; t: number; face?: number; fish?: 'eat' | 'take' | 'peer' }
+  | { k: 'act'; act: IdleAct; dur: number; t: number; face?: number; fish?: 'eat' | 'take' | 'peer'; stalk?: number }
   | { k: 'sync'; t: number; timeout: number; face: number }
   | { k: 'hide'; dur: number; t: number }
   | { k: 'face'; yaw: number }
-  | { k: 'splash' };
+  | { k: 'splash' }
+  | { k: 'ascend'; ax: number; az: number; bx: number; bz: number; y0: number; y1: number; dur: number; t: number }
+  | { k: 'fall'; x: number; z: number; tx: number; tz: number; y0: number; t: number }
+  | { k: 'roll'; x: number; z: number; sx: number; sz: number; turns: number; speed: number; t: number }
+  | { k: 'mark'; stalk: number }
+  | { k: 'rgo'; x: number; z: number; speed: number };
 
 /** Counts meetings between friends, so each can tell the other has already moved on. */
 let meetings = 0;
@@ -77,6 +95,10 @@ const WALK = 1.55;
 const RUSH = 5.2;
 const STRIDE = 0.27;
 const R = 0.5;
+/** Pandas amble: a longer stride, a gentler pace, a trot rather than a slide when in a hurry. */
+const PANDA = { walk: 1.45, rush: 3.4, stride: 0.46, climb: 2.3 };
+const FALL_TIME = 0.9;
+const RECOVER_TIME = 1.25;
 
 function mulberry32(seed: number): () => number {
   let a = seed >>> 0;
@@ -131,9 +153,19 @@ export class IdleBrain {
   private actName: IdleAct = 'none';
   private actT = 0;
   private actWeight = 0;
+  private y = 0;
+  private slope = 0;
+  private onProp = false;
+  private stalk = -1;
+  private rollPhase = 0;
+  private tumblePhase = 0;
 
-  constructor(seed: number, readonly index: number) {
+  constructor(seed: number, readonly index: number, readonly style: IdleStyle = 'penguin') {
     this.rng = mulberry32(seed * 7919 + index * 104729 + 13);
+  }
+
+  private get walkSpeed(): number {
+    return this.style === 'panda' ? PANDA.walk : WALK;
   }
 
   /** Forget everything (a new scene, a new run). */
@@ -146,6 +178,9 @@ export class IdleBrain {
     this.fish = 0;
     this.hiddenWeight = 0;
     this.waiting = false;
+    this.y = 0;
+    this.onProp = false;
+    this.stalk = -1;
   }
 
   get roaming(): boolean {
@@ -163,7 +198,7 @@ export class IdleBrain {
   invite(x: number, z: number, face: number, others: Task[]): void {
     this.doing = 'play';
     this.fish = 0;
-    this.tasks = [{ k: 'walk', x, z, speed: WALK }, { k: 'sync', t: 0, timeout: 7, face }, ...others];
+    this.tasks = [{ k: 'walk', x, z, speed: this.walkSpeed }, { k: 'sync', t: 0, timeout: 7, face }, ...others];
   }
 
   update(dt: number, ctx: IdleContext): IdleOut {
@@ -173,6 +208,8 @@ export class IdleBrain {
     this.gaitW = 0;
     this.actName = 'none';
     this.actWeight = 0;
+    this.slope = 0;
+    this.stalk = -1;
 
     if (this.tasks.length === 0) this.doing = '';
     if (!ctx.free) {
@@ -181,12 +218,21 @@ export class IdleBrain {
       this.waiting = false;
       this.hiddenWeight = 0;
       this.fish = 0;
+      if (this.away && this.y > 0.02) {
+        // Up on the bamboo gym when the run starts again: hop down at once, the way it would.
+        this.y = Math.max(0, this.y - 7 * dt);
+        this.onProp = this.y > 0.02;
+        this.gait = 'stand';
+        return this.out();
+      }
+      this.y = 0;
+      this.onProp = false;
       if (this.away) {
         // Back to the station, at a trot, the moment the run moves again.
         const dx = ctx.home.x - this.x;
         const dz = ctx.home.z - this.z;
         const d = Math.hypot(dx, dz);
-        const speed = d > 1.4 ? RUSH : WALK * 1.6;
+        const speed = this.style === 'panda' ? (d > 1.4 ? PANDA.rush : PANDA.walk * 1.5) : d > 1.4 ? RUSH : WALK * 1.6;
         const step = Math.min(d, speed * dt);
         if (d < 0.03) {
           this.x = ctx.home.x;
@@ -222,7 +268,7 @@ export class IdleBrain {
       z: this.z,
       yaw: this.yaw,
       gait: this.gait,
-      gaitPhase: this.phase,
+      gaitPhase: this.gait === 'roll' ? this.rollPhase : this.gait === 'tumble' ? this.tumblePhase : this.phase,
       gaitWeight: this.gaitW,
       act: this.actName,
       actT: this.actT,
@@ -231,6 +277,10 @@ export class IdleBrain {
       hide: this.hiddenWeight,
       away: this.away,
       splash: this.splash,
+      y: this.y,
+      climbSlope: this.slope,
+      onProp: this.y > 0.02,
+      stalk: this.stalk,
     };
   }
 
@@ -240,8 +290,13 @@ export class IdleBrain {
     this.yaw += wrap(heading - this.yaw) * Math.min(1, 9 * dt);
     this.x += (dx / d) * step;
     this.z += (dz / d) * step;
-    this.phase += (step / STRIDE) * Math.PI * (speed > WALK * 1.8 ? 0.25 : 1);
-    this.gait = speed > WALK * 2 ? 'glide' : 'walk';
+    if (this.style === 'panda') {
+      this.phase += (step / PANDA.stride) * Math.PI;
+      this.gait = 'walk';
+    } else {
+      this.phase += (step / STRIDE) * Math.PI * (speed > WALK * 1.8 ? 0.25 : 1);
+      this.gait = speed > WALK * 2 ? 'glide' : 'walk';
+    }
     this.gaitW = 1;
   }
 
@@ -284,7 +339,8 @@ export class IdleBrain {
         if (task.face !== undefined) this.yaw += wrap(task.face - this.yaw) * Math.min(1, 5 * dt);
         this.actName = task.act;
         this.actT = task.t;
-        this.actWeight = 1;
+        this.actWeight = this.style === 'panda' && (task.act === 'sit' || task.act === 'chew' || task.act === 'drink') ? Math.max(0, Math.min(1, (task.dur - task.t) / 0.5)) : 1;
+        if (task.stalk !== undefined) this.stalk = task.stalk;
         if (task.fish === 'take') this.fish = task.t > 0.55 ? 1 : 0;
         else if (task.fish === 'eat') this.fish = task.t < 0.9 ? 1 : Math.max(0, 1 - (task.t - 0.9) / 0.6);
         if (task.t >= task.dur) {
@@ -323,6 +379,92 @@ export class IdleBrain {
         this.splash = true;
         this.tasks.shift();
         return;
+      case 'mark':
+        this.stalk = task.stalk;
+        this.tasks.shift();
+        return;
+      case 'rgo': {
+        // Route from here, rolling: one roll per leg of the way round the cells.
+        let px = this.x, pz = this.z;
+        const legs = this.around(ctx, task.x, task.z).map(([x, z]) => {
+          const dist = Math.hypot(x - px, z - pz);
+          const turns = Math.max(1, Math.round(dist / (2 * Math.PI * ROLL_RADIUS * 1.4)));
+          const t: Task = { k: 'roll', x, z, sx: px, sz: pz, turns, speed: task.speed, t: 0 };
+          px = x;
+          pz = z;
+          return t;
+        });
+        this.tasks.splice(0, 1, ...legs);
+        return;
+      }
+      case 'ascend': {
+        task.t += dt;
+        const u = Math.min(1, task.t / task.dur);
+        const e = u * u * (3 - 2 * u) * 0.3 + u * 0.7;
+        this.x = task.ax + (task.bx - task.ax) * e;
+        this.z = task.az + (task.bz - task.az) * e;
+        this.y = task.y0 + (task.y1 - task.y0) * e;
+        this.onProp = true;
+        this.gait = 'climb';
+        this.gaitW = 1;
+        this.phase = ((this.y * 9) % (Math.PI * 200));
+        this.slope = Math.atan2(Math.hypot(task.bx - task.ax, task.bz - task.az), Math.max(0.2, Math.abs(task.y1 - task.y0)));
+        this.yaw += wrap(CAMERA_FACE - this.yaw) * Math.min(1, 6 * dt);
+        if (u >= 1) this.tasks.shift();
+        return;
+      }
+      case 'fall': {
+        // Slips off the edge of the deck: arms flailing, down to the ground, a heap, a shake of the head.
+        task.t += dt;
+        const total = FALL_TIME + RECOVER_TIME;
+        const t = Math.min(task.t, total);
+        this.gait = 'tumble';
+        this.gaitW = 1;
+        if (t < FALL_TIME) {
+          const u = t / FALL_TIME;
+          this.tumblePhase = u * 0.999;
+          this.y = task.y0 * Math.max(0, 1 - u * u);
+          const e = u * u * (3 - 2 * u);
+          this.x = this.x + (task.tx - this.x) * Math.min(1, dt * 4);
+          this.z = this.z + (task.tz - this.z) * Math.min(1, dt * 4);
+          void e;
+          this.onProp = this.y > 0.05;
+        } else {
+          this.tumblePhase = 1 + (t - FALL_TIME) / RECOVER_TIME;
+          this.y = 0;
+          this.onProp = false;
+        }
+        this.slope = 0;
+        if (task.t >= total) {
+          this.y = 0;
+          this.onProp = false;
+          this.tasks.shift();
+        }
+        return;
+      }
+      case 'roll': {
+        // Curled into a ball and rolling along: a whole number of turns, so it lands on its feet.
+        const total = Math.hypot(task.x - task.sx, task.z - task.sz);
+        const dx = task.x - this.x;
+        const dz = task.z - this.z;
+        const d = Math.hypot(dx, dz);
+        task.t += dt;
+        if (d < 0.05) {
+          this.rollPhase = task.turns * Math.PI * 2;
+          this.tasks.shift();
+          return;
+        }
+        const ramp = Math.min(1, task.t / 0.25, d / 0.5 + 0.2);
+        const step = Math.min(d, task.speed * (0.35 + 0.65 * ramp) * dt);
+        const heading = Math.atan2(dx, dz);
+        this.yaw += wrap(heading - this.yaw) * Math.min(1, 10 * dt);
+        this.x += (dx / d) * step;
+        this.z += (dz / d) * step;
+        this.rollPhase = (1 - (d - step) / Math.max(total, 1e-3)) * task.turns * Math.PI * 2;
+        this.gait = 'roll';
+        this.gaitW = Math.min(1, ramp * 1.3, d / 0.3);
+        return;
+      }
       default:
         return;
     }
@@ -374,11 +516,168 @@ export class IdleBrain {
   }
 
   /** A way to (tx, tz) that keeps clear of the cells, worked out from wherever the animal is when it sets off. */
-  private goVia(_ctx: IdleContext, tx: number, tz: number, speed = WALK): Task[] {
+  private goVia(_ctx: IdleContext, tx: number, tz: number, speed = this.walkSpeed): Task[] {
     return [{ k: 'go', x: tx, z: tz, speed }];
   }
 
+  /** What a panda does with its time: sits and chews bamboo, climbs the gym (and sometimes falls off it), rolls about, scratches, stretches, drinks at the pond, explores, plays. */
+  private planPanda(ctx: IdleContext): void {
+    const partner = ctx.partner;
+    const spots = ctx.spots;
+    const taken = (what: string) => partner?.roaming && partner.doing === what;
+    const options: [string, number][] = [
+      ['sit', 2.4],
+      ['look', 1.6],
+      ['wander', 2.6],
+      ['fidget', 2.2],
+      ['roll', 1.5],
+    ];
+    if (spots?.snack && spots.snack.length > 0 && !taken('snack')) options.push(['snack', 2.4]);
+    if (spots?.gym && ctx.freeFor > 2.5 && !taken('gym')) options.push(['gym', 2.0]);
+    if (partner && partner.approachable) options.push(['play', 1.8]);
+    if (ctx.far) {
+      options.push(['explore', 1.4]);
+      if (spots?.pond && !taken('pond')) options.push(['pond', 1.0]);
+    }
+    const filtered = options.filter(([n]) => n !== this.last[0] && n !== this.last[1]);
+    const choice = this.pick(filtered.length > 0 ? filtered : options);
+    this.last = [choice, this.last[0]];
+    this.doing = choice;
+    const home = ctx.home;
+
+    switch (choice) {
+      case 'sit': {
+        this.tasks = [{ k: 'act', act: 'sit', dur: 5.5 + this.rng() * 3, t: 0, face: CAMERA_FACE }];
+        if (this.rng() < 0.4) this.tasks.push({ k: 'act', act: 'look', dur: 3.4, t: 0 });
+        break;
+      }
+      case 'look': {
+        this.tasks = [{ k: 'act', act: 'look', dur: 4.2, t: 0 }];
+        break;
+      }
+      case 'fidget': {
+        const act = this.pick([['scratch', 3], ['stretch', 2.4], ['shake', 1]]) as IdleAct;
+        this.tasks = [{ k: 'act', act, dur: act === 'scratch' ? 2.6 : act === 'stretch' ? 3.2 : 1.1, t: 0 }];
+        break;
+      }
+      case 'wander': {
+        const p = this.freePoint(ctx, ctx.radius);
+        if (!p) {
+          this.tasks = [{ k: 'act', act: 'look', dur: 3.4, t: 0 }];
+          break;
+        }
+        this.tasks = [...this.goVia(ctx, p[0], p[1])];
+        if (this.rng() < 0.55) this.tasks.push({ k: 'act', act: this.rng() < 0.5 ? 'look' : 'sniff', dur: 2.6, t: 0 });
+        if (this.rng() < 0.4) this.tasks.push(...this.goVia(ctx, home.x, home.z));
+        break;
+      }
+      case 'explore': {
+        // Further afield: a different part of the grove, a sit and a look, then back (or not).
+        const p = this.freePoint(ctx, ctx.radius * 2.2) ?? this.freePoint(ctx, ctx.radius);
+        if (!p) {
+          this.tasks = [{ k: 'act', act: 'look', dur: 3.4, t: 0 }];
+          break;
+        }
+        this.tasks = [
+          ...this.goVia(ctx, p[0], p[1]),
+          { k: 'act', act: 'sniff', dur: 2.2, t: 0 },
+          { k: 'act', act: this.rng() < 0.5 ? 'sit' : 'look', dur: 4.5, t: 0, face: CAMERA_FACE },
+        ];
+        if (this.rng() < 0.6) this.tasks.push(...this.goVia(ctx, home.x, home.z));
+        break;
+      }
+      case 'roll': {
+        const p = this.freePoint(ctx, ctx.radius);
+        if (!p) {
+          this.tasks = [{ k: 'act', act: 'play', dur: 2.6, t: 0 }];
+          break;
+        }
+        // Rolls over to a spot for the fun of it, and lies about dizzy for a moment.
+        this.tasks = [{ k: 'rgo', x: p[0], z: p[1], speed: 2.6 }, { k: 'act', act: 'sit', dur: 2.6, t: 0, face: CAMERA_FACE }];
+        if (this.rng() < 0.5) this.tasks.push({ k: 'rgo', x: home.x, z: home.z, speed: 2.6 });
+        break;
+      }
+      case 'snack': {
+        const list = spots!.snack!;
+        const index = Math.floor(this.rng() * list.length);
+        const sp = list[index];
+        this.tasks = [
+          ...this.goVia(ctx, sp.at[0], sp.at[1]),
+          { k: 'face', yaw: sp.face },
+          { k: 'act', act: 'chew', dur: 8.5 + this.rng() * 2, t: 0, face: sp.face, stalk: index },
+          { k: 'act', act: 'stretch', dur: 3.2, t: 0 },
+          ...this.goVia(ctx, home.x, home.z),
+        ];
+        break;
+      }
+      case 'gym': {
+        const g = spots!.gym!;
+        const fall = this.rng() < 0.45;
+        const tasks: Task[] = [
+          ...this.goVia(ctx, g.base[0], g.base[1]),
+          { k: 'ascend', ax: g.base[0], az: g.base[1], bx: g.top[0], bz: g.top[1], y0: 0, y1: g.height, dur: 1.5, t: 0 },
+          { k: 'walk', x: g.deck[0], z: g.deck[1], speed: 0.9 },
+          { k: 'act', act: 'wave', dur: 2.2, t: 0, face: CAMERA_FACE },
+          { k: 'act', act: 'sit', dur: 4 + this.rng() * 2, t: 0, face: CAMERA_FACE },
+        ];
+        if (fall) {
+          // Wanders to the edge, leans out for a better look, and over it goes.
+          tasks.push({ k: 'walk', x: g.drop[0] * 0.5 + g.deck[0] * 0.5, z: g.drop[1] * 0.5 + g.deck[1] * 0.5, speed: 0.8 });
+          tasks.push({ k: 'act', act: 'sniff', dur: 1.2, t: 0 });
+          tasks.push({ k: 'fall', x: g.deck[0], z: g.deck[1], tx: g.drop[0], tz: g.drop[1], y0: g.height, t: 0 });
+        } else {
+          tasks.push({ k: 'walk', x: g.top[0], z: g.top[1], speed: 0.9 });
+          tasks.push({ k: 'ascend', ax: g.top[0], az: g.top[1], bx: g.base[0], bz: g.base[1], y0: g.height, y1: 0, dur: 1.3, t: 0 });
+        }
+        if (this.rng() < 0.5) tasks.push({ k: 'act', act: 'shake', dur: 1.1, t: 0 });
+        tasks.push(...this.goVia(ctx, home.x, home.z));
+        this.tasks = tasks;
+        break;
+      }
+      case 'pond': {
+        const pd = spots!.pond!;
+        this.tasks = [
+          ...this.goVia(ctx, pd.at[0], pd.at[1]),
+          { k: 'face', yaw: pd.face },
+          { k: 'act', act: 'drink', dur: 3.4, t: 0, face: pd.face },
+          { k: 'act', act: 'look', dur: 3.4, t: 0 },
+          ...this.goVia(ctx, home.x, home.z),
+        ];
+        break;
+      }
+      case 'play': {
+        const p = partner!;
+        let mx = (this.x + p.x) / 2;
+        let mz = (this.z + p.z) / 2;
+        if (ctx.keepOut && inside(ctx.keepOut, mx, mz, 1.2)) mz = ctx.keepOut.maxZ + 1.6;
+        mx = Math.min(ctx.area.maxX - 1, Math.max(ctx.area.minX + 1, mx));
+        mz = Math.min(ctx.area.maxZ - 0.5, Math.max(ctx.area.minZ + 0.5, mz));
+        const left = this.x <= p.x ? -1 : 1;
+        const gap = 1.1;
+        const mine: [number, number] = [mx + left * gap, mz];
+        const theirs: [number, number] = [mx - left * gap, mz];
+        const faceMine = Math.atan2(theirs[0] - mine[0], 0.0001);
+        const faceTheirs = Math.atan2(mine[0] - theirs[0], 0.0001);
+        const routine = (face: number, wave: boolean): Task[] => [
+          { k: 'act', act: wave ? 'wave' : 'bow', dur: 1.5, t: 0, face },
+          { k: 'act', act: 'play', dur: 3.6, t: 0, face },
+          { k: 'act', act: 'sit', dur: 2.6, t: 0, face },
+          ...this.goVia(ctx, home.x, home.z),
+        ];
+        this.tasks = [...this.goVia(ctx, mine[0], mine[1]), { k: 'sync', t: 0, timeout: 7, face: faceMine }, ...routine(faceMine, true)];
+        p.invite(theirs[0], theirs[1], faceTheirs, routine(faceTheirs, false).slice(0, 3));
+        break;
+      }
+      default:
+        this.tasks = [{ k: 'act', act: 'look', dur: 3, t: 0 }];
+    }
+  }
+
   private plan(ctx: IdleContext): void {
+    if (this.style === 'panda') {
+      this.planPanda(ctx);
+      return;
+    }
     const partner = ctx.partner;
     const spots = ctx.spots;
     const options: [string, number][] = [

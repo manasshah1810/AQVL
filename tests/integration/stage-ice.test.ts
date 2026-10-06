@@ -256,13 +256,15 @@ describe('ice: linked lists lie on the ground', () => {
     expect(rest.pos[newSlot * 3 + 2]).toBeGreaterThan(rowZ + 2);
   });
 
-  it('the studio and the grove keep the layout they always had (lists hang in the air)', async () => {
+  it('the studio keeps the layout it always had (lists hang in the air); the grove lays them on the ground like the ice does', async () => {
     const studio = await modelOf('linked-list-singly', 'studio');
     expect(studio.isGrounded('list')).toBe(false);
     const k = studio.frames.findIndex((f) => f.event.kind === 'create');
     const rest = studio.rest(k);
     const newSlot = studio.slotOf.get(studio.frames[k].event.actors[0])!;
     expect(rest.pos[newSlot * 3 + 1]).toBeLessThan(rest.pos[1] - 2);
+    const grove = await modelOf('linked-list-singly', 'panda');
+    expect(grove.isGrounded('list')).toBe(true);
   });
 
   it('a list node that moves along the ice rolls: it glides, with friction, and the penguin shoves the one that travels furthest', async () => {

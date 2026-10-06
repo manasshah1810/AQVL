@@ -20,6 +20,7 @@ import type { StageModel } from '../model/StageModel';
 import type { StageSample } from '../model/sampler';
 import { createNodeMaterial } from '../look/materials';
 import { STATE_TREATMENTS } from '../look/treatments';
+import { hasPhysics } from '../worlds/types';
 import type { StageDriver } from './driver';
 
 interface ShapeBatch {
@@ -50,7 +51,7 @@ function geometryFor(shape: TraceShape, sphereSegments: number): BufferGeometry 
  */
 export function NodeBodies({ model, driver, sphereSegments }: { model: StageModel; driver: StageDriver; sphereSegments: number }) {
   const finish = model.world === 'penguin' ? 'ice' : model.world === 'panda' ? 'bamboo' : 'porcelain';
-  const rolls = model.world === 'penguin';
+  const rolls = hasPhysics(model.world);
   const floorY = model.floorY;
   const material = useMemo<MeshPhysicalMaterial>(() => createNodeMaterial(finish), [finish]);
   const invalidate = useThree((s) => s.invalidate);

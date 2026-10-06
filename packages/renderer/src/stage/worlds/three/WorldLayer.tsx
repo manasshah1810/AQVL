@@ -20,11 +20,14 @@ export interface WorldClock {
   now: number;
   /** Wall-clock second at which an animal last pulled a fish from the fishing hole (the world makes the splash). */
   fishAt: number;
+  /** Where each crew member is and how fast it moves (the grove rustles as they pass), and which snack stalk it is chewing (-1: none). */
+  crew: { x: number; y: number; z: number; speed: number }[];
+  chew: number[];
 }
 
 export function WorldLayer({ model, bounds, driver, calm, playhead }: { model: StageModel; bounds: SceneBounds; driver: StageDriver; calm: boolean; playhead: Playhead }) {
   const invalidate = useThree((s) => s.invalidate);
-  const clock = useMemo<WorldClock>(() => ({ now: 0, fishAt: -100 }), []);
+  const clock = useMemo<WorldClock>(() => ({ now: 0, fishAt: -100, crew: [0, 1].map(() => ({ x: 0, y: 0, z: 0, speed: 0 })), chew: [-1, -1] }), []);
   useFrame((_, delta) => {
     if (calm) return;
     clock.now += Math.min(delta, 0.1);

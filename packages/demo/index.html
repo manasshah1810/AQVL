@@ -31,7 +31,7 @@
         document.documentElement.setAttribute('data-world', w);
         document.documentElement.setAttribute('data-snow', snow);
         document.documentElement.setAttribute('data-mascots', mascots);
-        var meta = { light: { studio: '#F7EFE9', penguin: '#F1F7FC', panda: '#F7EFE9' }, dark: { studio: '#1E1C27', penguin: '#0C1A2B', panda: '#1E1C27' } };
+        var meta = { light: { studio: '#F7EFE9', penguin: '#F1F7FC', panda: '#F4F3E4' }, dark: { studio: '#1E1C27', penguin: '#0C1A2B', panda: '#121C17' } };
         document.querySelector('meta[name="theme-color"]').setAttribute('content', meta[t][w]);
       })();
     </script>
@@ -41,7 +41,11 @@
       html[data-theme='light'], html[data-theme='light'] body { background: #f7efe9; }
       html[data-world='penguin'], html[data-world='penguin'] body { background: #0c1a2b; }
       html[data-world='penguin'][data-theme='light'], html[data-world='penguin'][data-theme='light'] body { background: #f1f7fc; }
+      html[data-world='panda'], html[data-world='panda'] body { background: #121c17; }
+      html[data-world='panda'][data-theme='light'], html[data-world='panda'][data-theme='light'] body { background: #f4f3e4; }
       html[data-theme='light'] .boot path { stroke: #3a3649; }
+      html[data-world='panda'] .boot path { stroke: #d8e8cb; }
+      html[data-world='panda'][data-theme='light'] .boot path { stroke: #2a3b25; }
       html[data-world='penguin'] .boot path { stroke: #bfdcf2; }
       html[data-world='penguin'][data-theme='light'] .boot path { stroke: #1e3a56; }
       .boot { display: grid; place-items: center; min-height: 100vh; }

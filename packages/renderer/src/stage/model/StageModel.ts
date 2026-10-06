@@ -7,7 +7,7 @@ import { massFor } from '../motion/spring';
 import { parseSourceStructure, type SourceStructure } from '../../components/iteration/sourceStructure';
 import { writeRgb } from './colors';
 import { paletteFor } from '../worlds/palettes';
-import { hasCast, type StageWorld } from '../worlds/types';
+import { hasCast, hasPhysics, type StageWorld } from '../worlds/types';
 
 /** One node identity across the whole run (an instance slot in the renderer). */
 export interface NodeSlot {
@@ -375,9 +375,9 @@ export class StageModel {
     }
   }
 
-  /** Penguin world: every linked list lies on the ice (see `groundRow`). */
+  /** Animal worlds: every linked list lies on the ground (see `groundRow`). */
   private findGroundRows(): void {
-    if (this.world !== 'penguin') return;
+    if (!hasPhysics(this.world)) return;
     const top = new Map<string, number>();
     for (const f of this.frames) {
       for (const n of f.nodes) {
@@ -388,7 +388,7 @@ export class StageModel {
     for (const [name, y] of top) this.groundRow.set(name, y);
   }
 
-  /** Whether a structure lies on the ice (a linked list in the penguin world). */
+  /** Whether a structure lies on the ground (a linked list in an animal world). */
   isGrounded(structure: string | undefined): boolean {
     return this.groundRow.has(structure ?? '');
   }

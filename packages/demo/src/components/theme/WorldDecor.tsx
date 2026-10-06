@@ -1,5 +1,7 @@
 import React, { useMemo } from 'react';
 import { Penguin, type PenguinPose } from './Penguin';
+import { BambooStalk, Panda, type PandaPose } from './Panda';
+import { useWorld } from '../../lib/world';
 
 /** A small deterministic generator, so the snow is the same every render (no hydration-style flicker). */
 function rng(seed: number) {
@@ -39,19 +41,91 @@ export function WorldSnow({ count = 34 }: { count?: number }) {
   );
 }
 
-/** A penguin that belongs to the penguin world only: it is simply absent in the others (and when mascots are off). */
-export function Mascot({ pose = 'stand', size = 64, className = '', scarf }: { pose?: PenguinPose | 'walk'; size?: number; className?: string; scarf?: [string, string] | null }) {
+/**
+ * Bamboo leaves drifting down behind the page (panda world only; hidden by
+ * CSS in every other world, under reduced motion and when switched off in
+ * Settings). A couple of dozen leaves, each on its own slow, swaying fall.
+ */
+export function WorldLeaves({ count = 22 }: { count?: number }) {
+  const leaves = useMemo(() => {
+    const r = rng(1618);
+    return Array.from({ length: count }, () => ({
+      x: `${(r() * 100).toFixed(1)}%`,
+      s: `${(11 + r() * 9).toFixed(0)}px`,
+      o: (0.35 + r() * 0.4).toFixed(2),
+      d: `${(18 + r() * 20).toFixed(1)}s`,
+      delay: `${(-r() * 38).toFixed(1)}s`,
+      drift: `${((r() - 0.5) * 220).toFixed(0)}px`,
+      spin: `${(r() < 0.5 ? -1 : 1) * (200 + r() * 260) | 0}deg`,
+      tint: Math.floor(r() * 3),
+    }));
+  }, [count]);
   return (
-    <span className={`mascot mascot--penguin-only inline-block ${className}`} aria-hidden="true">
-      <Penguin size={size} pose={pose as PenguinPose} scarf={scarf} className={pose === 'walk' ? 'pen--walk' : undefined} />
-    </span>
+    <div className="world-leaves" aria-hidden="true">
+      {leaves.map((l, i) => (
+        <i key={i} data-tint={l.tint} style={{ '--x': l.x, '--s': l.s, '--o': l.o, '--d': l.d, '--delay': l.delay, '--drift': l.drift, '--spin': l.spin } as React.CSSProperties} />
+      ))}
+    </div>
   );
 }
 
-/** Two penguins that wander the length of the footer's baseline, one each way, now and then. */
+/** The site's falling decoration for the current world: snow on the ice, leaves in the grove, nothing in the studio. */
+export function WorldFall() {
+  const world = useWorld();
+  if (world === 'penguin') return <WorldSnow />;
+  if (world === 'panda') return <WorldLeaves />;
+  return null;
+}
+
+/**
+ * The world's mascot: a penguin on the ice, a panda in the grove, and
+ * nobody in the studio (it is simply absent there, and when mascots are off).
+ */
+export function Mascot({ pose = 'stand', size = 64, className = '', scarf }: { pose?: PenguinPose | PandaPose | 'walk'; size?: number; className?: string; scarf?: [string, string] | null }) {
+  const world = useWorld();
+  if (world === 'panda') {
+    const p: PandaPose = pose === 'slide' ? 'roll' : (pose as PandaPose);
+    return (
+      <span className={`mascot mascot--panda inline-block ${className}`} aria-hidden="true">
+        <Panda size={size} pose={p} />
+      </span>
+    );
+  }
+  if (world === 'penguin') {
+    return (
+      <span className={`mascot mascot--penguin inline-block ${className}`} aria-hidden="true">
+        <Penguin size={size} pose={(pose === 'eat' || pose === 'roll' ? 'stand' : pose) as PenguinPose} scarf={scarf} className={pose === 'walk' ? 'pen--walk' : undefined} />
+      </span>
+    );
+  }
+  return null;
+}
+
+/** The footer's baseline: frozen ice with two penguins wandering along it, or a grassy bank with bamboo shoots and two pandas. */
 export function FooterIce() {
+  const world = useWorld();
+  if (world === 'panda') {
+    return (
+      <div className="footer-grove mascot" aria-hidden="true">
+        <div className="footer-grove__shoots">
+          {[3, 11, 24, 38, 57, 71, 83, 94].map((x, i) => (
+            <span key={x} style={{ left: `${x}%`, '--h': `${20 + ((i * 7) % 5) * 5}px`, '--d': `${4 + (i % 3)}s` } as React.CSSProperties}>
+              <BambooStalk height={20 + ((i * 7) % 5) * 5} />
+            </span>
+          ))}
+        </div>
+        <div className="footer-grove__walker">
+          <Panda size={34} pose="walk" />
+        </div>
+        <div className="footer-grove__walker footer-grove__walker--back">
+          <Panda size={26} pose="eat" />
+        </div>
+      </div>
+    );
+  }
+  if (world !== 'penguin') return null;
   return (
-    <div className="footer-ice mascot mascot--penguin-only" aria-hidden="true">
+    <div className="footer-ice mascot" aria-hidden="true">
       <div className="footer-ice__walker">
         <Penguin size={34} pose="stand" className="pen--walk" />
       </div>
