@@ -411,6 +411,21 @@ function computeEntry(model: StageModel, k: number, prev: Entry | undefined): En
     for (let i = 0; i < POD_SIZE; i++) next[i] = { ...next[i], pitch: Math.max(-0.2, next[i].pitch), mood: 'confused' };
   }
 
+  // A whale is quick but not instant: a place it cannot reach within the step at its top speed becomes a point on
+  // the way there (looking ahead at the node); it carries on from there next step and soon catches up.
+  const D = beatSeconds(frame);
+  for (let i = 0; i < POD_SIZE; i++) {
+    const a = prevSt[i], b = next[i];
+    const reach = MAX_SPEED[i] * 0.8 * D;
+    const via = viaFor(model, a, b, i, boxes);
+    const len = pathLength(a, via, b);
+    if (len <= reach || len < 1e-6) continue;
+    const u = reach / len;
+    const p = quad(a, via, b, u);
+    const q = quad(a, via, b, Math.min(1, u + 0.02));
+    next[i] = { ...b, x: p[0], y: p[1], z: p[2], yaw: Math.atan2(q[0] - p[0], q[2] - p[2]), pitch: Math.max(-0.4, Math.min(0.4, Math.atan2(q[1] - p[1], Math.hypot(q[0] - p[0], q[2] - p[2])))), mood: 'hover' };
+  }
+
   const water = waterMotionAt(model, k);
   const script: (Seg[] | null)[] = [null, null];
   if (water) {
@@ -548,9 +563,15 @@ function scriptHaul(model: StageModel, to: RestFrame, h: Haul, start: Pose, boxe
   if (h.kind !== 'farewell' && to.present[h.slot]) {
     watch = stationFor(model, to, h.slot, who, c1.x < h.ctrl[9] ? -1 : 1, 'happy', -1, others, c1);
   } else {
+    // Back off and watch it go, from wherever is clear.
     const [dx, dy, dz] = headingOf(c1.yaw, c1.pitch);
-    watch = { x: c1.x - dx * 0.7, y: c1.y - dy * 0.35 + 0.3, z: c1.z - dz * 0.7 + 0.3, yaw: c1.yaw, pitch: -0.15 };
-    watch.y = Math.max(watch.y, model.floorY + SWIMMERS[who].radius + 0.18);
+    const floorMin = model.floorY + SWIMMERS[who].radius + 0.18;
+    const cands: Pose[] = [
+      { x: c1.x - dx * 0.7, y: Math.max(floorMin, c1.y - dy * 0.35 + 0.3), z: c1.z - dz * 0.7 + 0.3, yaw: c1.yaw, pitch: -0.15 },
+      { x: c1.x - dx * 0.4, y: Math.max(floorMin, c1.y + 0.9), z: c1.z + 0.5, yaw: c1.yaw, pitch: -0.1 },
+      { x: c1.x - dx * 1.3, y: Math.max(floorMin, c1.y + 0.4), z: c1.z + 0.9, yaw: c1.yaw, pitch: -0.1 },
+    ];
+    watch = bestPose(model, cands, who, others, c1);
   }
   const backEnd = Math.min(0.97, h.t1 + 0.32);
   segs.push({ f0: h.t1, f1: backEnd, kind: 'travel', a: c1, b: watch, mood: h.kind === 'farewell' ? 'farewell' : 'hover' });
@@ -628,7 +649,7 @@ function freeAt(model: StageModel, k: number, i: number, a: PodStation, b: PodSt
     return { moving, arrive: 0 };
   }
   // Swimming speed: a cruise, quicker over long distances (a whale covers ground with a few strong beats).
-  const T = Math.min(0.8, Math.max(0.3, dist / (4.2 * D) + 0.18 / D, dist / (MAX_SPEED[i] * D)));
+  const T = Math.min(0.88, Math.max(0.3, dist / (4.2 * D) + 0.18 / D, dist / (MAX_SPEED[i] * D)));
   const start = i * 0.05;
   const u = clamp01((f - start) / T);
   const e = calm ? smoothstep(0, 1, u) : easeInOut(u);

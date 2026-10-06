@@ -369,6 +369,20 @@ function haulOf(slot: number, who: number, kind: HaulKind, path: ReturnType<type
   };
 }
 
+const _ma: HaulPose = { x: 0, y: 0, z: 0, tx: 0, ty: 0, tz: 0, speed: 0, s: 0, lean: 0, presence: 1 };
+const _mb: HaulPose = { x: 0, y: 0, z: 0, tx: 0, ty: 0, tz: 0, speed: 0, s: 0, lean: 0, presence: 1 };
+
+/** True when two hauled nodes come within a hair of each other at any moment of the step. */
+function haulsMeet(a: Haul, b: Haul): boolean {
+  for (let i = 0; i <= 120; i++) {
+    const f = i / 120;
+    haulAt(a, f, _ma);
+    haulAt(b, f, _mb);
+    if (Math.abs(_ma.x - _mb.x) < a.half[0] + b.half[0] + 0.04 && Math.abs(_ma.y - _mb.y) < a.half[1] + b.half[1] + 0.04 && Math.abs(_ma.z - _mb.z) < a.half[2] + b.half[2] + 0.04) return true;
+  }
+  return false;
+}
+
 /** Where the whale blows a new node from: beside its place, towards the viewer, wherever there is room. */
 function birthPoint(model: StageModel, to: RestFrame, s: number, boxes: Box[]): [number, number, number] {
   const x = to.pos[s * 3], y = to.pos[s * 3 + 1], z = to.pos[s * 3 + 2];
@@ -425,15 +439,27 @@ function build(model: StageModel, k: number): WaterMotion | null {
   if (frame.event.kind === 'swap' && actors.length >= 2 && moves(actors[0]) && moves(actors[1])) {
     const [a, b] = actors;
     const boxes = obstacles(model, from, to, new Set([a, b]));
-    // Neighbours on the seabed: the whale lifts one up and over, and the calf slides the other along the sand
-    // underneath it into the gap it left. Further apart (something in between), both go over, in two lanes.
+    // On the seabed: the whale lifts one up and over the row while the calf slides the other round the front of
+    // it along the sand (the classic swap: one over the top, one round the front; their paths never meet). Off
+    // the seabed (or with no room in front), both go round in open water, in two lanes.
+    const ea = endpoints(from, to, a);
     const eb = endpoints(from, to, b);
-    const slide = routeFor(model, eb, boxes, 1, false);
     const grounded = onFloor(model, from, a) && onFloor(model, from, b);
-    const slides = grounded && pathClear(slide.ctrl, eb.hx, eb.hy, eb.hz, boxes);
-    const partner: Box = { x: eb.a[0], y: Math.max(eb.a[1], eb.b[1]), z: eb.a[2], hx: eb.hx, hy: eb.hy, hz: eb.hz };
-    hauls.push(haulOf(a, take(), 'carry', routeFor(model, endpoints(from, to, a), boxes, 0, true, slides ? partner : undefined), 0.18, 0.86, 0.66, model, from, to));
-    hauls.push(haulOf(b, take(), 'carry', slides ? slide : routeFor(model, eb, boxes, 1, true), slides ? 0.3 : 0.24, 0.84, slides ? 0.6 : 0.62, model, from, to));
+    const out = (eb.hz * 2 + 0.45) / 0.75;
+    const sand = 0.05;
+    const front = makePath(eb.a, [eb.a[0], eb.a[1] + sand, eb.a[2] + out], [eb.b[0], eb.b[1] + sand, eb.b[2] + out], eb.b);
+    const slides = grounded && pathClear(front.ctrl, eb.hx, eb.hy, eb.hz, boxes);
+    const wa = take(), wb = take();
+    let ha: Haul | null = null, hb: Haul | null = null;
+    search: for (const extra of [0, 0.3, 0.6, 0.9]) {
+      for (const bt0 of [0.24, 0.3, 0.18, 0.12, 0.36]) {
+        const over = routeFor(model, ea, boxes, 0, true, slides ? { x: ea.a[0], y: ea.a[1] - 0.6 + extra, z: ea.a[2], hx: ea.hx, hy: ea.hy, hz: ea.hz } : undefined);
+        ha = haulOf(a, wa, 'carry', over, 0.16, 0.88, 0.62, model, from, to);
+        hb = haulOf(b, wb, 'carry', slides ? front : routeFor(model, eb, boxes, 1, true), bt0, 0.86, 0.64, model, from, to);
+        if (!haulsMeet(ha, hb)) break search;
+      }
+    }
+    hauls.push(ha!, hb!);
     busy.add(a);
     busy.add(b);
   }
