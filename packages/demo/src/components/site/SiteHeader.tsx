@@ -85,9 +85,11 @@ export function SiteHeader({ route, compact = false }: SiteHeaderProps) {
             </a>
           </nav>
 
+          <SettingsLink route={route} className="hidden md:inline-grid" />
           <ThemeToggle className="hidden md:inline-grid" />
 
-          <ThemeToggle className="ml-auto md:hidden" />
+          <SettingsLink route={route} className="ml-auto md:hidden" />
+          <ThemeToggle className="md:hidden" />
           <button
             ref={toggleRef}
             type="button"
@@ -116,9 +118,26 @@ export function SiteHeader({ route, compact = false }: SiteHeaderProps) {
   );
 }
 
+/** Settings: a small pair of sliders. */
+function SettingsLink({ route, className = '' }: { route: RouteName; className?: string }) {
+  return (
+    <a href="#/settings" className={`icon-btn ${className}`} aria-label="Settings" title="Settings" aria-current={route === 'settings' ? 'page' : undefined}>
+      <svg width="18" height="18" viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+        <path d="M3 6h7M14 6h3M3 14h3M10 14h7" />
+        <circle cx="12" cy="6" r="2" />
+        <circle cx="8" cy="14" r="2" />
+      </svg>
+    </a>
+  );
+}
+
 function MobileMenu({ route, onClose }: { route: RouteName; onClose: () => void }) {
   const firstRef = useRef<HTMLAnchorElement>(null);
-  const items = [...NAV, { route: 'playground' as RouteName, label: 'Playground', href: '#/playground', blurb: 'Write a program and watch it run' }];
+  const items = [
+    ...NAV,
+    { route: 'playground' as RouteName, label: 'Playground', href: '#/playground', blurb: 'Write a program and watch it run' },
+    { route: 'settings' as RouteName, label: 'Settings', href: '#/settings', blurb: 'Pick a world: studio, ice or bamboo' },
+  ];
 
   useEffect(() => {
     firstRef.current?.focus();

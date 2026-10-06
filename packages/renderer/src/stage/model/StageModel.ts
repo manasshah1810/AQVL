@@ -169,6 +169,8 @@ const CAPTION_CLEARANCE = 0.75;
 /** How far in front of its node's face an index on the floor stands: far enough to clear the body on screen. */
 const INDEX_AHEAD = 0.95;
 /** Room kept for a world's crew beside (x) and in front of (z) every cell. */
+/** How far in front of a grounded list's row a node staged `1` below it stands. */
+const STAGING_DEPTH = 0.9;
 const CAST_ROOM_X = 0.95;
 const CAST_ROOM_Z = 1.95;
 
@@ -219,6 +221,12 @@ export class StageModel {
   private readonly hang = new Map<string, { f: number; origin: number }>();
   /** Structures spread across the floor (graphs, chained hash maps): looked down on, named at their back corner. */
   private readonly flatStructures = new Set<string>();
+  /**
+   * Linked lists in the penguin world lie on the ice: the row stands on the floor, and a node the runtime
+   * stages below the row (a new, unlinked node) is staged on the ice in front of it instead.
+   * Maps a structure to the y of its row.
+   */
+  private readonly groundRow = new Map<string, number>();
 
   constructor(readonly trace: ExecutionTrace, readonly theme: StageTheme, source?: string, readonly world: StageWorld = 'studio') {
     this.palette = paletteFor(theme, world);
@@ -268,6 +276,7 @@ export class StageModel {
       }
     }
 
+    this.findGroundRows();
     this.pack();
     this.findFlat();
     this.arrange();
@@ -291,7 +300,15 @@ export class StageModel {
   /** y within the node's own structure (hanging chains spread). */
   private localY(n: TraceNode): number {
     const h = n.structure ? this.hang.get(n.structure) : undefined;
+    const y = this.groundRow.get(n.structure ?? '') ?? undefined;
+    if (y !== undefined) return y;
     return h ? h.origin + (n.pos.y - h.origin) * h.f : n.pos.y;
+  }
+
+  /** z within the node's own structure (a node staged below a grounded row stands in front of it). */
+  private localZ(n: TraceNode): number {
+    const row = this.groundRow.get(n.structure ?? '');
+    return row === undefined ? n.pos.z : n.pos.z + Math.max(0, row - n.pos.y) * STAGING_DEPTH;
   }
 
   /** World position of a trace node, with its structure's place applied. */
@@ -302,7 +319,7 @@ export class StageModel {
     return this.localY(n) + (this.shift.get(n.structure ?? '')?.[1] ?? 0);
   }
   pz(n: TraceNode): number {
-    return n.pos.z + (this.shift.get(n.structure ?? '')?.[2] ?? 0);
+    return this.localZ(n) + (this.shift.get(n.structure ?? '')?.[2] ?? 0);
   }
 
   /** Width of a node's body: a box widens (up to almost two units) to fit a long value such as a vertex name. */
@@ -358,6 +375,24 @@ export class StageModel {
     }
   }
 
+  /** Penguin world: every linked list lies on the ice (see `groundRow`). */
+  private findGroundRows(): void {
+    if (this.world !== 'penguin') return;
+    const top = new Map<string, number>();
+    for (const f of this.frames) {
+      for (const n of f.nodes) {
+        if (n.family !== 'LINKEDLIST_NODE' || !n.structure) continue;
+        top.set(n.structure, Math.max(top.get(n.structure) ?? -Infinity, n.pos.y));
+      }
+    }
+    for (const [name, y] of top) this.groundRow.set(name, y);
+  }
+
+  /** Whether a structure lies on the ice (a linked list in the penguin world). */
+  isGrounded(structure: string | undefined): boolean {
+    return this.groundRow.has(structure ?? '');
+  }
+
   /** A structure whose node centres spread further in depth than in height lies across the floor. */
   private findFlat(): void {
     const spread = new Map<string, { y0: number; y1: number; z0: number; z1: number }>();
@@ -403,7 +438,7 @@ export class StageModel {
         const hd = NODE_WIDTH[n.shape] / 2;
         const bottom = this.localY(n) - NODE_HEIGHT[n.shape] / 2;
         const x = this.localX(n);
-        grow(n.structure ?? '', x - hw, x + hw, n.pos.z - hd, n.pos.z + hd, bottom, bottom + this.heightOf(n));
+        grow(n.structure ?? '', x - hw, x + hw, this.localZ(n) - hd, this.localZ(n) + hd, bottom, bottom + this.heightOf(n));
       }
       for (const st of frame.structures) {
         const note = this.noteOf(st.note, st.kind);

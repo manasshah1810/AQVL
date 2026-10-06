@@ -26,6 +26,7 @@ vi.mock('@aqvl/renderer', async (importOriginal) => {
 });
 
 import Playground from '../../src/pages/Playground';
+import { resetSettings } from '../../src/lib/settings';
 
 function getStatusLabel() {
   return document.querySelector('.pg-status-chip')?.textContent ?? '';
@@ -99,5 +100,56 @@ describe('Playground compile & run flow', () => {
       },
       { timeout: 2000 }
     );
+  });
+
+  it('keeps the stage clean: the secondary things live in one panel that opens on request and remembers its tab', async () => {
+    resetSettings();
+    localStorage.setItem('aqvl-visited', 'true');
+    render(<Playground />);
+    await screen.findByTestId('aqve-canvas-stub');
+    // Nothing but the scene, one line of caption and the transport is on the stage: no legend, watch panel or output over it.
+    expect(document.querySelector('.vz-dock')).toBeNull();
+    expect(document.querySelector('.vz-legend')).toBeNull();
+    expect(document.querySelector('.poc')).toBeNull();
+    expect(screen.queryByRole('combobox')).toBeNull();
+
+    // One door.
+    const door = document.querySelector<HTMLButtonElement>('.vz-panels')!;
+    expect(door).toBeTruthy();
+    fireEvent.click(door);
+    const tabs = await screen.findAllByRole('tab');
+    expect(tabs.map((t) => t.textContent?.replace(/\d+$/, ''))).toEqual(['Variables', 'Key', 'Output', 'Stage']);
+
+    // Settings are grouped in the Stage tab, the advanced ones collapsed.
+    fireEvent.click(screen.getByRole('tab', { name: /Stage/ }));
+    expect(screen.getByRole('radiogroup', { name: 'World' })).toBeInTheDocument();
+    expect(screen.getByRole('switch', { name: /Calm motion/ })).toBeInTheDocument();
+    const advanced = document.querySelector('details.vz-set__advanced') as HTMLDetailsElement;
+    expect(advanced.open).toBe(false);
+
+    // The Key and Output are one click away too.
+    fireEvent.click(screen.getByRole('tab', { name: /Key/ }));
+    expect(document.querySelector('.vz-legend')).toBeTruthy();
+    fireEvent.click(screen.getByRole('tab', { name: /Output/ }));
+    expect(document.querySelector('.poc')).toBeTruthy();
+
+    // It remembers where it was (and that it was open).
+    expect(JSON.parse(localStorage.getItem('aqvl-settings')!).dock).toBe('output');
+    fireEvent.click(screen.getByRole('button', { name: 'Close panel' }));
+    await waitFor(() => expect(document.querySelector('.vz-dock')).toBeNull());
+    expect(JSON.parse(localStorage.getItem('aqvl-settings')!).dock).toBeNull();
+  });
+
+  it('lets the viewer hide the code and give the stage the whole width', async () => {
+    resetSettings();
+    localStorage.setItem('aqvl-visited', 'true');
+    render(<Playground />);
+    await screen.findByTestId('aqve-canvas-stub');
+    const body = document.querySelector('.pg-body')!;
+    expect(body.getAttribute('data-focus')).toBe('false');
+    fireEvent.click(screen.getByRole('button', { name: /Focus stage/ }));
+    expect(body.getAttribute('data-focus')).toBe('true');
+    fireEvent.click(screen.getByRole('button', { name: /Show code/ }));
+    expect(body.getAttribute('data-focus')).toBe('false');
   });
 });

@@ -4,6 +4,7 @@ import { parseHash, useHash, type RouteName } from './lib/router';
 import { LoaderProvider, LoaderWait } from './components/loader/LoaderGate';
 import { SiteHeader } from './components/site/SiteHeader';
 import { SiteFooter } from './components/site/SiteFooter';
+import { WorldSnow } from './components/theme/WorldDecor';
 import { spring, usePrefersReducedMotion } from './lib/motion';
 
 const Landing = lazy(() => import('./pages/Landing.tsx'));
@@ -13,6 +14,7 @@ const Examples = lazy(() => import('./pages/Examples.tsx'));
 const Playground = lazy(() => import('./pages/Playground.tsx'));
 const IDE = lazy(() => import('./App.tsx'));
 const Privacy = lazy(() => import('./pages/Privacy.tsx'));
+const Settings = lazy(() => import('./pages/Settings.tsx'));
 const Tasks = lazy(() => import('./pages/tasks/TasksPage.tsx'));
 const Developer = lazy(() => import('./pages/developer/DeveloperPage.tsx'));
 const NotFound = lazy(() => import('./pages/NotFound.tsx'));
@@ -35,6 +37,7 @@ const ROUTES: Record<RouteName, RouteDef> = {
   playground: { Page: Playground, chrome: 'app', title: 'Playground · AQVL', wait: 'Loading the 3D engine' },
   ide: { Page: IDE, chrome: 'app', title: 'Compiler inspector · AQVL', wait: 'Loading the compiler and 3D engine' },
   privacy: { Page: Privacy, chrome: 'site', title: 'Privacy · AQVL', wait: 'Loading' },
+  settings: { Page: Settings, chrome: 'site', title: 'Settings · AQVL', wait: 'Loading the settings' },
   tasks: { Page: Tasks, chrome: 'none', title: 'AQVL · Command Center', wait: 'Loading the command center' },
   developer: { Page: Developer, chrome: 'none', title: 'Developer', wait: 'Loading' },
   notfound: { Page: NotFound, chrome: 'site', title: 'Not found · AQVL', wait: 'Loading' },
@@ -105,6 +108,7 @@ export function Router() {
                 Skip to content
               </button>
             )}
+            {chrome === 'site' && <WorldSnow />}
             {chrome !== 'none' && <SiteHeader route={route.name} compact={app} />}
             <AnimatePresence
               mode="wait"
@@ -116,7 +120,7 @@ export function Router() {
                 id="main"
                 ref={mainRef}
                 tabIndex={-1}
-                className={app ? 'flex min-h-0 flex-1 flex-col outline-none' : 'flex flex-1 flex-col outline-none'}
+                className={`${app ? 'flex min-h-0 flex-1 flex-col outline-none' : 'flex flex-1 flex-col outline-none'} frost-in`}
                 initial={reduced ? { opacity: 0 } : { opacity: 0, y: 14 }}
                 animate={{ opacity: 1, y: 0, transition: spring.gentle }}
                 exit={reduced ? { opacity: 0, transition: { duration: 0.12 } } : { opacity: 0, y: -10, transition: { duration: 0.18, ease: [0.4, 0, 1, 1] } }}

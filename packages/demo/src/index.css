@@ -20,6 +20,7 @@
 @config '../tailwind.config.ts';
 
 @import './styles/editor.css' layer(components);
+@import './styles/world-penguin.css';
 
 /* ── Tokens ─────────────────────────────────────────────────── */
 :root {

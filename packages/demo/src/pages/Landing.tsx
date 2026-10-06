@@ -9,6 +9,7 @@ import { LayoutMorph } from '../components/landing/LayoutMorph';
 import { StructureIndex } from '../components/landing/StructureIndex';
 import { useSmoothScroll } from '../lib/smoothScroll';
 import { spring } from '../lib/motion';
+import { Mascot } from '../components/theme/WorldDecor';
 
 const NOTES = [
   { k: 'Nothing to install', v: 'The compiler, the virtual machine and the 3D renderer all run in this page.' },
@@ -53,6 +54,7 @@ export default function Landing() {
               <a href="#/docs" className="ulink mono text-[0.875rem]">
                 or read the language guide
               </a>
+              <Mascot pose="wave" size={64} className="max-sm:hidden" />
             </motion.div>
           </div>
 

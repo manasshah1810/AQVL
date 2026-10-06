@@ -1,14 +1,19 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import { useThree, type ThreeEvent } from '@react-three/fiber';
-import { Color, Group, Vector3 } from 'three';
+import { Color, CylinderGeometry, Group, Mesh, MeshStandardMaterial, Vector3 } from 'three';
 import type { StageModel } from '../../model/StageModel';
 import type { StageSample } from '../../model/sampler';
 import type { StageDriver } from '../../three/driver';
 import { STATE_TREATMENTS } from '../../look/treatments';
 import { createCast, sampleCast, type CastMember, type CastPose, type CastStyle } from '../cast';
 import { WORLDS } from '../types';
-import { buildPanda, buildPenguin, createBlobShadow, type Rig } from './rigs';
+import type { Playhead } from '../../timeline/Playhead';
+import { buildEagle, buildPanda, buildPenguin, createBlobShadow, PERSONALITIES, type IdleAct, type Rig } from './rigs';
 import { ParticlePool, hash } from './particles';
+import { IdleBrain, type Box, type IdleContext, type Spots } from '../idle';
+import { iceMotionAt, blockAt, eagleAt, type EagleState } from '../ice';
+import { polarSpots } from './layout';
+import type { WorldClock } from './WorldLayer';
 
 export interface CastLayerProps {
   model: StageModel;
@@ -16,13 +21,16 @@ export interface CastLayerProps {
   style: CastStyle;
   calm: boolean;
   /** Ambient clock (seconds), shared with the world so everything breathes together. */
-  clock: { now: number };
+  clock: WorldClock;
+  /** The run's playhead: while it plays the crew stays at its work, while it rests the crew may roam. */
+  playhead: Playhead;
 }
 
 const VERBS: Record<CastPose, string> = {
   idle: 'waiting',
   inspect: 'comparing',
   push: 'swapping',
+  pull: 'swapping',
   tap: 'writing',
   present: 'adding',
   shrug: 'ruling out',
@@ -37,6 +45,8 @@ function bubbleFor(pose: CastPose, style: CastStyle, value: string, settled: boo
       return '?';
     case 'push':
       return style === 'penguin' ? 'heave!' : 'oof!';
+    case 'pull':
+      return 'hup!';
     case 'tap':
       return value !== '' && value.length <= 4 ? `=${value}` : '!';
     case 'present':
@@ -53,11 +63,28 @@ function bubbleFor(pose: CastPose, style: CastStyle, value: string, settled: boo
 }
 
 /** Crew size relative to a cell (a cell is one unit tall at rest). */
-const CREW_SCALE = { penguin: 1.4, panda: 1.32 } as const;
+const CREW_SCALE = { penguin: 1.75, panda: 1.32 } as const;
 /** Head height of the scaled crew, where the bubble sits beside them. */
-const HEAD = { penguin: 0.98, panda: 1.08 } as const;
+const HEAD = { penguin: 1.22, panda: 1.08 } as const;
 
 const _head = new Vector3();
+const scratch = { x: 0, z: 0, vx: 0, vz: 0, leg: -1 };
+const eg0: EagleState = { visible: false, x: 0, y: 0, z: 0, yaw: 0, flap: 0, holding: false, clock: 0 };
+const eg1: EagleState = { visible: false, x: 0, y: 0, z: 0, yaw: 0, flap: 0, holding: false, clock: 0 };
+
+/** A box round everything standing on the ice at rest in this frame (animals keep out of it). */
+function obstacleBox(model: StageModel, rest: ReturnType<StageModel['rest']>): Box | null {
+  let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+  for (let s = 0; s < model.slots.length; s++) {
+    if (!rest.present[s]) continue;
+    if (rest.pos[s * 3 + 1] - rest.dims[s * 3 + 1] / 2 - model.floorY > 1.2) continue;
+    minX = Math.min(minX, rest.pos[s * 3] - rest.dims[s * 3] / 2);
+    maxX = Math.max(maxX, rest.pos[s * 3] + rest.dims[s * 3] / 2);
+    minZ = Math.min(minZ, rest.pos[s * 3 + 2] - rest.dims[s * 3 + 2] / 2);
+    maxZ = Math.max(maxZ, rest.pos[s * 3 + 2] + rest.dims[s * 3 + 2] / 2);
+  }
+  return Number.isFinite(minX) ? { minX, maxX, minZ, maxZ } : null;
+}
 
 const CONFETTI: Record<CastStyle, string[]> = {
   penguin: ['#e9f6ff', '#9fdcff', '#7af0c8', '#ffffff'],
@@ -69,7 +96,7 @@ const CONFETTI: Record<CastStyle, string[]> = {
  * with soft shadows, a speech bubble, and celebratory particles. Click one
  * and it hops (penguin) or rolls (panda) and says its name.
  */
-export function CastLayer({ model, driver, style, calm, clock }: CastLayerProps) {
+export function CastLayer({ model, driver, style, calm, clock, playhead }: CastLayerProps) {
   const invalidate = useThree((s) => s.invalidate);
   const get = useThree((s) => s.get);
   const gl = useThree((s) => s.gl);
@@ -78,13 +105,65 @@ export function CastLayer({ model, driver, style, calm, clock }: CastLayerProps)
   const rigs = useMemo<Rig[]>(
     () =>
       style === 'penguin'
-        ? [buildPenguin({ scarf: ['#c8406a', '#f6e7d2'], scale: CREW_SCALE.penguin }), buildPenguin({ scarf: ['#2f5d9e', '#f2c14e'], scale: CREW_SCALE.penguin })]
+        ? [
+            buildPenguin({ scarf: ['#c8406a', '#f6e7d2'], scale: CREW_SCALE.penguin * 1.03, personality: PERSONALITIES[0] }),
+            buildPenguin({ scarf: ['#2f5d9e', '#f2c14e'], scale: CREW_SCALE.penguin * 0.97, personality: PERSONALITIES[1] }),
+          ]
         : [buildPanda({ prop: 'bamboo', scale: CREW_SCALE.panda }), buildPanda({ prop: 'leaf', scale: CREW_SCALE.panda })],
     [style],
   );
   const holders = useMemo(() => rigs.map(() => new Group()), [rigs]);
+  // A rope that hangs from a floating cell when an animal climbs to it, and the ice ledge it perches on once there.
+  const gear = useMemo(() => {
+    const ropeMat = new MeshStandardMaterial({ color: '#d9b98a', roughness: 0.85 });
+    const ledgeMat = new MeshStandardMaterial({ color: '#bfe3ff', roughness: 0.25, metalness: 0.1, transparent: true, opacity: 0.88, emissive: new Color('#2a5f94'), emissiveIntensity: 0.35 });
+    const ropeGeo = new CylinderGeometry(0.05, 0.05, 1, 8);
+    const ledgeGeo = new CylinderGeometry(0.62, 0.5, 0.08, 28);
+    const ropes = rigs.map(() => {
+      const m = new Mesh(ropeGeo, ropeMat);
+      m.visible = false;
+      return m;
+    });
+    const ledges = rigs.map(() => {
+      const m = new Mesh(ledgeGeo, ledgeMat);
+      m.visible = false;
+      return m;
+    });
+    return { ropes, ledges, ledgeW: rigs.map(() => 0), dispose: () => { ropeMat.dispose(); ledgeMat.dispose(); ropeGeo.dispose(); ledgeGeo.dispose(); } };
+  }, [rigs]);
+  useEffect(() => () => gear.dispose(), [gear]);
+  // The eagle that carries new floating nodes to their places (penguin world).
+  const eagle = useMemo(() => {
+    if (style !== 'penguin') return null;
+    const rig = buildEagle(1.3);
+    const holder = new Group();
+    holder.add(rig.root);
+    holder.visible = false;
+    const shadow = createBlobShadow(model.palette.shadow, model.palette.shadowOpacity * 0.8);
+    shadow.mesh.visible = false;
+    return { rig, holder, shadow };
+  }, [style, model.palette]);
+  useEffect(
+    () => () => {
+      eagle?.rig.dispose();
+      eagle?.shadow.dispose();
+    },
+    [eagle],
+  );
   const shadows = useMemo(() => rigs.map(() => createBlobShadow(model.palette.shadow, model.palette.shadowOpacity * 0.85)), [rigs, model.palette]);
-  const pool = useMemo(() => new ParticlePool(160, style === 'penguin'), [style]);
+  const pool = useMemo(() => new ParticlePool(320, style === 'penguin'), [style]);
+  // Idle life (penguins): what each animal does when nothing is asked of it.
+  const brains = useMemo(() => [new IdleBrain(11, 0), new IdleBrain(11, 1)], [model]);
+  const spots = useMemo<Spots | null>(() => {
+    if (style !== 'penguin') return null;
+    const p = polarSpots(model);
+    return { bucket: [p.bucket.x, p.bucket.z], hole: [p.hole.x, p.hole.z], igloo: { door: p.igloo.door, approach: p.igloo.approach, center: p.igloo.center } };
+  }, [model, style]);
+  const roam = useRef({ freeFor: 0, last: 0, k: -1, keepOut: null as Box | null, area: { minX: -4, maxX: 4, minZ: 0, maxZ: 3 } as Box });
+  const fidget = useRef<{ act: IdleAct; start: number; next: number }[]>([
+    { act: 'none', start: 0, next: 5 },
+    { act: 'none', start: 0, next: 8.5 },
+  ]);
   const confetti = useMemo(() => CONFETTI[style].map((c) => new Color(c)), [style]);
   const clickedAt = useRef<number[]>(rigs.map(() => -10));
   const hovered = useRef(-1);
@@ -133,13 +212,103 @@ export function CastLayer({ model, driver, style, calm, clock }: CastLayerProps)
       driver.register((sample: StageSample) => {
         sampleCast(model, style, sample.k, sample.tau, sample.duration, sample, cast, calm);
         const now = clock.now;
+        const wall = performance.now() / 1000;
         const rest = model.rest(sample.k);
         const floor = model.floorY;
         const { camera, size } = get();
         pool.begin();
+
+        // Idle life: while the run rests, the crew roams; the moment it moves again they are back at their stations.
+        const r = roam.current;
+        const dt = r.last > 0 ? Math.min(0.1, wall - r.last) : 0;
+        r.last = wall;
+        const playing = playhead.getSnapshot().playing;
+        const settled = sample.k === 0 || sample.tau >= sample.duration - 1e-3;
+        const rested = !playing && settled && style === 'penguin' && !calm;
+        r.freeFor = rested ? r.freeFor + dt : 0;
+        if (r.k !== sample.k) {
+          r.k = sample.k;
+          r.keepOut = obstacleBox(model, rest);
+          const f = model.footprint();
+          const front = (r.keepOut?.maxZ ?? f.maxZ) + 0.95;
+          r.area = { minX: f.minX - 2.6, maxX: f.maxX + 2.6, minZ: front, maxZ: front + 2.4 };
+        }
+        const idleOut = brains.map((brain, i) => {
+          const m = cast[i];
+          if (style !== 'penguin' || calm) return null;
+          const cheering = m.pose === 'cheer' && m.poseTime < 2.8 && m.poseWeight > 0.3;
+          const ctx: IdleContext = {
+            free: rested && !cheering && !m.scripted,
+            freeFor: r.freeFor,
+            home: { x: m.x, z: m.z, yaw: m.yaw },
+            keepOut: r.keepOut,
+            area: r.area,
+            spots,
+            far: r.freeFor > 5,
+            partner: brains[1 - i],
+            radius: 3.2,
+          };
+          return brain.update(dt, ctx);
+        });
         for (let i = 0; i < cast.length; i++) {
           const m: CastMember = cast[i];
           const holder = holders[i];
+          // Roaming: the animal's own business takes over from the script's station.
+          const roamed = idleOut[i];
+          let idleAct: IdleAct = 'none';
+          let idleT = 0;
+          let idleW = 0;
+          let fish = 0;
+          if (roamed && roamed.away) {
+            m.x = roamed.x;
+            m.z = roamed.z;
+            m.yaw = roamed.yaw;
+            m.gait = roamed.gait;
+            m.gaitPhase = roamed.gaitPhase;
+            m.gaitWeight = roamed.gaitWeight;
+            m.pose = 'idle';
+            m.poseWeight = 1;
+            m.prevWeight = 0;
+            m.active = false;
+            m.target = -1;
+            m.effort = 0;
+            m.y = roamed.gait === 'walk' ? Math.abs(Math.sin(roamed.gaitPhase)) * 0.035 * roamed.gaitWeight : 0;
+            m.look[0] = m.x + Math.sin(m.yaw) * 3;
+            m.look[1] = floor + 0.6;
+            m.look[2] = m.z + Math.cos(m.yaw) * 3;
+            idleAct = roamed.act;
+            idleT = roamed.actT;
+            idleW = roamed.actWeight;
+            fish = roamed.fish;
+            holders[i].visible = roamed.hide < 0.5;
+            if (roamed.splash) clock.fishAt = wall;
+          } else {
+            holders[i].visible = true;
+            // At the station, between steps' work: a look about, a preen, a shake, now and then.
+            const fd = fidget.current[i];
+            if (!calm && style === 'penguin' && !m.active && !m.scripted && m.pose === 'idle' && !playing) {
+              /* the brain is in charge while the run rests */
+            } else if (!calm && style === 'penguin' && !m.active && !m.scripted && m.pose === 'idle') {
+              if (fd.act === 'none' && now > fd.next) {
+                fd.act = (['look', 'look', 'preen', 'sniff', 'shake'] as IdleAct[])[Math.floor(hash(now, i + 5) * 5)];
+                fd.start = now;
+              }
+              if (fd.act !== 'none') {
+                const dur = fd.act === 'look' ? 4.2 : fd.act === 'preen' ? 3.2 : fd.act === 'shake' ? 1.1 : 2.4;
+                if (now - fd.start > dur) {
+                  fd.act = 'none';
+                  fd.next = now + 5 + hash(now, i + 9) * 8;
+                } else {
+                  idleAct = fd.act;
+                  idleT = now - fd.start;
+                  idleW = Math.min(1, idleT / 0.25) * Math.min(1, (dur - idleT) / 0.3);
+                }
+              }
+            } else {
+              fd.act = 'none';
+              fd.next = now + 4 + hash(now, i + 3) * 5;
+            }
+          }
           holder.position.set(m.x, floor + m.y, m.z);
           holder.rotation.y = m.yaw;
           const dx = m.look[0] - m.x;
@@ -155,11 +324,32 @@ export function CastLayer({ model, driver, style, calm, clock }: CastLayerProps)
             poseTime: m.poseTime,
             prevPose: m.prevPose,
             prevWeight: m.prevWeight,
-            lookLocal: [dx * c - dz * s, m.look[1] - floor, dx * s + dz * c],
+            lookLocal: [dx * c - dz * s, m.look[1] - floor - m.y, dx * s + dz * c],
             react: react < 1.2 ? react : -1,
             time: now,
             seed: i * 1.7 + 0.3,
+            idle: idleW > 0 ? { act: idleAct, t: idleT, weight: idleW } : undefined,
+            fish,
+            effort: m.effort,
+            climb: m.gait === 'climb' ? { weight: m.gaitWeight, phase: m.gaitPhase, slope: m.climbSlope } : undefined,
           });
+
+          // The rope the animal climbs, and the ledge it perches on.
+          const rope = gear.ropes[i];
+          rope.visible = m.rope > 0.02;
+          if (rope.visible) {
+            const len = Math.max(0.05, m.ropeTop * m.rope);
+            rope.scale.set(1, len, 1);
+            rope.position.set(m.ropeX, floor + m.ropeTop - len / 2, m.ropeZ);
+          }
+          const perched = m.y > 0.3 && m.gait !== 'climb' && m.gait !== 'leap' && m.gaitWeight < 0.5;
+          gear.ledgeW[i] += ((perched ? 1 : 0) - gear.ledgeW[i]) * Math.min(1, dt * 9 + (perched ? 0 : 0.2));
+          const ledge = gear.ledges[i];
+          ledge.visible = gear.ledgeW[i] > 0.03;
+          if (ledge.visible) {
+            ledge.position.set(m.x, floor + m.y - 0.045, m.z);
+            ledge.scale.setScalar(gear.ledgeW[i]);
+          }
           if (react < 1.2) invalidate();
 
           const lift = holder.position.y - floor + rigs[i].root.position.y;
@@ -178,7 +368,8 @@ export function CastLayer({ model, driver, style, calm, clock }: CastLayerProps)
             const caption = m.target >= 0 ? rest.caption[m.target] : '';
             const cell = where ? (/^\d+$/.test(caption) ? `${where}[${caption}]` : where) : '';
             text = `${names[i]} · ${VERBS[m.pose]}${cell ? ` ${cell}` : ''}${m.target >= 0 && rest.present[m.target] ? ` (${STATE_TREATMENTS[rest.state[m.target]].word})` : ''}`;
-          } else if (m.active && m.poseWeight > 0.6 && m.poseTime < 2.2) text = bubbleFor(m.pose, style, value, settled);
+          } else if (m.active && !m.scripted && m.poseWeight > 0.6 && m.poseTime < 2.2) text = bubbleFor(m.pose, style, value, settled);
+          else if (m.scripted && (m.gait === 'push' || m.gait === 'pull') && m.gaitWeight > 0.5) text = bubbleFor(m.pose, style, value, settled);
           const el = bubbles[i];
           if (el) {
             _head.set(m.x, floor + m.y + rigs[i].root.position.y + HEAD[style] + 0.12, m.z).project(camera);
@@ -245,9 +436,59 @@ export function CastLayer({ model, driver, style, calm, clock }: CastLayerProps)
             }
           }
         }
+        // The eagle: in for the ball the penguin has made, over to its place, away again.
+        if (eagle) {
+          const f = sample.duration > 0 ? sample.tau / sample.duration : 1;
+          eagleAt(model, sample.k, f, eg0);
+          if (eg0.visible && !calm) {
+            eagleAt(model, sample.k, f + 0.02, eg1);
+            const dx = eg1.x - eg0.x, dy = eg1.y - eg0.y, dz = eg1.z - eg0.z;
+            const run = Math.max(1e-4, Math.hypot(dx, dz));
+            const pitch = Math.max(-0.7, Math.min(0.7, Math.atan2(dy, run) * 0.8));
+            const turn = Math.atan2(Math.sin(eg1.yaw - eg0.yaw), Math.cos(eg1.yaw - eg0.yaw));
+            eagle.holder.visible = true;
+            eagle.holder.position.set(eg0.x, eg0.y, eg0.z);
+            eagle.holder.rotation.y = eg0.yaw;
+            eagle.rig.update({ clock: eg0.clock, flap: eg0.flap, holding: eg0.holding, pitch, bank: Math.max(-0.5, Math.min(0.5, -turn * 6)) });
+            const height = Math.max(0, eg0.y - floor);
+            eagle.shadow.mesh.visible = true;
+            eagle.shadow.mesh.position.set(eg0.x, floor + 0.006, eg0.z);
+            const spread = 1.5 / (1 + height * 0.35);
+            eagle.shadow.mesh.scale.set(spread, spread, 1);
+          } else {
+            eagle.holder.visible = false;
+            eagle.shadow.mesh.visible = false;
+          }
+        }
+
+        // Ice physics: shavings thrown up where a block is shoved off, scraped along, and brought to rest.
+        if (!calm && style === 'penguin') {
+          const motion = iceMotionAt(model, sample.k);
+          if (motion) {
+            const f = sample.duration > 0 ? sample.tau / sample.duration : 1;
+            for (const job of motion.jobs) {
+              blockAt(job, f, scratch);
+              const speed = Math.hypot(scratch.vx, scratch.vz);
+              if (speed < 1.2) continue;
+              const s3 = job.slot * 3;
+              const hw = sample.dims[s3] / 2;
+              const fade = Math.min(1, speed / 6) * sample.presence[job.slot];
+              const ux = scratch.vx / speed, uz = scratch.vz / speed;
+              for (let p = 0; p < 9; p++) {
+                const life = (now * 2.6 + hash(job.slot + 31, p)) % 1;
+                const lateral = (hash(job.slot + 37, p) - 0.5) * 1.1 * hw * 2;
+                const back = hw * 0.9 + life * 0.7;
+                const x = scratch.x - ux * back - uz * lateral;
+                const z = scratch.z - uz * back + ux * lateral;
+                const y = floor + 0.04 + Math.sin(life * Math.PI) * 0.22 * (0.4 + hash(job.slot + 41, p));
+                pool.add(x, y, z, 0.92, 0.97, 1, (1 - life) * 0.8 * fade, 0.06 + 0.07 * (1 - life));
+              }
+            }
+          }
+        }
         pool.end();
       }),
-    [driver, model, style, cast, holders, bubbles, get, rigs, shadows, pool, confetti, calm, clock, names, invalidate],
+    [driver, model, style, cast, holders, bubbles, get, rigs, shadows, pool, confetti, calm, clock, names, invalidate, playhead, brains, spots, gear, eagle],
   );
 
   useEffect(
@@ -291,6 +532,14 @@ export function CastLayer({ model, driver, style, calm, clock }: CastLayerProps)
       ))}
       {shadows.map((s, i) => (
         <primitive key={`s${i}`} object={s.mesh} />
+      ))}
+      {eagle && <primitive object={eagle.holder} />}
+      {eagle && <primitive object={eagle.shadow.mesh} />}
+      {gear.ropes.map((r, i) => (
+        <primitive key={`r${i}`} object={r} />
+      ))}
+      {gear.ledges.map((l, i) => (
+        <primitive key={`l${i}`} object={l} />
       ))}
       <primitive object={pool.points} />
     </>

@@ -163,7 +163,19 @@ describe.each<CastStyle>(['penguin', 'panda'])('worlds: the %s crew', (style) =>
     const compare = model.frames.findIndex((f) => f.event.kind === 'compare');
     const swap = model.frames.findIndex((f) => f.event.kind === 'swap');
     expect(poseAt(compare)).toEqual(['inspect', 'inspect']);
-    expect(poseAt(swap)).toEqual(['push', 'push']);
+    if (style === 'panda') {
+      expect(poseAt(swap)).toEqual(['push', 'push']);
+    } else {
+      // The penguins shove the blocks along the ice: during the step each one leans into a block (pushing or tugging).
+      const leaned = [false, false];
+      for (let i = 1; i < 200; i++) {
+        const { cast } = castAt(model, style, table.ends[swap - 1] + (table.durations[swap] * i) / 200);
+        cast.forEach((m, j) => {
+          if (m.gait === 'push' || m.gait === 'pull') leaned[j] = true;
+        });
+      }
+      expect(leaned).toEqual([true, true]);
+    }
     expect(poseAt(model.frameCount - 1)).toEqual(['cheer', 'cheer']);
   });
 

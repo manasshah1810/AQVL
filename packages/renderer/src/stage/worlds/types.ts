@@ -20,13 +20,13 @@ export const WORLDS: Record<StageWorld, WorldInfo> = {
   studio: { id: 'studio', label: 'Studio', blurb: 'The plain stage: porcelain bodies on a quiet floor.', crew: ['', ''] },
   penguin: {
     id: 'penguin',
-    label: 'Penguins',
-    blurb: 'An ice shelf under the aurora. Two penguins waddle (or belly-slide) to every step.',
+    label: 'Penguins + Ice',
+    blurb: 'An ice shelf under the aurora. Two penguins waddle to every step, shove the blocks across the ice, climb to the floating nodes, and an eagle carries new ones up.',
     crew: ['Pip', 'Nori'],
   },
   panda: {
     id: 'panda',
-    label: 'Pandas',
+    label: 'Pandas + Bamboo',
     blurb: 'A bamboo grove at dawn. Two pandas roll between the cells and act out each step.',
     crew: ['Bao', 'Mochi'],
   },

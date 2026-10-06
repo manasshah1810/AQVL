@@ -34,6 +34,8 @@ const _p = new Vector3();
 const _q = new Quaternion();
 const _s = new Vector3();
 const _axis = new Vector3(0, 0, 1);
+const _axisX = new Vector3(1, 0, 0);
+const _qr = new Quaternion();
 const HIDDEN = new Matrix4().makeScale(0, 0, 0);
 
 function geometryFor(shape: TraceShape, sphereSegments: number): BufferGeometry {
@@ -48,6 +50,8 @@ function geometryFor(shape: TraceShape, sphereSegments: number): BufferGeometry 
  */
 export function NodeBodies({ model, driver, sphereSegments }: { model: StageModel; driver: StageDriver; sphereSegments: number }) {
   const finish = model.world === 'penguin' ? 'ice' : model.world === 'panda' ? 'bamboo' : 'porcelain';
+  const rolls = model.world === 'penguin';
+  const floorY = model.floorY;
   const material = useMemo<MeshPhysicalMaterial>(() => createNodeMaterial(finish), [finish]);
   const invalidate = useThree((s) => s.invalidate);
   // Hover: the node under the pointer brightens a touch, and a small tag says what it is.
@@ -126,7 +130,15 @@ export function NodeBodies({ model, driver, sphereSegments }: { model: StageMode
               continue;
             }
             _p.set(sample.pos[s * 3], sample.pos[s * 3 + 1], sample.pos[s * 3 + 2]);
-            _q.setFromAxisAngle(_axis, sample.tilt[s]);
+            if (rolls && b.shape === 'sphere' && _p.y - sample.dims[s * 3 + 1] / 2 - floorY < 0.3) {
+              // A ball on the ice turns as it goes: its orientation is a function of where it is (rolling without slipping), so it is right at every step.
+              const radius = Math.max(0.2, sample.dims[s * 3] / 2);
+              _q.setFromAxisAngle(_axis, sample.tilt[s] - _p.x / radius);
+              _qr.setFromAxisAngle(_axisX, _p.z / radius);
+              _q.multiply(_qr);
+            } else {
+              _q.setFromAxisAngle(_axis, sample.tilt[s]);
+            }
             _s.set(sample.dims[s * 3] * presence, sample.dims[s * 3 + 1] * presence, sample.dims[s * 3 + 2] * presence);
             _m.compose(_p, _q, _s);
             mesh.setMatrixAt(i, _m);
@@ -144,7 +156,7 @@ export function NodeBodies({ model, driver, sphereSegments }: { model: StageMode
           mesh.boundingSphere = null;
         }
       }),
-    [batches, driver, tagAnchor],
+    [batches, driver, tagAnchor, rolls, floorY],
   );
 
   useEffect(

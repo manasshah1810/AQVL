@@ -3,6 +3,7 @@ import { motion } from 'motion/react';
 import { MARK, STROKE, markPath } from '../../brand/geometry';
 import { Wordmark } from '../../brand/Logo';
 import { usePrefersReducedMotion } from '../../lib/motion';
+import { FooterIce } from '../theme/WorldDecor';
 
 const SOURCE_URL = 'https://github.com/manasshah1810/AQVL';
 
@@ -11,6 +12,7 @@ const LINKS = [
   { label: 'Docs', href: '#/docs' },
   { label: 'Examples', href: '#/examples' },
   { label: 'Playground', href: '#/playground' },
+  { label: 'Settings', href: '#/settings' },
   { label: 'Privacy', href: '#/privacy' },
 ];
 
@@ -67,6 +69,7 @@ export function SiteFooter() {
             viewport={{ once: true }}
             transition={{ duration: 1.1, delay: 0.9, ease: [0.65, 0, 0.35, 1] }}
           />
+          <FooterIce />
         </div>
 
         <div className="flex flex-col gap-3 py-8 text-peach-muted sm:flex-row sm:items-center sm:justify-between">

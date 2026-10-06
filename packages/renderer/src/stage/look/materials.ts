@@ -20,6 +20,13 @@ const ICE_FRAGMENT = /* glsl */ `
   float speck = step(0.93, n) * 0.06;
   float vertical = 1.0 - smoothstep(0.8, 0.95, abs(normalize(vNormal).y));
   diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.93, 0.97, 1.0), edge * 0.32 * vertical + speck);
+  // Frozen-in bubbles and a faint seam, so a ball rolling across the ice visibly turns.
+  vec3 cell = floor(vObj * 5.0);
+  vec3 within = fract(vObj * 5.0) - 0.5;
+  float hb = fract(sin(dot(cell, vec3(31.7, 17.3, 53.1))) * 12345.678);
+  float bubble = step(0.72, hb) * (1.0 - smoothstep(0.08, 0.2, length(within)));
+  float seam = 1.0 - smoothstep(0.0, 0.012, abs(vObj.y * 0.9 + vObj.x * 0.45));
+  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.78, 0.9, 1.0), bubble * 0.4 + seam * 0.1);
 }
 `;
 const ICE_EMISSIVE = /* glsl */ `
@@ -84,7 +91,7 @@ export function createNodeMaterial(finish: NodeFinish = 'porcelain'): MeshPhysic
     }
     shader.fragmentShader = fragment;
   };
-  material.customProgramCacheKey = () => `aqvl-node-v3-${finish}`;
+  material.customProgramCacheKey = () => `aqvl-node-v4-${finish}`;
   return material;
 }
 

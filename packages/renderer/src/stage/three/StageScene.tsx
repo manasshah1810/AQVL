@@ -142,7 +142,7 @@ export function StageScene({ model, playhead, tier, calm, follow, fonts, phase, 
 
   return (
     <>
-      {model.world === 'studio' ? <StageEnvironment model={model} bounds={bounds} /> : <WorldLayer model={model} bounds={bounds} driver={driver} calm={calm} />}
+      {model.world === 'studio' ? <StageEnvironment model={model} bounds={bounds} /> : <WorldLayer model={model} bounds={bounds} driver={driver} calm={calm} playhead={playhead} />}
       <NodeBodies model={model} driver={driver} sphereSegments={quality.sphereSegments} />
       <EdgeRods model={model} driver={driver} />
       <FloorDecals driver={driver} floorY={model.floorY} />
