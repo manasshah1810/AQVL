@@ -14,7 +14,8 @@ import {
 } from '../motion/spring';
 import { STAGGER_SECONDS } from '../timeline/beats';
 import { blockAt, carryBall, frictionOf, iceMotionAt, jobPresence, shoveProgress, slideLean } from '../worlds/ice';
-import { hasPhysics } from '../worlds/types';
+import { hasPhysics, isOcean } from '../worlds/types';
+import { driftProgress, haulAt, tapOffset, waterMotionAt, type HaulPose } from '../worlds/ocean/water';
 import { linearRgb } from './colors';
 import { DECAL_SHAPE, type DecalState, type LabelFont, type LabelOrient, type LabelState, type RestFrame, type StageModel } from './StageModel';
 
@@ -353,6 +354,9 @@ export function sampleStage(model: StageModel, k: number, tau: number, duration:
   const colorT = calm ? smoothstep(0, 0.5, out.u) : smoothstep(0.02, 0.32, out.u);
   const ice = (options.ice ?? hasPhysics(model.world)) && !calm && hasPhysics(model.world);
   const motionPlan = ice ? iceMotionAt(model, k) : null;
+  // Underwater: nodes are nudged, steered and let go, and drift to rest against drag (see worlds/ocean/water.ts).
+  const ocean = isOcean(model.world) && !calm;
+  const water = ocean ? waterMotionAt(model, k) : null;
   const fStep = clamp01(t / D);
 
   for (let s = 0; s < n; s++) {
@@ -393,8 +397,35 @@ export function sampleStage(model: StageModel, k: number, tau: number, duration:
 
     const job = motionPlan?.bySlot.get(s);
     const onIce = ice && !job && (m === Motion.Move || m === Motion.Still) && groundedAt(model, a, s) && groundedAt(model, b, s);
+    const haul = water?.bySlot.get(s);
 
-    if (job?.carry) {
+    if (haul) {
+      // Through the water: lifted, steered, let go, drifting to rest and bobbing once.
+      haulAt(haul, fStep, hauled);
+      x = hauled.x;
+      y = hauled.y;
+      z = hauled.z;
+      presence = hauled.presence;
+      lean = hauled.lean;
+    } else if (ocean && (m === Motion.Move || m === Motion.Still)) {
+      // A small change of place or height in water: a quick start, then drag eases it to rest (no spring bounce).
+      const p = driftProgress(clamp01(local / span), 0.0, 0.26, 0.94);
+      x = lerp(ax, bx, p);
+      y = lerp(ay, by, p);
+      z = lerp(az, bz, p);
+    } else if (ocean && m === Motion.Enter) {
+      // Rises gently into place as it forms.
+      const p = smoothstep(0, 0.75, local / span);
+      presence = p;
+      y = by - 0.35 * (1 - p) * (1 - p);
+    } else if (ocean && m === Motion.Exit) {
+      // Floats up as it dissolves.
+      const p = smoothstep(0, 0.7, local / span);
+      presence = 1 - p * p;
+      x = ax;
+      y = ay + 0.7 * p;
+      z = az;
+    } else if (job?.carry) {
       // A floating node: made at the forge, lifted by the eagle, set down in its place.
       carryBall(job.carry, fStep, ball, model.floorY);
       x = ball.x;
@@ -468,6 +499,15 @@ export function sampleStage(model: StageModel, k: number, tau: number, duration:
       }
     }
 
+    // A nudge of a whale's nose: the node gives a little and floats back.
+    const tap = water?.tapBySlot.get(s);
+    if (tap) {
+      tapOffset(tap, fStep, tapped);
+      x += tapped.x;
+      y += tapped.y;
+      z += tapped.z;
+    }
+
     // A written value: flash and a little pulse in size.
     const w = plan.writeAt[s];
     if (w >= 0 && t >= w) {
@@ -534,6 +574,8 @@ export function sampleStage(model: StageModel, k: number, tau: number, duration:
 
 const _rgb: [number, number, number] = [0, 0, 0];
 const slide = { x: 0, z: 0, vx: 0, vz: 0, leg: -1 };
+const hauled: HaulPose = { x: 0, y: 0, z: 0, tx: 0, ty: 0, tz: 0, speed: 0, s: 0, lean: 0, presence: 1 };
+const tapped = { x: 0, y: 0, z: 0 };
 const ball = { x: 0, y: 0, z: 0 };
 
 /** Whether node s stands on the floor in a rest frame (its bottom within a hand of it). */

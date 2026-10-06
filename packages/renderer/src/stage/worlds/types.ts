@@ -3,9 +3,11 @@
  * others put the structures in a place with a crew of two animals who walk
  * (or slide, or roll) to the cells each step is about and act out what
  * happens to them: inspect on a compare, push on a swap, cheer on a settle.
+ * The ocean is the exception: its crew swims (a whale and her calf, see
+ * worlds/ocean), so it has its own water physics and its own pod.
  * The state colours of the bodies never change between worlds.
  */
-export type StageWorld = 'studio' | 'penguin' | 'panda';
+export type StageWorld = 'studio' | 'penguin' | 'panda' | 'ocean';
 
 export interface WorldInfo {
   id: StageWorld;
@@ -30,6 +32,12 @@ export const WORLDS: Record<StageWorld, WorldInfo> = {
     blurb: 'A bamboo grove at dawn. Two pandas walk to every step, push and roll the blocks along the ground, climb bamboo to reach floating nodes, and potter about the grove when nothing is running.',
     crew: ['Bao', 'Mochi'],
   },
+  ocean: {
+    id: 'ocean',
+    label: 'Whales + Ocean',
+    blurb: 'A sunlit reef under the sea. A whale and her calf swim to every step, lift blocks off the seabed with a nudge and steer them through the water, and drift about the reef among fish, jellies and turtles when nothing is running.',
+    crew: ['Kai', 'Nami'],
+  },
 };
 
 export const WORLD_IDS = Object.keys(WORLDS) as StageWorld[];
@@ -43,7 +51,12 @@ export function hasCast(world: StageWorld): boolean {
   return world !== 'studio';
 }
 
-/** True when blocks standing on the ground are physically shoved, rolled and carried by the crew (both animal worlds). */
+/** True when blocks standing on the ground are physically shoved, rolled and carried by a walking crew (penguins, pandas). */
 export function hasPhysics(world: StageWorld): boolean {
   return world === 'penguin' || world === 'panda';
+}
+
+/** True for the underwater world: nodes move through water (buoyancy, drag) and the crew swims. */
+export function isOcean(world: StageWorld): boolean {
+  return world === 'ocean';
 }

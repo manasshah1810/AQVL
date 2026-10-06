@@ -7,9 +7,10 @@ import {
   ShaderMaterial,
   type WebGLProgramParametersWithUniforms,
 } from 'three';
+import { CAUSTICS, OCEAN } from '../worlds/ocean/glsl';
 
-/** How a node body is finished: the studio's porcelain, a world's ice block or bamboo crate. */
-export type NodeFinish = 'porcelain' | 'ice' | 'bamboo';
+/** How a node body is finished: the studio's porcelain, a world's ice block, bamboo crate or sea glass. */
+export type NodeFinish = 'porcelain' | 'ice' | 'bamboo' | 'sea';
 
 /** Ice: frosted edges, a cool rim where the face turns away, faint bubbles; the face centre stays clear for the value. */
 const ICE_FRAGMENT = /* glsl */ `
@@ -51,6 +52,30 @@ const BAMBOO_FRAGMENT = /* glsl */ `
 `;
 
 /**
+ * Sea glass: tumbled smooth, a soft cyan rim where the face turns away (light scattered in the water), the
+ * surface's caustics playing over whatever faces up, and a little dimmer the deeper it sits.
+ */
+const SEA_FRAGMENT = /* glsl */ `
+{
+  vec3 q = abs(vObj) * 2.0;
+  float edge = smoothstep(0.7, 0.98, max(max(min(q.x, q.y), min(q.y, q.z)), min(q.x, q.z)));
+  diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * 0.82 + vec3(0.04, 0.1, 0.12), edge * 0.35);
+  float depth = clamp((vSeaWorld.y - uFloorY) / 6.0, 0.0, 1.0);
+  diffuseColor.rgb *= 0.9 + 0.1 * depth;
+}
+`;
+const SEA_EMISSIVE = /* glsl */ `
+{
+  vec3 nrm = normalize(vNormal);
+  float rim = pow(1.0 - clamp(dot(nrm, normalize(vViewPosition)), 0.0, 1.0), 2.4);
+  totalEmissiveRadiance += vec3(0.32, 0.78, 0.86) * rim * 0.16;
+  float up = smoothstep(0.35, 0.95, normalize(vSeaNormal).y);
+  float c = caustics(vSeaWorld.xz * 1.1, uOceanTime) * uCaustic;
+  totalEmissiveRadiance += vec3(0.6, 0.9, 1.0) * c * up * 0.09;
+}
+`;
+
+/**
  * Node bodies: satin porcelain with soft rounded edges. Per instance it
  * takes a colour (instanceColor) and `aFx` = (lit, finish):
  *  - lit adds a little of the body colour as emission (hover; zero otherwise);
@@ -60,17 +85,38 @@ const BAMBOO_FRAGMENT = /* glsl */ `
  */
 export function createNodeMaterial(finish: NodeFinish = 'porcelain'): MeshPhysicalMaterial {
   const ice = finish === 'ice';
+  const sea = finish === 'sea';
   const material = new MeshPhysicalMaterial({
     color: 0xffffff,
-    roughness: ice ? 0.22 : finish === 'bamboo' ? 0.62 : 0.46,
+    roughness: ice ? 0.22 : finish === 'bamboo' ? 0.62 : sea ? 0.34 : 0.46,
     metalness: 0,
-    clearcoat: ice ? 0.55 : finish === 'bamboo' ? 0.12 : 0.3,
-    clearcoatRoughness: ice ? 0.2 : 0.42,
+    clearcoat: ice ? 0.55 : finish === 'bamboo' ? 0.12 : sea ? 0.5 : 0.3,
+    clearcoatRoughness: ice ? 0.2 : sea ? 0.3 : 0.42,
     ior: ice ? 1.31 : 1.45,
-    specularIntensity: ice ? 0.75 : 0.45,
+    specularIntensity: ice ? 0.75 : sea ? 0.6 : 0.45,
     envMapIntensity: ice ? 1.05 : 1,
   });
   material.onBeforeCompile = (shader: WebGLProgramParametersWithUniforms) => {
+    if (sea) {
+      Object.assign(shader.uniforms, OCEAN);
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\nvarying vec3 vSeaWorld;\nvarying vec3 vSeaNormal;')
+        .replace(
+          '#include <begin_vertex>',
+          `#include <begin_vertex>
+          #ifdef USE_INSTANCING
+          vSeaWorld = (modelMatrix * instanceMatrix * vec4(position, 1.0)).xyz;
+          vSeaNormal = mat3(modelMatrix) * mat3(instanceMatrix) * normal;
+          #else
+          vSeaWorld = (modelMatrix * vec4(position, 1.0)).xyz;
+          vSeaNormal = mat3(modelMatrix) * normal;
+          #endif`,
+        );
+      shader.fragmentShader = shader.fragmentShader.replace(
+        '#include <common>',
+        `#include <common>\nvarying vec3 vSeaWorld;\nvarying vec3 vSeaNormal;\nuniform float uOceanTime;\nuniform float uFloorY;\nuniform float uCaustic;\n${CAUSTICS}`,
+      );
+    }
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\nattribute vec2 aFx;\nvarying vec2 vFx;\nvarying vec3 vObj;')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvFx = aFx;\nvObj = position;');
@@ -88,6 +134,10 @@ export function createNodeMaterial(finish: NodeFinish = 'porcelain'): MeshPhysic
         .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>\n${ICE_EMISSIVE}`);
     } else if (finish === 'bamboo') {
       fragment = fragment.replace('#include <color_fragment>', `#include <color_fragment>\n${BAMBOO_FRAGMENT}`);
+    } else if (sea) {
+      fragment = fragment
+        .replace('#include <color_fragment>', `#include <color_fragment>\n${SEA_FRAGMENT}`)
+        .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>\n${SEA_EMISSIVE}`);
     }
     shader.fragmentShader = fragment;
   };
@@ -95,9 +145,30 @@ export function createNodeMaterial(finish: NodeFinish = 'porcelain'): MeshPhysic
   return material;
 }
 
-/** Edge rods: satin, lit, coloured per instance. */
-export function createEdgeMaterial(): MeshStandardMaterial {
-  return new MeshStandardMaterial({ color: 0xffffff, roughness: 0.55, metalness: 0, envMapIntensity: 0.6 });
+/** Edge rods: satin, lit, coloured per instance. Underwater they are sea vines: twisted, with a faint glow of their own. */
+export function createEdgeMaterial(vine = false): MeshStandardMaterial {
+  const m = new MeshStandardMaterial({ color: 0xffffff, roughness: vine ? 0.6 : 0.55, metalness: 0, envMapIntensity: 0.6 });
+  if (vine) {
+    m.onBeforeCompile = (shader: WebGLProgramParametersWithUniforms) => {
+      shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nvarying vec2 vVine;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvVine = uv;');
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', '#include <common>\nvarying vec2 vVine;')
+        .replace(
+          '#include <color_fragment>',
+          `#include <color_fragment>
+          // Two strands twisted round each other.
+          float twist = 0.5 + 0.5 * sin((vVine.x * 2.0 + vVine.y) * 6.2831853);
+          diffuseColor.rgb *= 0.78 + 0.3 * twist;`,
+        )
+        .replace(
+          '#include <emissivemap_fragment>',
+          `#include <emissivemap_fragment>
+          totalEmissiveRadiance += diffuseColor.rgb * 0.22;`,
+        );
+    };
+    m.customProgramCacheKey = () => 'aqvl-edge-vine';
+  }
+  return m;
 }
 
 /** The dot that travels along an edge a step uses: flat colour, painted (never added as light). */

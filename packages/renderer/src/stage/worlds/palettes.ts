@@ -75,9 +75,39 @@ const GROVE: StagePalette = {
   },
 };
 
+/** A sunlit reef: pale sand in blue water, light inks; the state colours read as they do everywhere. */
+const REEF: StagePalette = {
+  background: '#0b3a52',
+  floor: '#1a4856',
+  floorLine: '#8cd3d8',
+  plinth: '#245766',
+  plinthLine: '#5fa3ad',
+  shadow: '#021820',
+  shadowOpacity: 0.5,
+  states: STATES,
+  edges: { idle: '#9fe3dc', discarded: '#2e5a66', ...STATE_EDGES },
+  plate: '#effcff',
+  caption: '#bfe7ec',
+  tag: '#effcff',
+  frame: '#0f4157',
+  frameText: '#eafbff',
+  frameTop: '#7fe6e0',
+  lights: {
+    key: '#e8fbff',
+    keyIntensity: 2.3,
+    fill: '#7fd0ff',
+    fillIntensity: 0.55,
+    sky: '#b8f0ff',
+    ground: '#0d3a45',
+    ambient: 1.05,
+    envIntensity: 0.65,
+  },
+};
+
 export const WORLD_PALETTES: Record<Exclude<StageWorld, 'studio'>, StagePalette> = {
   penguin: POLAR,
   panda: GROVE,
+  ocean: REEF,
 };
 
 /** The palette a scene is drawn in. */
