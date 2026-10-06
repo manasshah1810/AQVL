@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from 'react';
 import { prefersReducedMotion } from './motion';
+import { syncWorldMeta } from './world';
 
 /**
  * Site theme. index.html sets data-theme on <html> before first paint (stored
@@ -19,6 +20,7 @@ export function getTheme(): Theme {
 function apply(theme: Theme) {
   document.documentElement.setAttribute('data-theme', theme);
   document.querySelector('meta[name="theme-color"]')?.setAttribute('content', META_COLOR[theme]);
+  syncWorldMeta();
   try {
     localStorage.setItem(KEY, theme);
   } catch {

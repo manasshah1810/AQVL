@@ -114,7 +114,19 @@
     flex: 1;
     min-height: 0;
     display: grid;
-    grid-template-columns: minmax(340px, 41%) minmax(0, 1fr);
+    grid-template-columns: minmax(320px, 36%) minmax(0, 1fr);
+    transition: grid-template-columns var(--spring-soft-d) var(--spring-soft);
+  }
+
+  /* Focus: the code steps aside and the stage has the whole width. */
+  .pg-body[data-focus='true'] {
+    grid-template-columns: 0 minmax(0, 1fr);
+  }
+
+  .pg-body[data-focus='true'] .pg-editor {
+    visibility: hidden;
+    border-right: 0;
+    overflow: hidden;
   }
 
   .pg-editor {
@@ -149,6 +161,12 @@
     min-height: 0;
   }
 
+  .pg-focus {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+
   /* ── Viewport: the visualizer fills it ───────────────────── */
   .pg-viewport {
     position: relative;
@@ -166,7 +184,7 @@
 
   .pg-tracing {
     position: absolute;
-    top: 64px;
+    top: 60px;
     left: 50%;
     transform: translateX(-50%);
     z-index: 6;
@@ -196,6 +214,13 @@
   .pg-empty {
     max-width: 34ch;
     text-align: left;
+  }
+
+  .pg-empty__art {
+    display: grid;
+    justify-items: start;
+    gap: 6px;
+    margin-bottom: 14px;
   }
 
   .pg-error {
@@ -254,6 +279,24 @@
     color: var(--peach-muted);
     font-weight: 500;
     font-variant-numeric: tabular-nums;
+  }
+
+  .poc--embedded {
+    height: 100%;
+    min-height: 0;
+  }
+
+  .poc--embedded .poc__head {
+    padding: 0 0 8px;
+    min-height: 34px;
+  }
+
+  .poc--embedded .poc__body {
+    flex: 1;
+    height: auto;
+    min-height: 0;
+    padding: 0;
+    border-top: 1px solid var(--line-faint);
   }
 
   .poc__body {
@@ -501,6 +544,10 @@
       display: flex;
       flex-direction: column;
       overflow-y: auto;
+    }
+
+    .pg-body[data-focus='true'] .pg-editor {
+      display: none;
     }
 
     .pg-editor {

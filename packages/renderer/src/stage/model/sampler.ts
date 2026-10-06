@@ -13,6 +13,7 @@ import {
   windowedSpring,
 } from '../motion/spring';
 import { STAGGER_SECONDS } from '../timeline/beats';
+import { blockAt, carryBall, iceMotionAt, jobPresence, shoveProgress, slideLean } from '../worlds/ice';
 import { linearRgb } from './colors';
 import { DECAL_SHAPE, type DecalState, type LabelFont, type LabelOrient, type LabelState, type RestFrame, type StageModel } from './StageModel';
 
@@ -305,6 +306,11 @@ export interface SampleOptions {
    * cascade, taking their labels, edges and floor marks with them.
    */
   envelope?: { kind: 'in' | 'out'; t: number };
+  /**
+   * Ice physics (penguin world): blocks on the ice are shoved by the crew and slide, instead of hopping.
+   * Defaults to on in the penguin world unless motion is reduced.
+   */
+  ice?: boolean;
 }
 
 const rankCache = new WeakMap<StageModel, Float32Array>();
@@ -344,6 +350,9 @@ export function sampleStage(model: StageModel, k: number, tau: number, duration:
 
   const n = model.slots.length;
   const colorT = calm ? smoothstep(0, 0.5, out.u) : smoothstep(0.02, 0.32, out.u);
+  const ice = (options.ice ?? model.world === 'penguin') && !calm && model.world === 'penguin';
+  const motionPlan = ice ? iceMotionAt(model, k) : null;
+  const fStep = clamp01(t / D);
 
   for (let s = 0; s < n; s++) {
     const i3 = s * 3;
@@ -379,8 +388,31 @@ export function sampleStage(model: StageModel, k: number, tau: number, duration:
     const bx = b.pos[i3], by = b.pos[i3 + 1], bz = b.pos[i3 + 2];
     let x = bx, y = by, z = bz;
     let presence = 1;
+    let lean = 0;
 
-    switch (m) {
+    const job = motionPlan?.bySlot.get(s);
+    const onIce = ice && !job && (m === Motion.Move || m === Motion.Still) && groundedAt(model, a, s) && groundedAt(model, b, s);
+
+    if (job?.carry) {
+      // A floating node: made at the forge, lifted by the eagle, set down in its place.
+      carryBall(job.carry, fStep, ball);
+      x = ball.x;
+      y = ball.y;
+      z = ball.z;
+      presence = jobPresence(job, fStep);
+    } else if (job) {
+      // Shoved by a penguin: slides on the ice from where it rests to where it is going.
+      blockAt(job, fStep, slide);
+      const p = windowedSpring(Math.max(0, t), D, mass);
+      x = slide.x;
+      z = slide.z;
+      y = lerp(ay, by, p);
+      presence = jobPresence(job, fStep);
+      if (job.legs.length > 0) {
+        const li = Math.max(0, slide.leg);
+        lean = slideLean(job.legs[Math.min(li, job.legs.length - 1)], fStep);
+      }
+    } else switch (m) {
       case Motion.Swap: {
         // Out of the row (front or back), across, back in: two distinct arcs that never meet.
         const p = clamp01(local / (span * 0.84));
@@ -402,9 +434,11 @@ export function sampleStage(model: StageModel, k: number, tau: number, duration:
         break;
       }
       case Motion.Move: {
-        const p = calm ? smoothstep(0, 1, local / span) : windowedSpring(local, span, mass);
+        // On the ice a block that is carried along glides: a quick start, then friction brings it to rest.
+        const p = calm ? smoothstep(0, 1, local / span) : onIce ? shoveProgress(clamp01(local / span), 0.02, 0.14, 0.92) : windowedSpring(local, span, mass);
         const dist = Math.hypot(bx - ax, bz - az);
-        const arc = calm ? 0 : Math.min(1.1, 0.16 * dist) * 4 * clamp01(p) * (1 - clamp01(p));
+        const arc = calm || onIce ? 0 : Math.min(1.1, 0.16 * dist) * 4 * clamp01(p) * (1 - clamp01(p));
+        if (onIce && dist > 0.05) lean = slideLean({ t0: 0.02, t1: 0.14, t2: 0.92, dx: (bx - ax) / dist }, clamp01(local / span)) * 0.6;
         x = lerp(ax, bx, p);
         y = lerp(ay, by, p) + arc;
         z = lerp(az, bz, p);
@@ -462,6 +496,7 @@ export function sampleStage(model: StageModel, k: number, tau: number, duration:
     out.pos[i3] = x;
     out.pos[i3 + 1] = y;
     out.pos[i3 + 2] = z;
+    if (lean !== 0) out.tilt[s] += lean;
     out.glow[s] = glow;
     out.presence[s] = presence;
 
@@ -497,6 +532,13 @@ export function sampleStage(model: StageModel, k: number, tau: number, duration:
 }
 
 const _rgb: [number, number, number] = [0, 0, 0];
+const slide = { x: 0, z: 0, vx: 0, vz: 0, leg: -1 };
+const ball = { x: 0, y: 0, z: 0 };
+
+/** Whether node s stands on the floor in a rest frame (its bottom within a hand of it). */
+function groundedAt(model: StageModel, rest: RestFrame, s: number): boolean {
+  return rest.pos[s * 3 + 1] - rest.dims[s * 3 + 1] / 2 - model.floorY < 0.55;
+}
 
 function writeDecal(out: StageSample, x: number, z: number, w: number, d: number, shape: number, rgb: readonly number[], alpha: number, layer: number): void {
   const i = out.decalCount++;

@@ -4,6 +4,7 @@ import type { StageModel } from '../../model/StageModel';
 import type { StageDriver } from '../../three/driver';
 import type { SceneBounds } from '../../three/StageEnvironment';
 import { CastLayer } from './CastLayer';
+import type { Playhead } from '../../timeline/Playhead';
 import { PolarWorld } from './PolarWorld';
 import { BambooWorld } from './BambooWorld';
 
@@ -13,9 +14,17 @@ import { BambooWorld } from './BambooWorld';
  * the canvas keeps drawing while one is shown, except in calm mode, where
  * the ambient clock stops and only the algorithm moves.
  */
-export function WorldLayer({ model, bounds, driver, calm }: { model: StageModel; bounds: SceneBounds; driver: StageDriver; calm: boolean }) {
+/** Ambient time shared by the world and its crew, and the moments the crew set things off in the world. */
+export interface WorldClock {
+  /** Seconds of ambient time (stops in calm mode). */
+  now: number;
+  /** Wall-clock second at which an animal last pulled a fish from the fishing hole (the world makes the splash). */
+  fishAt: number;
+}
+
+export function WorldLayer({ model, bounds, driver, calm, playhead }: { model: StageModel; bounds: SceneBounds; driver: StageDriver; calm: boolean; playhead: Playhead }) {
   const invalidate = useThree((s) => s.invalidate);
-  const clock = useMemo(() => ({ now: 0 }), []);
+  const clock = useMemo<WorldClock>(() => ({ now: 0, fishAt: -100 }), []);
   useFrame((_, delta) => {
     if (calm) return;
     clock.now += Math.min(delta, 0.1);
@@ -26,7 +35,7 @@ export function WorldLayer({ model, bounds, driver, calm }: { model: StageModel;
   return (
     <>
       <World model={model} bounds={bounds} driver={driver} calm={calm} clock={clock} />
-      <CastLayer model={model} driver={driver} style={model.world} calm={calm} clock={clock} />
+      <CastLayer model={model} driver={driver} style={model.world} calm={calm} clock={clock} playhead={playhead} />
     </>
   );
 }

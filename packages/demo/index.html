@@ -19,14 +19,31 @@
           if (t !== 'light' && t !== 'dark') t = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
         } catch (e) { t = 'dark'; }
         document.documentElement.setAttribute('data-theme', t);
-        if (t === 'light') document.querySelector('meta[name="theme-color"]').setAttribute('content', '#F7EFE9');
+        // World (the studio, the penguins' ice, the pandas' grove) and the switches that go with it.
+        var w = 'studio', snow = 'on', mascots = 'on';
+        try {
+          var stored = localStorage.getItem('aqvl-stage-world');
+          if (stored === 'penguin' || stored === 'panda' || stored === 'studio') w = stored;
+          var prefs = JSON.parse(localStorage.getItem('aqvl-settings') || '{}');
+          if (prefs.snow === false) snow = 'off';
+          if (prefs.mascots === false) mascots = 'off';
+        } catch (e) {}
+        document.documentElement.setAttribute('data-world', w);
+        document.documentElement.setAttribute('data-snow', snow);
+        document.documentElement.setAttribute('data-mascots', mascots);
+        var meta = { light: { studio: '#F7EFE9', penguin: '#F1F7FC', panda: '#F7EFE9' }, dark: { studio: '#1E1C27', penguin: '#0C1A2B', panda: '#1E1C27' } };
+        document.querySelector('meta[name="theme-color"]').setAttribute('content', meta[t][w]);
       })();
     </script>
     <style>
       /* Shown only until the app's first paint replaces #root's contents. */
       html, body { margin: 0; background: #1e1c27; }
       html[data-theme='light'], html[data-theme='light'] body { background: #f7efe9; }
+      html[data-world='penguin'], html[data-world='penguin'] body { background: #0c1a2b; }
+      html[data-world='penguin'][data-theme='light'], html[data-world='penguin'][data-theme='light'] body { background: #f1f7fc; }
       html[data-theme='light'] .boot path { stroke: #3a3649; }
+      html[data-world='penguin'] .boot path { stroke: #bfdcf2; }
+      html[data-world='penguin'][data-theme='light'] .boot path { stroke: #1e3a56; }
       .boot { display: grid; place-items: center; min-height: 100vh; }
       .boot path { stroke-dasharray: 260; stroke-dashoffset: 260; animation: boot-draw 1.4s cubic-bezier(.65,0,.35,1) infinite alternate; }
       @keyframes boot-draw { to { stroke-dashoffset: 0; } }

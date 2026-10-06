@@ -22,22 +22,25 @@ const KIND_LABEL: Record<RuntimeLogEntry['kind'], string> = {
 interface PlaygroundOutputConsoleProps {
   logs: RuntimeLogEntry[];
   onClear: () => void;
+  /** Living in the stage panel: always open, and filling it. */
+  embedded?: boolean;
 }
 
 /** The run, narrated: one line per thing the engine did, newest at the bottom. */
-export function PlaygroundOutputConsole({ logs, onClear }: PlaygroundOutputConsoleProps) {
+export function PlaygroundOutputConsole({ logs, onClear, embedded = false }: PlaygroundOutputConsoleProps) {
   const listRef = useRef<HTMLDivElement>(null);
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const collapsed = embedded ? false : isCollapsed;
 
   // Auto-scroll to bottom on each new log
   useEffect(() => {
-    if (!isCollapsed && listRef.current) {
+    if (!collapsed && listRef.current) {
       listRef.current.scrollTop = listRef.current.scrollHeight;
     }
-  }, [logs, isCollapsed]);
+  }, [logs, collapsed]);
 
   return (
-    <section className="poc" aria-label="Output console">
+    <section className={`poc${embedded ? ' poc--embedded' : ''}`} aria-label="Output console">
       <div className="poc__head">
         <h2 className="poc__title">
           Output
@@ -49,19 +52,21 @@ export function PlaygroundOutputConsole({ logs, onClear }: PlaygroundOutputConso
               Clear
             </button>
           )}
-          <button
-            type="button"
-            className="btn btn--quiet btn--sm"
-            onClick={() => setIsCollapsed((prev) => !prev)}
-            aria-expanded={!isCollapsed}
-            aria-controls="poc-body"
-          >
-            {isCollapsed ? 'Show' : 'Hide'}
-          </button>
+          {!embedded && (
+            <button
+              type="button"
+              className="btn btn--quiet btn--sm"
+              onClick={() => setIsCollapsed((prev) => !prev)}
+              aria-expanded={!collapsed}
+              aria-controls="poc-body"
+            >
+              {collapsed ? 'Show' : 'Hide'}
+            </button>
+          )}
         </div>
       </div>
 
-      {!isCollapsed && (
+      {!collapsed && (
         <div ref={listRef} id="poc-body" className="poc__body" role="log" aria-live="polite" aria-relevant="additions">
           {logs.length === 0 ? (
             <p className="poc__empty">Each step of the run is explained here as it happens.</p>

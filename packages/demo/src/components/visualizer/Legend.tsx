@@ -34,14 +34,14 @@ export function Legend({ theme, id, world = 'studio' }: { theme: StageTheme; id:
       </ul>
       {world !== 'studio' && (
         <p className="vz-legend__crew">
-          <b>{crew[0]}</b> and <b>{crew[1]}</b> stand beside the cells each step is about and act it out: they inspect a compare, push a swap, tap a write, point at a visit,
-          shrug at what is ruled out, and cheer when it settles. Click them, or the scenery.
+          <b>{crew[0]}</b> and <b>{crew[1]}</b> stand beside the cells each step is about and act it out: they inspect a compare, shove a swap across the ice, tap a write, point at a visit,
+          shrug at what is ruled out, and cheer when it settles.{world === 'penguin' && ' They climb to floating nodes, and an eagle carries new ones up.'} Click them, or the scenery.
         </p>
       )}
       <p className="vz-legend__keys">
         <kbd>Space</kbd> play · <kbd>←</kbd>
         <kbd>→</kbd> step · <kbd>Home</kbd>/<kbd>End</kbd> · <kbd>[</kbd>
-        <kbd>]</kbd> speed · <kbd>C</kbd> calm · <kbd>F</kbd> follow
+        <kbd>]</kbd> speed · <kbd>C</kbd> calm · <kbd>F</kbd> follow · <kbd>V</kbd> <kbd>K</kbd> <kbd>O</kbd> <kbd>S</kbd> panels
       </p>
     </aside>
   );

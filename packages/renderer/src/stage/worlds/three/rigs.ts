@@ -41,7 +41,18 @@ export interface RigInput {
   time: number;
   /** Per-animal offset so two idle animals never move in step. */
   seed: number;
+  /** An idle fidget (looking about, preening, eating, shaking off snow...): which, seconds into it, and how much of it shows. */
+  idle?: { act: IdleAct; t: number; weight: number };
+  /** A fish held in the beak: 1 whole, shrinking to 0 as it is swallowed (undefined / 0: none). */
+  fish?: number;
+  /** 0..1: strain while shoving or tugging a block (the body bends into it and trembles). */
+  effort?: number;
+  /** Climbing a rope or an edge: how much, the stride phase (radians), and the slope of the climb (radians from vertical). */
+  climb?: { weight: number; phase: number; slope: number };
 }
+
+/** The small things an animal does when nothing is asked of it. */
+export type IdleAct = 'none' | 'look' | 'preen' | 'eat' | 'shake' | 'play' | 'wave' | 'bow' | 'sniff';
 
 export interface Rig {
   root: Group;
@@ -118,6 +129,16 @@ function poseJoints(pose: CastPose, s: number, side: number, look: [number, numb
       j.squash = 0.04;
       break;
     }
+    case 'pull': {
+      // Hooked on to the block with both flippers, leaning back, head up: a tug of war with the ice.
+      j.lean = -0.2;
+      j.reachL = j.reachR = 1.05;
+      j.raiseL = j.raiseR = 0.2;
+      j.headPitch = -0.12;
+      j.headYaw = towardYaw * 0.3;
+      j.squash = 0.04;
+      break;
+    }
     case 'tap': {
       // Two quick taps on the cell: the value is being written.
       const beat = Math.max(0, Math.sin(s * 10)) * (s < 0.65 ? 1 : 0);
@@ -168,6 +189,93 @@ function poseJoints(pose: CastPose, s: number, side: number, look: [number, numb
   return j;
 }
 
+/** Fidgets, added to the neutral stance by the animal that is otherwise doing nothing. */
+function idleActJoints(act: IdleAct, t: number, j: Joints): void {
+  switch (act) {
+    case 'look': {
+      // A slow look to one side, a pause, the other side, and back, the body turning a little after the head.
+      const q = (a: number, b: number) => smoothstepJ(a, b, t);
+      const yaw = 0.95 * (q(0, 0.5) - q(1.3, 1.9)) - 1.0 * (q(1.9, 2.4) - q(3.3, 3.9));
+      j.headYaw += yaw;
+      j.headPitch += 0.08 * Math.sin(t * 1.3);
+      j.headTilt += 0.1 * Math.sin(t * 1.9) + 0.12 * yaw;
+      j.lean += 0.03;
+      break;
+    }
+    case 'preen': {
+      // Beak into the chest feathers, a flipper flutters.
+      const down = smoothstepJ(0, 0.4, t) * (1 - smoothstepJ(2.6, 3.1, t));
+      j.headPitch += 0.75 * down;
+      j.headTilt += 0.45 * down;
+      j.headYaw += 0.3 * down * Math.sin(t * 4);
+      j.raiseR += 0.5 * down + 0.2 * down * Math.sin(t * 13);
+      j.reachR += 0.35 * down;
+      break;
+    }
+    case 'eat': {
+      // Head back, the fish goes down; a satisfied wiggle.
+      const back = smoothstepJ(0.2, 0.7, t) * (1 - smoothstepJ(1.5, 1.9, t));
+      j.headPitch -= 0.85 * back;
+      j.squash += 0.03 * Math.max(0, Math.sin((t - 0.9) * 12)) * (t > 0.9 && t < 1.8 ? 1 : 0);
+      const wiggle = smoothstepJ(1.8, 2.0, t) * (1 - smoothstepJ(2.8, 3.2, t));
+      j.raiseL += 0.5 * wiggle * (0.5 + 0.5 * Math.sin(t * 16));
+      j.raiseR += 0.5 * wiggle * (0.5 + 0.5 * Math.sin(t * 16 + Math.PI));
+      j.headTilt += 0.12 * wiggle * Math.sin(t * 8);
+      break;
+    }
+    case 'shake': {
+      // Shaking snow off: a fast shudder through the whole body.
+      const w = smoothstepJ(0, 0.12, t) * (1 - smoothstepJ(0.7, 1.0, t));
+      j.headYaw += 0.5 * w * Math.sin(t * 38);
+      j.squash += 0.04 * w * Math.sin(t * 46);
+      j.raiseL += 0.5 * w;
+      j.raiseR += 0.5 * w;
+      j.headTilt += 0.25 * w * Math.sin(t * 31);
+      break;
+    }
+    case 'play': {
+      // Bouncing about, flippers up.
+      const w = smoothstepJ(0, 0.15, t);
+      j.hop += 0.16 * Math.abs(Math.sin(t * 6.4)) * w;
+      j.raiseL += (0.9 + 0.5 * Math.sin(t * 13)) * w;
+      j.raiseR += (0.9 + 0.5 * Math.sin(t * 13 + 1.7)) * w;
+      j.headTilt += 0.2 * Math.sin(t * 6.4) * w;
+      j.headPitch -= 0.12 * w;
+      break;
+    }
+    case 'wave': {
+      const w = smoothstepJ(0, 0.2, t) * (1 - smoothstepJ(1.8, 2.2, t));
+      j.raiseL += (1.5 + 0.35 * Math.sin(t * 11)) * w;
+      j.headTilt += 0.14 * w;
+      j.headPitch -= 0.1 * w;
+      break;
+    }
+    case 'bow': {
+      const w = smoothstepJ(0, 0.3, t) * (1 - smoothstepJ(0.9, 1.4, t));
+      j.lean += 0.5 * w;
+      j.headPitch += 0.3 * w;
+      j.raiseL += 0.5 * w;
+      j.raiseR += 0.5 * w;
+      break;
+    }
+    case 'sniff': {
+      // Nose down at the ice, little hops sideways.
+      const w = smoothstepJ(0, 0.3, t) * (1 - smoothstepJ(1.8, 2.3, t));
+      j.headPitch += 0.55 * w;
+      j.lean += 0.12 * w;
+      j.headYaw += 0.3 * w * Math.sin(t * 5);
+      break;
+    }
+    default:
+      break;
+  }
+}
+
+function smoothstepJ(a: number, b: number, x: number): number {
+  const t = Math.max(0, Math.min(1, (x - a) / (b - a)));
+  return t * t * (3 - 2 * t);
+}
+
 /** Breathing and a slow sway, so a waiting animal is never a statue. */
 function ambient(j: Joints, time: number, seed: number): void {
   j.squash += 0.012 * Math.sin(time * 2.1 + seed * 3);
@@ -214,12 +322,38 @@ class Builder {
 
 // ── Penguin ───────────────────────────────────────────────────────────────
 
+/**
+ * What makes one penguin walk, bounce and fidget differently from the next
+ * (no two animals share a gait, so a crew never moves in lockstep).
+ */
+export interface Personality {
+  /** How far the body rocks from foot to foot (1 = the usual waddle). */
+  waddle: number;
+  /** Steps per unit of travel (>1 quick little steps, <1 a long lazy stride). */
+  tempo: number;
+  /** How much the walk bobs up and down. */
+  bounce: number;
+  /** Seconds between blinks. */
+  blink: number;
+  /** Body width / head size relative to the usual. */
+  plump: number;
+  headSize: number;
+}
+
+export const PERSONALITIES: Personality[] = [
+  { waddle: 1.15, tempo: 1.1, bounce: 1.25, blink: 3.4, plump: 1.0, headSize: 1.04 },
+  { waddle: 0.9, tempo: 0.92, bounce: 0.85, blink: 4.3, plump: 1.1, headSize: 0.98 },
+  { waddle: 1.0, tempo: 1.0, bounce: 1.0, blink: 3.8, plump: 1.0, headSize: 1.0 },
+  { waddle: 1.3, tempo: 1.25, bounce: 1.1, blink: 3.1, plump: 0.92, headSize: 1.08 },
+];
+
 export interface PenguinOptions {
   /** Scarf colours (knit stripes), or null for a bare penguin. */
   scarf: [string, string] | null;
   scale?: number;
   /** A chick: rounder, fluffier, grey. */
   chick?: boolean;
+  personality?: Personality;
 }
 
 export function buildPenguin(options: PenguinOptions): Rig {
@@ -227,6 +361,7 @@ export function buildPenguin(options: PenguinOptions): Rig {
   const root = new Group();
   const scale = options.scale ?? 1;
   const chick = !!options.chick;
+  const P = options.personality ?? PERSONALITIES[2];
   const ink = b.mat(chick ? '#66707f' : '#253047', chick ? 0.9 : 0.34);
   const belly = b.mat(chick ? '#d9dde3' : '#f6f3ec', 0.7);
   const orange = b.mat('#f39a2e', 0.5);
@@ -238,6 +373,7 @@ export function buildPenguin(options: PenguinOptions): Rig {
   root.add(body);
   const squash = new Group();
   body.add(squash);
+  squash.scale.set(P.plump, 1, P.plump);
   b.blob(squash, ink, 0.26, 0.31, 0.24, 0, 0.31, 0, true);
   b.blob(squash, belly, 0.215, 0.27, 0.17, 0, 0.29, 0.1, true);
   // A little tail.
@@ -245,6 +381,7 @@ export function buildPenguin(options: PenguinOptions): Rig {
 
   const head = new Group();
   head.position.set(0, chick ? 0.53 : 0.565, 0.01);
+  head.scale.setScalar(P.headSize);
   squash.add(head);
   b.blob(head, ink, 0.17, 0.158, 0.165, 0, 0, 0, true);
   if (!chick) {
@@ -265,6 +402,21 @@ export function buildPenguin(options: PenguinOptions): Rig {
   beak.position.set(0, -0.022, 0.2);
   beak.scale.set(1, 1, 0.75);
   head.add(beak);
+
+  // A fish for the beak (shown while eating).
+  const fish = new Group();
+  const fishMat = b.mat('#a9c2d4', 0.28, { metalness: 0.4 });
+  const fishBody = b.blob(fish, fishMat, 0.2, 0.55, 0.62, 0, 0, 0);
+  fishBody.scale.set(0.045, 0.06, 0.17);
+  const fishTail = new Mesh(b.keep(new ConeGeometry(0.05, 0.09, 3)), fishMat);
+  fishTail.rotation.x = -Math.PI / 2;
+  fishTail.scale.set(0.3, 1, 1);
+  fishTail.position.z = -0.17;
+  fish.add(fishTail);
+  fish.position.set(0.0, -0.045, 0.26);
+  fish.rotation.set(0.15, 0, 0.5);
+  fish.visible = false;
+  head.add(fish);
 
   if (options.scarf) {
     const [c1, c2] = options.scarf;
@@ -303,6 +455,7 @@ export function buildPenguin(options: PenguinOptions): Rig {
 
   root.scale.setScalar(scale);
   const j = blank();
+  const idleJ = blank();
 
   return {
     root,
@@ -315,25 +468,96 @@ export function buildPenguin(options: PenguinOptions): Rig {
       addWeighted(j, poseJoints(input.prevPose, input.poseTime + 2, side, input.lookLocal, 'penguin'), input.prevWeight);
       addWeighted(j, poseJoints(input.pose, input.poseTime, side, input.lookLocal, 'penguin'), input.poseWeight);
       ambient(j, input.time, input.seed);
+      if (input.idle && input.idle.weight > 0 && input.idle.act !== 'none') {
+        Object.assign(idleJ, NEUTRAL);
+        idleActJoints(input.idle.act, input.idle.t, idleJ);
+        addWeighted(j, idleJ, input.idle.weight);
+      }
 
-      // Travel.
+      const gw = input.gaitWeight;
+      const walking = input.gait === 'walk' || input.gait === 'push' || input.gait === 'pull';
       let rock = 0;
+      let twist = 0;
+      let sway = 0;
+      let bob = 0;
       let lift = 0;
       let dive = 0;
-      const gw = input.gaitWeight;
-      if (input.gait === 'walk') {
-        rock = Math.sin(input.gaitPhase) * 0.15 * gw;
-        j.raiseL += 0.3 * gw;
-        j.raiseR += 0.3 * gw;
+      let stepPhase = 0;
+      let stepAmp = 0;
+      if (walking) {
+        // The waddle: weight goes onto one foot (the body rocks and shifts over it, the other foot lifts and
+        // swings forward, the flipper on that side lifts for balance), then onto the other. The head stays
+        // level against the rock and nods a little, and no two strides are quite alike.
+        const raw = input.gaitPhase * P.tempo;
+        const ph = raw + 0.1 * Math.sin(raw * 0.37 + input.seed * 5) + 0.06 * Math.sin(raw * 0.91 + input.seed * 2);
+        const strength = input.gait === 'walk' ? 1 : 0.5;
+        stepAmp = P.waddle * strength * (1 + 0.14 * Math.sin(ph * 0.23 + input.seed)) * gw;
+        stepPhase = ph;
+        const s = Math.sin(ph);
+        rock = -s * 0.17 * stepAmp;
+        sway = s * 0.045 * stepAmp;
+        twist = s * 0.12 * stepAmp;
+        bob = Math.abs(s) * 0.034 * stepAmp * P.bounce;
+        if (input.gait === 'walk') {
+          j.raiseR += (0.3 + 0.22 * s) * gw;
+          j.raiseL += (0.3 - 0.22 * s) * gw;
+          j.headTilt += s * 0.1 * stepAmp;
+          j.headPitch -= Math.abs(s) * 0.05 * stepAmp;
+          j.headYaw += Math.sin(ph - 0.6) * 0.05 * stepAmp;
+        } else if (input.gait === 'push') {
+          // Head down, shoulders in: short shuffling steps behind the block.
+          j.lean += 0.05 * gw;
+          j.headPitch += 0.1 * gw;
+        } else {
+          // Tugging: walking backwards with the block in tow.
+          j.lean -= 0.04 * gw;
+        }
+      } else if (input.gait === 'leap') {
+        // Airborne between ledges: flippers up and out, body stretched, eyes on the landing.
+        j.raiseL = j.raiseL * (1 - gw) + 1.65 * gw;
+        j.raiseR = j.raiseR * (1 - gw) + 1.65 * gw;
+        j.reachL = j.reachL * (1 - gw) + 0.25 * gw;
+        j.reachR = j.reachR * (1 - gw) + 0.25 * gw;
+        j.lean -= 0.12 * gw;
+        j.headPitch -= 0.2 * gw;
+        j.squash -= 0.05 * gw;
       } else if (input.gait === 'glide') {
         dive = gw;
-        j.raiseL = j.raiseL * (1 - gw) + 1.25 * gw;
-        j.raiseR = j.raiseR * (1 - gw) + 1.25 * gw;
+        j.raiseL = j.raiseL * (1 - gw) + (1.25 + 0.2 * Math.sin(input.time * 14)) * gw;
+        j.raiseR = j.raiseR * (1 - gw) + (1.25 + 0.2 * Math.sin(input.time * 14 + 1.5)) * gw;
         j.reachL *= 1 - gw;
         j.reachR *= 1 - gw;
         j.headPitch = j.headPitch * (1 - gw) - 0.9 * gw;
         lift = 0.19 * gw;
       }
+
+      // Strain: the whole body bends into the block and trembles with the effort.
+      const effort = input.effort ?? 0;
+      if (effort > 0) {
+        j.lean += 0.05 * effort;
+        j.squash += 0.012 * effort * Math.sin(input.time * 31 + input.seed);
+        rock += 0.012 * effort * Math.sin(input.time * 37 + input.seed * 2);
+      }
+
+      // Climbing: belly to the rope, flippers reaching up hand over hand, feet scrabbling.
+      let climbLean = 0;
+      const climb = input.climb;
+      if (climb && climb.weight > 0) {
+        const cw = climb.weight;
+        const c = Math.sin(climb.phase);
+        climbLean = (0.28 + climb.slope * 0.55) * cw;
+        j.reachL = j.reachL * (1 - cw) + (1.15 + 0.55 * c) * cw;
+        j.reachR = j.reachR * (1 - cw) + (1.15 - 0.55 * c) * cw;
+        j.raiseL = j.raiseL * (1 - cw) + 0.32 * cw;
+        j.raiseR = j.raiseR * (1 - cw) + 0.32 * cw;
+        j.headPitch = j.headPitch * (1 - cw) - 0.38 * cw;
+        rock += c * 0.07 * cw;
+        sway += c * 0.02 * cw;
+        bob += Math.abs(c) * 0.02 * cw;
+        stepPhase = climb.phase;
+        stepAmp = Math.max(stepAmp, cw);
+      }
+
       // Click: a hop with a full spin.
       let spin = 0;
       if (input.react >= 0 && input.react < 1.0) {
@@ -343,21 +567,33 @@ export function buildPenguin(options: PenguinOptions): Rig {
         j.raiseL = j.raiseR = 1.6 + 0.4 * Math.sin(input.react * 30);
       }
 
-      root.position.y = j.hop + lift;
-      root.rotation.set(0, spin, rock);
-      body.rotation.x = j.lean * (1 - dive) + 1.42 * dive;
-      squash.scale.set(1 + j.squash * 0.6, 1 - j.squash, 1 + j.squash * 0.6);
+      root.position.set(sway, j.hop + lift + bob, 0);
+      root.rotation.set(0, spin + twist, rock);
+      body.rotation.x = j.lean * (1 - dive) + 1.42 * dive + climbLean;
+      squash.scale.set((1 + j.squash * 0.6) * P.plump, 1 - j.squash, (1 + j.squash * 0.6) * P.plump);
       head.rotation.set(j.headPitch, j.headYaw, j.headTilt, 'YXZ');
       flippers[0].rotation.set(-j.reachL, 0, j.raiseL);
       flippers[1].rotation.set(-j.reachR, 0, -j.raiseR);
-      // Feet: alternate while walking, trail behind on a slide.
-      const stepL = input.gait === 'walk' ? Math.max(0, Math.sin(input.gaitPhase)) * 0.05 * gw : 0;
-      const stepR = input.gait === 'walk' ? Math.max(0, -Math.sin(input.gaitPhase)) * 0.05 * gw : 0;
-      feet[0].position.set(-0.095, 0.022 + stepL, 0.07 - dive * 0.42);
-      feet[1].position.set(0.095, 0.022 + stepR, 0.07 - dive * 0.42);
+
+      // Feet: alternate while walking (lift, swing forward, plant, slide back), trail behind on a slide.
+      const footBack = dive * 0.42;
+      for (let i = 0; i < 2; i++) {
+        const q = stepPhase + (i === 0 ? 0 : Math.PI);
+        const up = Math.max(0, Math.sin(q));
+        const fwd = -Math.cos(q);
+        const reverse = input.gait === 'pull' ? -1 : 1;
+        feet[i].position.set((i === 0 ? -1 : 1) * 0.095, 0.022 + up * 0.055 * stepAmp, 0.07 + fwd * 0.075 * stepAmp * reverse - footBack);
+        feet[i].rotation.x = -up * 0.4 * stepAmp;
+      }
       feet[0].visible = feet[1].visible = dive < 0.5;
-      // Blink every few seconds.
-      const blink = (input.time + input.seed * 2.3) % 3.7 < 0.12 ? 0.15 : 1;
+
+      // A fish in the beak.
+      const f = input.fish ?? 0;
+      fish.visible = f > 0.02;
+      if (fish.visible) fish.scale.setScalar(Math.min(1, f));
+
+      // Blink every few seconds (each penguin at its own rhythm).
+      const blink = (input.time + input.seed * 2.3) % P.blink < 0.12 ? 0.15 : 1;
       for (const e of eyes) e.scale.y = 0.034 * blink;
     },
     dispose() {
@@ -561,6 +797,117 @@ void main() {
     dispose() {
       geometry.dispose();
       material.dispose();
+    },
+  };
+}
+
+// ── Eagle ─────────────────────────────────────────────────────────────────
+
+export interface EagleInput {
+  /** Wing beat clock (seconds-ish), 0 gliding to 1 flapping hard, and whether the talons hold a ball. */
+  clock: number;
+  flap: number;
+  holding: boolean;
+  /** Climb / dive of the flight path (radians, + nose up) and how hard it banks into a turn. */
+  pitch: number;
+  bank: number;
+}
+
+export interface EagleRig {
+  root: Group;
+  update(input: EagleInput): void;
+  dispose(): void;
+}
+
+/** A sea eagle of the polar coast: dark body, white head and tail, yellow hooked beak and talons. */
+export function buildEagle(scale = 1): EagleRig {
+  const b = new Builder();
+  const root = new Group();
+  const frame = new Group(); // pitch and bank
+  root.add(frame);
+  const brown = b.mat('#4a3626', 0.78);
+  const brownLight = b.mat('#7a5a3c', 0.8);
+  const white = b.mat('#f5f2e9', 0.7);
+  const yellow = b.mat('#f2b632', 0.5);
+  const dark = b.mat('#15110e', 0.3);
+
+  b.blob(frame, brown, 0.2, 0.17, 0.52, 0, 0, 0);
+  b.blob(frame, brownLight, 0.15, 0.1, 0.34, 0, -0.07, 0.1);
+  const head = new Group();
+  head.position.set(0, 0.09, 0.5);
+  frame.add(head);
+  b.blob(head, white, 0.13, 0.12, 0.15, 0, 0.02, 0.04);
+  const beak = new Mesh(b.keep(new ConeGeometry(0.06, 0.2, 10)), yellow);
+  beak.rotation.x = Math.PI / 2 + 0.25;
+  beak.position.set(0, -0.01, 0.2);
+  beak.scale.set(1, 1, 0.8);
+  head.add(beak);
+  for (const sx of [-1, 1]) {
+    b.blob(head, yellow, 0.026, 0.026, 0.02, sx * 0.075, 0.05, 0.12);
+    b.blob(head, dark, 0.014, 0.014, 0.012, sx * 0.078, 0.05, 0.135);
+    const brow = b.blob(head, white, 0.05, 0.016, 0.05, sx * 0.07, 0.085, 0.11);
+    brow.rotation.z = -sx * 0.4;
+  }
+  // The tail, a white fan.
+  const tail = new Group();
+  tail.position.set(0, 0.0, -0.5);
+  frame.add(tail);
+  b.blob(tail, white, 0.17, 0.018, 0.34, 0, 0, -0.18);
+
+  const wings: { inner: Group; outer: Group }[] = [];
+  for (const sx of [-1, 1]) {
+    const inner = new Group();
+    inner.position.set(sx * 0.14, 0.06, 0.12);
+    frame.add(inner);
+    const w1 = b.blob(inner, brown, 0.5, 0.035, 0.3, sx * 0.5, 0, 0);
+    w1.rotation.y = sx * 0.12;
+    const outer = new Group();
+    outer.position.set(sx * 1.0, 0, 0.0);
+    inner.add(outer);
+    b.blob(outer, brown, 0.46, 0.03, 0.22, sx * 0.42, 0, -0.05);
+    // Finger feathers at the tip.
+    for (let i = 0; i < 4; i++) {
+      const f = b.blob(outer, brownLight, 0.2, 0.012, 0.045, sx * (0.78 + i * 0.03), 0, 0.1 - i * 0.075);
+      f.rotation.y = sx * (0.1 + i * 0.1);
+    }
+    wings.push({ inner, outer });
+  }
+  const legs: Group[] = [];
+  for (const sx of [-1, 1]) {
+    const leg = new Group();
+    leg.position.set(sx * 0.09, -0.12, 0.12);
+    frame.add(leg);
+    const shank = new Mesh(b.keep(new CylinderGeometry(0.025, 0.02, 0.24, 6)), yellow);
+    shank.position.y = -0.12;
+    leg.add(shank);
+    for (let i = -1; i <= 1; i++) {
+      const claw = new Mesh(b.keep(new ConeGeometry(0.018, 0.12, 6)), dark);
+      claw.position.set(i * 0.035, -0.27, 0.05);
+      claw.rotation.x = Math.PI * 0.6;
+      leg.add(claw);
+    }
+    legs.push(leg);
+  }
+
+  root.scale.setScalar(scale);
+  return {
+    root,
+    update(input) {
+      const beat = Math.sin(input.clock * 15) * input.flap;
+      const flap = 0.12 + 0.62 * beat;
+      for (let i = 0; i < 2; i++) {
+        const sx = i === 0 ? -1 : 1;
+        wings[i].inner.rotation.z = -sx * flap;
+        // The tip trails the shoulder: bends the other way as the wing comes down.
+        wings[i].outer.rotation.z = -sx * (flap * 0.9 + 0.35 * Math.sin(input.clock * 15 - 0.9) * input.flap);
+      }
+      frame.rotation.set(-input.pitch, 0, input.bank, 'YXZ');
+      frame.position.y = 0.03 * beat;
+      for (const leg of legs) leg.rotation.x = input.holding ? -0.55 : 0.5;
+      tail.rotation.x = -0.1 - 0.2 * Math.max(0, input.pitch);
+    },
+    dispose() {
+      b.dispose();
     },
   };
 }

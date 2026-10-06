@@ -31,8 +31,11 @@ import type { SceneBounds } from '../../three/StageEnvironment';
 import { NO_SHADOW_LAYER } from '../../three/StageEnvironment';
 import { FOG, NOISE, fogUniforms, rng } from './glsl';
 import { worldLayout } from './layout';
-import { buildPenguin, createBlobShadow, type Rig } from './rigs';
+import { buildPenguin, createBlobShadow, PERSONALITIES, type IdleAct, type Rig } from './rigs';
+import { IdleBrain, type IdleContext } from '../idle';
+import { polarSpots } from './layout';
 import { ParticlePool, hash } from './particles';
+import type { WorldClock } from './WorldLayer';
 
 /** The night sky: a deep gradient, stars, a moon, and aurora curtains. Also what the ice reflects. */
 const SKY = /* glsl */ `
@@ -235,7 +238,7 @@ export interface WorldProps {
   bounds: SceneBounds;
   driver: StageDriver;
   calm: boolean;
-  clock: { now: number };
+  clock: WorldClock;
 }
 
 const _m = new Matrix4();
@@ -450,6 +453,33 @@ export function PolarWorld({ model, bounds, driver, calm, clock }: WorldProps) {
     fish.visible = false;
     group.add(fish);
 
+    // The fish bucket, front right: where the crew fetches a snack.
+    const bucketAt = polarSpots(model).bucket;
+    const bucket = new Group();
+    bucket.position.set(bucketAt.x, floorY, bucketAt.z);
+    const pailMat = keep(new MeshStandardMaterial({ color: '#5f86ad', roughness: 0.4, metalness: 0.15, emissive: new Color('#0d2036'), emissiveIntensity: 0.4 }));
+    const pail = new Mesh(keep(new CylinderGeometry(0.46, 0.36, 0.5, 24, 1, true)), pailMat);
+    pail.position.y = 0.25;
+    bucket.add(pail);
+    const pailBase = new Mesh(keep(new CylinderGeometry(0.36, 0.36, 0.04, 24)), pailMat);
+    pailBase.position.y = 0.02;
+    bucket.add(pailBase);
+    const pailRim = new Mesh(keep(new TorusGeometry(0.46, 0.035, 8, 28)), pailMat);
+    pailRim.rotation.x = Math.PI / 2;
+    pailRim.position.y = 0.5;
+    bucket.add(pailRim);
+    const heap = new Mesh(keep(new SphereGeometry(0.4, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2)), keep(new MeshStandardMaterial({ color: '#c6d6e9', roughness: 0.9 })));
+    heap.position.y = 0.42;
+    bucket.add(heap);
+    for (let i = 0; i < 4; i++) {
+      const bf = new Mesh(fishBody.geometry, fishMat);
+      bf.scale.set(0.11, 0.13, 0.34);
+      bf.position.set(Math.cos(i * 1.7) * 0.2, 0.62 + (i % 2) * 0.04, Math.sin(i * 1.7) * 0.2);
+      bf.rotation.set(0.5 - i * 0.2, i * 1.1, 0.4);
+      bucket.add(bf);
+    }
+    group.add(bucket);
+
     group.traverse((o) => {
       o.frustumCulled = false;
     });
@@ -468,7 +498,11 @@ export function PolarWorld({ model, bounds, driver, calm, clock }: WorldProps) {
 
   // Onlookers: two penguins by the igloo, and a chick who peeks out when the igloo is clicked.
   const onlookers = useMemo(() => {
-    const rigs: Rig[] = [buildPenguin({ scarf: null, scale: 1.3 }), buildPenguin({ scarf: ['#e4b33b', '#f6e7d2'], scale: 1.2 }), buildPenguin({ scarf: null, chick: true, scale: 0.85 })];
+    const rigs: Rig[] = [
+      buildPenguin({ scarf: null, scale: 1.65, personality: PERSONALITIES[2] }),
+      buildPenguin({ scarf: ['#e4b33b', '#f6e7d2'], scale: 1.5, personality: PERSONALITIES[3] }),
+      buildPenguin({ scarf: null, chick: true, scale: 1.0 }),
+    ];
     const holders = rigs.map(() => new Group());
     holders.forEach((h, i) => h.add(rigs[i].root));
     const shadows = rigs.map(() => createBlobShadow(palette.shadow, palette.shadowOpacity * 0.7));
@@ -485,8 +519,15 @@ export function PolarWorld({ model, bounds, driver, calm, clock }: WorldProps) {
   const pool = useMemo(() => new ParticlePool(260, true), []);
   useEffect(() => () => pool.dispose(), [pool]);
   // Viewer interactions (wall-clock seconds when they happened).
-  const events = useRef({ igloo: -100, fish: -100, crystals: [-100, -100, -100], onlooker: [-100, -100, -100], puffs: [] as { x: number; z: number; t: number }[], endAt: -1, lastK: -1 });
+  const events = useRef({ igloo: -100, fish: -100, fishSeen: -100, crystals: [-100, -100, -100], onlooker: [-100, -100, -100], puffs: [] as { x: number; z: number; t: number }[], endAt: -1, lastK: -1 });
   const nextFish = useRef(6);
+  // The two grown-ups by the igloo have a life of their own (the chick stays in the doorway).
+  const brains = useMemo(() => [new IdleBrain(3, 0), new IdleBrain(3, 1)], [model]);
+  const lastWall = useRef(0);
+  const spotsForOnlookers = useMemo(() => {
+    const pl = polarSpots(model);
+    return { igloo: { door: pl.igloo.door, approach: pl.igloo.approach, center: pl.igloo.center } };
+  }, [model]);
 
   useEffect(
     () =>
@@ -511,18 +552,56 @@ export function PolarWorld({ model, bounds, driver, calm, clock }: WorldProps) {
           [props.ix - 1.55, props.iz + 1.75],
           [props.ix - 0.55, props.iz + 2.55],
         ];
+        const dtw = lastWall.current > 0 ? Math.min(0.1, wall - lastWall.current) : 0;
+        lastWall.current = wall;
+        // Bodies go with them: the igloo, the world's props.
+        const keepOut = { minX: props.ix - 1.8, maxX: props.ix + 1.8, minZ: props.iz - 1.8, maxZ: props.iz + 0.7 };
+        const area = { minX: props.ix - 5.2, maxX: props.ix + 5.2, minZ: props.iz + 1.0, maxZ: props.iz + 5.4 };
         for (let i = 0; i < 3; i++) {
           const h = onlookers.holders[i];
           const rig = onlookers.rigs[i];
           let x: number, z: number, yaw: number;
           let pose: 'idle' | 'cheer' | 'present' = 'idle';
           let poseTime = now + i * 3;
+          let gait: 'stand' | 'walk' | 'glide' = 'stand';
+          let gaitPhase = 0;
+          let gaitWeight = 0;
+          let idle: { act: IdleAct; t: number; weight: number } | undefined;
+          let fishHeld = 0;
+          h.visible = true;
           if (i < 2) {
             [x, z] = spots[i];
             yaw = Math.atan2(cx - x, cz + 1 - z) * 0.7 - 0.2;
-            if (ev.endAt > 0 && !calm) {
+            const cheering = ev.endAt > 0 && !calm;
+            if (cheering) {
               pose = 'cheer';
               poseTime = wall - ev.endAt + i * 0.2;
+            }
+            if (!calm) {
+              const ctx: IdleContext = {
+                free: !cheering,
+                freeFor: 99,
+                home: { x, z, yaw },
+                keepOut,
+                area,
+                spots: spotsForOnlookers,
+                far: true,
+                partner: brains[1 - i],
+                radius: 2.6,
+              };
+              const o = brains[i].update(dtw, ctx);
+              if (o.away) {
+                x = o.x;
+                z = o.z;
+                yaw = o.yaw;
+                gait = o.gait;
+                gaitPhase = o.gaitPhase;
+                gaitWeight = o.gaitWeight;
+                if (o.actWeight > 0) idle = { act: o.act, t: o.actT, weight: o.actWeight };
+                fishHeld = o.fish;
+                h.visible = o.hide < 0.5;
+                if (o.splash) clock.fishAt = wall;
+              }
             }
           } else {
             // The chick: inside the door, unless the igloo was just clicked.
@@ -541,21 +620,27 @@ export function PolarWorld({ model, bounds, driver, calm, clock }: WorldProps) {
           h.position.set(x, floorY, z);
           h.rotation.y = yaw;
           rig.update({
-            gait: 'stand', gaitPhase: 0, gaitWeight: 0,
+            gait, gaitPhase, gaitWeight,
             pose, poseWeight: pose === 'idle' ? 0 : 1, poseTime,
             prevPose: 'idle', prevWeight: 0,
             lookLocal: [0, 0.6, 3],
             react: wall - ev.onlooker[i] < 1.2 ? wall - ev.onlooker[i] : -1,
             time: now + i * 4.1,
             seed: 5 + i * 2.3,
+            idle,
+            fish: fishHeld,
           });
           const sh = onlookers.shadows[i].mesh;
           sh.position.set(x, floorY + 0.004, z);
-          sh.scale.setScalar(i === 2 ? 0.55 : 0.85);
+          sh.scale.setScalar(i === 2 ? 0.7 : 1.05);
           sh.visible = h.visible;
         }
 
-        // The fish: jumps every so often by itself, or when the hole is clicked.
+        // The fish: jumps every so often by itself, when the hole is clicked, or when a penguin fishes.
+        if (clock.fishAt > ev.fishSeen) {
+          ev.fish = clock.fishAt;
+          ev.fishSeen = clock.fishAt;
+        }
         if (!calm && now > nextFish.current) {
           ev.fish = wall;
           nextFish.current = now + 8 + hash(now, 1) * 6;
@@ -620,7 +705,7 @@ export function PolarWorld({ model, bounds, driver, calm, clock }: WorldProps) {
         const busy = wall - ev.igloo < 3.3 || ft < 3 || ev.puffs.length > 0 || ev.crystals.some((t0) => wall - t0 < 1.9) || ev.onlooker.some((t0) => wall - t0 < 1.3);
         if (busy) invalidate();
       }),
-    [driver, model, sky, ground, snow, props, onlookers, pool, clock, calm, cx, cz, floorY, invalidate],
+    [driver, model, sky, ground, snow, props, onlookers, pool, clock, calm, cx, cz, floorY, invalidate, brains, spotsForOnlookers],
   );
 
   useEffect(() => () => sky.dispose(), [sky]);

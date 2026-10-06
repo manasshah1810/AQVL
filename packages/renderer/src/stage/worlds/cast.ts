@@ -2,6 +2,7 @@ import type { TraceEventKind } from '@aqvl/runtime';
 import type { StageModel } from '../model/StageModel';
 import type { StageSample } from '../model/sampler';
 import { clamp01, lerp, smoothstep } from '../motion/spring';
+import { blockAt, contactPoint, iceMotionAt, releaseAt, type IceMotion, type Job, type Leg } from './ice';
 
 /**
  * The crew: two animals who stand in the gaps in front of the cells a step
@@ -12,20 +13,23 @@ import { clamp01, lerp, smoothstep } from '../motion/spring';
  * the step. Scrubbing in any order gives the same picture.
  */
 
-export type CastPose = 'idle' | 'inspect' | 'push' | 'tap' | 'present' | 'shrug' | 'point' | 'cheer';
-export type CastGait = 'stand' | 'walk' | 'glide' | 'roll';
+export type CastPose = 'idle' | 'inspect' | 'push' | 'pull' | 'tap' | 'present' | 'shrug' | 'point' | 'cheer';
+/** 'push' / 'pull': walking while shoving or tugging a block along the ice. 'climb': up or down a rope or an edge; 'leap': a jump between perches. */
+export type CastGait = 'stand' | 'walk' | 'glide' | 'roll' | 'push' | 'pull' | 'climb' | 'leap';
 /** How an animal travels: penguins waddle and belly-slide, pandas shuffle and roll. */
 export type CastStyle = 'penguin' | 'panda';
 
 export const CREW_SIZE = 2;
 /** Footprint radius of a crew member (collision with cells and with each other). */
-export const CAST_RADIUS = 0.36;
+export const CAST_RADIUS = 0.44;
 /** Facing the camera (the stage camera sits a little to the left). */
 export const CAMERA_YAW = -0.16;
 
 export interface Station {
   x: number;
   z: number;
+  /** Height of the feet above the floor (0 on the ice; above it when perched on a ledge at an elevated node). */
+  y: number;
   /** The cell this animal is attending to, or -1. */
   slot: number;
   /** -1: stands left of the cell, +1: right. */
@@ -58,6 +62,17 @@ export interface CastMember {
   active: boolean;
   /** Which side of its cell it stands on (-1 left, +1 right): its speech bubble goes that way. */
   side: number;
+  /** True while a scripted shove carries this animal (it is in contact with a block, or on its way to one). */
+  scripted: boolean;
+  /** 0..1: how hard it is leaning into a block (the rig bends and strains with it). */
+  effort: number;
+  /** Climbing: the slope of the climb (radians from vertical). */
+  climbSlope: number;
+  /** A rope hangs for a climb (0..1 how much of it shows): its place and the heights of its ends above the floor. */
+  rope: number;
+  ropeX: number;
+  ropeZ: number;
+  ropeTop: number;
 }
 
 export function createCast(): CastMember[] {
@@ -65,7 +80,7 @@ export function createCast(): CastMember[] {
     x: 0, y: 0, z: 0, yaw: CAMERA_YAW,
     gait: 'stand' as CastGait, gaitPhase: 0, gaitWeight: 0,
     pose: 'idle' as CastPose, poseWeight: 1, poseTime: 0, prevPose: 'idle' as CastPose, prevWeight: 0,
-    target: -1, look: [0, 0, 0] as [number, number, number], active: false, side: -1,
+    target: -1, look: [0, 0, 0] as [number, number, number], active: false, side: -1, scripted: false, effort: 0, climbSlope: 0, rope: 0, ropeX: 0, ropeZ: 0, ropeTop: 0,
   }));
 }
 
@@ -102,6 +117,7 @@ const TURN: Record<CastPose, number> = {
   idle: 0.2,
   inspect: 0.42,
   push: 0.55,
+  pull: 0.55,
   tap: 0.45,
   present: 0.15,
   shrug: 0.18,
@@ -120,21 +136,34 @@ export function lerpAngle(a: number, b: number, t: number): number {
 interface Gap {
   x: number;
   z: number;
+  y: number;
 }
 
-/** Where an animal stands to attend to cell `s`: in the gap beside it, in front of its index caption. */
+/**
+ * Where an animal stands to attend to cell `s`: in the gap beside it, in front of its index caption. A cell
+ * that floats in the air (a tree's, a graph's) is attended from a ledge beside it, reached by climbing, in
+ * the penguin world; elsewhere from the floor beneath it.
+ */
 function gapOf(model: StageModel, pos: Float32Array, dims: Float32Array, s: number, side: number): Gap {
   const x = pos[s * 3], y = pos[s * 3 + 1], z = pos[s * 3 + 2];
   const hw = dims[s * 3] / 2, hh = dims[s * 3 + 1] / 2, hd = dims[s * 3 + 2] / 2;
-  const grounded = y - hh - model.floorY < 0.8;
+  const clearance = y - hh - model.floorY;
+  const grounded = clearance < 0.8;
+  if (!grounded && model.world === 'penguin') {
+    // On a ledge at the level of the cell's lower half, beside it, a little towards the camera.
+    return { x: x + side * (hw + 0.5), z: z + 0.45, y: Math.max(0, y - model.floorY - PERCH_DROP) };
+  }
   const off = grounded ? hw + 0.1 : Math.max(0.36, hw * 0.65);
-  return { x: x + side * off, z: z + hd + (grounded ? 1.3 : 0.8) };
+  return { x: x + side * off, z: z + hd + (grounded ? 1.3 : 0.8), y: 0 };
 }
+
+/** How far below a cell's centre the feet of an animal perched beside it are. */
+const PERCH_DROP = 0.8;
 
 function station(model: StageModel, pos: Float32Array, dims: Float32Array, s: number, side: number, pose: CastPose): Station {
   const g = gapOf(model, pos, dims, s, side);
   const toward = Math.atan2(pos[s * 3] - g.x, pos[s * 3 + 2] - g.z);
-  return { x: g.x, z: g.z, slot: s, side, pose, yaw: lerpAngle(CAMERA_YAW, toward, TURN[pose]) };
+  return { x: g.x, z: g.z, y: g.y, slot: s, side, pose, yaw: lerpAngle(CAMERA_YAW, toward, g.y > 0 ? TURN[pose] * 0.5 : TURN[pose]) };
 }
 
 function resting(st: Station, pose: CastPose, model: StageModel, pos: Float32Array): Station {
@@ -143,21 +172,36 @@ function resting(st: Station, pose: CastPose, model: StageModel, pos: Float32Arr
   return { ...st, pose, yaw: lerpAngle(CAMERA_YAW, toward, TURN[pose] * 0.6) };
 }
 
-const stationCache = new WeakMap<StageModel, Station[][]>();
+interface Entry {
+  stations: Station[];
+  /** The crew's scripted shoves in this step (penguin world), or null. */
+  script: CrewScript | null;
+}
 
-/** Both stations at step k (computed in order from the start of the run, cached). */
-export function stationsAt(model: StageModel, k: number): Station[] {
+const stationCache = new WeakMap<StageModel, Entry[]>();
+
+function entryAt(model: StageModel, k: number): Entry {
   let list = stationCache.get(model);
   if (!list) {
     list = [];
     stationCache.set(model, list);
   }
   const last = Math.max(0, Math.min(k, model.frameCount - 1));
-  while (list.length <= last) list.push(computeStations(model, list.length, list[list.length - 1]));
+  while (list.length <= last) list.push(computeEntry(model, list.length, list[list.length - 1]));
   return list[last];
 }
 
-function computeStations(model: StageModel, k: number, prev: Station[] | undefined): Station[] {
+/** Both stations at step k (computed in order from the start of the run, cached). */
+export function stationsAt(model: StageModel, k: number): Station[] {
+  return entryAt(model, k).stations;
+}
+
+/** The crew's scripted shoves in step k (null when nothing in the step is pushed). */
+export function crewScriptAt(model: StageModel, k: number): CrewScript | null {
+  return entryAt(model, k).script;
+}
+
+function baseStations(model: StageModel, k: number, prev: Station[] | undefined): Station[] {
   if (model.frameCount === 0) return [home(-1.2), home(1.2)];
   const rest = model.rest(k);
   const before = k > 0 ? model.rest(k - 1) : rest;
@@ -233,12 +277,12 @@ function computeStations(model: StageModel, k: number, prev: Station[] | undefin
 }
 
 function home(x: number, z = 1.4): Station {
-  return { x, z, slot: -1, side: x < 0 ? -1 : 1, pose: 'idle', yaw: CAMERA_YAW };
+  return { x, z, y: 0, slot: -1, side: x < 0 ? -1 : 1, pose: 'idle', yaw: CAMERA_YAW };
 }
 
 /** Travel speeds (world units per second at 1x) and when a trip becomes a slide / roll. */
 const GAIT = {
-  penguin: { walk: 2.4, fast: 5.2, fastFrom: 2.6, stride: 0.17 },
+  penguin: { walk: 2.2, fast: 5.2, fastFrom: 2.8, stride: 0.27 },
   panda: { walk: 1.7, fast: 3.4, fastFrom: 0.75, stride: 0.2 },
 } as const;
 /** Radius of a curled-up rolling panda (roll angle = distance / radius, rounded to whole turns). */
@@ -268,14 +312,39 @@ export function sampleCast(
   const D = Math.max(1e-3, duration);
   const t = k === 0 ? D : Math.min(Math.max(0, tau), D);
   const g = GAIT[style];
+  const script = !calm && style === 'penguin' && k > 0 ? crewScriptAt(model, k) : null;
 
   for (let i = 0; i < CREW_SIZE; i++) {
     const a = S0[i], b = S1[i], m = out[i];
+    m.scripted = false;
+    m.effort = 0;
+    m.rope = 0;
+    m.climbSlope = 0;
+    const segs = script?.crew[i];
+    if (segs && script) {
+      sampleScripted(segs, a, clamp01(t / D), D, m);
+      m.target = b.slot;
+      m.active = true;
+      const sl = b.slot;
+      m.side = sl >= 0 ? (m.x < (sample.presence[sl] > 0.01 ? sample.pos[sl * 3] : b.x) ? -1 : 1) : -1;
+      if (sl >= 0 && sample.presence[sl] > 0.01) {
+        m.look[0] = sample.pos[sl * 3];
+        m.look[1] = sample.pos[sl * 3 + 1];
+        m.look[2] = sample.pos[sl * 3 + 2];
+      } else {
+        m.look[0] = m.x + Math.sin(m.yaw) * 3;
+        m.look[1] = model.floorY + 0.6;
+        m.look[2] = m.z + Math.cos(m.yaw) * 3;
+      }
+      continue;
+    }
     const dx = b.x - a.x, dz = b.z - a.z;
-    const dist = Math.hypot(dx, dz);
+    // To or from a ledge on a floating cell: along a rope or an edge, or in a leap.
+    const climbPath = !calm && style === 'penguin' && (a.y > 0.35 || b.y > 0.35) ? pathBetween(model, k, a, b) : null;
+    const dist = climbPath ? climbPath.length : Math.hypot(dx, dz);
     const moving = dist > 0.02;
-    const fast = dist > g.fastFrom;
-    const T = moving ? Math.min(D * 0.62, Math.max(0.28, dist / (fast ? g.fast : g.walk))) : 0;
+    const fast = !climbPath && dist > g.fastFrom;
+    const T = moving ? (climbPath ? Math.min(D * 0.66, Math.max(0.34, climbPath.time)) : Math.min(D * 0.62, Math.max(0.28, dist / (fast ? g.fast : g.walk)))) : 0;
     const start = i * 0.06;
     const p = moving ? clamp01((t - start) / T) : 1;
     const heading = moving ? Math.atan2(dx, dz) : b.yaw;
@@ -284,11 +353,16 @@ export function sampleCast(
     m.gait = 'stand';
     m.gaitPhase = 0;
     m.gaitWeight = 0;
-    m.y = 0;
+    m.y = b.y;
+    m.rope = 0;
     if (!moving) {
       e = 1;
+    } else if (climbPath) {
+      e = easeInOutSine(p);
+      samplePath(climbPath, e, p, g.stride, m);
     } else if (calm) {
       e = smoothstep(0, 1, p);
+      m.y = lerp(a.y, b.y, e);
     } else if (style === 'penguin' && fast) {
       // Belly slide: a hop forward onto the belly, a long glide, and a pop back up.
       e = smoothstep(0.08, 1, p);
@@ -311,14 +385,22 @@ export function sampleCast(
       m.gaitPhase = ((e * dist) / g.stride) * Math.PI;
       m.y = Math.abs(Math.sin(m.gaitPhase)) * (style === 'penguin' ? 0.035 : 0.02) * m.gaitWeight;
     }
-    m.x = lerp(a.x, b.x, e);
-    m.z = lerp(a.z, b.z, e);
+    if (!climbPath || !moving) {
+      m.x = lerp(a.x, b.x, e);
+      m.z = lerp(a.z, b.z, e);
+    }
+    if (!moving) m.y = b.y;
 
     // Facing: towards where it is going while it travels, then settle to the new pose's facing.
     const settle = moving ? smoothstep(0.75, 1, p) : smoothstep(0, Math.min(0.35, D * 0.3), t);
     const base = lerpAngle(a.yaw, b.yaw, settle);
     const travelTurn = moving && !calm ? smoothstep(0, 0.12, p) * (1 - smoothstep(0.8, 1, p)) : 0;
     m.yaw = lerpAngle(base, heading, m.gait === 'roll' ? Math.max(travelTurn, m.gaitWeight) : travelTurn);
+    const gaitNow = m.gait as CastGait;
+    if (climbPath && moving && (gaitNow === 'climb' || gaitNow === 'leap')) {
+      // Belly to the rope (and to the camera): a little turn the way it climbs.
+      m.yaw = lerpAngle(CAMERA_YAW, heading, gaitNow === 'leap' ? 0.7 : 0.25 * Math.min(1, m.climbSlope * 1.6));
+    }
 
     // Pose: the new one begins on arrival; the old one fades out as the trip starts.
     const arrive = moving ? start + T * 0.8 : 0;
@@ -347,19 +429,33 @@ export function sampleCast(
   resolve(model, sample, out);
 }
 
-/** Cells moving through an animal's spot push it forward, out of their way; the two animals never overlap. */
+/**
+ * Cells moving through an animal's spot push it out of their way (by the shortest way, so it is carried
+ * along rather than thrown across them); the two animals never overlap.
+ */
 function resolve(model: StageModel, sample: StageSample, out: CastMember[]): void {
   const R = CAST_RADIUS;
   for (const m of out) {
+    if (m.scripted) continue; // its script already keeps clear of the cells
     for (let pass = 0; pass < 2; pass++) {
       for (let s = 0; s < sample.nodeCount; s++) {
-        if (sample.presence[s] < 0.2) continue;
+        if (sample.presence[s] < 0.1) continue;
         const ny = sample.pos[s * 3 + 1], hh = (sample.dims[s * 3 + 1] * sample.presence[s]) / 2;
-        if (ny - hh - model.floorY > 0.75) continue; // high enough to stand under
-        const hw = (sample.dims[s * 3] * sample.presence[s]) / 2 + R * 0.8;
-        const hd = (sample.dims[s * 3 + 2] * sample.presence[s]) / 2 + R;
+        if (ny - hh - model.floorY > 0.75 || m.y > 0.3) continue; // high enough to stand under
+        // A cell that is still growing (or shrinking) claims its ground gradually.
+        const claim = smoothstep(0.1, 0.5, sample.presence[s]);
+        const hw = (sample.dims[s * 3] * sample.presence[s]) / 2 + R * 0.8 * claim;
+        const hd = (sample.dims[s * 3 + 2] * sample.presence[s]) / 2 + R * claim;
         const nx = sample.pos[s * 3], nz = sample.pos[s * 3 + 2];
-        if (Math.abs(m.x - nx) < hw && m.z > nz - hd && m.z < nz + hd) m.z = nz + hd;
+        const dx = m.x - nx, dz = m.z - nz;
+        if (Math.abs(dx) >= hw || Math.abs(dz) >= hd) continue;
+        // Out by whichever way is shortest: sideways, or forward (a cell never pushes an animal back through the row).
+        const sideways = hw - Math.abs(dx);
+        const forward = nz + hd - m.z;
+        const backward = m.z - (nz - hd);
+        if (forward <= sideways && forward <= backward) m.z = nz + hd;
+        else if (sideways <= backward) m.x = nx + (dx >= 0 ? hw : -hw);
+        else m.z = nz - hd;
       }
     }
   }
@@ -368,17 +464,372 @@ function resolve(model: StageModel, sample: StageSample, out: CastMember[]): voi
       const a = out[i], b = out[j];
       let dx = b.x - a.x, dz = b.z - a.z;
       let d = Math.hypot(dx, dz);
-      if (d >= 2 * R) continue;
+      const apart = 2 * R;
+      if (d >= apart) continue;
       if (d < 1e-4) {
         dx = 1;
         dz = 0;
         d = 1;
       }
-      const push = (2 * R - Math.hypot(b.x - a.x, b.z - a.z)) / 2;
+      const push = (apart - Math.hypot(b.x - a.x, b.z - a.z)) / 2;
       a.x -= (dx / d) * push;
       a.z -= (dz / d) * push;
       b.x += (dx / d) * push;
       b.z += (dz / d) * push;
     }
+  }
+}
+
+// ── Scripted shoves (penguin world) ────────────────────────────────────────
+//
+// A step in which blocks are shoved along the ice (see ice.ts) gives each
+// animal that does the shoving a script: walk to the block, lean into it
+// while it accelerates, let go (or keep tugging), step back and watch it
+// slide. Positions in contact come from the block itself, so the two can
+// never drift apart; before and after, the animal travels between contacts.
+
+interface Seg {
+  /** Step fractions. */
+  f0: number;
+  f1: number;
+  kind: 'travel' | 'contact' | 'hold';
+  ax: number;
+  az: number;
+  bx: number;
+  bz: number;
+  /** Facing at the start and end of a travel / hold. */
+  yawA: number;
+  yawB: number;
+  /** Distance walked in the segments before this one (the waddle carries on across them). */
+  d0: number;
+  pose: CastPose;
+  job?: Job;
+  leg?: Leg;
+}
+
+export interface CrewScript {
+  motion: IceMotion;
+  /** Per crew member: its segments (covering the whole step), or undefined when it has no part in the shoving. */
+  crew: (Seg[] | undefined)[];
+}
+
+function computeEntry(model: StageModel, k: number, prev: Entry | undefined): Entry {
+  const base = baseStations(model, k, prev?.stations);
+  if (model.world !== 'penguin' || !prev || k === 0) return { stations: base, script: null };
+  const motion = iceMotionAt(model, k);
+  if (motion) return scriptEntry(model, motion, prev.stations, base);
+  return { stations: base, script: null };
+}
+
+const _c: [number, number] = [0, 0];
+
+/** Which animal takes which job: left to right, or (one job) the nearer. */
+function assign(jobs: Job[], at: { x: number; z: number }[]): number[] {
+  const startOf = (j: Job): [number, number] => {
+    if (j.carry) return [j.carry.stand[0], j.carry.stand[1]];
+    contactPoint(j.legs[0], j.legs[0].ax, j.legs[0].az, _c);
+    return [_c[0], _c[1]];
+  };
+  const xOf = (j: Job) => (j.carry ? j.carry.tx : j.legs[0].ax);
+  if (jobs.length >= 2) {
+    const order = jobs.map((_, i) => i).sort((p, q) => xOf(jobs[p]) - xOf(jobs[q]));
+    const crew = at[0].x <= at[1].x ? [0, 1] : [1, 0];
+    const out: number[] = [-1, -1];
+    out[crew[0]] = order[0];
+    out[crew[1]] = order[1];
+    return out;
+  }
+  const [sx, sz] = startOf(jobs[0]);
+  const d0 = Math.hypot(at[0].x - sx, at[0].z - sz);
+  const d1 = Math.hypot(at[1].x - sx, at[1].z - sz);
+  return d0 <= d1 ? [0, -1] : [-1, 0];
+}
+
+function facing(leg: Leg): number {
+  return leg.kind === 'push' ? Math.atan2(leg.dx, leg.dz) : Math.atan2(-leg.dx, -leg.dz);
+}
+
+function scriptEntry(model: StageModel, motion: IceMotion, prev: Station[], base: Station[]): Entry {
+  const to = model.rest(motion.k);
+  const assigned = assign(motion.jobs, prev);
+  const crew: (Seg[] | undefined)[] = [undefined, undefined];
+  const stations = base.map((st) => ({ ...st }));
+  const touched: { x: number; z: number }[] = [];
+
+  assigned.forEach((ji, i) => {
+    if (ji < 0) return;
+    const job = motion.jobs[ji];
+    const segs: Seg[] = [];
+    let cursor = 0;
+    let px = prev[i].x, pz = prev[i].z, yaw = prev[i].yaw;
+    let walked = 0;
+    const blk = { x: 0, z: 0, vx: 0, vz: 0, leg: -1 };
+    if (job.carry) {
+      // To the forge, hands up as the ball grows between the flippers, then a point after it as the eagle takes it.
+      const [fx, fz] = job.carry.stand;
+      const forged = job.carry.grab;
+      touched.push({ x: fx, z: fz }, { x: prev[i].x, z: prev[i].z });
+      segs.push({ f0: 0, f1: job.carry.made[0] + 0.04, kind: 'travel', ax: px, az: pz, bx: fx, bz: fz, yawA: yaw, yawB: CAMERA_YAW, d0: 0, pose: 'idle' });
+      segs.push({ f0: job.carry.made[0] + 0.04, f1: forged, kind: 'hold', ax: fx, az: fz, bx: fx, bz: fz, yawA: CAMERA_YAW, yawB: CAMERA_YAW, d0: Math.hypot(fx - px, fz - pz), pose: 'present' });
+      segs.push({ f0: forged, f1: 1, kind: 'hold', ax: fx, az: fz, bx: fx, bz: fz, yawA: CAMERA_YAW, yawB: CAMERA_YAW, d0: Math.hypot(fx - px, fz - pz), pose: 'point' });
+      crew[i] = segs;
+      stations[i] = { x: fx, z: fz, y: 0, slot: job.slot, side: fx < job.carry.tx ? -1 : 1, pose: 'point', yaw: CAMERA_YAW };
+      return;
+    }
+    job.legs.forEach((leg, li) => {
+      contactPoint(leg, leg.ax, leg.az, _c);
+      const cx = _c[0], cz = _c[1];
+      const face = facing(leg);
+      const first = li === 0;
+      if (leg.t0 > cursor + 1e-4) {
+        segs.push({ f0: cursor, f1: leg.t0, kind: 'travel', ax: px, az: pz, bx: cx, bz: cz, yawA: yaw, yawB: face, d0: walked, pose: first && job.grow ? 'present' : 'idle' });
+        walked += Math.hypot(cx - px, cz - pz);
+      }
+      touched.push({ x: cx, z: cz });
+      const rel = releaseAt(leg);
+      segs.push({ f0: leg.t0, f1: rel, kind: 'contact', ax: cx, az: cz, bx: cx, bz: cz, yawA: face, yawB: face, d0: walked, pose: leg.kind, job, leg });
+      // Where it stands when it lets go (or when the tugged block has stopped).
+      blockAt({ slot: job.slot, legs: [leg] }, rel, blk);
+      contactPoint(leg, blk.x, blk.z, _c);
+      walked += Math.hypot(_c[0] - cx, _c[1] - cz);
+      touched.push({ x: _c[0], z: _c[1] }, { x: leg.bx, z: leg.bz });
+      px = _c[0];
+      pz = _c[1];
+      yaw = face;
+      cursor = rel;
+    });
+    const last = job.legs[job.legs.length - 1];
+    if (to.present[job.slot] && !job.fade) {
+      // Having shoved it, the animal steps back and aside to watch it settle (and to show its face).
+      const side = px < last.bx ? -1 : 1;
+      const st = station(model, to.pos, to.dims, job.slot, side, 'idle');
+      const settleEnd = Math.min(1, Math.max(cursor + 0.1, 0.95));
+      segs.push({ f0: cursor, f1: settleEnd, kind: 'travel', ax: px, az: pz, bx: st.x, bz: st.z, yawA: yaw, yawB: st.yaw, d0: walked, pose: 'idle' });
+      walked += Math.hypot(st.x - px, st.z - pz);
+      touched.push({ x: st.x, z: st.z });
+      if (settleEnd < 1) segs.push({ f0: settleEnd, f1: 1, kind: 'hold', ax: st.x, az: st.z, bx: st.x, bz: st.z, yawA: st.yaw, yawB: st.yaw, d0: walked, pose: 'idle' });
+      crew[i] = segs;
+      stations[i] = { ...st, pose: 'idle' };
+      return;
+    }
+    segs.push({ f0: cursor, f1: 1, kind: 'hold', ax: px, az: pz, bx: px, bz: pz, yawA: yaw, yawB: yaw, d0: walked, pose: 'idle' });
+    crew[i] = segs;
+    stations[i] = { x: px, z: pz, y: 0, slot: job.slot, side: px < last.bx ? -1 : 1, pose: 'idle', yaw };
+  });
+
+  // An animal with no part in it keeps out of the way.
+  const near = 1.15 + CAST_RADIUS;
+  if (touched.length > 0) {
+    let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+    for (const j of motion.jobs) {
+      for (const leg of j.legs) {
+        x0 = Math.min(x0, leg.ax, leg.bx); x1 = Math.max(x1, leg.ax, leg.bx);
+        z0 = Math.min(z0, leg.az, leg.bz); z1 = Math.max(z1, leg.az, leg.bz);
+      }
+    }
+    for (const t of touched) {
+      x0 = Math.min(x0, t.x); x1 = Math.max(x1, t.x);
+      z0 = Math.min(z0, t.z); z1 = Math.max(z1, t.z);
+    }
+    for (let i = 0; i < CREW_SIZE; i++) {
+      if (crew[i]) continue;
+      const st = stations[i];
+      if (st.x > x0 - near && st.x < x1 + near && st.z > z0 - near && st.z < z1 + near) {
+        const left = st.x - (x0 - near), right = x1 + near - st.x;
+        stations[i] = { ...st, x: left < right ? x0 - near : x1 + near, pose: 'idle' };
+      }
+      stations[i] = { ...stations[i], pose: 'idle' };
+    }
+  }
+  return { stations, script: { motion, crew } };
+}
+
+function easeInOut(x: number): number {
+  return -(Math.cos(Math.PI * clamp01(x)) - 1) / 2;
+}
+
+const _blk = { x: 0, z: 0, vx: 0, vz: 0, leg: -1 };
+const GLIDE_SPEED = 4.6;
+
+/** Fills one crew member's body for a scripted step at step fraction f. */
+function sampleScripted(segs: Seg[], start: Station, f: number, D: number, m: CastMember): void {
+  let si = segs.length - 1;
+  for (let i = 0; i < segs.length; i++) {
+    if (f < segs[i].f1) {
+      si = i;
+      break;
+    }
+  }
+  const seg = segs[si];
+  const stride = GAIT.penguin.stride;
+  const len = Math.max(1e-4, seg.f1 - seg.f0);
+  const u = clamp01((f - seg.f0) / len);
+  m.scripted = true;
+  m.gait = 'stand';
+  m.gaitWeight = 0;
+  m.gaitPhase = 0;
+  m.y = 0;
+  m.effort = 0;
+
+  if (seg.kind === 'travel') {
+    const dist = Math.hypot(seg.bx - seg.ax, seg.bz - seg.az);
+    const speed = dist / (len * D);
+    const glide = speed > GLIDE_SPEED && dist > 1.5;
+    let e = easeInOut(u);
+    if (glide) {
+      e = smoothstep(0.06, 1, u);
+      e = e * e * (3 - 2 * e) * 0.15 + e * 0.85;
+    }
+    m.x = lerp(seg.ax, seg.bx, e);
+    m.z = lerp(seg.az, seg.bz, e);
+    const heading = dist > 0.05 ? Math.atan2(seg.bx - seg.ax, seg.bz - seg.az) : seg.yawB;
+    const toHeading = lerpAngle(seg.yawA, heading, smoothstep(0, 0.2, u));
+    m.yaw = lerpAngle(toHeading, seg.yawB, smoothstep(0.62, 1, u));
+    if (dist > 0.04) {
+      if (glide) {
+        m.gait = 'glide';
+        m.gaitWeight = smoothstep(0, 0.14, u) * (1 - smoothstep(0.86, 1, u));
+        m.gaitPhase = u;
+      } else {
+        m.gait = 'walk';
+        m.gaitWeight = smoothstep(0, 0.1, u) * (1 - smoothstep(0.9, 1, u));
+        m.gaitPhase = ((seg.d0 + e * dist) / stride) * Math.PI;
+      }
+    }
+  } else if (seg.kind === 'contact' && seg.job && seg.leg) {
+    blockAt({ slot: seg.job.slot, legs: [seg.leg] }, f, _blk);
+    contactPoint(seg.leg, _blk.x, _blk.z, _c);
+    m.x = _c[0];
+    m.z = _c[1];
+    m.yaw = seg.yawA;
+    const speed = Math.hypot(_blk.vx, _blk.vz);
+    const moving = speed > 0.4;
+    const walked = Math.hypot(m.x - seg.ax, m.z - seg.az);
+    // Faster than an animal can run: it throws itself after the block on its belly.
+    m.gait = !moving ? 'stand' : speed > 6.5 ? 'glide' : seg.leg.kind;
+    m.gaitWeight = moving ? 1 : 0;
+    m.gaitPhase = ((seg.d0 + walked) / (stride * 0.8)) * Math.PI;
+    // Straining: hardest while it is accelerating the block.
+    const accel = seg.leg.kind === 'push' ? 1 : smoothstep(0, 0.2, u) * (1 - smoothstep(0.55, 1, u)) * 0.8 + 0.2;
+    m.effort = accel;
+  } else {
+    m.x = seg.ax;
+    m.z = seg.az;
+    m.yaw = seg.yawB;
+  }
+
+  // Pose: the segment's own, eased in over a moment; the one before it fades out.
+  const before = si > 0 ? segs[si - 1].pose : start.pose;
+  const intoSeg = Math.max(0, (f - seg.f0) * D);
+  const w = smoothstep(0, 0.14, intoSeg);
+  m.pose = seg.pose;
+  m.poseTime = intoSeg;
+  m.poseWeight = seg.pose === 'idle' && before === 'idle' ? 1 : w;
+  m.prevPose = before;
+  m.prevWeight = seg.pose === before ? 0 : 1 - w;
+}
+
+// ── Up and down: ropes, edges and leaps (penguin world) ────────────────────
+
+interface PathLeg {
+  kind: 'walk' | 'climb' | 'leap';
+  ax: number;
+  az: number;
+  ay: number;
+  bx: number;
+  bz: number;
+  by: number;
+  len: number;
+}
+
+interface CrewPath {
+  legs: PathLeg[];
+  length: number;
+  /** Seconds the whole trip takes. */
+  time: number;
+  /** A rope hangs for this climb (not when the animal climbs along an edge that is already there). */
+  rope: { x: number; z: number; top: number } | null;
+}
+
+const CLIMB_SPEED = 4.6;
+const WALK_SPEED = 2.6;
+const LEAP_TIME = 0.5;
+
+function connected(model: StageModel, k: number, sa: number, sb: number): boolean {
+  if (sa < 0 || sb < 0) return false;
+  const rest = model.rest(k);
+  for (let e = 0; e < model.edgeSlots.length; e++) {
+    if (!rest.edgePresent[e]) continue;
+    const f = rest.edgeFrom[e], t = rest.edgeTo[e];
+    if ((f === sa && t === sb) || (f === sb && t === sa)) return true;
+  }
+  return false;
+}
+
+/** How an animal gets from one station to another when either is on a ledge. */
+function pathBetween(model: StageModel, k: number, a: Station, b: Station): CrewPath | null {
+  const leg = (kind: PathLeg['kind'], ax: number, az: number, ay: number, bx: number, bz: number, by: number): PathLeg => ({
+    kind, ax, az, ay, bx, bz, by, len: Math.hypot(bx - ax, bz - az, by - ay),
+  });
+  const legs: PathLeg[] = [];
+  let rope: CrewPath['rope'] = null;
+  const aHigh = a.y > 0.35, bHigh = b.y > 0.35;
+  if (aHigh && bHigh) {
+    if (connected(model, k, a.slot, b.slot) || connected(model, k - 1, a.slot, b.slot)) legs.push(leg('climb', a.x, a.z, a.y, b.x, b.z, b.y));
+    else legs.push(leg('leap', a.x, a.z, a.y, b.x, b.z, b.y));
+  } else if (bHigh) {
+    // Up the rope that hangs by the ledge.
+    legs.push(leg('walk', a.x, a.z, a.y, b.x, b.z, 0), leg('climb', b.x, b.z, 0, b.x, b.z, b.y));
+    rope = { x: b.x, z: b.z, top: b.y + 1.2 };
+  } else {
+    legs.push(leg('climb', a.x, a.z, a.y, a.x, a.z, 0), leg('walk', a.x, a.z, 0, b.x, b.z, b.y));
+    rope = { x: a.x, z: a.z, top: a.y + 1.2 };
+  }
+  const length = legs.reduce((sum, l) => sum + l.len, 0);
+  if (length < 0.02) return null;
+  const time = legs.reduce((sum, l) => sum + (l.kind === 'climb' ? l.len / CLIMB_SPEED : l.kind === 'leap' ? LEAP_TIME : l.len / WALK_SPEED), 0);
+  return { legs, length, time, rope };
+}
+
+/** Places the animal a fraction e (eased) of the way along its path. */
+function samplePath(path: CrewPath, e: number, p: number, stride: number, m: CastMember): void {
+  let remaining = e * path.length;
+  let done = 0;
+  for (let i = 0; i < path.legs.length; i++) {
+    const l = path.legs[i];
+    if (remaining <= l.len + 1e-9 || i === path.legs.length - 1) {
+      const u = l.len > 1e-6 ? clamp01(remaining / l.len) : 1;
+      m.x = lerp(l.ax, l.bx, u);
+      m.z = lerp(l.az, l.bz, u);
+      m.y = lerp(l.ay, l.by, u);
+      const weight = smoothstep(0, 0.1, p) * (1 - smoothstep(0.9, 1, p));
+      m.gaitWeight = weight;
+      if (l.kind === 'walk') {
+        m.gait = p > 0 && p < 1 ? 'walk' : 'stand';
+        m.gaitPhase = ((done + remaining) / stride) * Math.PI;
+      } else if (l.kind === 'climb') {
+        m.gait = 'climb';
+        m.gaitPhase = ((done + remaining) / 0.34) * Math.PI;
+        const horiz = Math.hypot(l.bx - l.ax, l.bz - l.az);
+        const vert = Math.abs(l.by - l.ay);
+        m.climbSlope = Math.atan2(horiz, Math.max(1e-3, vert));
+        m.gaitWeight = 1;
+      } else {
+        // A leap: out over the gap with the flippers up, and down on the other ledge.
+        m.gait = 'leap';
+        m.gaitPhase = u;
+        m.y += Math.sin(Math.PI * u) * (0.7 + 0.12 * l.len);
+        m.gaitWeight = Math.sin(Math.PI * u);
+      }
+      if (path.rope) {
+        m.rope = smoothstep(0, 0.2, p) * (1 - smoothstep(0.97, 1, p));
+        m.ropeX = path.rope.x;
+        m.ropeZ = path.rope.z;
+        m.ropeTop = path.rope.top;
+      }
+      return;
+    }
+    remaining -= l.len;
+    done += l.len;
   }
 }

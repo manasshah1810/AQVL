@@ -1,0 +1,448 @@
+/* ============================================================
+   The penguin world, carried across the site.
+   `data-world='penguin'` on <html> (see lib/world.ts) swaps the palette
+   for ice (the same roles, the same contrast: --peach is still the body
+   text, --cream the emphasis, --ink the ground) and switches on a few
+   quiet details: snowfall behind the pages, a penguin or two, a frozen
+   baseline in the footer. Nothing here moves layout, and everything that
+   moves stops under `prefers-reduced-motion` or the Settings switches
+   (`data-snow`, `data-mascots`).
+   ============================================================ */
+
+/* ── Palette: polar night ───────────────────────────────────── */
+:root[data-world='penguin']:not([data-theme='light']) {
+  --ink: #0c1a2b;
+  --ink-deep: #08121f;
+  --peach: #bfdcf2;
+  --peach-muted: #8fb0c9;
+  --panel: #163049;
+  --panel-raised: #1c3b5a;
+  --dusk: #4e7192;
+  --dusk-deep: #2e4c6b;
+  --cream: #eaf6ff;
+
+  --line: rgb(191 220 242 / 0.18);
+  --line-strong: rgb(191 220 242 / 0.34);
+  --line-faint: rgb(191 220 242 / 0.09);
+
+  --syn-default: #bfdcf2;
+  --syn-keyword: #eaf6ff;
+  --syn-structural: #eaf6ff;
+  --syn-number: #9cc0e0;
+  --syn-string: #a8d7e6;
+  --syn-comment: #7b9bb8;
+
+  --gutter-fg: #7a9ab6;
+  --scrim: rgb(8 18 31 / 0.9);
+  --row-hover: rgb(22 48 73 / 0.55);
+  --wall: rgb(143 176 201 / 0.28);
+  --kbd-bg: rgb(8 18 31 / 0.4);
+  --on-dusk: #eaf6ff;
+
+  --pen-ink: #253047;
+  --pen-belly: #f6f3ec;
+  --ice-glow: rgb(143 211 255 / 0.28);
+  --snow: #e8f4ff;
+}
+
+/* ── Palette: a snow day ────────────────────────────────────── */
+:root[data-world='penguin'][data-theme='light'] {
+  --ink: #f1f7fc;
+  --ink-deep: #e4eef7;
+  --peach: #1e3a56;
+  --peach-muted: #46657f;
+  --panel: #dbe9f4;
+  --panel-raised: #cfe1f0;
+  --dusk: #6c8faa;
+  --dusk-deep: #c8dced;
+  --cream: #0b1a2c;
+
+  --line: rgb(30 58 86 / 0.16);
+  --line-strong: rgb(30 58 86 / 0.3);
+  --line-faint: rgb(30 58 86 / 0.08);
+
+  --syn-default: #1e3a56;
+  --syn-keyword: #0b1a2c;
+  --syn-structural: #0b1a2c;
+  --syn-number: #3b5f7e;
+  --syn-string: #2a6572;
+  --syn-comment: #435f78;
+
+  --gutter-fg: #435f78;
+  --scrim: rgb(241 247 252 / 0.9);
+  --row-hover: rgb(30 58 86 / 0.07);
+  --wall: rgb(70 101 127 / 0.22);
+  --kbd-bg: rgb(11 26 44 / 0.08);
+  --on-dusk: #f1f7fc;
+
+  --pen-ink: #253047;
+  --pen-belly: #ffffff;
+  --ice-glow: rgb(74 140 200 / 0.22);
+  --snow: #ffffff;
+}
+
+/* The pre-paint background, and a faint aurora over the whole page. */
+html[data-world='penguin'] body {
+  background:
+    radial-gradient(1100px 460px at 12% -8%, rgb(122 240 200 / 0.07), transparent 62%),
+    radial-gradient(900px 460px at 92% -6%, rgb(150 130 255 / 0.06), transparent 62%),
+    var(--ink);
+  background-attachment: fixed;
+}
+
+html[data-world='penguin'][data-theme='light'] body {
+  background:
+    radial-gradient(1100px 460px at 12% -8%, rgb(120 190 255 / 0.18), transparent 62%),
+    radial-gradient(900px 460px at 92% -6%, rgb(190 215 255 / 0.3), transparent 62%),
+    var(--ink);
+  background-attachment: fixed;
+}
+
+/* A thin frozen edge under the header. */
+html[data-world='penguin'] header.border-b {
+  position: relative;
+}
+html[data-world='penguin'] header.border-b::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--ice-glow) 18%, var(--ice-glow) 82%, transparent);
+  pointer-events: none;
+}
+
+/* Buttons: a cold sheen crosses them on hover. */
+html[data-world='penguin'] .btn:not(.btn--quiet)::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(105deg, transparent 30%, rgb(255 255 255 / 0.22) 50%, transparent 70%);
+  transform: translateX(-120%);
+  transition: transform 700ms ease;
+  pointer-events: none;
+}
+html[data-world='penguin'] .btn:not(.btn--quiet):hover::after {
+  transform: translateX(120%);
+}
+
+/* Panels and cards get a hint of frost on their top edge. */
+html[data-world='penguin'] .panel {
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.06);
+}
+html[data-world='penguin'][data-theme='light'] .panel {
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.7);
+}
+
+/* ── Snow behind the pages (components/theme/WorldDecor.tsx) ── */
+.world-snow {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+  display: none;
+}
+
+html[data-world='penguin'][data-snow='on'] .world-snow {
+  display: block;
+}
+
+.world-snow i {
+  position: absolute;
+  top: -12px;
+  left: var(--x);
+  width: var(--s);
+  height: var(--s);
+  border-radius: 50%;
+  background: var(--snow);
+  opacity: var(--o);
+  filter: drop-shadow(0 0 2px rgb(60 120 190 / 0.35));
+  animation: snow-fall var(--d) linear var(--delay) infinite;
+  will-change: transform;
+}
+
+@keyframes snow-fall {
+  0% {
+    transform: translate3d(0, -4vh, 0);
+  }
+  50% {
+    transform: translate3d(calc(var(--drift) * 0.5), 52vh, 0);
+  }
+  100% {
+    transform: translate3d(var(--drift), 108vh, 0);
+  }
+}
+
+/* The snow falls behind the page content: the page's wrapper is its own stacking context. */
+html[data-world='penguin'] #root > div {
+  position: relative;
+  z-index: 0;
+  isolation: isolate;
+}
+
+/* ── Mascots ────────────────────────────────────────────────── */
+html[data-mascots='off'] .mascot,
+html:not([data-world='penguin']) .mascot--penguin-only {
+  display: none !important;
+}
+
+.pen {
+  overflow: visible;
+}
+
+.pen__eye {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: pen-blink 5.2s ease-in-out infinite;
+}
+
+.pen__flipL,
+.pen__flipR {
+  transform-box: fill-box;
+  transform-origin: 50% 12%;
+}
+
+.pen--wave .pen__flipL {
+  animation: pen-wave 1.1s ease-in-out infinite;
+}
+
+.pen--stand .pen__body,
+.pen--point .pen__body {
+  animation: pen-breathe 3.4s ease-in-out infinite;
+  transform-origin: 40px 84px;
+}
+
+.pen--point .pen__flipR {
+  transform: rotate(-70deg);
+}
+
+.pen--sleep .pen__body {
+  animation: pen-breathe 4.8s ease-in-out infinite;
+  transform-origin: 40px 84px;
+}
+
+.pen--sleep .pen__head {
+  transform: rotate(8deg);
+  transform-box: fill-box;
+  transform-origin: 50% 90%;
+}
+
+.pen--peek .pen__body {
+  animation: pen-peek 6s ease-in-out infinite;
+}
+
+.pen--slide .pen__spray {
+  animation: pen-spray 0.9s ease-out infinite;
+}
+.pen--slide .pen__spray--b {
+  animation-delay: 0.3s;
+}
+
+.pen--walk .pen__body {
+  transform-origin: 40px 84px;
+  animation: pen-waddle 0.7s ease-in-out infinite;
+}
+.pen--walk .pen__footL {
+  animation: pen-step 0.7s ease-in-out infinite;
+}
+.pen--walk .pen__footR {
+  animation: pen-step 0.7s ease-in-out infinite 0.35s;
+}
+
+@keyframes pen-blink {
+  0%,
+  94%,
+  100% {
+    transform: scaleY(1);
+  }
+  96.5% {
+    transform: scaleY(0.12);
+  }
+}
+@keyframes pen-wave {
+  0%,
+  100% {
+    transform: rotate(14deg);
+  }
+  50% {
+    transform: rotate(150deg);
+  }
+}
+@keyframes pen-breathe {
+  0%,
+  100% {
+    transform: scale(1, 1);
+  }
+  50% {
+    transform: scale(1.012, 0.985);
+  }
+}
+@keyframes pen-peek {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  45%,
+  55% {
+    transform: translateY(-5px);
+  }
+}
+@keyframes pen-spray {
+  0% {
+    transform: translate(0, 0) scale(1);
+    opacity: 0.9;
+  }
+  100% {
+    transform: translate(-16px, -10px) scale(0.3);
+    opacity: 0;
+  }
+}
+@keyframes pen-waddle {
+  0%,
+  100% {
+    transform: rotate(-5deg);
+  }
+  50% {
+    transform: rotate(5deg);
+  }
+}
+@keyframes pen-step {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-3px);
+  }
+}
+
+/* ── Footer: the frozen baseline, with a walker ─────────────── */
+.footer-ice {
+  position: absolute;
+  inset: auto 0 23px 0;
+  height: 0;
+  pointer-events: none;
+}
+
+@media (min-width: 768px) {
+  .footer-ice {
+    bottom: 38px;
+  }
+}
+
+.footer-ice__walker {
+  position: absolute;
+  bottom: -2px;
+  left: 12%;
+  animation: ice-walk 38s linear infinite;
+}
+
+.footer-ice__walker--back {
+  animation-direction: reverse;
+  animation-duration: 52s;
+  animation-delay: -18s;
+}
+
+@keyframes ice-walk {
+  0% {
+    left: 14%;
+    transform: scaleX(1);
+  }
+  47% {
+    left: calc(100% - 44px);
+    transform: scaleX(1);
+  }
+  50% {
+    left: calc(100% - 44px);
+    transform: scaleX(-1);
+  }
+  97% {
+    left: 14%;
+    transform: scaleX(-1);
+  }
+  100% {
+    left: 14%;
+    transform: scaleX(1);
+  }
+}
+
+/* A small drift of snow and a floe, used by hero and empty-state illustrations. */
+.ice-floe {
+  display: block;
+  width: 100%;
+  height: 10px;
+  border-radius: 50%;
+  background: radial-gradient(ellipse at 50% 30%, rgb(255 255 255 / 0.85), rgb(160 205 240 / 0.55) 60%, transparent 72%);
+  opacity: 0.8;
+}
+
+/* Page transition: a quick clearing of frost. */
+@keyframes frost-in {
+  from {
+    filter: blur(5px);
+    opacity: 0;
+  }
+  to {
+    filter: blur(0);
+    opacity: 1;
+  }
+}
+html[data-world='penguin'] .frost-in {
+  animation: frost-in 520ms ease-out backwards;
+}
+
+/* ── Settings page: the world cards ─────────────────────────── */
+.world-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+  border-radius: var(--r-panel);
+  border: 1px solid var(--line);
+  background: var(--panel);
+  overflow: hidden;
+  transition:
+    border-color var(--spring-soft-d) var(--spring-soft),
+    transform var(--spring-snappy-d) var(--spring-snappy),
+    box-shadow var(--spring-soft-d) var(--spring-soft);
+}
+
+.world-card:hover {
+  transform: translateY(-3px);
+  border-color: var(--line-strong);
+}
+
+.world-card[aria-checked='true'] {
+  border-color: var(--cream);
+  box-shadow: 0 0 0 1px var(--cream);
+}
+
+.world-card__art {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+}
+
+.world-card__body {
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px 16px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .world-snow i,
+  .pen *,
+  .footer-ice__walker,
+  html[data-world='penguin'] .frost-in {
+    animation: none !important;
+  }
+  .world-snow {
+    display: none !important;
+  }
+  .world-card:hover {
+    transform: none;
+  }
+}

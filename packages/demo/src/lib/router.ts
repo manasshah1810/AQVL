@@ -14,6 +14,7 @@ export type RouteName =
   | 'playground'
   | 'ide'
   | 'privacy'
+  | 'settings'
   | 'tasks'
   | 'developer'
   | 'notfound';
@@ -32,6 +33,7 @@ const NAMES: Record<string, RouteName> = {
   playground: 'playground',
   ide: 'ide',
   privacy: 'privacy',
+  settings: 'settings',
   tasks: 'tasks',
   developer: 'developer',
 };

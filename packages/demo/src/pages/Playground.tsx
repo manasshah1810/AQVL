@@ -16,6 +16,8 @@ import { useTraceRun } from '../components/visualizer/useTraceRun';
 import { parseHash, replaceHash } from '../lib/router';
 import { spring, usePrefersReducedMotion } from '../lib/motion';
 import { useTheme } from '../lib/theme';
+import { updateSettings, useSettings } from '../lib/settings';
+import { Mascot } from '../components/theme/WorldDecor';
 
 import './playground.css';
 
@@ -77,6 +79,7 @@ export default function Playground() {
   const explorerBtnRef = useRef<HTMLButtonElement>(null);
   const theme = useTheme();
   const reducedMotion = usePrefersReducedMotion();
+  const settings = useSettings();
 
   useEffect(() => {
     localStorage.setItem('aqvl-visited', 'true');
@@ -218,6 +221,19 @@ export default function Playground() {
         </div>
 
         <div className="pg-toolbar__end">
+          <button
+            type="button"
+            className={`btn btn--quiet btn--sm pg-focus${settings.focusStage ? ' is-on' : ''}`}
+            aria-pressed={settings.focusStage}
+            onClick={() => updateSettings({ focusStage: !settings.focusStage })}
+            title={settings.focusStage ? 'Show the code again' : 'Give the stage the whole width'}
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round">
+              <rect x="1.75" y="2.75" width="12.5" height="10.5" rx="1.5" />
+              <path d="M5.5 2.75v10.5" />
+            </svg>
+            <span className="hidden sm:inline">{settings.focusStage ? 'Show code' : 'Focus stage'}</span>
+          </button>
           <div className={`pg-status-chip ${statusChip.cls}`} role="status">
             <span className="pg-status-chip__mark" aria-hidden="true" />
             {statusChip.label}
@@ -239,7 +255,7 @@ export default function Playground() {
       </div>
 
       {/* ── Body ──────────────────────────────────────────────────────────── */}
-      <div className="pg-body">
+      <div className="pg-body" data-focus={settings.focusStage}>
         <section className="pg-editor" aria-label="Source">
           <AnimatePresence initial={false}>
             {activeExample && (
@@ -271,7 +287,16 @@ export default function Playground() {
         <section className="pg-stage" aria-label="Visualization">
           <div className="pg-viewport">
             {run && !compileError ? (
-              <Visualizer key="viz" trace={run.trace} playhead={run.playhead} source={run.source} theme={theme} reducedMotion={reducedMotion} />
+              <Visualizer
+                key="viz"
+                trace={run.trace}
+                playhead={run.playhead}
+                source={run.source}
+                theme={theme}
+                reducedMotion={reducedMotion}
+                outputCount={logs.length}
+                output={<PlaygroundOutputConsole embedded logs={logs} onClear={() => setClearedThrough(snap.step)} />}
+              />
             ) : (
               <div className="pg-viewport__ground" />
             )}
@@ -300,6 +325,9 @@ export default function Playground() {
             {!busy && !compileError && !run && (
               <div className="pg-overlay">
                 <div className="pg-empty">
+                  <div className="pg-empty__art">
+                    <Mascot pose="peek" size={72} />
+                  </div>
                   <p className="title">Nothing on stage yet.</p>
                   <p className="muted mt-2">
                     Write a program on the left, then press <span className="ic">Compile &amp; Run</span>.
@@ -309,7 +337,6 @@ export default function Playground() {
             )}
           </div>
 
-          <PlaygroundOutputConsole logs={logs} onClear={() => setClearedThrough(snap.step)} />
         </section>
       </div>
 
