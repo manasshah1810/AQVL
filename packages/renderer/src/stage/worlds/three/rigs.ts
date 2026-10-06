@@ -49,10 +49,12 @@ export interface RigInput {
   effort?: number;
   /** Climbing a rope or an edge: how much, the stride phase (radians), and the slope of the climb (radians from vertical). */
   climb?: { weight: number; phase: number; slope: number };
+  /** 0..1: arms round a ball it is carrying (pandas). */
+  carry?: number;
 }
 
 /** The small things an animal does when nothing is asked of it. */
-export type IdleAct = 'none' | 'look' | 'preen' | 'eat' | 'shake' | 'play' | 'wave' | 'bow' | 'sniff';
+export type IdleAct = 'none' | 'look' | 'preen' | 'eat' | 'shake' | 'play' | 'wave' | 'bow' | 'sniff' | 'sit' | 'chew' | 'scratch' | 'stretch' | 'drink';
 
 export interface Rig {
   root: Group;
@@ -172,6 +174,27 @@ function poseJoints(pose: CastPose, s: number, side: number, look: [number, numb
       j.headYaw = towardYaw;
       j.headPitch = towardPitch;
       j.lean = 0.08;
+      break;
+    }
+    case 'nod': {
+      // A match: a small, pleased nod and a paw pump.
+      const beat = Math.max(0, Math.sin(s * 9)) * (s < 0.9 ? 1 : 0);
+      j.headPitch = 0.28 * beat;
+      j.lean = 0.1;
+      j.hop = 0.05 * beat;
+      nearArm(j, side, 0.9, 0.5 + 0.5 * beat);
+      j.headYaw = towardYaw * 0.4;
+      break;
+    }
+    case 'startle': {
+      // Something vanished: a jump back, arms up, a wide-eyed freeze.
+      const pop = Math.exp(-s * 7);
+      j.hop = 0.2 * pop;
+      j.raiseL = j.raiseR = 1.1 + 0.4 * pop;
+      j.reachL = j.reachR = 0.3;
+      j.lean = -0.18 * Math.min(1, pop * 2 + 0.3);
+      j.headPitch = -0.15;
+      j.headTilt = 0.1 * Math.sin(s * 6) * fade(1.2);
       break;
     }
     case 'cheer': {
@@ -604,17 +627,170 @@ export function buildPenguin(options: PenguinOptions): Rig {
 
 // ── Panda ─────────────────────────────────────────────────────────────────
 
+/**
+ * What makes one panda walk, bounce and fidget differently from the next: its size, how far it sways from
+ * foot to foot, how quick its steps are, how bouncy, how often it blinks, how round it is, how lively its ears are.
+ */
+export interface PandaPersonality {
+  size: number;
+  sway: number;
+  tempo: number;
+  bounce: number;
+  blink: number;
+  plump: number;
+  headSize: number;
+  ear: number;
+}
+
+export const PANDA_PERSONALITIES: PandaPersonality[] = [
+  // Bao: big, steady, a little lazy.
+  { size: 1.07, sway: 1.0, tempo: 0.9, bounce: 0.85, blink: 4.6, plump: 1.1, headSize: 1.0, ear: 0.8 },
+  // Mochi: smaller, quicker, bouncy, ears everywhere.
+  { size: 0.93, sway: 1.25, tempo: 1.18, bounce: 1.3, blink: 3.3, plump: 0.95, headSize: 1.07, ear: 1.35 },
+  { size: 1.0, sway: 1.0, tempo: 1.0, bounce: 1.0, blink: 4.0, plump: 1.0, headSize: 1.0, ear: 1.0 },
+];
+
 export interface PandaOptions {
   /** 'bamboo': carries a bamboo cane (and points with it); 'leaf': a leaf on the head; null: nothing. */
   prop: 'bamboo' | 'leaf' | null;
   scale?: number;
   cub?: boolean;
+  personality?: PandaPersonality;
+}
+
+/** What an idle action asks of a panda beyond the shared joints. */
+interface PandaExtras {
+  /** Sitting back on its haunches, feet out in front. */
+  seat: number;
+  /** A length of bamboo in the paws, raised to the mouth (0..1), and chewing it (0..1). */
+  snack: number;
+  chew: number;
+  /** A paw scratching behind the ear (0..1). */
+  scratch: number;
+  /** Arms overhead, back arched (0..1), and a wide yawn. */
+  stretch: number;
+  yawn: number;
+  /** Muzzle down to the water. */
+  drink: number;
+}
+
+function pandaIdle(act: IdleAct, t: number, j: Joints, x: PandaExtras): void {
+  switch (act) {
+    case 'sit': {
+      // Plops down, looks about slowly, a little sway.
+      const w = smoothstepJ(0, 0.5, t);
+      x.seat = w;
+      j.headYaw += 0.5 * w * Math.sin(t * 0.9) * Math.sin(t * 0.37 + 1);
+      j.headPitch -= 0.08 * w;
+      j.raiseL += 0.15 * w;
+      j.raiseR += 0.15 * w;
+      break;
+    }
+    case 'chew': {
+      // Sits, takes up a cane in both paws, and chews it: the head bobs, the muzzle works, the cane gets shorter.
+      const sit = smoothstepJ(0, 0.55, t);
+      const up = smoothstepJ(0.45, 1.0, t);
+      x.seat = sit;
+      x.snack = up;
+      x.chew = up * smoothstepJ(1.0, 1.4, t);
+      j.reachL += 1.15 * up;
+      j.reachR += 1.15 * up;
+      j.raiseL += 0.25 * up;
+      j.raiseR += 0.25 * up;
+      j.headPitch += 0.14 * up * Math.sin(t * 7.5) * x.chew;
+      j.headTilt += 0.08 * Math.sin(t * 2.2) * up;
+      j.headYaw += 0.12 * Math.sin(t * 0.8) * up;
+      break;
+    }
+    case 'scratch': {
+      // One paw up behind the ear, scrubbing, the head tilting into it.
+      const w = smoothstepJ(0, 0.35, t) * (1 - smoothstepJ(2.1, 2.5, t));
+      x.scratch = w;
+      j.reachR += 2.5 * w;
+      j.raiseR += 0.75 * w;
+      j.headTilt += 0.3 * w + 0.05 * w * Math.sin(t * 16);
+      j.headYaw += 0.15 * w;
+      j.lean += 0.04 * w;
+      break;
+    }
+    case 'stretch': {
+      // Arms right up, back arched, a wide yawn, then it all lets go.
+      const up = smoothstepJ(0, 0.8, t) * (1 - smoothstepJ(2.0, 2.7, t));
+      x.stretch = up;
+      x.yawn = smoothstepJ(0.6, 1.0, t) * (1 - smoothstepJ(1.7, 2.1, t));
+      j.reachL += 2.7 * up;
+      j.reachR += 2.7 * up;
+      j.raiseL += 0.35 * up;
+      j.raiseR += 0.35 * up;
+      j.lean -= 0.2 * up;
+      j.headPitch -= 0.5 * up;
+      j.squash -= 0.04 * up;
+      j.squash += 0.05 * smoothstepJ(2.5, 2.8, t) * (1 - smoothstepJ(2.8, 3.2, t));
+      break;
+    }
+    case 'drink': {
+      // Down on all fours at the water's edge.
+      const w = smoothstepJ(0, 0.6, t) * (1 - smoothstepJ(2.4, 3.0, t));
+      x.drink = w;
+      j.lean += 0.45 * w;
+      j.headPitch += 0.55 * w + 0.08 * w * Math.sin(t * 7);
+      j.reachL += 0.9 * w;
+      j.reachR += 0.9 * w;
+      break;
+    }
+    case 'look': {
+      const q = (a: number, b: number) => smoothstepJ(a, b, t);
+      const yaw = 0.95 * (q(0, 0.5) - q(1.3, 1.9)) - 1.0 * (q(1.9, 2.4) - q(3.3, 3.9));
+      j.headYaw += yaw;
+      j.headPitch += 0.1 * Math.sin(t * 1.3) - 0.1 * q(0.2, 0.7) * (1 - q(1.2, 1.7));
+      j.headTilt += 0.1 * Math.sin(t * 1.9) + 0.14 * yaw;
+      j.lean += 0.03;
+      break;
+    }
+    case 'sniff': {
+      const w = smoothstepJ(0, 0.3, t) * (1 - smoothstepJ(1.8, 2.3, t));
+      j.headPitch += 0.5 * w;
+      j.lean += 0.15 * w;
+      j.headYaw += 0.3 * w * Math.sin(t * 5);
+      break;
+    }
+    case 'wave': {
+      const w = smoothstepJ(0, 0.2, t) * (1 - smoothstepJ(1.8, 2.2, t));
+      j.raiseL += (1.5 + 0.35 * Math.sin(t * 11)) * w;
+      j.headTilt += 0.14 * w;
+      break;
+    }
+    case 'bow': {
+      const w = smoothstepJ(0, 0.3, t) * (1 - smoothstepJ(0.9, 1.4, t));
+      j.lean += 0.45 * w;
+      j.headPitch += 0.3 * w;
+      break;
+    }
+    case 'play': {
+      const w = smoothstepJ(0, 0.15, t);
+      j.hop += 0.12 * Math.abs(Math.sin(t * 5.2)) * w;
+      j.raiseL += (0.9 + 0.5 * Math.sin(t * 9)) * w;
+      j.raiseR += (0.9 + 0.5 * Math.sin(t * 9 + 1.7)) * w;
+      j.headTilt += 0.2 * Math.sin(t * 5.2) * w;
+      break;
+    }
+    case 'shake': {
+      const w = smoothstepJ(0, 0.12, t) * (1 - smoothstepJ(0.7, 1.0, t));
+      j.headYaw += 0.5 * w * Math.sin(t * 36);
+      j.squash += 0.04 * w * Math.sin(t * 44);
+      j.headTilt += 0.25 * w * Math.sin(t * 29);
+      break;
+    }
+    default:
+      break;
+  }
 }
 
 export function buildPanda(options: PandaOptions): Rig {
   const b = new Builder();
   const root = new Group();
   const cub = !!options.cub;
+  const P = options.personality ?? PANDA_PERSONALITIES[2];
   const white = b.mat('#f5f2ea', 0.88);
   const black = b.mat('#1d1d22', 0.82);
   const eyeMat = b.mat('#0b0b0e', 0.15);
@@ -635,7 +811,10 @@ export function buildPanda(options: PandaOptions): Rig {
   b.blob(bodyRoot, white, 0.33, 0.32, 0.3, 0, 0, 0, true);
   // The black band over the shoulders.
   b.blob(bodyRoot, black, 0.337, 0.135, 0.305, 0, 0.13, -0.005, true);
-  b.blob(bodyRoot, white, 0.08, 0.06, 0.07, 0, -0.06, -0.27); // tail
+  const tail = new Group();
+  tail.position.set(0, -0.06, -0.27);
+  bodyRoot.add(tail);
+  b.blob(tail, white, 0.08, 0.06, 0.07, 0, 0, 0);
 
   const legs: Group[] = [];
   for (const sx of [-1, 1]) {
@@ -649,10 +828,17 @@ export function buildPanda(options: PandaOptions): Rig {
 
   const head = new Group();
   head.position.set(0, 0.36, 0.03);
+  head.scale.setScalar(P.headSize);
   bodyRoot.add(head);
   b.blob(head, white, 0.25, 0.215, 0.22, 0, 0, 0, true);
+  // Ears: each on its own pivot so it can flick and flop.
+  const ears: Group[] = [];
   for (const sx of [-1, 1]) {
-    b.blob(head, black, 0.075, 0.072, 0.05, sx * 0.165, 0.155, -0.03);
+    const ear = new Group();
+    ear.position.set(sx * 0.165, 0.155, -0.03);
+    head.add(ear);
+    b.blob(ear, black, 0.075, 0.072, 0.05, 0, 0, 0);
+    ears.push(ear);
     const patch = b.blob(head, black, 0.062, 0.085, 0.04, sx * 0.088, 0.015, 0.182);
     patch.rotation.z = sx * 0.55;
     b.blob(head, blush, 0.035, 0.018, 0.012, sx * 0.15, -0.055, 0.17);
@@ -663,8 +849,10 @@ export function buildPanda(options: PandaOptions): Rig {
     eyes.push(b.blob(head, eyeMat, 0.014, 0.016, 0.01, sx * 0.084, 0.024, 0.223));
     b.blob(head, shine, 0.005, 0.005, 0.004, sx * 0.08, 0.031, 0.232);
   }
-  b.blob(head, white, 0.095, 0.068, 0.07, 0, -0.065, 0.165);
+  const muzzle = b.blob(head, white, 0.095, 0.068, 0.07, 0, -0.065, 0.165);
   b.blob(head, black, 0.035, 0.022, 0.022, 0, -0.035, 0.232);
+  // An open mouth for yawning.
+  const mouth = b.blob(head, b.mat('#7a2f3a', 0.6), 0.05, 0.001, 0.04, 0, -0.095, 0.2);
 
   const arms: Group[] = [];
   for (const sx of [1, -1]) {
@@ -675,10 +863,24 @@ export function buildPanda(options: PandaOptions): Rig {
     arms.push(arm);
   }
 
+  // A length of bamboo to chew (held in both paws, shown while it is being eaten).
+  const caneGreen = b.mat('#7fae4c', 0.55);
+  const caneNode = b.mat('#5f8a33', 0.6);
+  const snack = new Group();
+  snack.visible = false;
+  bodyRoot.add(snack);
+  const bite = new Mesh(b.keep(new CylinderGeometry(0.024, 0.027, 0.5, 10)), caneGreen);
+  snack.add(bite);
+  for (const y of [-0.12, 0.08, 0.2]) {
+    const n = new Mesh(b.keep(new CylinderGeometry(0.031, 0.031, 0.02, 10)), caneNode);
+    n.position.y = y;
+    snack.add(n);
+  }
+  const sprig = b.blob(snack, b.mat('#8cc152', 0.7), 0.035, 0.12, 0.01, 0.05, 0.27, 0);
+  sprig.rotation.z = -0.7;
+
   if (options.prop === 'bamboo') {
     // A bamboo cane in the right paw: what Bao points with.
-    const caneGreen = b.mat('#7fae4c', 0.55);
-    const caneNode = b.mat('#5f8a33', 0.6);
     const cane = new Group();
     cane.position.set(-0.03, -0.31, 0.06);
     cane.rotation.x = 1.25;
@@ -702,8 +904,12 @@ export function buildPanda(options: PandaOptions): Rig {
     b.blob(head, b.mat('#e86f5a', 0.6), 0.03, 0.03, 0.03, 0, 0.215, 0.03);
   }
 
-  root.scale.setScalar(options.scale ?? (cub ? 0.62 : 1));
+  root.scale.setScalar((options.scale ?? (cub ? 0.62 : 1)) * P.size);
   const j = blank();
+  const idleJ = blank();
+  const ex: PandaExtras = { seat: 0, snack: 0, chew: 0, scratch: 0, stretch: 0, yawn: 0, drink: 0 };
+  let lastTime = 0;
+  let earTwitch = { at: -10, side: 1 };
 
   return {
     root,
@@ -717,18 +923,137 @@ export function buildPanda(options: PandaOptions): Rig {
       addWeighted(j, poseJoints(input.prevPose, input.poseTime + 2, side, input.lookLocal, 'panda'), input.prevWeight);
       addWeighted(j, poseJoints(input.pose, input.poseTime, side, input.lookLocal, 'panda'), input.poseWeight);
       ambient(j, input.time, input.seed);
+      ex.seat = ex.snack = ex.chew = ex.scratch = ex.stretch = ex.yawn = ex.drink = 0;
+      if (input.idle && input.idle.weight > 0 && input.idle.act !== 'none') {
+        Object.assign(idleJ, NEUTRAL);
+        idleJ.raiseL = idleJ.raiseR = 0.25;
+        const px = { ...ex };
+        pandaIdle(input.idle.act, input.idle.t, idleJ, px);
+        addWeighted(j, idleJ, input.idle.weight);
+        for (const key of Object.keys(ex) as (keyof PandaExtras)[]) ex[key] = px[key] * input.idle.weight;
+      }
 
+      const gw = input.gaitWeight;
+      const gait = input.gait;
       let roll = 0;
       let curl = 0;
       let rock = 0;
-      const gw = input.gaitWeight;
-      if (input.gait === 'roll') {
+      let twist = 0;
+      let sway = 0;
+      let bob = 0;
+      let stepPhase = 0;
+      let stepAmp = 0;
+      let seat = ex.seat;
+      let flail = 0;
+      let climbLean = 0;
+      let lift = 0;
+      let reverse = 1;
+
+      if (gait === 'roll') {
         roll = input.gaitPhase;
         curl = gw;
-      } else if (input.gait === 'walk') {
-        rock = Math.sin(input.gaitPhase) * 0.12 * gw;
-        j.hop += Math.abs(Math.sin(input.gaitPhase)) * 0.03 * gw;
+      } else if (gait === 'walk' || gait === 'push' || gait === 'pull') {
+        // The amble: the weight goes onto one foot (the body rocks and shifts over it, the other foot lifts and
+        // swings forward, the opposite arm swings with it), then onto the other. The head stays level against
+        // the rock and bobs a little behind the body; no two strides are quite alike.
+        const raw = input.gaitPhase * P.tempo;
+        const ph = raw + 0.12 * Math.sin(raw * 0.37 + input.seed * 5) + 0.07 * Math.sin(raw * 0.91 + input.seed * 2);
+        const strength = gait === 'walk' ? 1 : 0.65;
+        stepAmp = strength * (1 + 0.16 * Math.sin(ph * 0.23 + input.seed)) * gw;
+        stepPhase = ph;
+        const s = Math.sin(ph);
+        rock = -s * 0.15 * P.sway * stepAmp;
+        sway = s * 0.04 * P.sway * stepAmp;
+        twist = s * 0.11 * P.sway * stepAmp;
+        bob = Math.abs(s) * 0.034 * P.bounce * stepAmp;
+        lean.rotation.x = 0;
+        j.reachL += 0.5 * s * stepAmp * (gait === 'walk' ? 1 : 0);
+        j.reachR -= 0.5 * s * stepAmp * (gait === 'walk' ? 1 : 0);
+        j.headTilt += s * 0.1 * stepAmp;
+        j.headPitch -= Math.abs(s) * 0.06 * stepAmp;
+        j.headYaw += Math.sin(ph - 0.6) * 0.06 * stepAmp;
+        if (gait === 'walk') {
+          j.lean += 0.05 * gw;
+        } else if (gait === 'push') {
+          // Head down, shoulders in: short, strong steps behind the block.
+          j.lean += 0.08 * gw;
+          j.headPitch += 0.1 * gw;
+        } else {
+          // Tugging: walking backwards with the block in tow.
+          j.lean -= 0.06 * gw;
+          reverse = -1;
+        }
+      } else if (gait === 'climb') {
+        const climb = input.climb;
+        const cw = climb ? climb.weight : gw;
+        const ph = climb ? climb.phase : input.gaitPhase;
+        const c = Math.sin(ph);
+        climbLean = (0.3 + (climb ? climb.slope : 0) * 0.5) * cw;
+        const carrying = input.carry ?? 0;
+        // Hand over hand and foot over foot, the opposite pairs together; the body hugs the pole.
+        j.reachL = j.reachL * (1 - cw) + (carrying > 0.5 ? 1.25 : 2.3 + 0.5 * c) * cw;
+        j.reachR = j.reachR * (1 - cw) + (carrying > 0.5 ? 1.25 : 2.3 - 0.5 * c) * cw;
+        j.raiseL = j.raiseL * (1 - cw) + 0.3 * cw;
+        j.raiseR = j.raiseR * (1 - cw) + 0.3 * cw;
+        j.headPitch = j.headPitch * (1 - cw) - 0.35 * cw;
+        rock += c * 0.08 * cw;
+        sway += c * 0.02 * cw;
+        bob += Math.abs(c) * 0.02 * cw;
+        stepPhase = ph;
+        stepAmp = Math.max(stepAmp, cw);
+      } else if (gait === 'leap') {
+        // Airborne between platforms: arms up and out, legs trailing, eyes on the landing.
+        j.raiseL = j.raiseL * (1 - gw) + 1.7 * gw;
+        j.raiseR = j.raiseR * (1 - gw) + 1.7 * gw;
+        j.reachL = j.reachL * (1 - gw) + 0.4 * gw;
+        j.reachR = j.reachR * (1 - gw) + 0.4 * gw;
+        j.lean -= 0.12 * gw;
+        j.headPitch -= 0.2 * gw;
+        j.squash -= 0.05 * gw;
+      } else if (gait === 'tumble') {
+        const ph = input.gaitPhase;
+        if (ph < 1) {
+          // Losing the grip and falling: arms and legs everywhere, tipping over backwards, landing on the seat.
+          flail = Math.sin(Math.min(1, ph / 0.2) * Math.PI * 0.5);
+          roll = -0.9 * (ph * ph) * (1 + 0.4 * Math.sin(ph * 5));
+          j.raiseL = 1.9 + 0.7 * Math.sin(ph * 46);
+          j.raiseR = 1.9 + 0.7 * Math.sin(ph * 46 + 2.4);
+          j.reachL = 0.6 + 0.8 * Math.sin(ph * 31);
+          j.reachR = 0.6 + 0.8 * Math.sin(ph * 31 + 1.9);
+          j.headPitch = -0.3 + 0.2 * Math.sin(ph * 25);
+          j.squash += 0.05 * Math.sin(Math.max(0, ph - 0.85) * Math.PI / 0.15);
+          seat = smoothstep01(0.7, 1, ph);
+        } else {
+          // Dazed on the ground: sits up, a shake of the head, a paw to the head, then it is back on its feet.
+          const u = ph - 1;
+          seat = 1 - smoothstep01(0.65, 1, u);
+          roll = -0.9 * (1 - smoothstep01(0, 0.5, u)) * 0;
+          j.headYaw += 0.55 * Math.sin(u * 17) * (1 - u);
+          j.headPitch += 0.2 * (1 - u);
+          j.reachR += 1.9 * smoothstep01(0.2, 0.5, u) * (1 - smoothstep01(0.7, 1, u));
+          j.raiseL += 0.5;
+        }
       }
+
+      // Carrying a ball: both arms round it, held to the chest.
+      const carry = input.carry ?? 0;
+      if (carry > 0) {
+        j.reachL = j.reachL * (1 - carry) + 1.3 * carry;
+        j.reachR = j.reachR * (1 - carry) + 1.3 * carry;
+        j.raiseL = j.raiseL * (1 - carry) + 0.1 * carry;
+        j.raiseR = j.raiseR * (1 - carry) + 0.1 * carry;
+        j.headPitch += 0.1 * carry;
+        j.lean -= 0.05 * carry;
+      }
+
+      // Strain: the whole body bends into the block and trembles with the effort.
+      const effort = input.effort ?? 0;
+      if (effort > 0) {
+        j.lean += 0.06 * effort;
+        j.squash += 0.014 * effort * Math.sin(input.time * 29 + input.seed);
+        rock += 0.014 * effort * Math.sin(input.time * 37 + input.seed * 2);
+      }
+
       // Click: a happy forward roll on the spot.
       if (input.react >= 0 && input.react < 1.1) {
         const r = input.react / 1.1;
@@ -737,6 +1062,7 @@ export function buildPanda(options: PandaOptions): Rig {
         curl = Math.max(curl, Math.sin(Math.PI * r));
         j.hop += 0.12 * Math.sin(Math.PI * r);
       }
+
       // Curled into a ball: head tucked, limbs in.
       const k = curl;
       j.headPitch = j.headPitch * (1 - k) + 0.65 * k;
@@ -746,22 +1072,82 @@ export function buildPanda(options: PandaOptions): Rig {
       j.reachR = j.reachR * (1 - k) + 1.1 * k;
       j.lean *= 1 - k;
 
-      center.position.y = 0.32 + j.hop + (ROLL_RADIUS - 0.32 + 0.04) * k;
+      // Sitting on its haunches (feet out in front, soles to the camera, leaning back a little).
+      seat = Math.min(1, seat);
+      const sitDrop = 0.07 * seat;
+      lift = 0;
+
+      // Ears: a flick every so often (each panda at its own rhythm), a flop with each stride, a lag when it hops.
+      const dt = input.time - lastTime;
+      lastTime = input.time;
+      if (dt < 0 || dt > 0.5) earTwitch = { at: -10, side: 1 };
+      const period = 3.4 + 1.2 * Math.sin(input.seed * 7.3);
+      const cycle = Math.floor((input.time + input.seed * 3.1) / period);
+      const into = (input.time + input.seed * 3.1) - cycle * period;
+      if (into < 0.3) earTwitch = { at: input.time - into, side: (cycle % 2 === 0 ? 1 : -1) };
+      const twitch = Math.max(0, 1 - (input.time - earTwitch.at) / 0.3);
+      const flick = twitch > 0 ? Math.sin((1 - twitch) * Math.PI * 4) * twitch : 0;
+      const flop = stepAmp > 0 ? Math.sin(stepPhase * 2 - 0.8) * 0.14 * stepAmp : 0;
+      const earLag = (j.hop + bob) * -2.2;
+      ears[0].rotation.z = (0.12 + flop + earLag * 0.5 + (earTwitch.side < 0 ? flick * 0.5 : 0)) * P.ear;
+      ears[1].rotation.z = (-0.12 - flop - earLag * 0.5 - (earTwitch.side > 0 ? flick * 0.5 : 0)) * P.ear;
+
+      center.position.set(sway, 0.32 + j.hop + bob + (ROLL_RADIUS - 0.32 + 0.04) * k - sitDrop + lift, 0);
       center.rotation.set(roll, 0, rock);
-      lean.rotation.x = j.lean;
-      bodyRoot.scale.set(1 + j.squash * 0.6, 1 - j.squash, 1 + j.squash * 0.6);
+      lean.rotation.x = j.lean + climbLean - 0.28 * seat + 0.12 * ex.stretch * 0 - 0.1 * flail;
+      bodyRoot.rotation.y = twist;
+      bodyRoot.scale.set((1 + j.squash * 0.6) * P.plump, 1 - j.squash, (1 + j.squash * 0.6) * P.plump);
       head.position.set(0, 0.36 - 0.1 * k, 0.03 + 0.08 * k);
-      head.rotation.set(j.headPitch, j.headYaw, j.headTilt, 'YXZ');
+      head.rotation.set(j.headPitch - ex.drink * 0, j.headYaw - twist * 0.6, j.headTilt - rock * 0.7, 'YXZ');
       arms[0].rotation.set(-j.reachL, 0, j.raiseL);
       arms[1].rotation.set(-j.reachR, 0, -j.raiseR);
-      for (const leg of legs) leg.rotation.x = -0.9 * k;
-      const blink = (input.time + input.seed * 2.3) % 4.1 < 0.13 ? 0.12 : 1;
+
+      // Feet: alternate while walking (lift, swing forward, plant, slide back); tucked when curled, out in front when sitting.
+      for (let i = 0; i < 2; i++) {
+        const q = stepPhase + (i === 0 ? 0 : Math.PI);
+        const up = Math.max(0, Math.sin(q)) * stepAmp;
+        const fwd = -Math.cos(q) * stepAmp * reverse;
+        const sx = i === 0 ? -1 : 1;
+        const climbing = gait === 'climb';
+        const sp = Math.sin(stepPhase + (i === 0 ? 0 : Math.PI));
+        legs[i].position.set(
+          sx * (0.17 + seat * 0.03),
+          -0.22 + up * 0.065 + (climbing ? 0.07 * Math.max(0, sp) * stepAmp : 0) + seat * 0.03 + 0.05 * flail * Math.sin(input.gaitPhase * 30 + i * 2),
+          0.12 + fwd * 0.1 + (climbing ? 0.05 * sp : 0) + seat * 0.2,
+        );
+        legs[i].rotation.x = -up * 0.4 - 0.9 * k - seat * 1.15 + (climbing ? -0.5 * Math.max(0, sp) : 0);
+      }
+
+      // Sitting back with the legs forward lowers the tail and tips the body.
+      tail.rotation.x = 0.25 * seat + 0.15 * Math.sin(input.time * 3 + input.seed) * (1 - seat);
+      tail.rotation.z = 0.2 * Math.sin(stepPhase) * stepAmp;
+
+      // The snack: raised to the mouth in both paws while it is chewed, shorter with every bite.
+      snack.visible = ex.snack > 0.02;
+      if (snack.visible) {
+        snack.position.set(0, 0.12 + 0.2 * ex.snack, 0.32);
+        snack.rotation.set(-0.35 - 0.35 * (1 - ex.snack), 0, 0.15 * Math.sin(input.time * 7.5) * ex.chew);
+        snack.scale.set(1, 1 - 0.18 * ex.chew * (0.5 + 0.5 * Math.sin(input.time * 0.5)), 1);
+      }
+
+      // Muzzle: works while chewing, opens wide to yawn.
+      const work = ex.chew * (0.5 + 0.5 * Math.sin(input.time * 15));
+      muzzle.scale.set(0.095 * (1 + 0.12 * work), 0.068 * (1 + 0.3 * work + 0.55 * ex.yawn), 0.07);
+      mouth.scale.set(0.05, 0.001 + 0.045 * ex.yawn + 0.012 * work, 0.04);
+
+      // Blink every few seconds (each panda at its own rhythm); eyes shut for a yawn and a good scratch.
+      const blink = (input.time + input.seed * 2.3) % P.blink < 0.13 || ex.yawn > 0.5 || ex.scratch > 0.6 ? 0.12 : 1;
       for (const e of eyes) e.scale.y = 0.016 * blink;
     },
     dispose() {
       b.dispose();
     },
   };
+}
+
+function smoothstep01(a: number, b: number, x: number): number {
+  const t = Math.max(0, Math.min(1, (x - a) / (b - a)));
+  return t * t * (3 - 2 * t);
 }
 
 // ── Soft contact shadow under an animal ──────────────────────────────────

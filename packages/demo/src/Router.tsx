@@ -4,7 +4,7 @@ import { parseHash, useHash, type RouteName } from './lib/router';
 import { LoaderProvider, LoaderWait } from './components/loader/LoaderGate';
 import { SiteHeader } from './components/site/SiteHeader';
 import { SiteFooter } from './components/site/SiteFooter';
-import { WorldSnow } from './components/theme/WorldDecor';
+import { WorldFall } from './components/theme/WorldDecor';
 import { spring, usePrefersReducedMotion } from './lib/motion';
 
 const Landing = lazy(() => import('./pages/Landing.tsx'));
@@ -108,7 +108,7 @@ export function Router() {
                 Skip to content
               </button>
             )}
-            {chrome === 'site' && <WorldSnow />}
+            {chrome === 'site' && <WorldFall />}
             {chrome !== 'none' && <SiteHeader route={route.name} compact={app} />}
             <AnimatePresence
               mode="wait"

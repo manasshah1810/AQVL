@@ -1,5 +1,6 @@
 import type { StageModel, RestFrame } from '../model/StageModel';
 import { clamp01, easeInCubic, smoothstep } from '../motion/spring';
+import { hasPhysics, type StageWorld } from './types';
 
 /**
  * Ice physics for the penguin world. Blocks standing on the ice do not hop
@@ -17,6 +18,13 @@ import { clamp01, easeInCubic, smoothstep } from '../motion/spring';
 
 /** Friction of the ice: speed falls like exp(-KAPPA * x) over a glide of x (in step fractions). */
 export const KAPPA = 5.2;
+/** Packed earth and leaf litter grip harder than ice: a pushed block rolls on a little, then settles. */
+export const EARTH_KAPPA = 8.2;
+
+/** The friction a world's ground has. */
+export function frictionOf(world: StageWorld): number {
+  return world === 'panda' ? EARTH_KAPPA : KAPPA;
+}
 /** Penguin chest to block face when they touch (penguin centre to block surface). */
 export const REACH = 0.5;
 /** Radius of the circle a penguin needs free to stand in. */
@@ -44,6 +52,8 @@ export interface Leg {
   stand: number;
   /** The penguin shoves a little off-centre (sideways, along the face), to leave room for its friend. */
   lateral: number;
+  /** Friction of the ground this leg runs over (see KAPPA). */
+  kappa: number;
 }
 
 /** What happens to one block in a step: its shoves, in order, and how it appears or vanishes. */
@@ -60,7 +70,21 @@ export interface Job {
   carry?: Carry;
 }
 
-/** The flight of a new floating node: forged at (wx, wy, wz), lifted by an eagle, set down at (tx, ty, tz). */
+/**
+ * How a panda gets a new floating node to its place: it makes the ball in its arms where it stands, walks to
+ * the foot of a bamboo pole beside the node's place, climbs it with the ball hugged to its chest, and sets the
+ * ball into place from the perch. (Penguins have an eagle do it instead.)
+ */
+export interface Porter {
+  /** Foot of the pole, and where the animal ends up: (x, z) and the height of its feet above the floor. */
+  base: [number, number];
+  perch: number;
+  /** Step fractions: walks to the pole during [grab, climb0], climbs during [climb0, climb1], holds, places at `drop`. */
+  climb0: number;
+  climb1: number;
+}
+
+/** The flight of a new floating node: forged at (wx, wy, wz), lifted by an eagle (or a climbing panda), set down at (tx, ty, tz). */
 export interface Carry {
   wx: number;
   wy: number;
@@ -75,11 +99,17 @@ export interface Carry {
   settle: number;
   /** Where the penguin stands to make it. */
   stand: [number, number];
+  /** Pandas: the climb that takes the ball up. */
+  porter?: Porter;
 }
 
 /** How far above the ball the eagle's feet are while it holds it, and how high above its place the ball is let go. */
 const HOLD = 1.0;
 const LET_GO = 0.5;
+/** How far below a floating node's centre the feet of an animal perched beside it are. */
+export const PERCH_DROP = 0.8;
+/** Where a panda hugs the ball it carries, relative to its feet (+z is towards the camera). */
+export const HUG = { y: 0.74, z: 0.6 };
 
 export interface IceMotion {
   k: number;
@@ -88,28 +118,28 @@ export interface IceMotion {
 }
 
 /** Fraction of a leg's distance covered at step fraction f. */
-export function shoveProgress(f: number, t0: number, t1: number, t2: number): number {
+export function shoveProgress(f: number, t0: number, t1: number, t2: number, kappa: number = KAPPA): number {
   if (f <= t0) return 0;
   if (f >= t2) return 1;
   const push = Math.max(1e-4, t1 - t0);
   const glide = Math.max(1e-4, t2 - t1);
-  const norm = 1 - Math.exp(-KAPPA);
+  const norm = 1 - Math.exp(-kappa);
   // Equal speed on both sides of the release fixes the share of the distance covered while pushing
   // (a constant acceleration, distance ~ u^2) against the glide (exponentially falling speed).
-  const share = 1 / (1 + (2 * norm * glide) / (KAPPA * push));
+  const share = 1 / (1 + (2 * norm * glide) / (kappa * push));
   if (f <= t1) {
     const u = (f - t0) / push;
     return share * u * u;
   }
   const x = (f - t1) / glide;
-  return share + (1 - share) * ((1 - Math.exp(-KAPPA * x)) / norm);
+  return share + (1 - share) * ((1 - Math.exp(-kappa * x)) / norm);
 }
 
 /** Speed of a block (units of length per step fraction, signed along the leg) at f. */
 export function shoveSpeed(leg: Leg, f: number): number {
   const e = 0.004;
-  const a = shoveProgress(f - e, leg.t0, leg.t1, leg.t2);
-  const b = shoveProgress(f + e, leg.t0, leg.t1, leg.t2);
+  const a = shoveProgress(f - e, leg.t0, leg.t1, leg.t2, leg.kappa);
+  const b = shoveProgress(f + e, leg.t0, leg.t1, leg.t2, leg.kappa);
   return ((b - a) / (2 * e)) * leg.len;
 }
 
@@ -155,7 +185,7 @@ export function blockAt(job: Job, f: number, out: { x: number; z: number; vx: nu
   for (let i = 0; i < job.legs.length; i++) {
     const leg = job.legs[i];
     if (f < leg.t0) return;
-    const p = shoveProgress(f, leg.t0, leg.t1, leg.t2);
+    const p = shoveProgress(f, leg.t0, leg.t1, leg.t2, leg.kappa);
     out.x = leg.ax + (leg.bx - leg.ax) * p;
     out.z = leg.az + (leg.bz - leg.az) * p;
     if (f < leg.t2) {
@@ -185,9 +215,9 @@ export function releaseAt(leg: Leg): number {
 
 const cache = new WeakMap<StageModel, Map<number, IceMotion | null>>();
 
-/** The ice motion of step k, or null when nothing in it is shoved (or the world has no ice). */
+/** The ground motion of step k (blocks shoved along ice or earth), or null when nothing in it is shoved. */
 export function iceMotionAt(model: StageModel, k: number): IceMotion | null {
-  if (model.world !== 'penguin' || k <= 0 || k >= model.frameCount) return null;
+  if (!hasPhysics(model.world) || k <= 0 || k >= model.frameCount) return null;
   let per = cache.get(model);
   if (!per) {
     per = new Map();
@@ -195,6 +225,7 @@ export function iceMotionAt(model: StageModel, k: number): IceMotion | null {
   }
   if (per.has(k)) return per.get(k)!;
   const built = build(model, k);
+  if (built && model.world === 'panda') for (const job of built.jobs) for (const leg of job.legs) leg.kappa = EARTH_KAPPA;
   per.set(k, built);
   if (per.size > 64) per.delete(per.keys().next().value as number);
   return built;
@@ -213,7 +244,7 @@ function makeLeg(rest: RestFrame, slot: number, kind: Leg['kind'], ax: number, a
   const len = Math.hypot(bx - ax, bz - az);
   const dx = len > 1e-6 ? (bx - ax) / len : 0;
   const dz = len > 1e-6 ? (bz - az) / len : 1;
-  return { slot, kind, ax, az, bx, bz, t0, t1, t2, dx, dz, len, stand: extent(rest, slot, dx, dz) + REACH, lateral };
+  return { slot, kind, ax, az, bx, bz, t0, t1, t2, dx, dz, len, stand: extent(rest, slot, dx, dz) + REACH, lateral, kappa: KAPPA };
 }
 
 /** True when a penguin can stand at (x, z) among the cells present in `rest` (ignoring `except`). */
@@ -315,6 +346,26 @@ function build(model: StageModel, k: number): IceMotion | null {
     for (const s of actors) {
       if (from.present[s] || !to.present[s] || grounded(model, to, s)) continue;
       const tx = to.pos[s * 3], ty = to.pos[s * 3 + 1], tz = to.pos[s * 3 + 2];
+      if (model.world === 'panda') {
+        // A panda makes the ball in its arms, carries it to the foot of a bamboo pole beside its place, and climbs.
+        const fp = model.footprint();
+        const side = tx >= (fp.minX + fp.maxX) / 2 ? 1 : -1;
+        const base: [number, number] = [tx + side * (to.dims[s * 3] / 2 + 0.5), tz + 0.45];
+        const perch = Math.max(0, ty - model.floorY - PERCH_DROP);
+        jobs.push({
+          slot: s,
+          legs: [],
+          grow: [0.14, 0.22],
+          carry: {
+            wx: base[0], wy: model.floorY + HUG.y, wz: base[1] + 0.9, tx, ty, tz,
+            made: [0.14, 0.22], grab: 0.24, drop: 0.89, settle: 0.99,
+            stand: [base[0] - side * 0.7, base[1] + 0.95],
+            porter: { base, perch, climb0: 0.36, climb1: 0.84 },
+          },
+        });
+        claimed.add(s);
+        break;
+      }
       jobs.push({
         slot: s,
         legs: [],
@@ -393,8 +444,82 @@ function carryFeet(c: Carry, f: number, out: { x: number; y: number; z: number }
   out.y = ballY + HOLD;
 }
 
+export interface PorterPose {
+  x: number;
+  /** Height of the feet above the floor. */
+  y: number;
+  z: number;
+  phase: 'make' | 'walk' | 'climb' | 'hold' | 'place';
+  /** 0..1 through the phase. */
+  u: number;
+}
+
+/** Where the panda that carries a ball up is at step fraction f (feet), and what it is doing. */
+export function porterAt(c: Carry, f: number, out: PorterPose): void {
+  const pt = c.porter!;
+  const [bx, bz] = pt.base;
+  if (f < c.grab) {
+    out.x = c.stand[0];
+    out.z = c.stand[1];
+    out.y = 0;
+    out.phase = 'make';
+    out.u = clamp01((f - c.made[0]) / Math.max(1e-3, c.made[1] - c.made[0]));
+  } else if (f < pt.climb0) {
+    const u = clamp01((f - c.grab) / (pt.climb0 - c.grab));
+    const e = u * u * (3 - 2 * u);
+    out.x = c.stand[0] + (bx - c.stand[0]) * e;
+    out.z = c.stand[1] + (bz - c.stand[1]) * e;
+    out.y = 0;
+    out.phase = 'walk';
+    out.u = u;
+  } else if (f < pt.climb1) {
+    const u = clamp01((f - pt.climb0) / (pt.climb1 - pt.climb0));
+    out.x = bx;
+    out.z = bz;
+    out.y = pt.perch * (u * u * (3 - 2 * u) * 0.35 + u * 0.65);
+    out.phase = 'climb';
+    out.u = u;
+  } else {
+    out.x = bx;
+    out.z = bz;
+    out.y = pt.perch;
+    out.phase = f < c.drop ? 'hold' : 'place';
+    out.u = f < c.drop ? clamp01((f - pt.climb1) / Math.max(1e-3, c.drop - pt.climb1)) : clamp01((f - c.drop) / Math.max(1e-3, c.settle - c.drop));
+  }
+}
+
+const _pp: PorterPose = { x: 0, y: 0, z: 0, phase: 'make', u: 0 };
+
+/** The ball of a carried node while a panda has it: hugged to the chest, then set into its place with a little lob. */
+function porterBall(c: Carry, f: number, floorY: number, out: { x: number; y: number; z: number }): void {
+  porterAt(c, f, _pp);
+  const hx = _pp.x, hy = floorY + _pp.y + HUG.y, hz = _pp.z + HUG.z;
+  if (f < c.drop) {
+    out.x = hx;
+    out.y = hy;
+    out.z = hz;
+    return;
+  }
+  const since = clamp01((f - c.drop) / Math.max(1e-3, c.settle - c.drop));
+  const e = since < 0.6 ? easeOut(since / 0.6) : 1;
+  out.x = hx + (c.tx - hx) * e;
+  out.z = hz + (c.tz - hz) * e;
+  const lob = Math.sin(Math.PI * Math.min(1, since / 0.6)) * 0.32;
+  const settle = since > 0.6 ? 0.07 * Math.sin((since - 0.6) * Math.PI * 3) * Math.exp(-(since - 0.6) * 6) : 0;
+  out.y = hy + (c.ty - hy) * e + lob + settle;
+}
+
+function easeOut(x: number): number {
+  const t = clamp01(x);
+  return 1 - (1 - t) * (1 - t);
+}
+
 /** Where a floating node is during its flight (for the bodies): grown at the forge, carried, set down. */
-export function carryBall(c: Carry, f: number, out: { x: number; y: number; z: number }): void {
+export function carryBall(c: Carry, f: number, out: { x: number; y: number; z: number }, floorY = 0): void {
+  if (c.porter) {
+    porterBall(c, f, floorY, out);
+    return;
+  }
   if (f < c.grab) {
     out.x = c.wx;
     out.y = c.wy;

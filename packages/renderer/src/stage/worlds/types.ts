@@ -27,7 +27,7 @@ export const WORLDS: Record<StageWorld, WorldInfo> = {
   panda: {
     id: 'panda',
     label: 'Pandas + Bamboo',
-    blurb: 'A bamboo grove at dawn. Two pandas roll between the cells and act out each step.',
+    blurb: 'A bamboo grove at dawn. Two pandas walk to every step, push and roll the blocks along the ground, climb bamboo to reach floating nodes, and potter about the grove when nothing is running.',
     crew: ['Bao', 'Mochi'],
   },
 };
@@ -41,4 +41,9 @@ export function isStageWorld(v: unknown): v is StageWorld {
 /** True when the world has a crew standing in front of the structures (the camera makes room for them). */
 export function hasCast(world: StageWorld): boolean {
   return world !== 'studio';
+}
+
+/** True when blocks standing on the ground are physically shoved, rolled and carried by the crew (both animal worlds). */
+export function hasPhysics(world: StageWorld): boolean {
+  return world === 'penguin' || world === 'panda';
 }

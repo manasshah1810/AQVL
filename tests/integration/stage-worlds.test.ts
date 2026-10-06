@@ -146,8 +146,10 @@ describe.each<CastStyle>(['penguin', 'panda'])('worlds: the %s crew', (style) =>
     }
     expect(longStep).toBeGreaterThan(0);
     const start = table.ends[longStep - 1];
-    const mid = castAt(model, style, start + table.durations[longStep] * 0.25).cast;
-    expect(mid.some((m) => m.gait === (style === 'penguin' ? 'glide' : 'roll'))).toBe(true);
+    // Somewhere in the first half of the step an animal is travelling: penguins slide, pandas trot (or, on a long dash, roll).
+    const travelling = new Set<string>();
+    for (let i = 1; i < 40; i++) for (const m of castAt(model, style, start + (table.durations[longStep] * i) / 80).cast) travelling.add(m.gait);
+    expect([...travelling].some((g) => (style === 'penguin' ? g === 'glide' : g === 'roll' || g === 'walk'))).toBe(true);
     // At rest the crew stands, the right way up.
     const rest = castAt(model, style, table.ends[longStep] - 1e-4).cast;
     for (const m of rest) {
@@ -163,10 +165,8 @@ describe.each<CastStyle>(['penguin', 'panda'])('worlds: the %s crew', (style) =>
     const compare = model.frames.findIndex((f) => f.event.kind === 'compare');
     const swap = model.frames.findIndex((f) => f.event.kind === 'swap');
     expect(poseAt(compare)).toEqual(['inspect', 'inspect']);
-    if (style === 'panda') {
-      expect(poseAt(swap)).toEqual(['push', 'push']);
-    } else {
-      // The penguins shove the blocks along the ice: during the step each one leans into a block (pushing or tugging).
+    {
+      // Both crews shove the blocks along the ground: during the step each one leans into a block (pushing or tugging).
       const leaned = [false, false];
       for (let i = 1; i < 200; i++) {
         const { cast } = castAt(model, style, table.ends[swap - 1] + (table.durations[swap] * i) / 200);

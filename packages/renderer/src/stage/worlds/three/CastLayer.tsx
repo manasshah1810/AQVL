@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import { useThree, type ThreeEvent } from '@react-three/fiber';
-import { Color, CylinderGeometry, Group, Mesh, MeshStandardMaterial, Vector3 } from 'three';
+import { BoxGeometry, Color, CylinderGeometry, Group, Mesh, MeshStandardMaterial, Vector3 } from 'three';
 import type { StageModel } from '../../model/StageModel';
 import type { StageSample } from '../../model/sampler';
 import type { StageDriver } from '../../three/driver';
@@ -8,11 +8,11 @@ import { STATE_TREATMENTS } from '../../look/treatments';
 import { createCast, sampleCast, type CastMember, type CastPose, type CastStyle } from '../cast';
 import { WORLDS } from '../types';
 import type { Playhead } from '../../timeline/Playhead';
-import { buildEagle, buildPanda, buildPenguin, createBlobShadow, PERSONALITIES, type IdleAct, type Rig } from './rigs';
+import { buildEagle, buildPanda, buildPenguin, createBlobShadow, PANDA_PERSONALITIES, PERSONALITIES, type IdleAct, type Rig } from './rigs';
 import { ParticlePool, hash } from './particles';
 import { IdleBrain, type Box, type IdleContext, type Spots } from '../idle';
 import { iceMotionAt, blockAt, eagleAt, type EagleState } from '../ice';
-import { polarSpots } from './layout';
+import { pandaSpots, polarSpots } from './layout';
 import type { WorldClock } from './WorldLayer';
 
 export interface CastLayerProps {
@@ -36,6 +36,8 @@ const VERBS: Record<CastPose, string> = {
   shrug: 'ruling out',
   point: 'visiting',
   cheer: 'celebrating',
+  nod: 'matching',
+  startle: 'startled',
 };
 
 /** What a crew member says, in a small bubble, while it acts out a step. */
@@ -45,6 +47,10 @@ function bubbleFor(pose: CastPose, style: CastStyle, value: string, settled: boo
       return '?';
     case 'push':
       return style === 'penguin' ? 'heave!' : 'oof!';
+    case 'nod':
+      return 'yes!';
+    case 'startle':
+      return '!?';
     case 'pull':
       return 'hup!';
     case 'tap':
@@ -63,9 +69,9 @@ function bubbleFor(pose: CastPose, style: CastStyle, value: string, settled: boo
 }
 
 /** Crew size relative to a cell (a cell is one unit tall at rest). */
-const CREW_SCALE = { penguin: 1.75, panda: 1.32 } as const;
+const CREW_SCALE = { penguin: 1.75, panda: 1.55 } as const;
 /** Head height of the scaled crew, where the bubble sits beside them. */
-const HEAD = { penguin: 1.22, panda: 1.08 } as const;
+const HEAD = { penguin: 1.22, panda: 1.3 } as const;
 
 const _head = new Vector3();
 const scratch = { x: 0, z: 0, vx: 0, vz: 0, leg: -1 };
@@ -109,28 +115,45 @@ export function CastLayer({ model, driver, style, calm, clock, playhead }: CastL
             buildPenguin({ scarf: ['#c8406a', '#f6e7d2'], scale: CREW_SCALE.penguin * 1.03, personality: PERSONALITIES[0] }),
             buildPenguin({ scarf: ['#2f5d9e', '#f2c14e'], scale: CREW_SCALE.penguin * 0.97, personality: PERSONALITIES[1] }),
           ]
-        : [buildPanda({ prop: 'bamboo', scale: CREW_SCALE.panda }), buildPanda({ prop: 'leaf', scale: CREW_SCALE.panda })],
+        : [
+            buildPanda({ prop: 'bamboo', scale: CREW_SCALE.panda, personality: PANDA_PERSONALITIES[0] }),
+            buildPanda({ prop: 'leaf', scale: CREW_SCALE.panda, personality: PANDA_PERSONALITIES[1] }),
+          ],
     [style],
   );
   const holders = useMemo(() => rigs.map(() => new Group()), [rigs]);
-  // A rope that hangs from a floating cell when an animal climbs to it, and the ice ledge it perches on once there.
+  // The climbing gear: a rope that hangs from a floating cell and the ice ledge an animal perches on (penguins), or a
+  // bamboo pole with a lashed platform at the animal's feet (pandas).
   const gear = useMemo(() => {
-    const ropeMat = new MeshStandardMaterial({ color: '#d9b98a', roughness: 0.85 });
-    const ledgeMat = new MeshStandardMaterial({ color: '#bfe3ff', roughness: 0.25, metalness: 0.1, transparent: true, opacity: 0.88, emissive: new Color('#2a5f94'), emissiveIntensity: 0.35 });
-    const ropeGeo = new CylinderGeometry(0.05, 0.05, 1, 8);
-    const ledgeGeo = new CylinderGeometry(0.62, 0.5, 0.08, 28);
+    const panda = style === 'panda';
+    const ropeMat = new MeshStandardMaterial({ color: panda ? '#86b24d' : '#d9b98a', roughness: panda ? 0.5 : 0.85 });
+    const nodeMat = new MeshStandardMaterial({ color: '#5f8a33', roughness: 0.6 });
+    const ledgeMat = panda
+      ? new MeshStandardMaterial({ color: '#c9a65f', roughness: 0.8 })
+      : new MeshStandardMaterial({ color: '#bfe3ff', roughness: 0.25, metalness: 0.1, transparent: true, opacity: 0.88, emissive: new Color('#2a5f94'), emissiveIntensity: 0.35 });
+    const ropeGeo = new CylinderGeometry(panda ? 0.075 : 0.05, panda ? 0.08 : 0.05, 1, 8);
+    const ringGeo = new CylinderGeometry(0.1, 0.1, 0.035, 10);
+    const ledgeGeo = panda ? new BoxGeometry(1.25, 0.09, 0.95) : new CylinderGeometry(0.62, 0.5, 0.08, 28);
     const ropes = rigs.map(() => {
       const m = new Mesh(ropeGeo, ropeMat);
       m.visible = false;
       return m;
     });
+    // Bamboo nodes along the pole (reused rings, laid out every frame).
+    const rings = rigs.map(() =>
+      Array.from({ length: panda ? 6 : 0 }, () => {
+        const m = new Mesh(ringGeo, nodeMat);
+        m.visible = false;
+        return m;
+      }),
+    );
     const ledges = rigs.map(() => {
       const m = new Mesh(ledgeGeo, ledgeMat);
       m.visible = false;
       return m;
     });
-    return { ropes, ledges, ledgeW: rigs.map(() => 0), dispose: () => { ropeMat.dispose(); ledgeMat.dispose(); ropeGeo.dispose(); ledgeGeo.dispose(); } };
-  }, [rigs]);
+    return { panda, ropes, rings, ledges, ledgeW: rigs.map(() => 0), dispose: () => { ropeMat.dispose(); nodeMat.dispose(); ledgeMat.dispose(); ropeGeo.dispose(); ringGeo.dispose(); ledgeGeo.dispose(); } };
+  }, [rigs, style]);
   useEffect(() => () => gear.dispose(), [gear]);
   // The eagle that carries new floating nodes to their places (penguin world).
   const eagle = useMemo(() => {
@@ -153,9 +176,16 @@ export function CastLayer({ model, driver, style, calm, clock, playhead }: CastL
   const shadows = useMemo(() => rigs.map(() => createBlobShadow(model.palette.shadow, model.palette.shadowOpacity * 0.85)), [rigs, model.palette]);
   const pool = useMemo(() => new ParticlePool(320, style === 'penguin'), [style]);
   // Idle life (penguins): what each animal does when nothing is asked of it.
-  const brains = useMemo(() => [new IdleBrain(11, 0), new IdleBrain(11, 1)], [model]);
+  const brains = useMemo(() => [new IdleBrain(11, 0, style), new IdleBrain(11, 1, style)], [model, style]);
   const spots = useMemo<Spots | null>(() => {
-    if (style !== 'penguin') return null;
+    if (style === 'panda') {
+      const p = pandaSpots(model);
+      return {
+        snack: p.snack.map((c) => ({ at: c.at, face: c.face })),
+        gym: { base: p.gym.base, top: p.gym.top, deck: [p.gym.x, p.gym.z], height: p.gym.height, drop: p.gym.drop },
+        pond: { at: p.pond.at, face: p.pond.face },
+      };
+    }
     const p = polarSpots(model);
     return { bucket: [p.bucket.x, p.bucket.z], hole: [p.hole.x, p.hole.z], igloo: { door: p.igloo.door, approach: p.igloo.approach, center: p.igloo.center } };
   }, [model, style]);
@@ -166,6 +196,7 @@ export function CastLayer({ model, driver, style, calm, clock, playhead }: CastL
   ]);
   const confetti = useMemo(() => CONFETTI[style].map((c) => new Color(c)), [style]);
   const clickedAt = useRef<number[]>(rigs.map(() => -10));
+  const trail = useRef(rigs.map(() => ({ x: 0, z: 0, has: false })));
   const hovered = useRef(-1);
   const lastText = useRef<string[]>(['', '']);
 
@@ -224,19 +255,20 @@ export function CastLayer({ model, driver, style, calm, clock, playhead }: CastL
         r.last = wall;
         const playing = playhead.getSnapshot().playing;
         const settled = sample.k === 0 || sample.tau >= sample.duration - 1e-3;
-        const rested = !playing && settled && style === 'penguin' && !calm;
+        const rested = !playing && settled && !calm;
         r.freeFor = rested ? r.freeFor + dt : 0;
         if (r.k !== sample.k) {
           r.k = sample.k;
           r.keepOut = obstacleBox(model, rest);
           const f = model.footprint();
           const front = (r.keepOut?.maxZ ?? f.maxZ) + 0.95;
-          r.area = { minX: f.minX - 2.6, maxX: f.maxX + 2.6, minZ: front, maxZ: front + 2.4 };
+          r.area = { minX: f.minX - 2.0, maxX: f.maxX + 2.0, minZ: front, maxZ: front + 2.4 };
         }
         const idleOut = brains.map((brain, i) => {
           const m = cast[i];
-          if (style !== 'penguin' || calm) return null;
-          const cheering = m.pose === 'cheer' && m.poseTime < 2.8 && m.poseWeight > 0.3;
+          if (calm) return null;
+          // A finished run is cheered for a few seconds of rest; after that the animal gets on with its own business.
+          const cheering = m.pose === 'cheer' && r.freeFor < 3.4 && m.poseWeight > 0.3;
           const ctx: IdleContext = {
             free: rested && !cheering && !m.scripted,
             freeFor: r.freeFor,
@@ -246,19 +278,22 @@ export function CastLayer({ model, driver, style, calm, clock, playhead }: CastL
             spots,
             far: r.freeFor > 5,
             partner: brains[1 - i],
-            radius: 3.2,
+            radius: style === 'panda' ? 3.6 : 3.2,
           };
           return brain.update(dt, ctx);
         });
         for (let i = 0; i < cast.length; i++) {
           const m: CastMember = cast[i];
           const holder = holders[i];
+          const track = trail.current[i];
           // Roaming: the animal's own business takes over from the script's station.
           const roamed = idleOut[i];
           let idleAct: IdleAct = 'none';
           let idleT = 0;
           let idleW = 0;
           let fish = 0;
+          let onProp = false;
+          let stalk = -1;
           if (roamed && roamed.away) {
             m.x = roamed.x;
             m.z = roamed.z;
@@ -272,7 +307,12 @@ export function CastLayer({ model, driver, style, calm, clock, playhead }: CastL
             m.active = false;
             m.target = -1;
             m.effort = 0;
-            m.y = roamed.gait === 'walk' ? Math.abs(Math.sin(roamed.gaitPhase)) * 0.035 * roamed.gaitWeight : 0;
+            m.carry = 0;
+            m.climbSlope = roamed.climbSlope;
+            m.rope = 0;
+            onProp = roamed.onProp;
+            stalk = roamed.stalk;
+            m.y = roamed.y + (roamed.gait === 'walk' && style === 'penguin' ? Math.abs(Math.sin(roamed.gaitPhase)) * 0.035 * roamed.gaitWeight : 0);
             m.look[0] = m.x + Math.sin(m.yaw) * 3;
             m.look[1] = floor + 0.6;
             m.look[2] = m.z + Math.cos(m.yaw) * 3;
@@ -286,15 +326,16 @@ export function CastLayer({ model, driver, style, calm, clock, playhead }: CastL
             holders[i].visible = true;
             // At the station, between steps' work: a look about, a preen, a shake, now and then.
             const fd = fidget.current[i];
-            if (!calm && style === 'penguin' && !m.active && !m.scripted && m.pose === 'idle' && !playing) {
+            if (!calm && !m.active && !m.scripted && m.pose === 'idle' && !playing) {
               /* the brain is in charge while the run rests */
-            } else if (!calm && style === 'penguin' && !m.active && !m.scripted && m.pose === 'idle') {
+            } else if (!calm && !m.active && !m.scripted && m.pose === 'idle') {
               if (fd.act === 'none' && now > fd.next) {
-                fd.act = (['look', 'look', 'preen', 'sniff', 'shake'] as IdleAct[])[Math.floor(hash(now, i + 5) * 5)];
+                const acts: IdleAct[] = style === 'panda' ? ['look', 'look', 'scratch', 'sniff', 'shake'] : ['look', 'look', 'preen', 'sniff', 'shake'];
+                fd.act = acts[Math.floor(hash(now, i + 5) * 5)];
                 fd.start = now;
               }
               if (fd.act !== 'none') {
-                const dur = fd.act === 'look' ? 4.2 : fd.act === 'preen' ? 3.2 : fd.act === 'shake' ? 1.1 : 2.4;
+                const dur = fd.act === 'look' ? 4.2 : fd.act === 'preen' ? 3.2 : fd.act === 'shake' ? 1.1 : fd.act === 'scratch' ? 2.6 : 2.4;
                 if (now - fd.start > dur) {
                   fd.act = 'none';
                   fd.next = now + 5 + hash(now, i + 9) * 8;
@@ -311,6 +352,19 @@ export function CastLayer({ model, driver, style, calm, clock, playhead }: CastL
           }
           holder.position.set(m.x, floor + m.y, m.z);
           holder.rotation.y = m.yaw;
+          // Where this animal is and how fast it moves, for the world to react to (leaves rustle as it passes).
+          {
+            const c = clock.crew[i];
+            const moved = dt > 0 && track.has ? Math.hypot(m.x - track.x, m.z - track.z) / dt : 0;
+            c.speed += (Math.min(6, moved) - c.speed) * Math.min(1, dt * 8);
+            c.x = m.x;
+            c.z = m.z;
+            c.y = m.y;
+            track.x = m.x;
+            track.z = m.z;
+            track.has = true;
+            clock.chew[i] = stalk;
+          }
           const dx = m.look[0] - m.x;
           const dz = m.look[2] - m.z;
           const c = Math.cos(m.yaw), s = Math.sin(m.yaw);
@@ -331,23 +385,38 @@ export function CastLayer({ model, driver, style, calm, clock, playhead }: CastL
             idle: idleW > 0 ? { act: idleAct, t: idleT, weight: idleW } : undefined,
             fish,
             effort: m.effort,
+            carry: m.carry,
             climb: m.gait === 'climb' ? { weight: m.gaitWeight, phase: m.gaitPhase, slope: m.climbSlope } : undefined,
           });
 
-          // The rope the animal climbs, and the ledge it perches on.
+          // The rope (or bamboo pole) the animal climbs, and the ledge it perches on.
           const rope = gear.ropes[i];
-          rope.visible = m.rope > 0.02;
+          rope.visible = m.rope > 0.02 && !onProp;
+          const rings = gear.rings[i];
+          for (const r of rings) r.visible = false;
           if (rope.visible) {
-            const len = Math.max(0.05, m.ropeTop * m.rope);
-            rope.scale.set(1, len, 1);
-            rope.position.set(m.ropeX, floor + m.ropeTop - len / 2, m.ropeZ);
+            const len = Math.max(0.05, (gear.panda ? m.ropeTop : m.ropeTop * m.rope));
+            if (gear.panda) {
+              // A pole standing behind the animal, rising out of the ground as it is needed, with a node every so often.
+              const shown = len * m.rope;
+              rope.scale.set(1, Math.max(0.05, shown), 1);
+              rope.position.set(m.ropeX, floor + shown / 2, m.ropeZ - 0.42);
+              for (let r = 0; r < rings.length; r++) {
+                const y = 0.55 + r * 0.62;
+                rings[r].visible = y < shown - 0.05;
+                rings[r].position.set(m.ropeX, floor + y, m.ropeZ - 0.42);
+              }
+            } else {
+              rope.scale.set(1, len, 1);
+              rope.position.set(m.ropeX, floor + m.ropeTop - len / 2, m.ropeZ);
+            }
           }
-          const perched = m.y > 0.3 && m.gait !== 'climb' && m.gait !== 'leap' && m.gaitWeight < 0.5;
+          const perched = m.y > 0.3 && m.gait !== 'climb' && m.gait !== 'leap' && m.gait !== 'tumble' && m.gaitWeight < 0.5 && !onProp;
           gear.ledgeW[i] += ((perched ? 1 : 0) - gear.ledgeW[i]) * Math.min(1, dt * 9 + (perched ? 0 : 0.2));
           const ledge = gear.ledges[i];
           ledge.visible = gear.ledgeW[i] > 0.03;
           if (ledge.visible) {
-            ledge.position.set(m.x, floor + m.y - 0.045, m.z);
+            ledge.position.set(m.x, floor + m.y - 0.045, gear.panda ? m.z - 0.1 : m.z);
             ledge.scale.setScalar(gear.ledgeW[i]);
           }
           if (react < 1.2) invalidate();
@@ -363,6 +432,7 @@ export function CastLayer({ model, driver, style, calm, clock, playhead }: CastL
           const value = m.target >= 0 && rest.present[m.target] ? rest.text[m.target] : '';
           const settled = m.target >= 0 && rest.state[m.target] === 'SUCCESS';
           if (react < 1.6) text = `I'm ${names[i]}!`;
+          else if (m.gait === 'tumble') text = m.gaitPhase < 1 ? 'whoa!' : m.gaitPhase < 1.7 ? 'ow…' : '';
           else if (hovered.current === i) {
             const where = m.target >= 0 ? model.slots[m.target].structure : undefined;
             const caption = m.target >= 0 ? rest.caption[m.target] : '';
@@ -435,6 +505,36 @@ export function CastLayer({ model, driver, style, calm, clock, playhead }: CastL
               pool.add(m.x + Math.sin(back) * d, floor + 0.05 + Math.sin(f * Math.PI) * 0.3, m.z + Math.cos(back) * d, col.r, col.g, col.b, (1 - f) * 0.85, 0.06);
             }
           }
+          if (!calm && style === 'panda') {
+            // A landing after a fall: a puff of dust and leaves thrown out from where it sat down.
+            if (m.gait === 'tumble' && m.gaitPhase >= 0.93 && m.gaitPhase < 1.55) {
+              const q = Math.min(1, Math.max(0, (m.gaitPhase - 0.93) / 0.62));
+              for (let p = 0; p < 22; p++) {
+                const a = hash(i + 41, p) * Math.PI * 2;
+                const v = 0.5 + hash(i + 43, p) * 0.9;
+                const col = p % 3 === 0 ? confetti[0] : p % 3 === 1 ? confetti[3] : confetti[2];
+                const dust = p % 4 === 0;
+                pool.add(m.x + Math.cos(a) * v * q * 0.9, floor + 0.08 + (0.25 + hash(i + 47, p) * 0.5) * Math.sin(Math.min(1, q * 1.3) * Math.PI) * (dust ? 0.5 : 1), m.z + Math.sin(a) * v * q * 0.9, dust ? 0.78 : col.r, dust ? 0.7 : col.g, dust ? 0.52 : col.b, (1 - q) * 0.8, dust ? 0.12 : 0.07);
+              }
+            }
+            // Chewing: crumbs of bamboo and the odd leaf fall from the muzzle.
+            if (stalk >= 0 && m.gaitWeight < 0.1) {
+              for (let p = 0; p < 6; p++) {
+                const f = (now * 0.9 + hash(i + 51, p)) % 1;
+                pool.add(m.x + Math.sin(m.yaw) * 0.42 + (hash(i + 53, p) - 0.5) * 0.3, floor + 0.55 - f * 0.5, m.z + Math.cos(m.yaw) * 0.42 + (hash(i + 57, p) - 0.5) * 0.2, 0.55, 0.72, 0.3, (1 - f) * 0.7, 0.045);
+              }
+            }
+            // Walking through the grass: now and then a leaf is kicked up behind the feet.
+            if (m.gait === 'walk' && m.gaitWeight > 0.6 && m.y < 0.1) {
+              const stepNow = Math.floor(m.gaitPhase / Math.PI);
+              const age = (m.gaitPhase / Math.PI) - stepNow;
+              if (hash(stepNow * 0.37, i) < 0.35 && age < 0.5) {
+                const back = m.yaw + Math.PI;
+                const c = confetti[stepNow % 2 === 0 ? 0 : 3];
+                pool.add(m.x + Math.sin(back) * 0.3, floor + 0.04 + age * 0.35, m.z + Math.cos(back) * 0.3, c.r, c.g, c.b, (1 - age * 2) * 0.7, 0.06);
+              }
+            }
+          }
         }
         // The eagle: in for the ball the penguin has made, over to its place, away again.
         if (eagle) {
@@ -461,8 +561,8 @@ export function CastLayer({ model, driver, style, calm, clock, playhead }: CastL
           }
         }
 
-        // Ice physics: shavings thrown up where a block is shoved off, scraped along, and brought to rest.
-        if (!calm && style === 'penguin') {
+        // Ground physics: shavings of ice (or earth and crushed leaves) thrown up where a block is shoved off, scraped along, and brought to rest.
+        if (!calm) {
           const motion = iceMotionAt(model, sample.k);
           if (motion) {
             const f = sample.duration > 0 ? sample.tau / sample.duration : 1;
@@ -481,7 +581,8 @@ export function CastLayer({ model, driver, style, calm, clock, playhead }: CastL
                 const x = scratch.x - ux * back - uz * lateral;
                 const z = scratch.z - uz * back + ux * lateral;
                 const y = floor + 0.04 + Math.sin(life * Math.PI) * 0.22 * (0.4 + hash(job.slot + 41, p));
-                pool.add(x, y, z, 0.92, 0.97, 1, (1 - life) * 0.8 * fade, 0.06 + 0.07 * (1 - life));
+                if (style === 'penguin') pool.add(x, y, z, 0.92, 0.97, 1, (1 - life) * 0.8 * fade, 0.06 + 0.07 * (1 - life));
+                else pool.add(x, y, z, p % 3 === 0 ? 0.6 : 0.78, p % 3 === 0 ? 0.72 : 0.68, p % 3 === 0 ? 0.35 : 0.5, (1 - life) * 0.7 * fade, 0.05 + 0.06 * (1 - life));
               }
             }
           }
@@ -537,6 +638,9 @@ export function CastLayer({ model, driver, style, calm, clock, playhead }: CastL
       {eagle && <primitive object={eagle.shadow.mesh} />}
       {gear.ropes.map((r, i) => (
         <primitive key={`r${i}`} object={r} />
+      ))}
+      {gear.rings.flat().map((r, i) => (
+        <primitive key={`n${i}`} object={r} />
       ))}
       {gear.ledges.map((l, i) => (
         <primitive key={`l${i}`} object={l} />

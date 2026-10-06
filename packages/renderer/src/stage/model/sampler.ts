@@ -13,7 +13,8 @@ import {
   windowedSpring,
 } from '../motion/spring';
 import { STAGGER_SECONDS } from '../timeline/beats';
-import { blockAt, carryBall, iceMotionAt, jobPresence, shoveProgress, slideLean } from '../worlds/ice';
+import { blockAt, carryBall, frictionOf, iceMotionAt, jobPresence, shoveProgress, slideLean } from '../worlds/ice';
+import { hasPhysics } from '../worlds/types';
 import { linearRgb } from './colors';
 import { DECAL_SHAPE, type DecalState, type LabelFont, type LabelOrient, type LabelState, type RestFrame, type StageModel } from './StageModel';
 
@@ -350,7 +351,7 @@ export function sampleStage(model: StageModel, k: number, tau: number, duration:
 
   const n = model.slots.length;
   const colorT = calm ? smoothstep(0, 0.5, out.u) : smoothstep(0.02, 0.32, out.u);
-  const ice = (options.ice ?? model.world === 'penguin') && !calm && model.world === 'penguin';
+  const ice = (options.ice ?? hasPhysics(model.world)) && !calm && hasPhysics(model.world);
   const motionPlan = ice ? iceMotionAt(model, k) : null;
   const fStep = clamp01(t / D);
 
@@ -395,7 +396,7 @@ export function sampleStage(model: StageModel, k: number, tau: number, duration:
 
     if (job?.carry) {
       // A floating node: made at the forge, lifted by the eagle, set down in its place.
-      carryBall(job.carry, fStep, ball);
+      carryBall(job.carry, fStep, ball, model.floorY);
       x = ball.x;
       y = ball.y;
       z = ball.z;
@@ -435,7 +436,7 @@ export function sampleStage(model: StageModel, k: number, tau: number, duration:
       }
       case Motion.Move: {
         // On the ice a block that is carried along glides: a quick start, then friction brings it to rest.
-        const p = calm ? smoothstep(0, 1, local / span) : onIce ? shoveProgress(clamp01(local / span), 0.02, 0.14, 0.92) : windowedSpring(local, span, mass);
+        const p = calm ? smoothstep(0, 1, local / span) : onIce ? shoveProgress(clamp01(local / span), 0.02, 0.14, 0.92, frictionOf(model.world)) : windowedSpring(local, span, mass);
         const dist = Math.hypot(bx - ax, bz - az);
         const arc = calm || onIce ? 0 : Math.min(1.1, 0.16 * dist) * 4 * clamp01(p) * (1 - clamp01(p));
         if (onIce && dist > 0.05) lean = slideLean({ t0: 0.02, t1: 0.14, t2: 0.92, dx: (bx - ax) / dist }, clamp01(local / span)) * 0.6;

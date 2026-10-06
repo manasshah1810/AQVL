@@ -51,7 +51,7 @@ export default function Settings() {
           <h2 id="set-world" className="title">
             World
           </h2>
-          <p className="muted">Three places for the same algorithms. The state colours never change between them.</p>
+          <p className="muted">Three places for the same algorithms. The state colours never change between them. Your choice carries across the whole site.</p>
         </div>
         <div className="set-grid" role="radiogroup" aria-label="World">
           {WORLD_IDS.map((w, i) => {
@@ -73,6 +73,7 @@ export default function Settings() {
                   <span className="flex items-center gap-2">
                     <span className="title !text-[1.25rem]">{info.label}</span>
                     {w === 'penguin' && <span className="badge">Primary</span>}
+                    {w === 'panda' && <span className="badge">Full theme</span>}
                     {on && <span className="mono muted">· on</span>}
                   </span>
                   <span className="text-[0.98rem] leading-snug muted">{info.blurb}</span>
@@ -89,7 +90,15 @@ export default function Settings() {
             </span>
           </p>
         )}
-        {world === 'panda' && <p className="set-note">The bamboo grove shapes the 3D stage; the pages keep the studio look for now.</p>}
+        {world === 'panda' && (
+          <p className="set-note">
+            <Mascot pose="eat" size={52} />
+            <span>
+              In the bamboo grove the whole site turns to forest: a quiet green palette, leaves drifting behind the pages, a panda or two munching along the footer, and the pandas of the 3D stage
+              pushing, climbing and carrying for every step. Switch either decoration off below for the quiet version.
+            </span>
+          </p>
+        )}
       </section>
 
       {/* ── Appearance ────────────────────────────────────────── */}
@@ -103,7 +112,7 @@ export default function Settings() {
           <div className="set-row">
             <div className="set-row__text">
               <span className="set-row__label">Light or dark</span>
-              <span className="set-row__hint">Applies to the pages and the editor. The ice shelf is always at night; the grove always at dawn.</span>
+              <span className="set-row__hint">Applies to the pages and the editor. The 3D ice shelf is always at night and the 3D grove always at dawn.</span>
             </div>
             <Segmented
               label="Light or dark"
@@ -116,10 +125,18 @@ export default function Settings() {
             />
           </div>
           <div className="set-row">
-            <Toggle label="Snowfall" hint="Snow drifting behind the pages (ice world)." checked={settings.snow} onChange={(v) => updateSettings({ snow: v })} />
+            {world === 'panda' ? (
+              <Toggle label="Falling leaves" hint="Bamboo leaves drifting behind the pages (bamboo world)." checked={settings.snow} onChange={(v) => updateSettings({ snow: v })} />
+            ) : (
+              <Toggle label="Snowfall" hint="Snow drifting behind the pages (ice world)." checked={settings.snow} onChange={(v) => updateSettings({ snow: v })} />
+            )}
           </div>
           <div className="set-row">
-            <Toggle label="Penguin mascots" hint="A penguin on the odd page and walking along the footer (ice world)." checked={settings.mascots} onChange={(v) => updateSettings({ mascots: v })} />
+            {world === 'panda' ? (
+              <Toggle label="Panda mascots" hint="A panda on the odd page and wandering along the footer (bamboo world)." checked={settings.mascots} onChange={(v) => updateSettings({ mascots: v })} />
+            ) : (
+              <Toggle label="Penguin mascots" hint="A penguin on the odd page and walking along the footer (ice world)." checked={settings.mascots} onChange={(v) => updateSettings({ mascots: v })} />
+            )}
           </div>
         </div>
       </section>

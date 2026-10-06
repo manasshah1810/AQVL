@@ -1,0 +1,481 @@
+/* ============================================================
+   The panda world, carried across the site.
+   `data-world='panda'` on <html> (see lib/world.ts) swaps the palette for
+   a bamboo grove (the same roles, the same contrast: --peach is still the
+   body text, --cream the emphasis, --ink the ground) and switches on a few
+   quiet details: bamboo leaves drifting behind the pages, a panda or two,
+   a grassy baseline with bamboo shoots in the footer, a paw print here and
+   there. Nothing here moves layout, and everything that moves stops under
+   `prefers-reduced-motion` or the Settings switches (`data-snow` for the
+   falling leaves, `data-mascots`).
+   ============================================================ */
+
+/* ── Palette: the grove at night ────────────────────────────── */
+:root[data-world='panda']:not([data-theme='light']) {
+  --ink: #121c17;
+  --ink-deep: #0d1511;
+  --peach: #d8e8cb;
+  --peach-muted: #a0b895;
+  --panel: #1d2d24;
+  --panel-raised: #25392d;
+  --dusk: #4f6c58;
+  --dusk-deep: #38523f;
+  --cream: #f2f9df;
+
+  --line: rgb(216 232 203 / 0.18);
+  --line-strong: rgb(216 232 203 / 0.34);
+  --line-faint: rgb(216 232 203 / 0.09);
+
+  --syn-default: #d8e8cb;
+  --syn-keyword: #f2f9df;
+  --syn-structural: #f2f9df;
+  --syn-number: #afd28f;
+  --syn-string: #e3cd8e;
+  --syn-comment: #88a37e;
+
+  --gutter-fg: #7f997c;
+  --scrim: rgb(13 21 17 / 0.9);
+  --row-hover: rgb(29 45 36 / 0.55);
+  --wall: rgb(160 184 149 / 0.28);
+  --kbd-bg: rgb(13 21 17 / 0.4);
+  --on-dusk: #f2f9df;
+
+  --pnd-white: #f5f2ea;
+  --pnd-black: #1d1d22;
+  --bamboo: #8cc152;
+  --bamboo-deep: #5f8a33;
+  --leaf-a: #9fcf5f;
+  --leaf-b: #d6c25a;
+  --leaf-c: #7fb069;
+  --grove-glow: rgb(140 193 82 / 0.28);
+}
+
+/* ── Palette: a morning in the grove ────────────────────────── */
+:root[data-world='panda'][data-theme='light'] {
+  --ink: #f4f3e4;
+  --ink-deep: #eaebd4;
+  --peach: #2a3b25;
+  --peach-muted: #4a5f42;
+  --panel: #e1e8cc;
+  --panel-raised: #d5dfba;
+  --dusk: #587a4e;
+  --dusk-deep: #d0ddbd;
+  --cream: #13210f;
+
+  --line: rgb(42 59 37 / 0.17);
+  --line-strong: rgb(42 59 37 / 0.32);
+  --line-faint: rgb(42 59 37 / 0.08);
+
+  --syn-default: #2a3b25;
+  --syn-keyword: #13210f;
+  --syn-structural: #13210f;
+  --syn-number: #44652f;
+  --syn-string: #7a5f2a;
+  --syn-comment: #55694c;
+
+  --gutter-fg: #55694c;
+  --scrim: rgb(244 243 228 / 0.9);
+  --row-hover: rgb(42 59 37 / 0.07);
+  --wall: rgb(74 95 66 / 0.22);
+  --kbd-bg: rgb(19 33 15 / 0.09);
+  --on-dusk: #f4f3e4;
+
+  --pnd-white: #fbf8ee;
+  --pnd-black: #25252b;
+  --bamboo: #7fb040;
+  --bamboo-deep: #55822d;
+  --leaf-a: #86b84a;
+  --leaf-b: #c9a64a;
+  --leaf-c: #6fa23a;
+  --grove-glow: rgb(110 160 60 / 0.2);
+}
+
+/* The pre-paint background: soft light falling from above through the leaves. */
+html[data-world='panda'] body {
+  background:
+    radial-gradient(1100px 480px at 10% -10%, rgb(140 193 82 / 0.1), transparent 62%),
+    radial-gradient(900px 460px at 94% -8%, rgb(240 214 120 / 0.06), transparent 62%),
+    var(--ink);
+  background-attachment: fixed;
+}
+
+html[data-world='panda'][data-theme='light'] body {
+  background:
+    radial-gradient(1100px 480px at 10% -10%, rgb(170 210 110 / 0.22), transparent 62%),
+    radial-gradient(900px 460px at 94% -8%, rgb(250 232 150 / 0.22), transparent 62%),
+    var(--ink);
+  background-attachment: fixed;
+}
+
+/* The header's lower edge is a stalk of bamboo: a hairline with a node every so often. */
+html[data-world='panda'] header.border-b {
+  position: relative;
+}
+html[data-world='panda'] header.border-b::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  background:
+    repeating-linear-gradient(90deg, transparent 0 118px, var(--bamboo-deep) 118px 122px, transparent 122px 240px),
+    linear-gradient(90deg, transparent, var(--grove-glow) 14%, var(--grove-glow) 86%, transparent);
+  opacity: 0.8;
+  pointer-events: none;
+}
+
+/* Buttons: a leaf-green sheen crosses them on hover. */
+html[data-world='panda'] .btn:not(.btn--quiet)::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(105deg, transparent 30%, rgb(190 235 120 / 0.28) 50%, transparent 70%);
+  transform: translateX(-120%);
+  transition: transform 700ms ease;
+  pointer-events: none;
+}
+html[data-world='panda'] .btn:not(.btn--quiet):hover::after {
+  transform: translateX(120%);
+}
+
+html[data-world='panda'] .panel {
+  box-shadow: inset 0 1px 0 rgb(220 245 190 / 0.06);
+}
+html[data-world='panda'][data-theme='light'] .panel {
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.7);
+}
+
+/* Section labels begin with a short stalk of bamboo. */
+html[data-world='panda'] .margin-num::before {
+  content: '';
+  display: inline-block;
+  width: 12px;
+  height: 5px;
+  vertical-align: 0.12em;
+  border-radius: 3px;
+  background: var(--bamboo);
+  box-shadow: 15px 0 0 -1px var(--bamboo-deep);
+  margin-right: 24px;
+}
+
+/* ── Leaves behind the pages (components/theme/WorldDecor.tsx) ── */
+.world-leaves {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+  display: none;
+}
+
+html[data-world='panda'][data-snow='on'] .world-leaves {
+  display: block;
+}
+
+.world-leaves i {
+  position: absolute;
+  top: -24px;
+  left: var(--x);
+  width: var(--s);
+  height: calc(var(--s) * 0.34);
+  border-radius: 0 100% 0 100%;
+  background: var(--leaf-a);
+  opacity: var(--o);
+  animation: leaf-fall var(--d) linear var(--delay) infinite;
+  will-change: transform;
+}
+.world-leaves i[data-tint='1'] {
+  background: var(--leaf-b);
+}
+.world-leaves i[data-tint='2'] {
+  background: var(--leaf-c);
+}
+
+@keyframes leaf-fall {
+  0% {
+    transform: translate3d(0, -4vh, 0) rotate(0deg);
+  }
+  25% {
+    transform: translate3d(calc(var(--drift) * 0.45), 26vh, 0) rotate(calc(var(--spin) * 0.25));
+  }
+  50% {
+    transform: translate3d(calc(var(--drift) * -0.2), 52vh, 0) rotate(calc(var(--spin) * 0.5));
+  }
+  75% {
+    transform: translate3d(calc(var(--drift) * 0.7), 80vh, 0) rotate(calc(var(--spin) * 0.75));
+  }
+  100% {
+    transform: translate3d(var(--drift), 108vh, 0) rotate(var(--spin));
+  }
+}
+
+/* The leaves fall behind the page content: the page's wrapper is its own stacking context. */
+html[data-world='panda'] #root > div {
+  position: relative;
+  z-index: 0;
+  isolation: isolate;
+}
+
+/* ── Mascots ────────────────────────────────────────────────── */
+.pnd {
+  overflow: visible;
+}
+
+.pnd__eye {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: pnd-blink 5.6s ease-in-out infinite;
+}
+
+.pnd__armL,
+.pnd__armR {
+  transform-box: fill-box;
+  transform-origin: 50% 12%;
+}
+
+.pnd--stand .pnd__body,
+.pnd--point .pnd__body,
+.pnd--wave .pnd__body {
+  animation: pnd-breathe 3.8s ease-in-out infinite;
+  transform-origin: 42px 84px;
+}
+
+.pnd--wave .pnd__armR {
+  animation: pnd-wave 1.2s ease-in-out infinite;
+}
+
+.pnd--point .pnd__armR {
+  transform: rotate(-78deg);
+}
+
+.pnd--sleep .pnd__body {
+  animation: pnd-breathe 5.2s ease-in-out infinite;
+  transform-origin: 42px 84px;
+}
+.pnd--sleep .pnd__head {
+  transform: rotate(9deg);
+  transform-box: fill-box;
+  transform-origin: 50% 90%;
+}
+
+.pnd--peek .pnd__body {
+  animation: pnd-peek 6.4s ease-in-out infinite;
+}
+
+.pnd--eat .pnd__head {
+  transform-box: fill-box;
+  transform-origin: 50% 90%;
+  animation: pnd-chew 0.55s ease-in-out infinite;
+}
+.pnd--eat .pnd__armL {
+  transform: rotate(-38deg) translate(6px, -6px);
+}
+.pnd--eat .pnd__armR {
+  transform: rotate(38deg) translate(-6px, -6px);
+}
+
+.pnd--roll .pnd__ball {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: pnd-roll 2.4s linear infinite;
+}
+
+.pnd--walk .pnd__body {
+  transform-origin: 42px 84px;
+  animation: pnd-amble 0.9s ease-in-out infinite;
+}
+.pnd--walk .pnd__head {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  animation: pnd-nod 0.9s ease-in-out infinite;
+}
+.pnd--walk .pnd__footL {
+  animation: pnd-step 0.9s ease-in-out infinite;
+}
+.pnd--walk .pnd__footR {
+  animation: pnd-step 0.9s ease-in-out infinite 0.45s;
+}
+
+@keyframes pnd-blink {
+  0%,
+  94%,
+  100% {
+    transform: scaleY(1);
+  }
+  96.5% {
+    transform: scaleY(0.12);
+  }
+}
+@keyframes pnd-wave {
+  0%,
+  100% {
+    transform: rotate(-14deg);
+  }
+  50% {
+    transform: rotate(-150deg);
+  }
+}
+@keyframes pnd-breathe {
+  0%,
+  100% {
+    transform: scale(1, 1);
+  }
+  50% {
+    transform: scale(1.012, 0.985);
+  }
+}
+@keyframes pnd-peek {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  45%,
+  55% {
+    transform: translateY(-5px);
+  }
+}
+@keyframes pnd-chew {
+  0%,
+  100% {
+    transform: translateY(0) rotate(0deg);
+  }
+  50% {
+    transform: translateY(1.6px) rotate(2deg);
+  }
+}
+@keyframes pnd-roll {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes pnd-amble {
+  0%,
+  100% {
+    transform: rotate(-4.5deg) translateX(-1px);
+  }
+  50% {
+    transform: rotate(4.5deg) translateX(1px);
+  }
+}
+@keyframes pnd-nod {
+  0%,
+  100% {
+    transform: rotate(3deg);
+  }
+  50% {
+    transform: rotate(-3deg) translateY(-1px);
+  }
+}
+@keyframes pnd-step {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-3.2px);
+  }
+}
+
+/* A paw print, used as a small marker. */
+.paw {
+  color: var(--bamboo);
+  flex: none;
+}
+
+/* ── Footer: a grassy baseline with bamboo shoots and two wanderers ── */
+.footer-grove {
+  position: absolute;
+  inset: auto 0 23px 0;
+  height: 0;
+  pointer-events: none;
+}
+
+@media (min-width: 768px) {
+  .footer-grove {
+    bottom: 38px;
+  }
+}
+
+.footer-grove__shoots span {
+  position: absolute;
+  bottom: -2px;
+  display: block;
+  transform-origin: 50% 100%;
+  animation: shoot-sway var(--d) ease-in-out infinite;
+}
+
+@keyframes shoot-sway {
+  0%,
+  100% {
+    transform: rotate(-2.2deg);
+  }
+  50% {
+    transform: rotate(2.2deg);
+  }
+}
+
+.footer-grove__walker {
+  position: absolute;
+  bottom: -2px;
+  left: 12%;
+  animation: grove-walk 44s linear infinite;
+}
+
+.footer-grove__walker--back {
+  animation-direction: reverse;
+  animation-duration: 66s;
+  animation-delay: -24s;
+}
+
+@keyframes grove-walk {
+  0% {
+    left: 14%;
+    transform: scaleX(1);
+  }
+  47% {
+    left: calc(100% - 44px);
+    transform: scaleX(1);
+  }
+  50% {
+    left: calc(100% - 44px);
+    transform: scaleX(-1);
+  }
+  97% {
+    left: 14%;
+    transform: scaleX(-1);
+  }
+  100% {
+    left: 14%;
+    transform: scaleX(1);
+  }
+}
+
+/* Page transition: a quick unfurling, like a leaf opening. */
+@keyframes leaf-in {
+  from {
+    opacity: 0;
+    clip-path: inset(0 0 14% 0);
+  }
+  to {
+    opacity: 1;
+    clip-path: inset(0 0 0 0);
+  }
+}
+html[data-world='panda'] .frost-in {
+  animation: leaf-in 520ms ease-out backwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .world-leaves i,
+  .pnd *,
+  .footer-grove__walker,
+  .footer-grove__shoots span,
+  html[data-world='panda'] .frost-in {
+    animation: none !important;
+  }
+  .world-leaves {
+    display: none !important;
+  }
+}

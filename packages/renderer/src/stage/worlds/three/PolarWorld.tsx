@@ -594,7 +594,7 @@ export function PolarWorld({ model, bounds, driver, calm, clock }: WorldProps) {
                 x = o.x;
                 z = o.z;
                 yaw = o.yaw;
-                gait = o.gait;
+                gait = o.gait === 'glide' ? 'glide' : o.gait === 'walk' ? 'walk' : 'stand';
                 gaitPhase = o.gaitPhase;
                 gaitWeight = o.gaitWeight;
                 if (o.actWeight > 0) idle = { act: o.act, t: o.actT, weight: o.actWeight };
