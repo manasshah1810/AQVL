@@ -275,7 +275,9 @@ export function PodLayer({ model, driver, calm, clock, playhead }: PodLayerProps
         const now = clock.now;
         const wall = performance.now() / 1000;
         const st = state.current;
-        const dt = st.last > 0 ? Math.min(0.1, wall - st.last) : 0;
+        // Frame time (clamped, for smoothing) and wall time (for how long things have rested: right even at a low frame rate).
+        const wallDt = st.last > 0 ? Math.min(1, wall - st.last) : 0;
+        const dt = Math.min(0.1, wallDt);
         st.last = wall;
         const f = sample.duration > 0 ? Math.min(1, sample.tau / sample.duration) : 1;
         const water = calm ? null : waterMotionAt(model, sample.k);
@@ -289,10 +291,10 @@ export function PodLayer({ model, driver, calm, clock, playhead }: PodLayerProps
         const playing = playhead.getSnapshot().playing;
         const settled = sample.k === 0 || sample.tau >= sample.duration - 1e-3;
         const rested = !playing && settled && !calm;
-        st.freeFor = rested ? st.freeFor + dt : 0;
+        st.freeFor = rested ? st.freeFor + wallDt : 0;
         const celebrating = pod[0].mood === 'celebrate' && st.freeFor < 3;
         const wantRoam = rested && st.freeFor > 2.4 && !celebrating ? 1 : 0;
-        st.roam += (wantRoam - st.roam) * Math.min(1, dt * (wantRoam ? 0.7 : 2.2));
+        st.roam += (wantRoam - st.roam) * Math.min(1, Math.min(0.25, wallDt) * (wantRoam ? 0.7 : 2.2));
         if (st.roam < 0.002) st.roam = 0;
         const roamW = st.roam * st.roam * (3 - 2 * st.roam);
 
@@ -337,10 +339,17 @@ export function PodLayer({ model, driver, calm, clock, playhead }: PodLayerProps
           st.yaw[i] = yaw;
           st.pitch[i] = pitch;
           const bank = Math.max(-0.45, Math.min(0.45, -st.turn[i] * 0.16));
+          // Resting a moment between steps (before it wanders off), it turns a little to look at the viewer.
+          const curious = rested && !calm ? Math.min(1, Math.max(0, (st.freeFor - 0.9) / 0.8)) * (1 - roamW) * (1 - m.contact) : 0;
+          if (curious > 0) {
+            const toCam = Math.atan2(camera.position.x - x, camera.position.z - z);
+            yaw = yaw + wrapAngle(toCam - yaw) * 0.22 * curious * (i === 0 ? 1 : 1.4);
+          }
           rig.root.position.set(x, y, z);
           rig.root.rotation.set(-pitch, yaw, m.roll * (1 - roamW) + bank * roamW + (roamW < 1 ? bank * 0.4 * (1 - roamW) : 0));
           rig.root.updateMatrixWorld();
           _v.set(m.look[0], m.look[1], m.look[2]);
+          if (curious > 0.5) _v.copy(camera.position);
           if (roamW > 0.5) _v.set(x + Math.sin(yaw) * 4, y, z + Math.cos(yaw) * 4);
           rig.root.worldToLocal(_v);
           const react = wall - clickedAt.current[i];
@@ -427,7 +436,7 @@ export function PodLayer({ model, driver, calm, clock, playhead }: PodLayerProps
             const caption = m.target >= 0 ? rest.caption[m.target] : '';
             const cell = where ? (/^\d+$/.test(caption) ? `${where}[${caption}]` : where) : '';
             text = `${names[i]} · ${roamW > 0.5 ? 'exploring' : VERBS[m.mood]}${cell && roamW < 0.5 ? ` ${cell}` : ''}${m.target >= 0 && rest.present[m.target] && roamW < 0.5 ? ` (${STATE_TREATMENTS[rest.state[m.target]].word})` : ''}`;
-          } else if (roamW < 0.3 && m.active && m.moodWeight > 0.6 && m.moodTime < 2.2) text = bubbleFor(m, i, value, sorting);
+          } else if (roamW < 0.3 && m.active && m.moodWeight > 0.6 && m.moodTime < 2.2 && st.freeFor < 2.2) text = bubbleFor(m, i, value, sorting);
           const el = bubbles[i];
           if (el) {
             const size0 = i === 0 ? 0.75 : 0.45;

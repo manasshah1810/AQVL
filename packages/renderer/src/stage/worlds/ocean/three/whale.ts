@@ -149,7 +149,8 @@ function buildBody(length: number, radius: number, nose: number): BufferGeometry
   for (let i = 0; i < SEGS; i++) {
     for (let j = 0; j < RING; j++) {
       const a = i * (RING + 1) + j, b = a + RING + 1;
-      index.push(a, a + 1, b, b, a + 1, b + 1);
+      // Counter-clockwise seen from outside (rings run anticlockwise round +z, the body runs towards -z).
+      index.push(a, b, a + 1, b, b + 1, a + 1);
     }
   }
   const g = new BufferGeometry();
@@ -274,7 +275,7 @@ function skinMaterial(p: SkinParams, length: number, uniforms: { uSwim: { value:
           float up = vRing.z;
           float ang = atan(vRing.z, vRing.y);
           // Countershading: the line between back and belly runs low along the flank and waves a little.
-          float line = -0.42 + 0.07 * sin(s * 17.0 + 1.3) + 0.2 * smoothstep(0.3, 0.9, s) - 0.12 * (1.0 - smoothstep(0.0, 0.22, s));
+          float line = -0.3 + 0.07 * sin(s * 17.0 + 1.3) + 0.16 * smoothstep(0.3, 0.9, s) - 0.08 * (1.0 - smoothstep(0.0, 0.22, s));
           float belly = 1.0 - smoothstep(line - 0.07, line + 0.07, up);
           vec3 col = mix(uBack, uBelly, belly);
           // The back darkens towards the ridge.
@@ -283,11 +284,12 @@ function skinMaterial(p: SkinParams, length: number, uniforms: { uSwim: { value:
           float pleat = smoothstep(0.4, 0.5, abs(fract(ang * 11.0) - 0.5)) * belly * (1.0 - smoothstep(0.3, 0.48, s)) * smoothstep(0.04, 0.1, s);
           col = mix(col, col * vec3(0.8, 0.84, 0.9), pleat * 0.6);
           // Freckles and pale scars on the back (adult).
-          vec2 cell = floor(vec2(s * 46.0, ang * 7.0));
+          // A few pale scars and barnacle freckles, mostly on the head and shoulders.
+          vec2 cell = floor(vec2(s * 40.0, ang * 6.0));
           float h = wHash(cell);
-          vec2 inC = fract(vec2(s * 46.0, ang * 7.0)) - 0.5;
-          float dot1 = step(0.86, h) * (1.0 - smoothstep(0.12, 0.3, length(inC * vec2(1.0, 1.6)))) * (1.0 - belly);
-          col = mix(col, mix(uBack, uBelly, 0.55), dot1 * uMarks * 0.7);
+          vec2 inC = fract(vec2(s * 40.0, ang * 6.0)) - 0.5;
+          float dot1 = step(0.93, h) * (1.0 - smoothstep(0.08, 0.22, length(inC * vec2(1.0, 1.8)))) * (1.0 - belly) * (1.0 - smoothstep(0.25, 0.6, s));
+          col = mix(col, mix(uBack, uBelly, 0.45), dot1 * uMarks * 0.55);
           // Blush on the cheeks (calf).
           float cheek = exp(-pow((s - 0.13) / 0.04, 2.0)) * exp(-pow((up + 0.12) / 0.16, 2.0)) * smoothstep(0.3, 0.6, abs(vRing.y));
           col = mix(col, vec3(0.98, 0.62, 0.66), cheek * uBlush * 0.45);
@@ -301,6 +303,9 @@ function skinMaterial(p: SkinParams, length: number, uniforms: { uSwim: { value:
           vec3 nrm = normalize(vNormal);
           float rim = pow(1.0 - clamp(dot(nrm, normalize(vViewPosition)), 0.0, 1.0), 2.6);
           totalEmissiveRadiance += vec3(0.25, 0.62, 0.78) * rim * 0.32;
+          // Light bounced up from the sand onto the pale belly.
+          float under = smoothstep(0.0, -0.8, vRing.z);
+          totalEmissiveRadiance += uBelly * under * 0.1;
           // Surface light playing on the back.
           float facing = smoothstep(0.1, 0.9, vRing.z);
           float depth = clamp((vWorldPos.y - uFloorY) / max(1.0, uSurfaceY - uFloorY), 0.0, 1.0);
@@ -314,16 +319,17 @@ function skinMaterial(p: SkinParams, length: number, uniforms: { uSwim: { value:
 }
 
 function flukeShape(span: number, chord: number): Shape {
-  // Two lobes swept back from a central notch, the trailing edge gently scalloped; drawn in x (span) / y (chord, + forward).
+  // Two lobes swept back from the stock to pointed tips, a concave trailing edge with a notch in the middle;
+  // drawn in x (span) / y (chord, + forward, the stock at the origin).
   const s = new Shape();
   const h = span / 2;
-  s.moveTo(0, chord * 0.32);
-  s.bezierCurveTo(h * 0.35, chord * 0.42, h * 0.8, chord * 0.22, h, -chord * 0.42);
-  s.bezierCurveTo(h * 0.86, -chord * 0.5, h * 0.6, -chord * 0.36, h * 0.42, -chord * 0.5);
-  s.bezierCurveTo(h * 0.28, -chord * 0.58, h * 0.12, -chord * 0.4, 0, -chord * 0.22);
-  s.bezierCurveTo(-h * 0.12, -chord * 0.4, -h * 0.28, -chord * 0.58, -h * 0.42, -chord * 0.5);
-  s.bezierCurveTo(-h * 0.6, -chord * 0.36, -h * 0.86, -chord * 0.5, -h, -chord * 0.42);
-  s.bezierCurveTo(-h * 0.8, chord * 0.22, -h * 0.35, chord * 0.42, 0, chord * 0.32);
+  s.moveTo(0, chord * 0.18);
+  s.bezierCurveTo(h * 0.3, chord * 0.2, h * 0.7, chord * 0.02, h, -chord * 0.62);
+  s.bezierCurveTo(h * 0.82, -chord * 0.6, h * 0.55, -chord * 0.42, h * 0.32, -chord * 0.44);
+  s.bezierCurveTo(h * 0.16, -chord * 0.46, h * 0.06, -chord * 0.36, 0, -chord * 0.24);
+  s.bezierCurveTo(-h * 0.06, -chord * 0.36, -h * 0.16, -chord * 0.46, -h * 0.32, -chord * 0.44);
+  s.bezierCurveTo(-h * 0.55, -chord * 0.42, -h * 0.82, -chord * 0.6, -h, -chord * 0.62);
+  s.bezierCurveTo(-h * 0.7, chord * 0.02, -h * 0.3, chord * 0.2, 0, chord * 0.18);
   return s;
 }
 
@@ -394,12 +400,21 @@ export function buildWhale(o: WhaleOptions): WhaleRig {
 
   // ── Flukes, on a pivot at the tail stock ──
   const flukePivot = new Group();
-  const flukeGeo = keep(new ExtrudeGeometry(flukeShape(L * 0.46, L * 0.2), { depth: R * 0.07, bevelEnabled: true, bevelThickness: R * 0.03, bevelSize: R * 0.035, bevelSegments: 2, curveSegments: 18 }));
-  flukeGeo.translate(0, 0, -R * 0.035);
+  const flukeGeo = keep(new ExtrudeGeometry(flukeShape(L * 0.5, L * 0.22), { depth: R * 0.025, bevelEnabled: true, bevelThickness: R * 0.022, bevelSize: R * 0.02, bevelSegments: 3, curveSegments: 20 }));
+  flukeGeo.translate(0, 0, -R * 0.0125);
+  // The tips droop a little (flukes are never quite flat).
+  {
+    const fp = flukeGeo.attributes.position;
+    for (let i = 0; i < fp.count; i++) {
+      const x = fp.getX(i) / (L * 0.25);
+      fp.setZ(i, fp.getZ(i) + x * x * R * 0.12);
+    }
+    flukeGeo.computeVertexNormals();
+  }
   const flukes = new Mesh(flukeGeo, partMat);
-  // The shape is drawn in x/y: lay it flat (chord along -z, behind the stock).
-  flukes.rotation.x = -Math.PI / 2;
-  flukes.position.z = -L * 0.07;
+  // The shape is drawn in x/y with +y forward: lay it flat so forward stays +z (the lobes sweep back behind the stock).
+  flukes.rotation.x = Math.PI / 2;
+  flukes.position.z = -L * 0.02;
   flukePivot.add(flukes);
   gesture.add(flukePivot);
 
@@ -445,21 +460,21 @@ export function buildWhale(o: WhaleOptions): WhaleRig {
     const { h, drop } = section(sEye);
     const ang = -0.28;
     // Set into the head (only the front of the eye shows), just above the corner of the mouth.
-    g.position.set(side * Math.cos(ang) * r * 0.84, Math.sin(ang) * r * h * 0.92 + drop * R, nose - sEye * L);
+    g.position.set(side * Math.cos(ang) * r * 0.985, Math.sin(ang) * r * h * 0.97 + drop * R, nose - sEye * L);
     // Turned to look out of the side of the head, a little forward.
     g.rotation.y = side * 0.35;
     const ring = new Mesh(ball, ringMat);
-    ring.scale.set(eyeR * 0.6, eyeR * 1.05, eyeR * 1.3);
+    ring.scale.set(eyeR * 0.55, eyeR * 1.25, eyeR * 1.55);
     g.add(ring);
     const look = new Group();
     g.add(look);
     const iris = new Mesh(ball, irisMat);
-    iris.scale.set(eyeR * 0.8, eyeR * 0.95, eyeR * 1.1);
-    iris.position.set(side * eyeR * 0.3, 0, 0);
+    iris.scale.set(eyeR * 0.75, eyeR * 0.95, eyeR * 1.1);
+    iris.position.set(side * eyeR * 0.18, 0, 0);
     look.add(iris);
     const glint = new Mesh(ball, glintMat);
     glint.scale.setScalar(eyeR * 0.3);
-    glint.position.set(side * eyeR * 0.95, eyeR * 0.38, eyeR * 0.35);
+    glint.position.set(side * eyeR * 0.85, eyeR * 0.38, eyeR * 0.35);
     look.add(glint);
     const lid = new Mesh(ball, lidMat);
     lid.scale.set(eyeR * 1.0, eyeR * 1.2, eyeR * 1.5);
@@ -671,7 +686,7 @@ export function buildWhale(o: WhaleOptions): WhaleRig {
 /** The pair: a slate-blue adult with a few pale marks, and her lighter, round-eyed calf. */
 export function buildPodRigs(): WhaleRig[] {
   return [
-    buildWhale({ length: 2.75, radius: 0.5, back: '#34587f', belly: '#e6ecee', marks: 1, eye: 1, fin: 0.25, seed: 0.4 }),
+    buildWhale({ length: 2.75, radius: 0.5, back: '#365c86', belly: '#eef2f1', marks: 1, eye: 1.1, fin: 0.25, seed: 0.4 }),
     buildWhale({ length: 1.4, radius: 0.29, back: '#6b90b6', belly: '#f3f5f2', marks: 0, eye: 1.45, fin: 0.23, blush: true, seed: 1.7 }),
   ];
 }

@@ -68,6 +68,8 @@ export interface Tap {
   dx: number;
   dy: number;
   dz: number;
+  /** On the seabed: it gives sideways only (it cannot be pressed into the sand). */
+  grounded: boolean;
 }
 
 export interface WaterMotion {
@@ -220,7 +222,7 @@ export function tapOffset(tap: Tap, f: number, out: { x: number; y: number; z: n
   let d = 0;
   if (q > 0) d = 0.13 * Math.sin(Math.min(1, q / 0.5) * Math.PI) * Math.exp(-q * 2.5) * (1 - smoothstep(0.9, 1, f));
   out.x = tap.dx * d;
-  out.y = tap.dy * d;
+  out.y = tap.grounded ? 0 : tap.dy * d;
   out.z = tap.dz * d;
 }
 
@@ -436,21 +438,31 @@ function build(model: StageModel, k: number): WaterMotion | null {
     busy.add(b);
   }
 
-  // New nodes the step is about: the whale (then the calf) blows a bubble beside the place, it condenses into the
-  // node, and is nudged into its place.
-  for (const s of actors) {
+  // A step that makes or frees one or two nodes without naming them is still about them.
+  const born: number[] = [], freed: number[] = [];
+  for (let s = 0; s < n; s++) {
+    if (!from.present[s] && to.present[s]) born.push(s);
+    if (from.present[s] && !to.present[s]) freed.push(s);
+  }
+  const subjects = [...actors];
+  if (born.length > 0 && born.length <= 2) for (const s of born) if (!subjects.includes(s)) subjects.push(s);
+  if (freed.length > 0 && freed.length <= 2) for (const s of freed) if (!subjects.includes(s)) subjects.push(s);
+
+  // New nodes the step is about: the whale (then the calf) arrives beside the place and blows a bubble, it
+  // condenses into the node, and is nudged into its place.
+  for (const s of subjects) {
     if (busy.has(s) || from.present[s] || !to.present[s] || swimmers === 3) continue;
     const boxes = obstacles(model, from, to, new Set([s]));
     const start = birthPoint(model, to, s, boxes);
     const b: [number, number, number] = [to.pos[s * 3], to.pos[s * 3 + 1], to.pos[s * 3 + 2]];
     const mid = 0.22;
     const path = makePath(start, [start[0] + (b[0] - start[0]) * 0.3, start[1] + (b[1] - start[1]) * 0.3 + mid, start[2] + (b[2] - start[2]) * 0.3], [start[0] + (b[0] - start[0]) * 0.7, start[1] + (b[1] - start[1]) * 0.7 + mid * 0.5, start[2] + (b[2] - start[2]) * 0.7], b);
-    hauls.push(haulOf(s, take(), 'birth', path, 0.4, 0.86, 0.6, model, from, to, { grow: [0.16, 0.4], liftsOffFloor: false }));
+    hauls.push(haulOf(s, take(), 'birth', path, 0.5, 0.9, 0.6, model, from, to, { grow: [0.28, 0.5], liftsOffFloor: false }));
     busy.add(s);
   }
 
   // Removed nodes the step is about: nudged, they float up and away, dissolving into bubbles.
-  for (const s of actors) {
+  for (const s of subjects) {
     if (busy.has(s) || !from.present[s] || to.present[s] || swimmers === 3) continue;
     const a: [number, number, number] = [from.pos[s * 3], from.pos[s * 3 + 1], from.pos[s * 3 + 2]];
     // Up and away to the outside of the structure, drifting back into the blue.
@@ -458,7 +470,7 @@ function build(model: StageModel, k: number): WaterMotion | null {
     const away = a[0] >= (fp.minX + fp.maxX) / 2 ? 1 : -1;
     const b: [number, number, number] = [a[0] + away * 1.3, a[1] + 1.8, a[2] - 0.9];
     const path = makePath(a, [a[0] + away * 0.3, a[1] + 0.5, a[2] - 0.1], [a[0] + away * 1.0, a[1] + 1.4, a[2] - 0.6], b);
-    hauls.push(haulOf(s, take(), 'farewell', path, 0.3, 0.98, 0.32, model, from, to, { fade: [0.46, 0.9], landsOnFloor: false, bob: 0 }));
+    hauls.push(haulOf(s, take(), 'farewell', path, 0.42, 0.98, 0.32, model, from, to, { fade: [0.55, 0.92], landsOnFloor: false, bob: 0 }));
     busy.add(s);
   }
 
@@ -479,12 +491,19 @@ function build(model: StageModel, k: number): WaterMotion | null {
 
   // A write, an assignment, a link: a nudge of the nose (the node gives a little and comes back).
   if (['write', 'assign', 'link'].includes(frame.event.kind)) {
-    let who = 0;
+    // From the side (the swimmer seen side-on), from whichever side is the outside of the structure.
+    const fp = model.footprint();
+    const mid = (fp.minX + fp.maxX) / 2;
     for (const s of actors) {
-      if (busy.has(s) || !from.present[s] || !to.present[s] || who > 1) continue;
+      if (busy.has(s) || !from.present[s] || !to.present[s] || swimmers === 3) continue;
+      const who = take();
       const lift = to.pos[s * 3 + 1] - to.dims[s * 3 + 1] / 2 - model.floorY;
-      taps.push({ slot: s, who, at: 0.42 + who * 0.06, dx: who === 0 ? -0.35 : 0.35, dy: lift > 0.6 ? 0.2 : 0, dz: -0.92 });
-      who++;
+      const sx = to.pos[s * 3] < mid ? 1 : -1;
+      // On the seabed it presses the top corner from above and to the side (clear of the neighbours); in open water, level.
+      const grounded = lift < 0.6;
+      const dy = grounded ? -0.42 : 0.12;
+      const l = Math.hypot(0.85, dy, 0.38);
+      taps.push({ slot: s, who, at: 0.42 + who * 0.06, dx: (sx * 0.85) / l, dy: dy / l, dz: -0.38 / l, grounded });
     }
   }
 

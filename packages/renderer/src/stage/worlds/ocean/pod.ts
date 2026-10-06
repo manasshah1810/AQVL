@@ -189,6 +189,10 @@ function viewPoses(model: StageModel, r: RestFrame, s: number, who: number, side
     place(x + sd * (hx + 0.06), y + hy + size.radius * 0.55 + 0.05, z + hz * 0.3 + 0.12, Math.atan2(-sd, -0.28), -0.3);
   }
   for (const sd of [side, -side]) {
+    // The same, a little higher (clear of tall neighbours).
+    place(x + sd * (hx + 0.1), y + hy + size.radius * 0.55 + 0.5, z + hz * 0.3 + 0.2, Math.atan2(-sd, -0.32), -0.42);
+  }
+  for (const sd of [side, -side]) {
     // Hovering above and in front, looking down at it in three-quarter view (hides nothing below it).
     place(x + sd * Math.min(0.25, hx * 0.5), y + hy + size.radius * 0.8 + 0.08, z + hz * 0.6 + gap * 0.5, Math.atan2(-sd * 0.62, -0.78), -0.42);
   }
@@ -196,9 +200,8 @@ function viewPoses(model: StageModel, r: RestFrame, s: number, who: number, side
     // Level with it, in front and to one side (the viewer sees face and flank).
     place(x + sd * Math.min(0.3, hx * 0.6), y + Math.min(0.15, hy * 0.3), z + hz + gap, Math.atan2(-sd * 0.78, -0.62), -0.1);
   }
-  // Straight above it, nose down (nodes spread across the floor, crowded places).
-  place(x + side * 0.2, y + hy + 0.5, z + hz * 0.3 + 0.2, Math.atan2(-side * 0.5, -0.86), -0.7);
-  place(x, y + hy + 1.25, z + 0.2, Math.atan2(-side * 0.4, -0.9), -0.85);
+  // Above it, looking down (nodes spread across the floor, crowded places).
+  place(x + side * 0.25, y + hy + size.radius + 0.35, z + hz * 0.3 + 0.3, Math.atan2(-side * 0.7, -0.7), -0.5);
   return out;
 }
 
@@ -252,7 +255,7 @@ function bestPose(model: StageModel, cands: Pose[], who: number, boxes: Box[], p
     const top = view ? view.r.pos[view.slot * 3 + 1] + view.r.dims[view.slot * 3 + 1] / 2 : c.y;
     const high = Math.max(0, c.y - (top + 0.85));
     // Clear of everything first; then hiding as little as it can; then low, the earlier (nicer) candidates and the shorter trip.
-    const score = (clear > 0.05 ? 100 : clear * 10) - hides * 2.5 - high * 1.6 - i * 0.5 - travel * 0.06;
+    const score = (clear > 0.05 ? 100 : clear * 10) - hides * 1.6 - high * 1.4 - i * 0.35 - travel * 0.06;
     if (score > bestScore) {
       bestScore = score;
       best = c;
@@ -262,7 +265,7 @@ function bestPose(model: StageModel, cands: Pose[], who: number, boxes: Box[], p
 }
 
 /** The calf's place beside her mother: under her pectoral fin on the side away from the work, a little behind. */
-function escortPose(model: StageModel, mom: Pose, side: number, boxes: Box[]): Pose {
+function escortPose(model: StageModel, mom: Pose, side: number, boxes: Box[], view?: { r: RestFrame; slot: number }): Pose {
   const [hx, , hz] = headingOf(mom.yaw, 0);
   const rx = hz, rz = -hx; // right of the heading (in the horizontal plane)
   const cands: Pose[] = [];
@@ -271,8 +274,10 @@ function escortPose(model: StageModel, mom: Pose, side: number, boxes: Box[]): P
   }
   cands.push({ x: mom.x - hx * 0.4, y: mom.y + 0.85, z: mom.z - hz * 0.4 + 0.3, yaw: mom.yaw, pitch: -0.15 });
   cands.push({ x: mom.x - hx * 1.6, y: mom.y + 0.2, z: mom.z - hz * 1.6 + 0.6, yaw: mom.yaw, pitch: 0 });
+  // Further out to the side (clear of whatever she is working on).
+  for (const sd of [side, -side]) cands.push({ x: mom.x + rx * sd * 1.9 - hx * 0.3, y: mom.y + 0.25, z: mom.z + rz * sd * 1.9 - hz * 0.3 + 0.4, yaw: mom.yaw, pitch: 0 });
   for (const c of cands) c.y = Math.max(c.y, model.floorY + SWIMMERS[1].radius + 0.2);
-  return bestPose(model, cands, 1, boxes, null);
+  return bestPose(model, cands, 1, boxes, null, view);
 }
 
 // ── Stations, step by step ─────────────────────────────────────────────────
@@ -389,12 +394,21 @@ function computeEntry(model: StageModel, k: number, prev: Entry | undefined): En
     const p = placeOf(s);
     next[0] = stationFor(model, p, s, 0, sideOf(prevSt[0].x, p.pos[s * 3]), mood, -1, boxes, prevSt[0]);
     // The calf stays close to her mother, on the side away from the work.
-    const esc = escortPose(model, next[0], next[0].x < p.pos[s * 3] ? -1 : 1, [...boxes, ...bodyBoxes(next[0], 0)]);
+    const esc = escortPose(model, next[0], next[0].x < p.pos[s * 3] ? -1 : 1, [...boxes, ...bodyBoxes(next[0], 0)], { r: p, slot: s });
     next[1] = { ...esc, slot: s, glance: -1, mood: finale ? mood : 'escort' };
   } else {
-    // Nothing in particular: stay where they are, at ease (or celebrate the end).
-    for (let i = 0; i < POD_SIZE; i++) next[i] = { ...prevSt[i], mood: finale ? mood : 'hover', glance: -1 };
-    if (finale && next[0].slot < 0) next[0] = { ...next[0], mood };
+    // Nothing in particular: stay where they are, at ease.
+    for (let i = 0; i < POD_SIZE; i++) next[i] = { ...prevSt[i], mood: 'hover', glance: -1 };
+  }
+  if (finale && !failed) {
+    // The end: both rise over the middle of the structures, facing the viewer, and celebrate (a roll, a ring of bubbles).
+    const top = fp.top + 0.9;
+    const z = fp.maxZ + 0.2;
+    next[0] = { x: midX - 0.7, y: top + 0.55, z, yaw: Math.atan2(0.85, 0.55), pitch: 0.08, slot: next[0].slot, glance: -1, mood: 'celebrate' };
+    next[1] = { x: midX + 0.9, y: top + 0.2, z: z + 0.5, yaw: Math.atan2(-0.8, 0.6), pitch: 0.12, slot: next[1].slot, glance: -1, mood: 'celebrate' };
+  } else if (finale) {
+    // A run that ended in an error: they stay by the last node, puzzled.
+    for (let i = 0; i < POD_SIZE; i++) next[i] = { ...next[i], pitch: Math.max(-0.2, next[i].pitch), mood: 'confused' };
   }
 
   const water = waterMotionAt(model, k);
@@ -417,7 +431,8 @@ function computeEntry(model: StageModel, k: number, prev: Entry | undefined): En
       if (script[i] || !script[1 - i]) continue;
       const busy = script[1 - i]!;
       const end = busy[busy.length - 1].b;
-      const esc = escortPose(model, end, 1, [...boxes, ...bodyBoxes(end, 1 - i)]);
+      const slot = next[1 - i].slot;
+      const esc = escortPose(model, end, 1, [...boxes, ...bodyBoxes(end, 1 - i)], slot >= 0 && rest.present[slot] ? { r: rest, slot } : undefined);
       next[i] = i === 1 ? { ...esc, slot: next[1 - i].slot, glance: -1, mood: 'escort' } : next[i];
     }
   }
@@ -508,7 +523,15 @@ function scriptHaul(model: StageModel, to: RestFrame, h: Haul, start: Pose, boxe
   const dist = pathLength(start, via, c0);
   const need = dist / (MAX_SPEED[who] * D);
   const nominal = h.kind === 'birth' && h.grow ? Math.max(0.08, h.grow[0] - 0.02) : Math.max(0.06, h.t0 - 0.02);
-  const arrive = Math.min(h.t1 - 0.04, Math.max(nominal, need));
+  const arrive = Math.max(nominal, need);
+  if (arrive > h.t1 - 0.04) {
+    // Too far to get there in time: the node goes on its own (on the wake); the swimmer comes over to watch.
+    const watch = h.kind !== 'farewell' && to.present[h.slot] ? stationFor(model, to, h.slot, who, start.x < h.ctrl[9] ? -1 : 1, 'hover', -1, others, start) : c1;
+    const end = Math.min(0.97, Math.max(0.3, pathLength(start, undefined, watch) / (MAX_SPEED[who] * D)));
+    segs.push({ f0: 0, f1: end, kind: 'travel', a: start, b: watch, via: viaFor(model, start, watch, who, others), mood: 'hover' });
+    segs.push({ f0: end, f1: 1, kind: 'hold', a: watch, b: watch, mood: h.kind === 'farewell' ? 'farewell' : 'hover' });
+    return { segs, end: watch };
+  }
   segs.push({ f0: 0, f1: arrive, kind: 'travel', a: start, b: c0, via, mood: 'hover' });
   if (h.kind === 'birth' && h.grow && arrive < h.t0) segs.push({ f0: arrive, f1: h.t0, kind: 'hold', a: c0, b: c0, mood: 'blow' });
   else if (arrive < h.t0) segs.push({ f0: arrive, f1: h.t0, kind: 'hold', a: c0, b: c0, mood: 'push' });
@@ -542,7 +565,9 @@ function scriptTap(model: StageModel, t: Tap, start: Pose, rest: RestFrame, boxe
   const x = rest.pos[s * 3], y = rest.pos[s * 3 + 1], z = rest.pos[s * 3 + 2];
   const ext = 0.5 * (Math.abs(t.dx) * rest.dims[s * 3] + Math.abs(t.dy) * rest.dims[s * 3 + 1] + Math.abs(t.dz) * rest.dims[s * 3 + 2]) * 0.9 + 0.08;
   const reach = ext + size.nose;
-  const p: Pose = { x: x - t.dx * reach, y: Math.max(model.floorY + size.radius + 0.15, y - t.dy * reach), z: z - t.dz * reach, yaw: Math.atan2(t.dx, t.dz), pitch: Math.asin(t.dy) };
+  // The nose on the face (or, pressing from above, on the top corner) of the node.
+  const ny = t.dy < 0 ? y + rest.dims[s * 3 + 1] / 2 - 0.05 : y;
+  const p: Pose = { x: x - t.dx * reach, y: Math.max(model.floorY + size.radius + 0.15, ny - t.dy * size.nose), z: z - t.dz * reach, yaw: Math.atan2(t.dx, t.dz), pitch: Math.asin(t.dy) };
   const segs: Seg[] = [];
   const others = boxes.filter((b) => !(Math.abs(b.x - x) < 1e-6 && Math.abs(b.y - y) < 1e-6 && Math.abs(b.z - z) < 1e-6));
   const via = viaFor(model, start, p, who, others);
@@ -618,13 +643,13 @@ function freeAt(model: StageModel, k: number, i: number, a: PodStation, b: PodSt
   const vx = p2[0] - p1[0], vy = p2[1] - p1[1], vz = p2[2] - p1[2];
   const hl = Math.hypot(vx, vz);
   const travelYaw = Math.atan2(vx, vz);
-  const travelPitch = Math.atan2(vy, Math.max(1e-4, hl)) * 0.8;
+  const travelPitch = Math.max(-0.55, Math.min(0.55, Math.atan2(vy, Math.max(1e-4, hl)) * 0.8));
   const into = calm ? 0 : smoothstep(0, 0.18, u) * (1 - smoothstep(0.72, 1, u));
   const settle = smoothstep(0.6, 1, u);
   const baseYaw = lerpAngle(a.yaw, b.yaw, settle);
   const basePitch = lerp(a.pitch, b.pitch, settle);
   out.yaw = Math.hypot(vx, vy, vz) > 1e-5 ? lerpAngle(baseYaw, travelYaw, into) : baseYaw;
-  out.pitch = lerp(basePitch, Math.max(-0.9, Math.min(0.9, travelPitch)), into);
+  out.pitch = lerp(basePitch, travelPitch, into);
   return { moving, arrive: start + T * 0.85 };
 }
 
@@ -672,7 +697,7 @@ function scriptedAt(model: StageModel, segs: Seg[], f: number, D: number, who: n
     const basePitch = lerp(seg.a.pitch, seg.b.pitch, smoothstep(0.45, 1, u));
     const moving = Math.hypot(vx, vy, vz) > 1e-4;
     out.yaw = moving ? lerpAngle(baseYaw, Math.atan2(vx, vz), into) : baseYaw;
-    out.pitch = moving ? lerp(basePitch, Math.max(-0.9, Math.min(0.9, Math.atan2(vy, Math.max(1e-4, Math.hypot(vx, vz))) * 0.8)), into) : basePitch;
+    out.pitch = moving ? lerp(basePitch, Math.max(-0.55, Math.min(0.55, Math.atan2(vy, Math.max(1e-4, Math.hypot(vx, vz))) * 0.8)), into) : basePitch;
   } else if (seg.kind === 'contact' && seg.haul) {
     contactPose(model, seg.haul, f, who, out);
     m.contact = smoothstep(0, 0.12, u) * (1 - smoothstep(0.85, 1, u));
