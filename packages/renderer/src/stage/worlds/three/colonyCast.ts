@@ -2,7 +2,7 @@ import type { Persona } from '../idle';
 import type { PandaOptions, PandaPersonality } from './rigs';
 
 /**
- * Who lives in the grove besides the crew: three students, three old residents, and nine characters, each with a look
+ * Who lives in the grove besides the crew: three students and nine characters, each with a look
  * and a routine of its own (see `Persona` in idle.ts for what a routine is made of).
  */
 
@@ -28,10 +28,6 @@ export const MEMBERS: Member[] = [
   { name: 'Lin', role: 'student', scale: 1.14, bag: '#d4553f', book: '#2f6db5', personality: P(1.0, 1.15, 1.12, 1.2, 3.6, 0.96, 1.1, 1.2), persona: { bag: true, social: 0.9 } },
   { name: 'Tao', role: 'student', scale: 1.08, bag: '#3d7cc0', book: '#e0a43a', glasses: true, personality: P(1.0, 0.9, 1.0, 0.95, 4.8, 1.02, 1.08, 0.9), persona: { bag: true, social: 0.9, likes: { adjust: 1.2 } } },
   { name: 'Yuki', role: 'student', scale: 1.02, bag: '#e3b43a', book: '#8a4fb0', personality: P(1.0, 1.3, 1.22, 1.35, 3.1, 0.94, 1.12, 1.4), persona: { bag: true, social: 0.9 } },
-  // The old residents: a big lazy one with a cane, its cub, an old one with a lantern.
-  { name: 'Dumpling', role: 'resident', scale: 1.38, prop: 'bamboo', personality: P(1.06, 0.85, 0.82, 0.75, 5.2, 1.16, 0.98, 0.75), persona: { social: 0.6, likes: { snack: 1.6 } } },
-  { name: 'Bean', role: 'resident', scale: 0.86, personality: P(1.0, 1.35, 1.3, 1.45, 2.9, 1.0, 1.15, 1.5), persona: { social: 0.9 } },
-  { name: 'Grandpa Wu', role: 'resident', scale: 1.36, lamp: true, personality: P(1.0, 0.8, 0.78, 0.6, 5.6, 1.08, 0.96, 0.7), persona: { social: 0.6, likes: { stroll: 1.5, nook: 1.4 } } },
   // Yash: muscular. The gym is his life (the yard, the bar, the log, the barbell), and a nap after.
   {
     name: 'Yash',

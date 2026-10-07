@@ -1,5 +1,5 @@
 /**
- * The grove's colony: seventeen pandas (the crew, three students, three old residents and nine characters with
+ * The grove's colony: fourteen pandas (the crew, three students and nine characters with
  * routines of their own) who live there, not just stand there. Students come and sit in front of a running
  * visualisation and take notes; everyone else gets on with their own business, never two of them doing the same thing
  * at once; the play things get used; every noon the musician sings by the fire and most of the colony comes to listen
@@ -120,8 +120,8 @@ function simulate(model: StageModel, seconds: number, opts: SimOptions = {}) {
 const dist = (a: IdleOut, b: IdleOut) => Math.hypot(a.x - b.x, a.z - b.z);
 
 describe('the colony', () => {
-  it('has fifteen pandas besides the crew: three students with a backpack and a book, three old residents, nine characters', () => {
-    expect(MEMBERS.length).toBe(15);
+  it('has twelve pandas besides the crew: three students with a backpack and a book, and nine characters', () => {
+    expect(MEMBERS.length).toBe(12);
     expect(MEMBERS.filter((m) => m.role === 'student').length).toBe(3);
     for (const name of ['Yash', 'Manas', 'Manan', 'Tirrth', 'Aastha', 'Siddhant', 'Bansaree', 'Dishi', 'Deep']) expect(idx(name), name).toBeGreaterThanOrEqual(0);
     const student = buildPanda({ prop: null, bag: '#d4553f', book: '#2f6db5', glasses: true });
@@ -252,13 +252,10 @@ describe('night', () => {
       });
     }
     const nightActs = new Set<string>();
-    let lamp = 0;
     for (const fr of frames) {
       for (const o of fr.outs) if (['doze', 'stargaze', 'chase', 'yawn', 'type', 'guitar'].includes(o.act)) nightActs.add(o.act);
-      if (fr.outs[idx('Grandpa Wu')].lamp > 0.5) lamp++;
     }
     expect(nightActs.size).toBeGreaterThan(1);
-    expect(lamp).toBeGreaterThan(0);
   });
 
   it('the students take their bags off before they sleep and put them back on in the morning; a sleeper never wears one', async () => {
@@ -375,7 +372,7 @@ describe('characters and each other', () => {
   it('Siddhant is often near Aastha, but not glued to her', async () => {
     const model = await modelOf('sorting-bubble-sort');
     const { frames } = simulate(model, 1500);
-    const sid = idx('Siddhant'), aa = idx('Aastha'), others = [idx('Dumpling'), idx('Bean'), idx('Deep')];
+    const sid = idx('Siddhant'), aa = idx('Aastha'), others = [idx('Lin'), idx('Yuki'), idx('Deep')];
     const mean = (j: number) => frames.reduce((a, fr) => a + dist(fr.outs[sid], fr.outs[j]), 0) / frames.length;
     const toAastha = mean(aa);
     for (const o of others) expect(toAastha).toBeLessThan(mean(o));

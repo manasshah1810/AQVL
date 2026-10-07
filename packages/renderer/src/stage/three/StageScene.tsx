@@ -17,6 +17,7 @@ import { NO_SHADOW_LAYER, StageEnvironment } from './StageEnvironment';
 import { NodeShadows } from './NodeShadows';
 import { FrameProbe, QUALITY, type QualityTier } from './quality';
 import { WorldLayer } from '../worlds/three/WorldLayer';
+import { PandaNav, clampView, groveNav } from '../worlds/three/PandaNav';
 
 /** A long-ish lens: little perspective distortion, so rows stay rows and columns stay upright. */
 export const STAGE_FOV = 26;
@@ -47,6 +48,8 @@ export function StageScene({ model, playhead, tier, calm, follow, fonts, phase, 
   const sample = useMemo(() => new StageSample(model.slots.length, model.edgeSlots.length), [model]);
   const bounds = useMemo(() => model.sceneBounds(), [model]);
   const controls = useRef<OrbitControlsImpl>(null);
+  // The pandas' grove is large: it gets ground-plane panning, a walk from the keyboard, and limits that match its size.
+  const grove = model.world === 'panda' ? groveNav(model) : null;
   const camera = useThree((s) => s.camera) as PerspectiveCamera;
   const size = useThree((s) => s.size);
   const invalidate = useThree((s) => s.invalidate);
@@ -149,14 +152,16 @@ export function StageScene({ model, playhead, tier, calm, follow, fonts, phase, 
       <NodeShadows model={model} driver={driver} color={model.palette.shadow} opacity={model.palette.shadowOpacity} />
       <HaloRings driver={driver} />
       <LabelLayer model={model} driver={driver} fonts={fonts} />
+      {grove && <PandaNav model={model} controls={controls} onTakeOver={() => follow && onFollowChange(false)} />}
       <OrbitControls
         ref={controls}
         makeDefault
         enableDamping
-        dampingFactor={0.08}
-        minDistance={2}
-        maxDistance={260}
-        maxPolarAngle={Math.PI / 2 - 0.12}
+        dampingFactor={grove ? 0.1 : 0.08}
+        minDistance={grove ? 3 : 2}
+        maxDistance={grove ? grove.maxDistance : 260}
+        maxPolarAngle={Math.PI / 2 - (grove ? 0.05 : 0.12)}
+        {...(grove ? { screenSpacePanning: false, panSpeed: 1.6, zoomSpeed: 1.2, rotateSpeed: 0.8 } : {})}
         onStart={() => {
           gesture.current = { active: true, moved: false };
         }}
@@ -164,6 +169,7 @@ export function StageScene({ model, playhead, tier, calm, follow, fonts, phase, 
           // A click (on a node, an animal, the scenery) keeps the camera following; only a real drag takes over.
           const g = gesture.current;
           if (g.active && g.moved && follow) onFollowChange(false);
+          if (grove && controls.current) clampView(grove, camera, controls.current);
         }}
         onEnd={() => {
           gesture.current.active = false;
