@@ -51,10 +51,49 @@ export interface RigInput {
   climb?: { weight: number; phase: number; slope: number };
   /** 0..1: arms round a ball it is carrying (pandas). */
   carry?: number;
+  /** 0..1: sitting on its haunches, held across a run of seated acts so it does not bob up between them (pandas). */
+  seat?: number;
+  /** 0..1: a paper lantern carried in the right paw, lit (pandas that have one). */
+  lamp?: number;
 }
 
 /** The small things an animal does when nothing is asked of it. */
-export type IdleAct = 'none' | 'look' | 'preen' | 'eat' | 'shake' | 'play' | 'wave' | 'bow' | 'sniff' | 'sit' | 'chew' | 'scratch' | 'stretch' | 'drink';
+export type IdleAct =
+  | 'none'
+  | 'look'
+  | 'preen'
+  | 'eat'
+  | 'shake'
+  | 'play'
+  | 'wave'
+  | 'bow'
+  | 'sniff'
+  | 'sit'
+  | 'chew'
+  | 'scratch'
+  | 'stretch'
+  | 'drink'
+  // Pandas, round the grove at all hours: asleep on its side, nodding off where it sits, lying back to look at the
+  // stars, a big yawn, lolling on its back with its feet in its paws, a little dance, swiping at fireflies, a ride down
+  // the slide and on the swing, and the students' acts (notes in an open book, chin in paw, clapping, a paw up).
+  | 'sleep'
+  | 'doze'
+  | 'stargaze'
+  | 'yawn'
+  | 'lounge'
+  | 'dance'
+  | 'chase'
+  | 'slide'
+  | 'swing'
+  | 'notes'
+  | 'ponder'
+  | 'clap'
+  | 'raise';
+
+/** Acts a panda does sitting on its haunches (it stays down from one to the next). */
+export const SEATED_ACTS: ReadonlySet<IdleAct> = new Set<IdleAct>(['sit', 'chew', 'doze', 'stargaze', 'notes', 'ponder', 'clap', 'raise', 'slide', 'swing']);
+/** How fast a swing goes back and forth (radians of its swing per second). */
+export const SWING_RATE = 2.35;
 
 export interface Rig {
   root: Group;
@@ -656,6 +695,12 @@ export interface PandaOptions {
   scale?: number;
   cub?: boolean;
   personality?: PandaPersonality;
+  /** A student's things: a backpack of this colour, a book with this cover, round glasses. */
+  bag?: string;
+  book?: string;
+  glasses?: boolean;
+  /** Carries a paper lantern about at night. */
+  lamp?: boolean;
 }
 
 /** What an idle action asks of a panda beyond the shared joints. */
@@ -672,9 +717,19 @@ interface PandaExtras {
   yawn: number;
   /** Muzzle down to the water. */
   drink: number;
+  /** Lying down on its side (asleep) and on its back (lolling about). */
+  lie: number;
+  back: number;
+  /** Eyes shut (asleep, dozing). */
+  shut: number;
+  /** An open book in the lap, and the pencil going in it. */
+  book: number;
+  write: number;
+  /** Legs kicking on the swing (-1..1). */
+  kick: number;
 }
 
-function pandaIdle(act: IdleAct, t: number, j: Joints, x: PandaExtras): void {
+function pandaIdle(act: IdleAct, t: number, j: Joints, x: PandaExtras, seed: number): void {
   switch (act) {
     case 'sit': {
       // Plops down, looks about slowly, a little sway.
@@ -779,6 +834,179 @@ function pandaIdle(act: IdleAct, t: number, j: Joints, x: PandaExtras): void {
       j.headYaw += 0.5 * w * Math.sin(t * 36);
       j.squash += 0.04 * w * Math.sin(t * 44);
       j.headTilt += 0.25 * w * Math.sin(t * 29);
+      break;
+    }
+    case 'sleep': {
+      // Lies down on its side, curls up a little, and sleeps: slow deep breaths, an ear twitch, now and then a paw moves.
+      const w = smoothstepJ(0, 0.9, t);
+      const breath = Math.sin(t * 1.25 + seed * 3);
+      x.lie = w;
+      x.shut = smoothstepJ(0.3, 0.8, t);
+      j.squash += 0.035 * breath * w;
+      j.headPitch += 0.25 * w;
+      j.headTilt += 0.12 * w;
+      j.reachL += 0.8 * w + 0.15 * w * Math.max(0, Math.sin(t * 0.21 + seed)) ** 8;
+      j.reachR += 0.6 * w;
+      j.raiseL -= 0.1 * w;
+      j.raiseR -= 0.1 * w;
+      break;
+    }
+    case 'doze': {
+      // Sitting up, nodding off: the head sinks slowly, jerks back up, sinks again.
+      const cycle = (t + seed * 1.7) % 4.6;
+      const sink = smoothstepJ(0, 3.8, cycle) * (1 - smoothstepJ(3.9, 4.1, cycle));
+      x.shut = 0.55 + 0.45 * sink;
+      j.headPitch += 0.15 + 0.45 * sink;
+      j.headTilt += 0.18 * sink * Math.sin(seed * 5);
+      j.lean += 0.1 * sink;
+      j.squash += 0.02 * Math.sin(t * 1.5 + seed);
+      break;
+    }
+    case 'stargaze': {
+      // Leans back on its paws and looks up at the sky; every so often a paw points at something up there.
+      const w = smoothstepJ(0, 1.2, t);
+      const point = smoothstepJ(0.2, 0.6, Math.sin(t * 0.33 + seed * 2)) * w;
+      j.lean -= 0.22 * w;
+      j.headPitch -= 0.75 * w;
+      j.headYaw += 0.35 * Math.sin(t * 0.27 + seed * 4) * w;
+      j.headTilt += 0.12 * Math.sin(t * 0.41 + seed) * w;
+      j.raiseR += 0.4 * w;
+      j.raiseL += 0.4 * w * (1 - point);
+      j.reachL += 2.6 * point;
+      j.raiseL += 0.25 * point;
+      break;
+    }
+    case 'yawn': {
+      // A great yawn, arms halfway up, then a paw rubs an eye.
+      const up = smoothstepJ(0, 0.7, t) * (1 - smoothstepJ(1.8, 2.3, t));
+      const rub = smoothstepJ(2.1, 2.4, t) * (1 - smoothstepJ(3.2, 3.6, t));
+      x.yawn = up;
+      x.shut = Math.max(up * 0.9, rub);
+      j.reachL += 1.4 * up;
+      j.reachR += 1.4 * up + 2.1 * rub;
+      j.raiseL += 0.5 * up;
+      j.raiseR += 0.5 * up - 0.2 * rub;
+      j.lean -= 0.12 * up;
+      j.headPitch -= 0.35 * up;
+      j.headTilt += 0.2 * rub * Math.sin(t * 9);
+      break;
+    }
+    case 'lounge': {
+      // Flops onto its back and plays with its feet, rocking side to side.
+      const w = smoothstepJ(0, 0.7, t);
+      x.back = w;
+      j.reachL += 1.6 * w + 0.25 * Math.sin(t * 2.6 + seed) * w;
+      j.reachR += 1.6 * w + 0.25 * Math.sin(t * 2.6 + seed + 1.4) * w;
+      j.raiseL += 0.1 * w;
+      j.raiseR += 0.1 * w;
+      j.headPitch += 0.35 * w;
+      j.headYaw += 0.3 * Math.sin(t * 0.7 + seed) * w;
+      break;
+    }
+    case 'dance': {
+      // A happy little dance: hops from foot to foot, arms up and waving in turn, a wiggle.
+      const w = smoothstepJ(0, 0.3, t);
+      const beat = t * (5.4 + (seed % 1) * 1.2);
+      j.hop += 0.08 * Math.abs(Math.sin(beat)) * w;
+      j.raiseL += (1.3 + 0.5 * Math.sin(beat)) * w;
+      j.raiseR += (1.3 - 0.5 * Math.sin(beat)) * w;
+      j.reachL += 0.5 * Math.max(0, Math.sin(beat * 0.5)) * w;
+      j.reachR += 0.5 * Math.max(0, -Math.sin(beat * 0.5)) * w;
+      j.headTilt += 0.22 * Math.sin(beat) * w;
+      j.squash += 0.03 * Math.sin(beat * 2) * w;
+      break;
+    }
+    case 'chase': {
+      // Fireflies: looks up, swipes at one with a paw, then the other, hopping after them.
+      const w = smoothstepJ(0, 0.3, t);
+      const ph = t * 3.1 + seed * 2;
+      const left = Math.max(0, Math.sin(ph));
+      const right = Math.max(0, -Math.sin(ph));
+      j.reachL += (1.0 + 1.6 * left) * w;
+      j.reachR += (1.0 + 1.6 * right) * w;
+      j.raiseL += 0.3 * w;
+      j.raiseR += 0.3 * w;
+      j.headPitch -= (0.45 + 0.15 * Math.sin(ph * 0.7)) * w;
+      j.headYaw += 0.35 * Math.sin(ph * 0.5) * w;
+      j.hop += 0.1 * Math.max(0, Math.sin(ph * 2)) ** 2 * w;
+      break;
+    }
+    case 'slide': {
+      // Down the slide: leaning back, both arms in the air.
+      const w = smoothstepJ(0, 0.25, t);
+      j.raiseL += 1.45 * w;
+      j.raiseR += 1.45 * w;
+      j.reachL += 0.9 * w;
+      j.reachR += 0.9 * w;
+      j.lean -= 0.3 * w;
+      j.headPitch -= 0.15 * w;
+      x.yawn = 0.55 * w;
+      break;
+    }
+    case 'swing': {
+      // On the swing: paws up on the ropes, legs out on the way forward and tucked on the way back.
+      const w = smoothstepJ(0, 0.4, t);
+      const ph = Math.cos(t * SWING_RATE);
+      j.reachL += 2.45 * w;
+      j.reachR += 2.45 * w;
+      j.raiseL += 0.05 * w;
+      j.raiseR += 0.05 * w;
+      j.lean -= 0.12 * ph * w;
+      j.headPitch -= 0.12 * ph * w;
+      x.kick = ph * w;
+      break;
+    }
+    case 'notes': {
+      // A student at the lesson: the book open in its lap, writing; it looks up at the board every few lines, nods, writes again.
+      const w = smoothstepJ(0, 0.6, t);
+      const cycle = (t + seed * 2.9) % (5.2 + (seed % 1.3));
+      const up = smoothstepJ(3.2, 3.6, cycle) * (1 - smoothstepJ(4.6, 5.0, cycle));
+      x.book = w;
+      x.write = w * (1 - up);
+      j.headPitch += (0.38 * (1 - up) - 0.12 * up) * w;
+      j.headPitch += 0.07 * Math.sin(cycle * 6) * up;
+      j.headYaw += 0.08 * Math.sin(t * 0.8 + seed) * w;
+      j.reachL += 0.85 * w;
+      j.raiseL -= 0.45 * w;
+      j.reachR += (0.95 + 0.12 * Math.sin(t * 13 + seed)) * w * (1 - up) + 0.6 * up * w;
+      j.raiseR -= (0.5 + 0.06 * Math.sin(t * 9.1)) * w;
+      break;
+    }
+    case 'ponder': {
+      // Chin in paw, head on one side, thinking it over.
+      const w = smoothstepJ(0, 0.6, t);
+      x.book = w * 0.9;
+      j.reachR += 2.05 * w;
+      j.raiseR -= 0.8 * w;
+      j.reachL += 0.8 * w;
+      j.raiseL -= 0.3 * w;
+      j.headTilt += (0.22 + 0.05 * Math.sin(t * 0.9 + seed)) * w;
+      j.headPitch -= 0.08 * w;
+      j.headYaw += 0.1 * Math.sin(t * 0.5) * w;
+      break;
+    }
+    case 'clap': {
+      // Claps, paws together in front, bouncing where it sits.
+      const w = smoothstepJ(0, 0.25, t);
+      const c = 0.5 + 0.5 * Math.sin(t * (13 + (seed % 1) * 3));
+      j.reachL += 1.3 * w;
+      j.reachR += 1.3 * w;
+      j.raiseL += (-1.2 + 0.55 * c) * w;
+      j.raiseR += (-1.2 + 0.55 * c) * w;
+      j.hop += 0.03 * c * w;
+      j.headPitch -= 0.1 * w;
+      j.headTilt += 0.1 * Math.sin(t * 3) * w;
+      break;
+    }
+    case 'raise': {
+      // A paw straight up: it has a question.
+      const w = smoothstepJ(0, 0.35, t) * (1 - smoothstepJ(2.0, 2.4, t));
+      x.book = 0.9;
+      j.reachL += 2.9 * w;
+      j.raiseL += (0.15 + 0.08 * Math.sin(t * 8)) * w;
+      j.reachR += 0.9;
+      j.headPitch -= 0.15 * w;
+      j.lean -= 0.05 * w;
       break;
     }
     default:
@@ -904,10 +1132,99 @@ export function buildPanda(options: PandaOptions): Rig {
     b.blob(head, b.mat('#e86f5a', 0.6), 0.03, 0.03, 0.03, 0, 0.215, 0.03);
   }
 
+  // A student's things: a backpack with a flap and two straps, a book (carried shut under the arm, open in the lap
+  // at a lesson, with a pencil), and round glasses.
+  if (options.bag) {
+    const bagMat = b.mat(options.bag, 0.75);
+    const flapMat = b.mat(new Color(options.bag).multiplyScalar(0.78).getStyle(), 0.75);
+    const bag = new Group();
+    bag.position.set(0, 0.02, -0.29);
+    bodyRoot.add(bag);
+    b.blob(bag, bagMat, 0.2, 0.21, 0.1, 0, 0, 0);
+    b.blob(bag, flapMat, 0.19, 0.09, 0.07, 0, 0.12, -0.035);
+    b.blob(bag, b.mat('#f2d16b', 0.4), 0.025, 0.025, 0.02, 0, 0.07, -0.1);
+    b.blob(bag, flapMat, 0.13, 0.08, 0.05, 0, -0.09, -0.08);
+    // Straps over the shoulders (on the black band), down to the armpits.
+    for (const sx of [-1, 1]) {
+      const strap = b.blob(bodyRoot, flapMat, 0.026, 0.1, 0.022, sx * 0.17, 0.16, 0.24);
+      strap.rotation.x = -0.55;
+      strap.rotation.z = sx * 0.2;
+      b.blob(bodyRoot, flapMat, 0.024, 0.024, 0.08, sx * 0.19, 0.24, 0.08);
+    }
+  }
+  let bookShut: Group | null = null;
+  let bookOpen: Group | null = null;
+  let pencil: Mesh | null = null;
+  if (options.book) {
+    const cover = b.mat(options.book, 0.6);
+    const paper = b.mat('#fbf6e8', 0.85);
+    const boxGeo = b.keep(new CylinderGeometry(0.5, 0.5, 1, 4, 1));
+    boxGeo.rotateY(Math.PI / 4);
+    const box = (parent: Object3D, m: Material, w: number, h: number, d: number, x: number, y: number, z: number) => {
+      const mesh = new Mesh(boxGeo, m);
+      mesh.scale.set(w * 1.414, h, d * 1.414);
+      mesh.position.set(x, y, z);
+      parent.add(mesh);
+      return mesh;
+    };
+    bookShut = new Group();
+    bookShut.position.set(0.04, -0.3, 0.06);
+    bookShut.rotation.set(0.2, 0.2, 0.1);
+    arms[0].add(bookShut);
+    box(bookShut, cover, 0.05, 0.22, 0.17, 0, 0, 0);
+    box(bookShut, paper, 0.04, 0.2, 0.16, 0.003, 0, 0.012);
+    bookOpen = new Group();
+    bookOpen.visible = false;
+    bodyRoot.add(bookOpen);
+    for (const sx of [-1, 1]) {
+      const half = new Group();
+      half.rotation.z = sx * 0.22;
+      bookOpen.add(half);
+      box(half, cover, 0.15, 0.012, 0.2, sx * 0.075, 0, 0);
+      box(half, paper, 0.14, 0.012, 0.19, sx * 0.07, 0.011, 0);
+      for (let l = 0; l < 4; l++) box(half, b.mat('#9aa3b5', 0.9), 0.1, 0.003, 0.006, sx * 0.075, 0.019, -0.06 + l * 0.04);
+    }
+    pencil = new Mesh(b.keep(new CylinderGeometry(0.008, 0.008, 0.14, 6)), b.mat('#f2b632', 0.5));
+    pencil.position.set(0.0, -0.33, 0.07);
+    pencil.rotation.x = 1.0;
+    pencil.visible = false;
+    arms[1].add(pencil);
+  }
+  if (options.glasses) {
+    const rim = b.mat('#3b2f2a', 0.4);
+    const ring = b.keep(new TorusGeometry(0.042, 0.007, 6, 18));
+    for (const sx of [-1, 1]) {
+      const g = new Mesh(ring, rim);
+      g.position.set(sx * 0.086, 0.025, 0.232);
+      head.add(g);
+    }
+    b.blob(head, rim, 0.022, 0.006, 0.006, 0, 0.032, 0.238);
+  }
+  // A paper lantern on a short cane, carried in the right paw on a night walk.
+  let lamp: Group | null = null;
+  let lampGlow: MeshStandardMaterial | null = null;
+  if (options.lamp) {
+    lamp = new Group();
+    lamp.position.set(-0.02, -0.33, 0.08);
+    lamp.visible = false;
+    arms[1].add(lamp);
+    const cane = new Mesh(b.keep(new CylinderGeometry(0.008, 0.008, 0.3, 6)), caneNode);
+    cane.rotation.x = Math.PI / 2;
+    cane.position.z = 0.12;
+    lamp.add(cane);
+    const hanger = new Group();
+    hanger.position.z = 0.26;
+    lamp.add(hanger);
+    lampGlow = b.mat('#c2412d', 0.7, { emissive: new Color('#ffb04a'), emissiveIntensity: 1.6 });
+    b.blob(hanger, lampGlow, 0.065, 0.08, 0.065, 0, -0.1, 0);
+    b.blob(hanger, black, 0.04, 0.012, 0.04, 0, -0.02, 0);
+    b.blob(hanger, black, 0.04, 0.012, 0.04, 0, -0.18, 0);
+  }
+
   root.scale.setScalar((options.scale ?? (cub ? 0.62 : 1)) * P.size);
   const j = blank();
   const idleJ = blank();
-  const ex: PandaExtras = { seat: 0, snack: 0, chew: 0, scratch: 0, stretch: 0, yawn: 0, drink: 0 };
+  const ex: PandaExtras = { seat: 0, snack: 0, chew: 0, scratch: 0, stretch: 0, yawn: 0, drink: 0, lie: 0, back: 0, shut: 0, book: 0, write: 0, kick: 0 };
   let lastTime = 0;
   let earTwitch = { at: -10, side: 1 };
 
@@ -923,12 +1240,12 @@ export function buildPanda(options: PandaOptions): Rig {
       addWeighted(j, poseJoints(input.prevPose, input.poseTime + 2, side, input.lookLocal, 'panda'), input.prevWeight);
       addWeighted(j, poseJoints(input.pose, input.poseTime, side, input.lookLocal, 'panda'), input.poseWeight);
       ambient(j, input.time, input.seed);
-      ex.seat = ex.snack = ex.chew = ex.scratch = ex.stretch = ex.yawn = ex.drink = 0;
+      ex.seat = ex.snack = ex.chew = ex.scratch = ex.stretch = ex.yawn = ex.drink = ex.lie = ex.back = ex.shut = ex.book = ex.write = ex.kick = 0;
       if (input.idle && input.idle.weight > 0 && input.idle.act !== 'none') {
         Object.assign(idleJ, NEUTRAL);
         idleJ.raiseL = idleJ.raiseR = 0.25;
         const px = { ...ex };
-        pandaIdle(input.idle.act, input.idle.t, idleJ, px);
+        pandaIdle(input.idle.act, input.idle.t, idleJ, px, input.seed);
         addWeighted(j, idleJ, input.idle.weight);
         for (const key of Object.keys(ex) as (keyof PandaExtras)[]) ex[key] = px[key] * input.idle.weight;
       }
@@ -943,7 +1260,7 @@ export function buildPanda(options: PandaOptions): Rig {
       let bob = 0;
       let stepPhase = 0;
       let stepAmp = 0;
-      let seat = ex.seat;
+      let seat = Math.max(ex.seat, input.seat ?? 0);
       let flail = 0;
       let climbLean = 0;
       let lift = 0;
@@ -1063,6 +1380,19 @@ export function buildPanda(options: PandaOptions): Rig {
         j.hop += 0.12 * Math.sin(Math.PI * r);
       }
 
+      // A lantern held out in front on a night walk.
+      const lampW = lamp ? (input.lamp ?? 0) : 0;
+      if (lampW > 0) {
+        j.reachR = j.reachR * (1 - lampW) + 0.95 * lampW;
+        j.raiseR = j.raiseR * (1 - lampW) + 0.12 * lampW;
+      }
+
+      // Lying down: on its side to sleep (each panda has its own side), on its back to loll about.
+      const sleepSide = Math.sin(input.seed * 12.9898) > 0 ? 1 : -1;
+      rock += sleepSide * 1.32 * ex.lie;
+      roll -= 1.2 * ex.back;
+      j.lean += 0.25 * ex.lie;
+
       // Curled into a ball: head tucked, limbs in.
       const k = curl;
       j.headPitch = j.headPitch * (1 - k) + 0.65 * k;
@@ -1092,7 +1422,7 @@ export function buildPanda(options: PandaOptions): Rig {
       ears[0].rotation.z = (0.12 + flop + earLag * 0.5 + (earTwitch.side < 0 ? flick * 0.5 : 0)) * P.ear;
       ears[1].rotation.z = (-0.12 - flop - earLag * 0.5 - (earTwitch.side > 0 ? flick * 0.5 : 0)) * P.ear;
 
-      center.position.set(sway, 0.32 + j.hop + bob + (ROLL_RADIUS - 0.32 + 0.04) * k - sitDrop + lift, 0);
+      center.position.set(sway, 0.32 + j.hop + bob + (ROLL_RADIUS - 0.32 + 0.04) * k - sitDrop + lift - 0.03 * ex.lie - 0.02 * ex.back, 0);
       center.rotation.set(roll, 0, rock);
       lean.rotation.x = j.lean + climbLean - 0.28 * seat + 0.12 * ex.stretch * 0 - 0.1 * flail;
       bodyRoot.rotation.y = twist;
@@ -1115,7 +1445,9 @@ export function buildPanda(options: PandaOptions): Rig {
           -0.22 + up * 0.065 + (climbing ? 0.07 * Math.max(0, sp) * stepAmp : 0) + seat * 0.03 + 0.05 * flail * Math.sin(input.gaitPhase * 30 + i * 2),
           0.12 + fwd * 0.1 + (climbing ? 0.05 * sp : 0) + seat * 0.2,
         );
-        legs[i].rotation.x = -up * 0.4 - 0.9 * k - seat * 1.15 + (climbing ? -0.5 * Math.max(0, sp) : 0);
+        const kick = ex.kick * (i === 0 ? 1 : 0.85);
+        const paddle = ex.back * (0.9 + 0.35 * Math.sin(input.time * 2.6 + input.seed + i * 1.4));
+        legs[i].rotation.x = -up * 0.4 - 0.9 * k - seat * 1.15 + (climbing ? -0.5 * Math.max(0, sp) : 0) - 0.55 * Math.max(0, kick) * seat + 0.45 * Math.max(0, -kick) * seat - 0.7 * ex.lie - paddle;
       }
 
       // Sitting back with the legs forward lowers the tail and tips the body.
@@ -1135,9 +1467,33 @@ export function buildPanda(options: PandaOptions): Rig {
       muzzle.scale.set(0.095 * (1 + 0.12 * work), 0.068 * (1 + 0.3 * work + 0.55 * ex.yawn), 0.07);
       mouth.scale.set(0.05, 0.001 + 0.045 * ex.yawn + 0.012 * work, 0.04);
 
-      // Blink every few seconds (each panda at its own rhythm); eyes shut for a yawn and a good scratch.
+      // Blink every few seconds (each panda at its own rhythm); eyes shut for a yawn and a good scratch, and in sleep.
       const blink = (input.time + input.seed * 2.3) % P.blink < 0.13 || ex.yawn > 0.5 || ex.scratch > 0.6 ? 0.12 : 1;
-      for (const e of eyes) e.scale.y = 0.016 * blink;
+      for (const e of eyes) e.scale.y = 0.016 * Math.min(blink, 1 - 0.88 * ex.shut);
+
+      // A student's book: shut under the arm, open in the lap at a lesson (with the pencil going).
+      if (bookOpen && bookShut) {
+        bookOpen.visible = ex.book > 0.05;
+        // Put down while it sits, and out of the paw when the arm is up (clapping, swinging, waving).
+        bookShut.visible = !bookOpen.visible && ex.lie < 0.3 && ex.back < 0.3 && k < 0.3 && seat < 0.4 && j.reachL < 1.1 && j.raiseL < 0.9;
+        if (bookOpen.visible) {
+          const o = ex.book;
+          bookOpen.position.set(0, -0.05 + 0.1 * o, 0.28 + 0.06 * o);
+          bookOpen.rotation.set(-0.55 - 0.3 * (1 - o), 0, 0.03 * Math.sin(input.time * 0.7 + input.seed));
+          bookOpen.scale.setScalar(o);
+        }
+      }
+      if (pencil) pencil.visible = ex.write > 0.15;
+
+      // The lantern: lit, and swinging gently on its cane, the paper kept upright under it.
+      if (lamp && lampGlow) {
+        lamp.visible = lampW > 0.02;
+        if (lamp.visible) {
+          const hanger = lamp.children[1];
+          hanger.rotation.set(j.reachR + 0.12 * Math.sin(input.time * 2.7 + stepPhase), 0, 0.1 * Math.sin(input.time * 2.1));
+          lampGlow.emissiveIntensity = (1.2 + 0.25 * Math.sin(input.time * 9.3) * Math.sin(input.time * 4.1)) * lampW;
+        }
+      }
     },
     dispose() {
       b.dispose();
