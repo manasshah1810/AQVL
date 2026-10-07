@@ -29,7 +29,7 @@ export const WORLDS: Record<StageWorld, WorldInfo> = {
   panda: {
     id: 'panda',
     label: 'Pandas + Bamboo',
-    blurb: 'A bamboo grove at dawn. Two pandas walk to every step, push and roll the blocks along the ground, climb bamboo to reach floating nodes, and potter about the grove when nothing is running.',
+    blurb: 'A bamboo grove with its own day and night. Two pandas walk to every step, push and roll the blocks along the ground and climb bamboo to reach floating nodes; student pandas sit and take notes, and the rest of the colony eats, slides, swings, plays and, under the moon, sleeps.',
     crew: ['Bao', 'Mochi'],
   },
   ocean: {

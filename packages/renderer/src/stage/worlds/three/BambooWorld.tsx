@@ -3,6 +3,11 @@ import { useThree, type ThreeEvent } from '@react-three/fiber';
 import { Environment, Lightformer } from '@react-three/drei';
 import {
   AdditiveBlending,
+  HemisphereLight,
+  type PerspectiveCamera,
+  Points,
+  Sprite,
+  SpriteMaterial,
   BackSide,
   BoxGeometry,
   BufferGeometry,
@@ -34,25 +39,52 @@ import {
 } from 'three';
 import type { StageSample } from '../../model/sampler';
 import { NO_SHADOW_LAYER } from '../../three/StageEnvironment';
-import { FOG, NOISE, fogUniforms, rng } from './glsl';
-import { pandaSpots, worldLayout } from './layout';
-import { buildPanda, createBlobShadow, type Rig } from './rigs';
+import { FOG, NOISE, dotTexture, fogUniforms, rng } from './glsl';
+import { FOUNTAIN_YAW, pandaSpots, worldLayout } from './layout';
+import { swingAngle } from '../idle';
 import { ParticlePool, hash } from './particles';
 import type { WorldProps } from './PolarWorld';
 
 const SKY = /* glsl */ `
 uniform float uTime;
+uniform vec3 uSun;
+uniform vec3 uMoon;
+uniform float uDay;
+uniform float uNight;
+uniform float uDusk;
 vec3 groveSky(vec3 d) {
   float h = d.y;
-  vec3 top = vec3(0.56, 0.78, 0.76);
-  vec3 low = vec3(0.97, 0.9, 0.78);
+  // Day: pale teal over warm haze. Dusk and dawn: a rosy, golden band low down. Night: deep blue.
+  vec3 top = mix(vec3(0.56, 0.78, 0.76), vec3(0.45, 0.52, 0.7), uDusk * 0.55);
+  vec3 low = mix(vec3(0.97, 0.9, 0.78), vec3(1.0, 0.68, 0.48), uDusk * 0.8);
+  top = mix(top, vec3(0.03, 0.05, 0.12), uNight);
+  low = mix(low, vec3(0.1, 0.13, 0.24), uNight);
   vec3 col = mix(low, top, smoothstep(-0.02, 0.5, h));
-  vec3 sd = normalize(vec3(0.55, 0.16, -0.82));
-  float s = max(dot(d, sd), 0.0);
-  col += vec3(1.0, 0.86, 0.6) * (pow(s, 12.0) * 0.35 + pow(s, 300.0) * 0.9);
+  float sunUp = smoothstep(-0.12, 0.04, uSun.y);
+  float s = max(dot(d, uSun), 0.0);
+  col += vec3(1.0, 0.86, 0.6) * (pow(s, 12.0) * 0.35 + pow(s, 300.0) * 0.9) * sunUp;
+  col += vec3(1.0, 0.5, 0.25) * pow(s, 5.0) * 0.35 * uDusk;
   float az = atan(d.z, d.x);
   float cloud = smoothstep(0.55, 0.85, fbm(vec2(az * 3.0 + uTime * 0.004, h * 9.0)));
-  col = mix(col, vec3(1.0, 0.97, 0.92), cloud * smoothstep(0.03, 0.15, h) * 0.55);
+  float cloudy = cloud * smoothstep(0.03, 0.15, h);
+  // Stars, twinkling, above the bamboo, behind the clouds.
+  vec2 sp = vec2(az * 70.0, h * 90.0);
+  vec2 sc = floor(sp);
+  float star = step(0.985, hash12(sc)) * (1.0 - smoothstep(0.05, 0.22, length(fract(sp) - 0.5)));
+  star *= 0.55 + 0.45 * sin(uTime * (1.5 + hash12(sc + 4.0) * 3.0) + hash12(sc + 9.0) * 30.0);
+  col += vec3(0.85, 0.9, 1.0) * star * uNight * smoothstep(0.08, 0.3, h) * (1.0 - cloudy);
+  // The moon: a pale disc with soft grey seas, and a halo of moonlight round it.
+  float m = dot(d, uMoon);
+  float moonUp = smoothstep(-0.06, 0.06, uMoon.y) * (1.0 - 0.8 * uDay);
+  float disc = smoothstep(0.99875, 0.99905, m);
+  vec3 mx = normalize(cross(uMoon, vec3(0.0, 1.0, 0.0)));
+  vec3 my = cross(mx, uMoon);
+  vec2 mp = vec2(dot(d, mx), dot(d, my)) * 22.0;
+  vec3 moon = vec3(0.96, 0.95, 0.88) * (0.82 + 0.18 * smoothstep(0.35, 0.65, fbm(mp * 3.0 + 7.0)));
+  col = mix(col, moon, disc * moonUp);
+  col += vec3(0.55, 0.65, 0.9) * (pow(max(m, 0.0), 80.0) * 0.22 + pow(max(m, 0.0), 900.0) * 0.35) * moonUp * (1.0 - disc);
+  vec3 cloudCol = mix(mix(vec3(1.0, 0.97, 0.92), vec3(1.0, 0.78, 0.66), uDusk * 0.7), vec3(0.16, 0.19, 0.29) + vec3(0.25, 0.28, 0.35) * pow(max(m, 0.0), 30.0) * moonUp, uNight);
+  col = mix(col, cloudCol, cloudy * 0.55);
   return col;
 }
 `;
@@ -64,6 +96,8 @@ uniform vec2 uCenter;
 uniform vec2 uClear;
 uniform vec3 uEarth;
 uniform float uTime;
+uniform vec3 uTint;
+uniform vec3 uLamps[LAMPS];
 varying vec3 vWorld;
 void main() {
   vec2 p = vWorld.xz;
@@ -100,6 +134,14 @@ void main() {
 
   vec3 col = mix(moss, earth, clearing);
   col = mix(col, pebble, stone);
+  // Daylight (or moonlight), and warm pools of light round the lanterns after dark.
+  col *= uTint;
+  vec3 pool = vec3(0.0);
+  for (int i = 0; i < LAMPS; i++) {
+    vec2 dl = p - uLamps[i].xy;
+    pool += vec3(1.0, 0.6, 0.28) * uLamps[i].z * exp(-dot(dl, dl) / 4.5);
+  }
+  col += pool * (0.45 + 0.55 * col);
   col = applyFog(col, length(vWorld - cameraPosition));
   gl_FragColor = vec4(col, 1.0);
   #include <colorspace_fragment>
@@ -135,6 +177,8 @@ const POND_FRAGMENT = /* glsl */ `
 ${NOISE}
 uniform float uTime;
 uniform float uSplash;
+uniform vec3 uTint;
+uniform float uNight;
 varying vec2 vUv;
 void main() {
   vec2 p = (vUv - 0.5) * 2.0;
@@ -146,6 +190,9 @@ void main() {
   vec3 col = mix(deep, shallow, smoothstep(0.35, 1.0, r));
   col += vec3(0.9, 0.95, 0.85) * (ripple * 0.035 + max(splash, 0.0) * 0.25);
   col += vec3(1.0, 0.95, 0.8) * 0.12 * smoothstep(0.6, 0.9, fbm(p * 2.0 + vec2(uTime * 0.05, 0.0)));
+  col *= uTint;
+  // Moonlight glinting on the ripples.
+  col += vec3(0.75, 0.82, 1.0) * uNight * (0.12 * smoothstep(0.62, 0.9, fbm(p * 3.0 + vec2(uTime * 0.08, 1.0))) + 0.05 * ripple);
   float a = 1.0 - smoothstep(0.94, 1.0, r);
   gl_FragColor = vec4(col, a);
   #include <colorspace_fragment>
@@ -155,12 +202,34 @@ void main() {
 const SHAFT_FRAGMENT = /* glsl */ `
 uniform float uTime;
 uniform float uPhase;
+uniform float uDay;
 varying vec2 vUv;
 void main() {
   float across = sin(vUv.x * 3.14159);
   float a = across * across * smoothstep(0.0, 0.35, vUv.y) * (1.0 - smoothstep(0.75, 1.0, vUv.y));
-  a *= 0.2 + 0.08 * sin(uTime * 0.35 + uPhase);
+  a *= (0.2 + 0.08 * sin(uTime * 0.35 + uPhase)) * uDay;
   gl_FragColor = vec4(1.0, 0.93, 0.72, a);
+}
+`;
+
+/** The moon (and the low sun at dusk and dawn) as the camera sees it: a disc with a soft halo, on a camera-facing quad. */
+const DISC_FRAGMENT = /* glsl */ `
+${NOISE}
+uniform vec3 uColor;
+uniform vec3 uGlow;
+uniform float uAlpha;
+uniform float uCraters;
+varying vec2 vUv;
+void main() {
+  vec2 p = (vUv - 0.5) * 2.0;
+  float r = length(p);
+  float disc = 1.0 - smoothstep(0.25, 0.262, r);
+  float seas = smoothstep(0.42, 0.7, fbm(p * 7.0 + 3.0)) * uCraters;
+  vec3 face = uColor * (1.0 - 0.16 * seas) * (0.92 + 0.08 * (1.0 - r * 3.0));
+  float halo = exp(-max(r - 0.24, 0.0) * 7.0) * 0.55 + exp(-max(r - 0.24, 0.0) * 22.0) * 0.35;
+  vec3 col = face * disc + uGlow * halo * (1.0 - disc);
+  float a = (disc + halo * (1.0 - disc)) * uAlpha;
+  gl_FragColor = vec4(col, a);
 }
 `;
 
@@ -256,11 +325,24 @@ export function BambooWorld({ model, bounds, driver, calm, clock }: WorldProps) 
   const fogFar = R * 8 + 55;
   const haze = '#e6e6cf';
   const time = useMemo(() => ({ value: 0 }), []);
+  // The time of day, shared by every shader in the grove (the sky, the ground, the pond, the hills, the light shafts).
+  const sky$ = useMemo(
+    () => ({
+      uSun: { value: new Vector3(0.57, 0.17, -0.8) },
+      uMoon: { value: new Vector3(-0.57, -0.17, -0.8) },
+      uDay: { value: 1 },
+      uNight: { value: 0 },
+      uDusk: { value: 0 },
+      uTint: { value: new Color(1, 1, 1) },
+      uLamps: { value: Array.from({ length: LAMPS }, () => new Vector3(0, 0, 0)) },
+    }),
+    [],
+  );
 
   const sky = useMemo(
     () =>
       new ShaderMaterial({
-        uniforms: { uTime: time },
+        uniforms: { uTime: time, uSun: sky$.uSun, uMoon: sky$.uMoon, uDay: sky$.uDay, uNight: sky$.uNight, uDusk: sky$.uDusk },
         vertexShader: /* glsl */ `varying vec3 vDir; void main() { vDir = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
         fragmentShader: `${NOISE}\n${SKY}\nvarying vec3 vDir;\nvoid main() { gl_FragColor = vec4(groveSky(normalize(vDir)), 1.0);\n#include <colorspace_fragment>\n}`,
         side: BackSide,
@@ -268,7 +350,7 @@ export function BambooWorld({ model, bounds, driver, calm, clock }: WorldProps) 
         fog: false,
         toneMapped: false,
       }),
-    [time],
+    [time, sky$],
   );
   const ground = useMemo(
     () =>
@@ -278,13 +360,15 @@ export function BambooWorld({ model, bounds, driver, calm, clock }: WorldProps) 
           uCenter: { value: [cx, cz] },
           uClear: { value: [clearX, clearZ] },
           uEarth: { value: new Color(palette.floor) },
+          uTint: sky$.uTint,
+          uLamps: sky$.uLamps,
           ...fogUniforms(haze, fogNear, fogFar),
         },
         vertexShader: WORLD_VERTEX,
-        fragmentShader: GROUND_FRAGMENT,
+        fragmentShader: `#define LAMPS ${LAMPS}\n${GROUND_FRAGMENT}`,
         toneMapped: false,
       }),
-    [time, cx, cz, clearX, clearZ, palette.floor, fogNear, fogFar],
+    [time, cx, cz, clearX, clearZ, palette.floor, fogNear, fogFar, sky$],
   );
 
   const scene = useMemo(() => {
@@ -441,14 +525,7 @@ export function BambooWorld({ model, bounds, driver, calm, clock }: WorldProps) 
     }
     rockGeo.computeVertexNormals();
     const rockMat = keep(new MeshStandardMaterial({ color: '#8f9182', roughness: 0.92, metalness: 0, flatShading: true }));
-    const rocks: number[][] = [
-      [cx - clearX * 0.98, cz - clearZ * 0.35, 0.9, 0.55],
-      [cx + clearX * 0.96, cz - clearZ * 0.2, 0.7, 0.45],
-      [cx - clearX * 0.82, cz - clearZ * 0.9, 0.55, 0.4],
-      [cx + clearX * 0.2, cz - clearZ * 1.05, 0.8, 0.5],
-      [cx - clearX * 0.88, cz + clearZ * 0.35, 0.45, 0.32],
-      [cx + clearX * 0.9, cz + clearZ * 0.45, 0.4, 0.3],
-    ];
+    const rocks = spots.stones.rocks;
     const rockMesh = new InstancedMesh(rockGeo, rockMat, rocks.length);
     rocks.forEach(([x, z, w, h], i) => {
       _p.set(x, floorY + h * 0.3, z);
@@ -461,10 +538,7 @@ export function BambooWorld({ model, bounds, driver, calm, clock }: WorldProps) 
 
     // Stone lanterns (tōrō) at the front corners.
     const stoneMat = keep(new MeshStandardMaterial({ color: '#a9a596', roughness: 0.95, metalness: 0 }));
-    const lanternSpots: [number, number][] = [
-      [cx - clearX * 0.82, cz - clearZ * 0.3],
-      [cx + clearX * 0.78, cz - clearZ * 0.12],
-    ];
+    const lanternSpots = spots.stones.lanterns;
     const lanterns = lanternSpots.map(([x, z]) => {
       const g = new Group();
       g.position.set(x, floorY, z);
@@ -497,7 +571,7 @@ export function BambooWorld({ model, bounds, driver, calm, clock }: WorldProps) 
 
     // The koi pond, behind on the right, with lily pads and three koi.
     const px = cx - halfX * 0.45 - 1.6, pz = cz - Math.max(clearZ * 0.84, halfZ + 4.7 + lift);
-    const pondMat = keep(new ShaderMaterial({ uniforms: { uTime: time, uSplash: { value: -1 } }, vertexShader: /* glsl */ `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`, fragmentShader: POND_FRAGMENT, transparent: true, depthWrite: false, toneMapped: false }));
+    const pondMat = keep(new ShaderMaterial({ uniforms: { uTime: time, uSplash: { value: -1 }, uTint: sky$.uTint, uNight: sky$.uNight }, vertexShader: /* glsl */ `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`, fragmentShader: POND_FRAGMENT, transparent: true, depthWrite: false, toneMapped: false }));
     const pond = new Mesh(keep(new PlaneGeometry(1, 1)), pondMat);
     pond.rotation.x = -Math.PI / 2;
     pond.scale.set(3.6, 2.4, 1);
@@ -534,7 +608,7 @@ export function BambooWorld({ model, bounds, driver, calm, clock }: WorldProps) 
     // Light shafts slanting down through the grove.
     const shafts: ShaderMaterial[] = [];
     for (let i = 0; i < 5; i++) {
-      const m = keep(new ShaderMaterial({ uniforms: { uTime: time, uPhase: { value: i * 1.7 } }, vertexShader: /* glsl */ `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`, fragmentShader: SHAFT_FRAGMENT, transparent: true, depthWrite: false, blending: AdditiveBlending, side: DoubleSide }));
+      const m = keep(new ShaderMaterial({ uniforms: { uTime: time, uPhase: { value: i * 1.7 }, uDay: sky$.uDay }, vertexShader: /* glsl */ `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`, fragmentShader: SHAFT_FRAGMENT, transparent: true, depthWrite: false, blending: AdditiveBlending, side: DoubleSide }));
       shafts.push(m);
       const shaft = new Mesh(keep(new PlaneGeometry(2.2 + r() * 1.8, 16)), m);
       shaft.position.set(cx - clearX * 0.7 + i * clearX * 0.38 + (r() - 0.5), floorY + 6.5, cz - clearZ * (0.75 + r() * 0.4));
@@ -544,12 +618,14 @@ export function BambooWorld({ model, bounds, driver, calm, clock }: WorldProps) 
     }
 
     // Distant hills, hazy, for whoever orbits round.
+    const hillTones: { mat: ShaderMaterial; day: Color; dusk: Color; night: Color }[] = [];
     const hills = [
-      { r: 90, h: 34, color: '#a9c2a8', base: 0.18, amp: 0.4, seed: 1 },
-      { r: 130, h: 52, color: '#bfd0b6', base: 0.2, amp: 0.45, seed: 4 },
-      { r: 180, h: 70, color: '#d3dcc5', base: 0.25, amp: 0.4, seed: 9 },
+      { r: 90, h: 34, color: '#a9c2a8', dusk: '#b59a95', night: '#1d2638', base: 0.18, amp: 0.4, seed: 1 },
+      { r: 130, h: 52, color: '#bfd0b6', dusk: '#c8a59a', night: '#232d42', base: 0.2, amp: 0.45, seed: 4 },
+      { r: 180, h: 70, color: '#d3dcc5', dusk: '#d8b2a0', night: '#29344b', base: 0.25, amp: 0.4, seed: 9 },
     ].map((hl) => {
       const m = keep(new ShaderMaterial({ uniforms: { uColor: { value: new Color(hl.color) }, uSeed: { value: hl.seed }, uBase: { value: hl.base }, uAmp: { value: hl.amp } }, vertexShader: /* glsl */ `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`, fragmentShader: MOUNTAIN_FRAGMENT, side: BackSide, fog: false, depthWrite: false }));
+      hillTones.push({ mat: m, day: new Color(hl.color), dusk: new Color(hl.dusk), night: new Color(hl.night) });
       const mesh = new Mesh(keep(new CylinderGeometry(hl.r, hl.r, hl.h, 128, 1, true)), m);
       mesh.position.set(cx, floorY + hl.h / 2 - 3, cz);
       mesh.renderOrder = 2;
@@ -572,7 +648,7 @@ export function BambooWorld({ model, bounds, driver, calm, clock }: WorldProps) 
     // A shishi-odoshi: a bamboo tube that fills from a spout, tips, pours into a stone basin, and clacks back.
     const caneMat = keep(new MeshStandardMaterial({ color: '#9bb85a', roughness: 0.45, metalness: 0 }));
     const caneDark = keep(new MeshStandardMaterial({ color: '#6f8f3a', roughness: 0.5, metalness: 0 }));
-    const fx = cx + clearX * 0.74, fz = cz + clearZ * 0.6;
+    const [fx, fz] = spots.stones.fountain;
     const fountain = new Group();
     fountain.position.set(fx, floorY, fz);
     fountain.rotation.y = FOUNTAIN_YAW;
@@ -650,6 +726,185 @@ export function BambooWorld({ model, bounds, driver, calm, clock }: WorldProps) 
     dangle.add(bead);
     group.add(dangle);
 
+    // The slide: a lashed platform on four bamboo legs, a ladder up the back, and a smooth chute down to the left.
+    const sl = spots.slide;
+    const chuteMat = keep(new MeshStandardMaterial({ color: '#d8a24e', roughness: 0.32, metalness: 0.05 }));
+    const deckMat = keep(new MeshStandardMaterial({ color: '#c9a65f', roughness: 0.75, metalness: 0 }));
+    {
+      const [tx, tz] = [sl.top[0], sl.top[1] - 0.15];
+      const SH = sl.height;
+      for (const [ox, oz] of [[-0.45, -0.45], [0.45, -0.45], [-0.45, 0.42], [0.45, 0.42]]) strut(tx + ox, 0, tz + oz, tx + ox, SH + 0.55, tz + oz, 0.055, caneMat);
+      for (let i = 0; i < 7; i++) strut(tx - 0.5, SH, tz - 0.42 + i * 0.14, tx + 0.5, SH, tz - 0.42 + i * 0.14, 0.05, i % 2 ? caneMat : caneDark);
+      // Hand rails round the platform (open on the chute's side).
+      strut(tx - 0.45, SH + 0.5, tz - 0.45, tx + 0.45, SH + 0.5, tz - 0.45, 0.035, caneDark);
+      strut(tx + 0.45, SH + 0.5, tz - 0.45, tx + 0.45, SH + 0.5, tz + 0.42, 0.035, caneDark);
+      strut(tx - 0.45, SH + 0.5, tz + 0.42, tx + 0.45, SH + 0.5, tz + 0.42, 0.035, caneDark);
+      // The ladder, from its foot up to the back of the platform.
+      const [bx, bz] = sl.base;
+      for (const ox of [-0.2, 0.2]) strut(bx + ox, 0, bz, tx + ox, SH + 0.3, tz - 0.48, 0.04, caneMat);
+      for (let i = 1; i <= 5; i++) {
+        const u = i / 6;
+        const y = (SH + 0.3) * u;
+        const zz = bz + (tz - 0.48 - bz) * u;
+        strut(bx - 0.2 + (tx - bx) * u, y, zz, bx + 0.2 + (tx - bx) * u, y, zz, 0.026, caneDark);
+      }
+      // The chute: a bed with raised sides, from the platform's edge down to a short run-out above the ground.
+      const sx = tx - 0.5, sy = SH - 0.02, ex = sl.end[0] + 0.25, ey = sl.endHeight + 0.02;
+      const len = Math.hypot(sx - ex, sy - ey);
+      const slope = Math.atan2(sy - ey, sx - ex);
+      const chute = new Group();
+      chute.position.set((sx + ex) / 2, floorY + (sy + ey) / 2, sl.end[1]);
+      chute.rotation.z = slope;
+      const bed = new Mesh(keep(new BoxGeometry(len, 0.05, 0.62)), chuteMat);
+      chute.add(bed);
+      for (const oz of [-0.32, 0.32]) {
+        const side = new Mesh(keep(new BoxGeometry(len, 0.16, 0.04)), chuteMat);
+        side.position.set(0, 0.06, oz);
+        chute.add(side);
+        const rail = new Mesh(keep(new CylinderGeometry(0.03, 0.03, len, 8)), caneDark);
+        rail.rotation.z = Math.PI / 2;
+        rail.position.set(0, 0.15, oz);
+        chute.add(rail);
+      }
+      group.add(chute);
+      const lip = new Mesh(keep(new BoxGeometry(0.62, 0.05, 0.62)), chuteMat);
+      lip.position.set(sl.end[0] - 0.05, floorY + sl.endHeight, sl.end[1]);
+      group.add(lip);
+      for (const oz of [-0.25, 0.25]) strut(sl.end[0], 0, sl.end[1] + oz, sl.end[0], sl.endHeight, sl.end[1] + oz, 0.04, caneDark);
+      const midX = (sx + ex) / 2;
+      for (const oz of [-0.25, 0.25]) strut(midX, 0, sl.end[1] + oz, midX, (sy + ey) / 2 - 0.04, sl.end[1] + oz, 0.04, caneDark);
+    }
+
+    // The swing: an A-frame of bamboo at each end of a cross bar, two ropes and a plank seat (swung by the world).
+    const sw = spots.swing;
+    const fwd = [Math.sin(sw.face), Math.cos(sw.face)];
+    const right = [Math.cos(sw.face), -Math.sin(sw.face)];
+    const SPAN = 0.85;
+    for (const side of [-1, 1]) {
+      const ax = sw.x + right[0] * SPAN * side, az = sw.z + right[1] * SPAN * side;
+      for (const f of [-1, 1]) strut(ax + fwd[0] * 0.75 * f, 0, az + fwd[1] * 0.75 * f, ax, sw.top + 0.04, az, 0.055, caneMat);
+      strut(ax + fwd[0] * 0.5, 0.6, az + fwd[1] * 0.5, ax - fwd[0] * 0.5, 0.6, az - fwd[1] * 0.5, 0.035, caneDark);
+    }
+    strut(sw.x - right[0] * (SPAN + 0.15), sw.top + 0.04, sw.z - right[1] * (SPAN + 0.15), sw.x + right[0] * (SPAN + 0.15), sw.top + 0.04, sw.z + right[1] * (SPAN + 0.15), 0.06, caneDark);
+    const swingPivot = new Group();
+    swingPivot.position.set(sw.x, floorY + sw.top, sw.z);
+    swingPivot.rotation.y = sw.face;
+    const swingArm = new Group();
+    swingPivot.add(swingArm);
+    const ropeMat = keep(new MeshStandardMaterial({ color: '#c9a66b', roughness: 0.9 }));
+    for (const ox of [-0.33, 0.33]) {
+      const rope = new Mesh(keep(new CylinderGeometry(0.014, 0.014, sw.length, 5)), ropeMat);
+      rope.position.set(ox, -sw.length / 2, 0);
+      swingArm.add(rope);
+    }
+    const plank = new Mesh(keep(new BoxGeometry(0.8, 0.06, 0.34)), deckMat);
+    plank.position.set(0, -sw.length - 0.03, 0);
+    swingArm.add(plank);
+    group.add(swingPivot);
+
+    // Paper lanterns on bamboo posts round the clearing: dim red paper by day, glowing at night.
+    const paperMats: MeshStandardMaterial[] = [];
+    const hanging = spots.lanterns.map(([x, z], i) => {
+      const g = new Group();
+      g.position.set(x, floorY, z);
+      const toward = Math.atan2(cx - x, cz - z);
+      g.rotation.y = toward;
+      const post = new Mesh(keep(new CylinderGeometry(0.05, 0.06, 2.3, 8)), caneMat);
+      post.position.y = 1.15;
+      g.add(post);
+      const arm = new Mesh(keep(new CylinderGeometry(0.03, 0.03, 0.62, 6)), caneDark);
+      arm.rotation.x = Math.PI / 2;
+      arm.position.set(0, 2.18, 0.28);
+      g.add(arm);
+      const hang = new Group();
+      hang.position.set(0, 2.16, 0.54);
+      g.add(hang);
+      const paper = keep(new MeshStandardMaterial({ color: i % 3 === 1 ? '#e2b34f' : '#c23a26', roughness: 0.8, emissive: new Color(i % 3 === 1 ? '#ffb347' : '#ff6a2a'), emissiveIntensity: 0.12 }));
+      paperMats.push(paper);
+      const cord = new Mesh(keep(new CylinderGeometry(0.008, 0.008, 0.16, 4)), caneDark);
+      cord.position.y = -0.08;
+      hang.add(cord);
+      const shade = new Mesh(keep(new SphereGeometry(0.2, 14, 10)), paper);
+      shade.scale.set(1, 1.2, 1);
+      shade.position.y = -0.38;
+      hang.add(shade);
+      for (const y of [-0.15, -0.61]) {
+        const cap = new Mesh(keep(new CylinderGeometry(0.1, 0.1, 0.05, 10)), caneDark);
+        cap.position.y = y;
+        hang.add(cap);
+      }
+      const tassel = new Mesh(keep(new CylinderGeometry(0.015, 0.03, 0.16, 6)), caneDark);
+      tassel.position.y = -0.72;
+      hang.add(tassel);
+      // Three of them light the ground and the pandas round them (the rest glow, and pool light on the earth).
+      let light: PointLight | null = null;
+      if (i === 0 || i === 3 || i === 5) {
+        light = new PointLight('#ffa552', 0, 7, 1.6);
+        light.position.set(0, 1.75, 0.54);
+        g.add(light);
+      }
+      group.add(g);
+      return { x, z, hang, light, glowX: x + Math.sin(toward) * 0.54, glowZ: z + Math.cos(toward) * 0.54 };
+    });
+
+    // Fireflies over the grass and between the stalks after dark.
+    const flies = (() => {
+      const n = 90;
+      const pos = new Float32Array(n * 3);
+      const seed = new Float32Array(n * 4);
+      for (let i = 0; i < n; i++) {
+        const a = r() * Math.PI * 2;
+        const d = 0.35 + Math.sqrt(r()) * 0.85;
+        pos[i * 3] = cx + Math.cos(a) * clearX * d;
+        pos[i * 3 + 1] = floorY + 0.25 + r() * 2.4;
+        pos[i * 3 + 2] = cz + Math.sin(a) * clearZ * d;
+        for (let k = 0; k < 4; k++) seed[i * 4 + k] = r();
+      }
+      const geo = keep(new BufferGeometry());
+      geo.setAttribute('position', new Float32BufferAttribute(pos, 3));
+      geo.setAttribute('aSeed', new Float32BufferAttribute(seed, 4));
+      const mat = keep(
+        new ShaderMaterial({
+          uniforms: { uTime: time, uNight: sky$.uNight },
+          vertexShader: /* glsl */ `
+uniform float uTime;
+uniform float uNight;
+attribute vec4 aSeed;
+varying float vA;
+void main() {
+  vec3 p = position;
+  float t = uTime * (0.25 + aSeed.x * 0.25);
+  p.x += sin(t + aSeed.y * 6.28) * 1.1 + sin(t * 2.3 + aSeed.z * 9.0) * 0.3;
+  p.y += sin(t * 1.3 + aSeed.x * 6.28) * 0.45;
+  p.z += cos(t * 0.9 + aSeed.z * 6.28) * 0.9;
+  vec4 mv = modelViewMatrix * vec4(p, 1.0);
+  float blink = pow(0.5 + 0.5 * sin(uTime * (0.9 + aSeed.w * 1.6) + aSeed.y * 40.0), 4.0);
+  vA = uNight * (0.15 + 0.85 * blink);
+  gl_PointSize = (5.0 + aSeed.w * 4.0) * (40.0 / -mv.z) * step(0.01, uNight);
+  gl_Position = projectionMatrix * mv;
+}`,
+          fragmentShader: /* glsl */ `
+varying float vA;
+void main() {
+  float d = length(gl_PointCoord - 0.5) * 2.0;
+  float core = 1.0 - smoothstep(0.0, 0.35, d);
+  float glow = 1.0 - smoothstep(0.0, 1.0, d);
+  gl_FragColor = vec4(vec3(0.8, 1.0, 0.45) * (core + glow * 0.6), (core * 0.9 + glow * 0.45) * vA);
+}`,
+          transparent: true,
+          depthWrite: false,
+          blending: AdditiveBlending,
+          toneMapped: false,
+        }),
+      );
+      const pts = new Points(geo, mat);
+      pts.frustumCulled = false;
+      pts.renderOrder = 6;
+      pts.layers.set(NO_SHADOW_LAYER);
+      group.add(pts);
+      return pts;
+    })();
+
     // Butterflies in the clearing and birds far off over the grove, each a pair of wings that beat.
     const flyer = (count: number, wing: number, seedBase: number, colors: string[], fog: boolean) => {
       const geo = keep(new BufferGeometry());
@@ -695,8 +950,8 @@ void main() { gl_FragColor = vec4(vColor, 1.0); }`,
     group.traverse((o) => {
       o.frustumCulled = false;
     });
-    return { group, gym, snackStalks, dangle, butterflies, birds, fountain, pivot, fx, fz, stalks, stalkMesh, stalkSway, leafMesh, leafSway, leavesOf, grassMesh, rockMesh, lanterns, px, pz, pondMat, koi, falling, disposables };
-  }, [cx, cz, halfX, halfZ, lift, clearX, clearZ, floorY, time, model]);
+    return { group, gym, snackStalks, dangle, butterflies, birds, fountain, pivot, fx, fz, stalks, stalkMesh, stalkSway, leafMesh, leafSway, leavesOf, grassMesh, rockMesh, lanterns, px, pz, pondMat, koi, falling, hillTones, swingArm, hanging, paperMats, flies, disposables };
+  }, [cx, cz, halfX, halfZ, lift, clearX, clearZ, floorY, time, model, sky$]);
 
   useEffect(
     () => () => {
@@ -720,9 +975,10 @@ void main() { gl_FragColor = vec4(vColor, 1.0); }`,
       for (let k = 0; k < 4; k++) seed[i * 4 + k] = r();
     }
     const material = new ShaderMaterial({
-      uniforms: { uTime: time },
+      uniforms: { uTime: time, uDay: sky$.uDay },
       vertexShader: /* glsl */ `
 uniform float uTime;
+uniform float uDay;
 attribute vec4 aSeed;
 varying float vA;
 void main() {
@@ -732,7 +988,7 @@ void main() {
   p.z += cos(uTime * (0.25 + aSeed.y * 0.2) + aSeed.z * 6.28) * 0.5;
   vec4 mv = modelViewMatrix * vec4(p, 1.0);
   gl_PointSize = (3.0 + aSeed.w * 4.0) * (40.0 / -mv.z);
-  vA = 0.35 + 0.65 * (0.5 + 0.5 * sin(uTime * (1.0 + aSeed.w * 2.0) + aSeed.z * 30.0));
+  vA = (0.35 + 0.65 * (0.5 + 0.5 * sin(uTime * (1.0 + aSeed.w * 2.0) + aSeed.z * 30.0))) * (0.15 + 0.85 * uDay);
   gl_Position = projectionMatrix * mv;
 }`,
       fragmentShader: /* glsl */ `
@@ -747,31 +1003,69 @@ void main() {
       blending: AdditiveBlending,
     });
     return { pos, seed, material };
-  }, [time, cx, cz, clearX, clearZ, floorY]);
+  }, [time, cx, cz, clearX, clearZ, floorY, sky$]);
   useEffect(() => () => motes.material.dispose(), [motes]);
-
-  // Onlookers: a big panda lounging by the rocks with a cane to munch, and a cub.
-  const onlookers = useMemo(() => {
-    const rigs: Rig[] = [buildPanda({ prop: 'bamboo', scale: 1.2 }), buildPanda({ prop: null, scale: 0.78 })];
-    const holders = rigs.map(() => new Group());
-    holders.forEach((h, i) => h.add(rigs[i].root));
-    const shadows = rigs.map(() => createBlobShadow(palette.shadow, palette.shadowOpacity * 0.75));
-    return { rigs, holders, shadows };
-  }, [palette]);
-  useEffect(
-    () => () => {
-      onlookers.rigs.forEach((r) => r.dispose());
-      onlookers.shadows.forEach((s) => s.dispose());
-    },
-    [onlookers],
-  );
 
   const pool = useMemo(() => new ParticlePool(220, false), []);
   useEffect(() => () => pool.dispose(), [pool]);
   const keyLight = useRef<DirectionalLight>(null);
+  const fillLight = useRef<DirectionalLight>(null);
+  const hemi = useRef<HemisphereLight>(null);
+  const three = useThree((s) => s.scene);
+  const camera = useThree((s) => s.camera);
+  // The moon crossing the top of the picture through the night (behind the bamboo), and the sun low down at dusk and dawn.
+  const discs = useMemo(() => {
+    const make = (color: string, glow: string, craters: number) => {
+      const material = new ShaderMaterial({
+        uniforms: { uColor: { value: new Color(color) }, uGlow: { value: new Color(glow) }, uAlpha: { value: 0 }, uCraters: { value: craters } },
+        vertexShader: /* glsl */ `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
+        fragmentShader: DISC_FRAGMENT,
+        transparent: true,
+        depthWrite: false,
+        fog: false,
+        toneMapped: false,
+      });
+      const mesh = new Mesh(new PlaneGeometry(1, 1), material);
+      mesh.frustumCulled = false;
+      // After the far hills (which write no depth): it is further away than they are. The bamboo still hides it.
+      mesh.renderOrder = 5;
+      mesh.layers.set(NO_SHADOW_LAYER);
+      mesh.visible = false;
+      return { mesh, material };
+    };
+    return { moon: make('#f3f1e4', '#9fb4ec', 1), sun: make('#ffd38a', '#ff9a52', 0) };
+  }, []);
+  useEffect(
+    () => () => {
+      for (const d of [discs.moon, discs.sun]) {
+        d.mesh.geometry.dispose();
+        d.material.dispose();
+      }
+    },
+    [discs],
+  );
+  // Halos round the lanterns after dark.
+  const halos = useMemo(() => {
+    const tex = typeof document === 'undefined' ? null : dotTexture();
+    const list = Array.from({ length: LAMPS }, () => {
+      const m = new SpriteMaterial({ map: tex, color: new Color('#ffb15c'), transparent: true, depthWrite: false, blending: AdditiveBlending, opacity: 0, fog: false });
+      const sp = new Sprite(m);
+      sp.renderOrder = 6;
+      sp.visible = false;
+      return sp;
+    });
+    return { tex, list };
+  }, []);
+  useEffect(
+    () => () => {
+      halos.tex?.dispose();
+      halos.list.forEach((h) => h.material.dispose());
+    },
+    [halos],
+  );
   const rustled = useRef<Float32Array>(new Float32Array(0));
   const bursts = useRef<{ x: number; z: number; y: number; t: number }[]>([]);
-  const events = useRef({ fountainAt: 0, koi: -100, lantern: [1, 1], lanternAt: [-100, -100], onlooker: [-100, -100], puffs: [] as { x: number; z: number; t: number }[], shakes: [] as { stalk: number; t: number }[], endAt: -1, lastK: -1 });
+  const events = useRef({ fountainAt: 0, koi: -100, lantern: [1, 1], lanternAt: [-100, -100], puffs: [] as { x: number; z: number; t: number }[], shakes: [] as { stalk: number; t: number }[], endAt: -1, lastK: -1 });
 
   useEffect(
     () =>
@@ -783,8 +1077,88 @@ void main() {
 
         // Wind: now and then a gust sweeps through the bamboo, leaves and grass (still in calm mode).
         WIND.value = calm ? 0 : Math.max(0, Math.sin(now * 0.31) + Math.sin(now * 0.17 + 2.0) - 0.85) * 0.55;
-        // Light: clouds drift over the sun, the grove brightens and dims a little.
-        if (keyLight.current && !calm) keyLight.current.intensity = palette.lights.keyIntensity * (1 + 0.07 * Math.sin(now * 0.13) * Math.sin(now * 0.07 + 1.0));
+        // The time of day: the sun and the moon cross the sky, the light goes golden, then blue, then comes back.
+        const day = clock.day;
+        const nightW = day.night;
+        const duskW = day.dusk;
+        sky$.uSun.value.set(day.sun[0], day.sun[1], day.sun[2]);
+        sky$.uMoon.value.set(day.moon[0], day.moon[1], day.moon[2]);
+        sky$.uDay.value = day.day;
+        sky$.uNight.value = nightW;
+        sky$.uDusk.value = duskW;
+        sky$.uTint.value.copy(TONE.white).lerp(TONE.dusk, duskW * 0.85).lerp(TONE.night, nightW);
+        _c.copy(TONE.haze).lerp(TONE.hazeDusk, duskW).lerp(TONE.hazeNight, nightW);
+        if (three.background instanceof Color) three.background.copy(_c);
+        if (three.fog) three.fog.color.copy(_c);
+        (ground.uniforms.uFogColor.value as Color).copy(_c);
+        three.environmentIntensity = palette.lights.envIntensity * (1 - 0.62 * nightW);
+        if (hemi.current) {
+          hemi.current.color.set(palette.lights.sky).lerp(TONE.skyNight, nightW);
+          hemi.current.groundColor.set(palette.lights.ground).lerp(TONE.groundNight, nightW);
+          hemi.current.intensity = palette.lights.ambient * (1 - 0.45 * nightW);
+        }
+        if (fillLight.current) {
+          fillLight.current.color.set(palette.lights.fill).lerp(TONE.fillNight, nightW);
+          fillLight.current.intensity = palette.lights.fillIntensity * (1 - 0.4 * nightW);
+        }
+        // Light: clouds drift over the sun, the grove brightens and dims a little; moonlight is cooler and softer.
+        if (keyLight.current) {
+          keyLight.current.color.set(palette.lights.key).lerp(TONE.keyDusk, duskW).lerp(TONE.keyNight, nightW);
+          keyLight.current.intensity = palette.lights.keyIntensity * (1 - 0.12 * duskW - 0.55 * nightW) * (calm ? 1 : 1 + 0.07 * Math.sin(now * 0.13) * Math.sin(now * 0.07 + 1.0));
+        }
+        scene.hillTones.forEach((h) => {
+          (h.mat.uniforms.uColor.value as Color).copy(h.day).lerp(h.dusk, duskW).lerp(h.night, nightW);
+        });
+        // Lit at dusk, glowing all night.
+        const lit = Math.min(1, Math.max(nightW * 1.2, duskW * 0.55 * (1 - day.day * 0.5)));
+
+        // The moon and the low sun, placed in the camera's view (far behind the bamboo) wherever it looks from.
+        {
+          const cam = camera as PerspectiveCamera;
+          cam.getWorldDirection(_fwd);
+          _right.crossVectors(_fwd, UP).normalize();
+          _up.crossVectors(_right, _fwd).normalize();
+          const tanV = Math.tan(((cam.fov ?? 26) * Math.PI) / 360);
+          const tanH = tanV * (cam.aspect || 1.6);
+          const far = Math.min(160, fogFar * 0.9);
+          const place = (mesh: Mesh, u: number, v: number, size: number) => {
+            // Along the ray through (u, v) of the picture, out beyond the clearing, where it still floats above the
+            // far ground (the top of the picture looks a little down): the bamboo passes in front of it.
+            _p.copy(_fwd).addScaledVector(_right, u * tanH).addScaledVector(_up, v * tanV);
+            const lift = floorY + 2.5 - cam.position.y;
+            const behind = Math.hypot(cam.position.x - cx, cam.position.z - cz) + clearZ * 3.1;
+            const D = _p.y < -1e-3 ? Math.min(far, Math.max(behind, lift / _p.y)) : far;
+            mesh.position.copy(cam.position).addScaledVector(_p, D);
+            mesh.quaternion.copy(cam.quaternion);
+            mesh.scale.setScalar(size * tanV * D);
+          };
+          // Up over the bamboo on the right as night falls, across the top, down on the left before dawn.
+          const night = ((day.phase - 0.5) % 1 + 1) % 1 / 0.5;
+          const moonA = night <= 1 ? Math.min(1, night / 0.06, (1 - night) / 0.06) * (1 - day.day * 0.9) : 0;
+          discs.moon.mesh.visible = moonA > 0.003;
+          if (discs.moon.mesh.visible) {
+            place(discs.moon.mesh, 0.82 - 1.64 * night, 0.56 + 0.32 * Math.sin(Math.PI * night), 0.5);
+            discs.moon.material.uniforms.uAlpha.value = moonA;
+          }
+          // The sun: sinking on the left at dusk, rising on the right at dawn.
+          const set = (day.phase - 0.43) / 0.11;
+          const rise = ((day.phase + 0.045) % 1) / 0.075;
+          let sunA = 0, su = 0, sv = 0;
+          if (set >= 0 && set <= 1) {
+            sunA = Math.min(1, set / 0.2, (1 - set) / 0.25);
+            su = -0.55 - 0.15 * set;
+            sv = 0.95 - 0.75 * set;
+          } else if (rise >= 0 && rise <= 1) {
+            sunA = Math.min(1, rise / 0.25, (1 - rise) / 0.2);
+            su = 0.7 - 0.15 * rise;
+            sv = 0.2 + 0.75 * rise;
+          }
+          discs.sun.mesh.visible = sunA > 0.003;
+          if (discs.sun.mesh.visible) {
+            place(discs.sun.mesh, su, sv, 0.62);
+            discs.sun.material.uniforms.uAlpha.value = sunA * 0.95;
+          }
+        }
         // The rope under the beam of the gym sways with the wind.
         scene.dangle.rotation.z = calm ? 0 : 0.1 * Math.sin(now * 1.3) + WIND.value * 0.5;
         scene.dangle.rotation.x = calm ? 0 : 0.06 * Math.sin(now * 0.9 + 1);
@@ -794,46 +1168,44 @@ void main() {
         if (!last) ev.endAt = -1;
         ev.lastK = sample.k;
 
-        // Onlookers by the back-left rocks.
-        const spots: [number, number, number][] = [
-          [scene.px - 2.2, scene.pz + 0.35, 0.45],
-          [scene.px - 2.95, scene.pz + 0.95, 0.6],
-        ];
-        for (let i = 0; i < 2; i++) {
-          const [x, z, yaw] = spots[i];
-          const h = onlookers.holders[i];
-          h.position.set(x, floorY, z);
-          h.rotation.y = yaw;
-          let pose: 'idle' | 'inspect' | 'cheer' = i === 0 ? 'inspect' : 'idle';
-          let poseTime = now * 0.6 + i;
-          if (ev.endAt > 0 && !calm) {
-            pose = 'cheer';
-            poseTime = wall - ev.endAt + i * 0.3;
-          }
-          const re = wall - ev.onlooker[i];
-          onlookers.rigs[i].update({
-            gait: 'stand', gaitPhase: 0, gaitWeight: 0,
-            pose, poseWeight: pose === 'idle' ? 0 : 1, poseTime,
-            prevPose: 'idle', prevWeight: 0,
-            lookLocal: [0.3, 0.5, 3],
-            react: re < 1.2 ? re : -1,
-            time: now + i * 3.3,
-            seed: 7 + i * 1.9,
-          });
-          const sh = onlookers.shadows[i].mesh;
-          sh.position.set(x, floorY + 0.004, z);
-          sh.scale.setScalar(i === 0 ? 1.05 : 0.7);
-        }
-
-        // Lanterns: light or douse on click, flicker gently.
+        // Lanterns: light or douse on click, flicker gently; brighter after dark, when they light the ground round them.
+        const lamps = sky$.uLamps.value;
         scene.lanterns.forEach((l, i) => {
           const target = ev.lantern[i];
           const since = wall - ev.lanternAt[i];
           const k = since < 0.6 ? (target ? since / 0.6 : 1 - since / 0.6) : target;
           const flicker = calm ? 1 : 0.92 + 0.08 * Math.sin(now * 7.3 + i * 2) * Math.sin(now * 3.1 + i);
-          l.glowMat.emissiveIntensity = 0.15 + 2.1 * k * flicker;
-          l.light.intensity = 3.2 * k * flicker;
+          l.glowMat.emissiveIntensity = (0.15 + 2.1 * k * flicker) * (1 + 0.5 * lit);
+          l.light.intensity = 3.2 * k * flicker * (1 + 0.9 * lit);
+          l.light.distance = 6 + 3 * lit;
+          lamps[i].set(l.x, l.z, 0.75 * k * flicker * lit);
+          const h = halos.list[i];
+          h.visible = lit * k > 0.02;
+          if (h.visible) {
+            h.position.set(l.x, floorY + 1.19, l.z);
+            h.scale.setScalar(1.5 + 0.08 * flicker);
+            h.material.opacity = 0.55 * lit * k * flicker;
+          }
         });
+        scene.hanging.forEach((h, i) => {
+          const flicker = calm ? 1 : 0.9 + 0.1 * Math.sin(now * 6.1 + i * 1.7) * Math.sin(now * 2.3 + i * 0.6);
+          scene.paperMats[i].emissiveIntensity = 0.12 + 1.35 * lit * flicker;
+          if (h.light) h.light.intensity = 2.6 * lit * flicker;
+          h.hang.rotation.z = calm ? 0 : 0.05 * Math.sin(now * 1.1 + i * 2.1) + WIND.value * 0.25;
+          h.hang.rotation.x = calm ? 0 : 0.04 * Math.sin(now * 0.8 + i);
+          lamps[2 + i].set(h.glowX, h.glowZ, 0.7 * lit * flicker);
+          const halo = halos.list[2 + i];
+          halo.visible = lit > 0.02;
+          if (halo.visible) {
+            h.hang.getWorldPosition(_p);
+            halo.position.set(_p.x, _p.y - 0.38, _p.z);
+            halo.scale.setScalar(1.7 + 0.1 * flicker);
+            halo.material.opacity = 0.6 * lit * flicker;
+          }
+        });
+        // The swing: carries whoever is on it, and drifts a little in the wind when it is empty.
+        const rider = clock.colony.swing;
+        scene.swingArm.rotation.x = rider.rider ? -swingAngle(now - rider.start, rider.dur) : calm ? 0 : -(0.04 * Math.sin(now * 0.9) + WIND.value * 0.12);
 
         // Koi swim slow circles; one leaps when the pond is clicked.
         const kt = wall - ev.koi;
@@ -910,7 +1282,7 @@ void main() {
           const dx = -Math.sin(a) * 1.7, dz = Math.cos(a * 1.3) * 1.56;
           _p.set(x, y, z);
           _q.setFromEuler(_e.set(0.25, Math.atan2(dx, dz), Math.sin(now * 2.2 + i) * 0.35, 'YXZ'));
-          _s.setScalar(calm ? 0 : 1);
+          _s.setScalar(calm ? 0 : Math.min(1, Math.max(0, day.day * 1.6 - 0.3)));
           scene.butterflies.setMatrixAt(i, _m.compose(_p, _q, _s));
         }
         scene.butterflies.instanceMatrix.needsUpdate = true;
@@ -922,7 +1294,7 @@ void main() {
           const y = floorY + 16 + hash(i, 15) * 9 + Math.sin(now * 0.4 + i) * 1.1;
           _p.set(x, y, z);
           _q.setFromEuler(_e.set(0, Math.PI / 2 + Math.sin(now * 0.3 + i) * 0.08, Math.sin(now * 0.5 + i * 2) * 0.12, 'YXZ'));
-          _s.setScalar(calm ? 0 : 1);
+          _s.setScalar(calm ? 0 : Math.min(1, Math.max(0, day.day * 1.6 - 0.3)));
           scene.birds.setMatrixAt(i, _m.compose(_p, _q, _s));
         }
         scene.birds.instanceMatrix.needsUpdate = true;
@@ -995,10 +1367,10 @@ void main() {
         }
         pool.end();
 
-        const busy = bursts.current.length > 0 || kt < 3 || ev.puffs.length > 0 || ev.lanternAt.some((t0) => wall - t0 < 0.7) || ev.onlooker.some((t0) => wall - t0 < 1.3);
+        const busy = bursts.current.length > 0 || kt < 3 || ev.puffs.length > 0 || ev.lanternAt.some((t0) => wall - t0 < 0.7);
         if (busy) invalidate();
       }),
-    [driver, model, time, scene, onlookers, pool, clock, calm, cx, cz, clearX, clearZ, floorY, invalidate],
+    [driver, model, time, scene, pool, clock, calm, cx, cz, clearX, clearZ, floorY, invalidate, sky$, ground, three, palette, camera, discs, halos, fogFar],
   );
 
   useEffect(() => () => sky.dispose(), [sky]);
@@ -1043,9 +1415,9 @@ void main() {
         <planeGeometry args={[floorSize, floorSize]} />
       </mesh>
 
-      <hemisphereLight args={[palette.lights.sky, palette.lights.ground, palette.lights.ambient]} />
+      <hemisphereLight ref={hemi} args={[palette.lights.sky, palette.lights.ground, palette.lights.ambient]} />
       <directionalLight ref={keyLight} color={palette.lights.key} intensity={palette.lights.keyIntensity} position={[cx - R * 0.6 - 4, floorY + R * 1.4 + 8, cz + R + 8]} />
-      <directionalLight color={palette.lights.fill} intensity={palette.lights.fillIntensity} position={[cx + R + 6, floorY + R * 0.6 + 3, cz - R * 0.4 - 6]} />
+      <directionalLight ref={fillLight} color={palette.lights.fill} intensity={palette.lights.fillIntensity} position={[cx + R + 6, floorY + R * 0.6 + 3, cz - R * 0.4 - 6]} />
       <Environment resolution={128} frames={1} environmentIntensity={palette.lights.envIntensity}>
         <Lightformer form="rect" color="#fff4dc" intensity={2} position={[-3, 7, 8]} scale={[14, 6, 1]} target={[0, 0, 0]} />
         <Lightformer form="rect" color="#d8f0c8" intensity={1.1} position={[8, 4, 2]} scale={[3, 8, 1]} target={[0, 0, 0]} />
@@ -1097,12 +1469,6 @@ void main() {
       <mesh position={[scene.px, floorY + 0.15, scene.pz]} scale={[1.8, 1, 1.2]} visible={false} onClick={click((w) => (events.current.koi = w))} {...pointer}>
         <cylinderGeometry args={[1, 1, 0.3, 20]} />
       </mesh>
-      {onlookers.holders.map((h, i) => (
-        <primitive key={i} object={h} onClick={click((w) => (events.current.onlooker[i] = w))} onPointerOver={pointer.onPointerOver} onPointerOut={pointer.onPointerOut} />
-      ))}
-      {onlookers.shadows.map((s, i) => (
-        <primitive key={`os${i}`} object={s.mesh} />
-      ))}
       <points frustumCulled={false} material={motes.material} renderOrder={5}>
         <bufferGeometry>
           <bufferAttribute attach="attributes-position" args={[motes.pos, 3]} />
@@ -1110,12 +1476,36 @@ void main() {
         </bufferGeometry>
       </points>
       <primitive object={pool.points} />
+      <primitive object={discs.moon.mesh} />
+      <primitive object={discs.sun.mesh} />
+      {halos.list.map((h, i) => (
+        <primitive key={`h${i}`} object={h} />
+      ))}
     </>
   );
 }
 
 const UP = new Vector3(0, 1, 0);
-const FOUNTAIN_YAW = -0.35;
+/** Lanterns that pool light on the ground at night: the two stone ones and the six paper ones. */
+const LAMPS = 8;
+/** The colours the grove's light goes through in a day: full day, the golden hour, moonlit night. */
+const TONE = {
+  white: new Color(1, 1, 1),
+  dusk: new Color(1.0, 0.78, 0.62),
+  night: new Color(0.3, 0.36, 0.55),
+  haze: new Color('#e6e6cf'),
+  hazeDusk: new Color('#e8b48e'),
+  hazeNight: new Color('#141b2c'),
+  skyNight: new Color('#7f92c8'),
+  groundNight: new Color('#262d22'),
+  keyDusk: new Color('#ffbd85'),
+  keyNight: new Color('#a8bcff'),
+  fillNight: new Color('#6a7cb0'),
+};
+const _c = new Color();
+const _fwd = new Vector3();
+const _right = new Vector3();
+const _up = new Vector3();
 const FOUNTAIN_PERIOD = 7;
 const FOUNTAIN_SCALE = 1.3;
 

@@ -177,6 +177,13 @@ export function CastLayer({ model, driver, style, calm, clock, playhead }: CastL
   const pool = useMemo(() => new ParticlePool(320, style === 'penguin'), [style]);
   // Idle life (penguins): what each animal does when nothing is asked of it.
   const brains = useMemo(() => [new IdleBrain(11, 0, style), new IdleBrain(11, 1, style)], [model, style]);
+  // The pandas' props to walk round (the gym, the slide, the swing, the pond, lanterns, rocks).
+  const obstacles = useMemo(() => (style === 'panda' ? pandaSpots(model).obstacles : undefined), [model, style]);
+  useEffect(() => {
+    if (style !== 'panda') return undefined;
+    brains.forEach((b) => clock.colony.join(b));
+    return () => brains.forEach((b) => clock.colony.leave(b));
+  }, [brains, clock, style]);
   const spots = useMemo<Spots | null>(() => {
     if (style === 'panda') {
       const p = pandaSpots(model);
@@ -184,6 +191,8 @@ export function CastLayer({ model, driver, style, calm, clock, playhead }: CastL
         snack: p.snack.map((c) => ({ at: c.at, face: c.face })),
         gym: { base: p.gym.base, top: p.gym.top, deck: [p.gym.x, p.gym.z], height: p.gym.height, drop: p.gym.drop },
         pond: { at: p.pond.at, face: p.pond.face },
+        slide: p.slide,
+        swing: { seat: p.swing.seat, height: p.swing.height, length: p.swing.length, face: p.swing.face, approach: p.swing.approach },
       };
     }
     const p = polarSpots(model);
@@ -279,6 +288,7 @@ export function CastLayer({ model, driver, style, calm, clock, playhead }: CastL
             far: r.freeFor > 5,
             partner: brains[1 - i],
             radius: style === 'panda' ? 3.6 : 3.2,
+            ...(style === 'panda' ? { colony: clock.colony, night: clock.day.night, now: clock.now, obstacles } : {}),
           };
           return brain.update(dt, ctx);
         });
@@ -294,6 +304,8 @@ export function CastLayer({ model, driver, style, calm, clock, playhead }: CastL
           let fish = 0;
           let onProp = false;
           let stalk = -1;
+          let seat = 0;
+          let lamp = 0;
           if (roamed && roamed.away) {
             m.x = roamed.x;
             m.z = roamed.z;
@@ -312,6 +324,8 @@ export function CastLayer({ model, driver, style, calm, clock, playhead }: CastL
             m.rope = 0;
             onProp = roamed.onProp;
             stalk = roamed.stalk;
+            seat = roamed.seat;
+            lamp = roamed.lamp;
             m.y = roamed.y + (roamed.gait === 'walk' && style === 'penguin' ? Math.abs(Math.sin(roamed.gaitPhase)) * 0.035 * roamed.gaitWeight : 0);
             m.look[0] = m.x + Math.sin(m.yaw) * 3;
             m.look[1] = floor + 0.6;
@@ -383,6 +397,8 @@ export function CastLayer({ model, driver, style, calm, clock, playhead }: CastL
             time: now,
             seed: i * 1.7 + 0.3,
             idle: idleW > 0 ? { act: idleAct, t: idleT, weight: idleW } : undefined,
+            seat,
+            lamp,
             fish,
             effort: m.effort,
             carry: m.carry,
@@ -589,7 +605,7 @@ export function CastLayer({ model, driver, style, calm, clock, playhead }: CastL
         }
         pool.end();
       }),
-    [driver, model, style, cast, holders, bubbles, get, rigs, shadows, pool, confetti, calm, clock, names, invalidate, playhead, brains, spots, gear, eagle],
+    [driver, model, style, cast, holders, bubbles, get, rigs, shadows, pool, confetti, calm, clock, names, invalidate, playhead, brains, spots, gear, eagle, obstacles],
   );
 
   useEffect(
