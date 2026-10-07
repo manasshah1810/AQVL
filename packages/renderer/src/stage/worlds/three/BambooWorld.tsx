@@ -4,7 +4,6 @@ import { Environment, Lightformer } from '@react-three/drei';
 import {
   AdditiveBlending,
   HemisphereLight,
-  type PerspectiveCamera,
   Points,
   Sprite,
   SpriteMaterial,
@@ -35,12 +34,14 @@ import {
   ShapeGeometry,
   SphereGeometry,
   Vector3,
+  Vector4,
   type WebGLProgramParametersWithUniforms,
 } from 'three';
 import type { StageSample } from '../../model/sampler';
 import { NO_SHADOW_LAYER } from '../../three/StageEnvironment';
 import { FOG, NOISE, dotTexture, fogUniforms, rng } from './glsl';
-import { FOUNTAIN_YAW, pandaSpots, worldLayout } from './layout';
+import { FOUNTAIN_YAW, GROVE_SPREAD, groveClearing, pandaSpots, worldLayout } from './layout';
+import { buildColonyProps } from './colonyProps';
 import { swingAngle } from '../idle';
 import { ParticlePool, hash } from './particles';
 import type { WorldProps } from './PolarWorld';
@@ -63,6 +64,7 @@ vec3 groveSky(vec3 d) {
   float sunUp = smoothstep(-0.12, 0.04, uSun.y);
   float s = max(dot(d, uSun), 0.0);
   col += vec3(1.0, 0.86, 0.6) * (pow(s, 12.0) * 0.35 + pow(s, 300.0) * 0.9) * sunUp;
+  col = mix(col, vec3(1.0, 0.94, 0.74) * 1.2, smoothstep(0.99905, 0.99935, s) * sunUp);
   col += vec3(1.0, 0.5, 0.25) * pow(s, 5.0) * 0.35 * uDusk;
   float az = atan(d.z, d.x);
   float cloud = smoothstep(0.55, 0.85, fbm(vec2(az * 3.0 + uTime * 0.004, h * 9.0)));
@@ -76,13 +78,13 @@ vec3 groveSky(vec3 d) {
   // The moon: a pale disc with soft grey seas, and a halo of moonlight round it.
   float m = dot(d, uMoon);
   float moonUp = smoothstep(-0.06, 0.06, uMoon.y) * (1.0 - 0.8 * uDay);
-  float disc = smoothstep(0.99875, 0.99905, m);
+  float disc = smoothstep(0.9979, 0.9983, m);
   vec3 mx = normalize(cross(uMoon, vec3(0.0, 1.0, 0.0)));
   vec3 my = cross(mx, uMoon);
-  vec2 mp = vec2(dot(d, mx), dot(d, my)) * 22.0;
+  vec2 mp = vec2(dot(d, mx), dot(d, my)) * 16.0;
   vec3 moon = vec3(0.96, 0.95, 0.88) * (0.82 + 0.18 * smoothstep(0.35, 0.65, fbm(mp * 3.0 + 7.0)));
   col = mix(col, moon, disc * moonUp);
-  col += vec3(0.55, 0.65, 0.9) * (pow(max(m, 0.0), 80.0) * 0.22 + pow(max(m, 0.0), 900.0) * 0.35) * moonUp * (1.0 - disc);
+  col += vec3(0.55, 0.65, 0.9) * (pow(max(m, 0.0), 60.0) * 0.34 + pow(max(m, 0.0), 700.0) * 0.55) * moonUp * (1.0 - disc);
   vec3 cloudCol = mix(mix(vec3(1.0, 0.97, 0.92), vec3(1.0, 0.78, 0.66), uDusk * 0.7), vec3(0.16, 0.19, 0.29) + vec3(0.25, 0.28, 0.35) * pow(max(m, 0.0), 30.0) * moonUp, uNight);
   col = mix(col, cloudCol, cloudy * 0.55);
   return col;
@@ -98,6 +100,8 @@ uniform vec3 uEarth;
 uniform float uTime;
 uniform vec3 uTint;
 uniform vec3 uLamps[LAMPS];
+uniform vec4 uSeg[SEGS];
+uniform vec4 uPad[PADS];
 varying vec3 vWorld;
 void main() {
   vec2 p = vWorld.xz;
@@ -134,12 +138,41 @@ void main() {
 
   vec3 col = mix(moss, earth, clearing);
   col = mix(col, pebble, stone);
+
+  // The paths between the colony's places (packed earth with flat stepping stones), and the pads the places stand on.
+  float pd = 1e3;
+  for (int i = 0; i < SEGS; i++) {
+    vec4 sg = uSeg[i];
+    vec2 pa = p - sg.xy;
+    vec2 ba = sg.zw - sg.xy;
+    float h = clamp(dot(pa, ba) / max(dot(ba, ba), 1e-4), 0.0, 1.0);
+    pd = min(pd, length(pa - ba * h));
+  }
+  float pedge = (fbm(p * 1.9 + 5.0) - 0.5) * 0.32;
+  float pathM = 1.0 - smoothstep(0.4, 0.62, pd + pedge);
+  vec2 vc = voronoi(p * 1.5);
+  float flag = smoothstep(0.09, 0.17, vc.y);
+  vec3 pathCol = mix(vec3(0.7, 0.62, 0.47), vec3(0.8, 0.77, 0.69), flag * (1.0 - smoothstep(0.2, 0.45, pd)));
+  pathCol *= 0.94 + 0.1 * fbm(p * 3.0);
+  col = mix(col, pathCol, pathM * 0.9);
+  for (int i = 0; i < PADS; i++) {
+    vec4 pv = uPad[i];
+    float dd = length(p - pv.xy) / pv.z + pedge * 0.4;
+    float on = 1.0 - smoothstep(0.9, 1.0, dd);
+    vec3 pc = pv.w < 0.5 ? mix(vec3(0.24, 0.21, 0.19), vec3(0.6, 0.56, 0.48), smoothstep(0.08, 0.5, dd))
+      : pv.w < 1.5 ? vec3(0.87, 0.79, 0.6) * (0.95 + 0.06 * sin(p.x * 8.0 + fbm(p) * 3.0))
+      : pv.w < 2.5 ? vec3(0.8, 0.7, 0.4) * (0.9 + 0.14 * fbm(p * 6.0))
+      : vec3(0.74, 0.66, 0.5) * (0.95 + 0.08 * fbm(p * 4.0));
+    float rim = smoothstep(0.78, 0.88, dd) * (1.0 - smoothstep(0.92, 1.0, dd));
+    pc = mix(pc, mix(vec3(0.55, 0.53, 0.47), vec3(0.78, 0.76, 0.7), hash12(floor(p * 3.0))), rim * 0.6);
+    col = mix(col, pc, on * 0.92);
+  }
   // Daylight (or moonlight), and warm pools of light round the lanterns after dark.
   col *= uTint;
   vec3 pool = vec3(0.0);
   for (int i = 0; i < LAMPS; i++) {
     vec2 dl = p - uLamps[i].xy;
-    pool += vec3(1.0, 0.6, 0.28) * uLamps[i].z * exp(-dot(dl, dl) / 4.5);
+    pool += vec3(1.0, 0.6, 0.28) * uLamps[i].z * exp(-dot(dl, dl) / (4.5 + 2.6 * max(0.0, uLamps[i].z - 0.8)));
   }
   col += pool * (0.45 + 0.55 * col);
   col = applyFog(col, length(vWorld - cameraPosition));
@@ -212,37 +245,29 @@ void main() {
 }
 `;
 
-/** The moon (and the low sun at dusk and dawn) as the camera sees it: a disc with a soft halo, on a camera-facing quad. */
-const DISC_FRAGMENT = /* glsl */ `
-${NOISE}
-uniform vec3 uColor;
-uniform vec3 uGlow;
-uniform float uAlpha;
-uniform float uCraters;
-varying vec2 vUv;
-void main() {
-  vec2 p = (vUv - 0.5) * 2.0;
-  float r = length(p);
-  float disc = 1.0 - smoothstep(0.25, 0.262, r);
-  float seas = smoothstep(0.42, 0.7, fbm(p * 7.0 + 3.0)) * uCraters;
-  vec3 face = uColor * (1.0 - 0.16 * seas) * (0.92 + 0.08 * (1.0 - r * 3.0));
-  float halo = exp(-max(r - 0.24, 0.0) * 7.0) * 0.55 + exp(-max(r - 0.24, 0.0) * 22.0) * 0.35;
-  vec3 col = face * disc + uGlow * halo * (1.0 - disc);
-  float a = (disc + halo * (1.0 - disc)) * uAlpha;
-  gl_FragColor = vec4(col, a);
-}
-`;
-
-/** Sway shared by stalks, leaves and grass: the higher on the stalk, the further it moves. */
+/**
+ * Sway shared by stalks, leaves and grass: the higher on the stalk, the further it moves. A slow gust front rolls
+ * across the grove (each stalk meets it a little after its neighbour), every stalk has its own rhythm, lean direction
+ * and amplitude, and the time only ever enters through sines of fixed frequency (so nothing ever jumps).
+ */
 const SWAY = /* glsl */ `
 uniform float uTime;
 uniform float uWind;
-vec2 sway(vec4 s, float h) {
+vec2 sway(vec4 s, float h, vec2 bp) {
   float since = uTime - s.w;
-  float shake = since >= 0.0 && since < 3.0 ? 0.55 * exp(-since * 1.6) * sin(since * 13.0) : 0.0;
+  float shake = since >= 0.0 && since < 4.5 ? 0.16 * exp(-since * 0.9) * sin(since * 6.2) : 0.0;
   float k = h * h;
-  float gust = 1.0 + uWind * 2.2;
-  return vec2(sin(uTime * (0.85 + uWind * 0.5) + s.x) * s.y * gust + shake, cos(uTime * 0.63 + s.x * 1.3) * s.y * 0.6 * gust + shake * 0.4) * k;
+  float front = 0.5 + 0.5 * sin(uTime * 0.42 - dot(bp, vec2(0.21, 0.13)) + s.x * 0.2);
+  float amp = s.y * (0.55 + 0.9 * front * (0.35 + uWind * 1.4));
+  float dirA = 0.7 + 0.4 * sin(s.x * 1.7) + 0.15 * sin(uTime * 0.11 + s.x);
+  vec2 d = vec2(cos(dirA), sin(dirA));
+  vec2 across = vec2(-d.y, d.x);
+  float rate = 0.5 + 0.18 * fract(s.x * 3.1);
+  float a = sin(uTime * rate + s.x) * 0.65 + sin(uTime * rate * 0.53 + s.x * 2.3) * 0.35;
+  float b = sin(uTime * rate * 0.77 + s.x * 1.4 + 1.0);
+  vec2 off = d * (a * amp + amp * 0.5 * front) + across * (b * amp * 0.3);
+  vec2 jolt = vec2(cos(s.x * 3.0), sin(s.x * 3.0)) * shake;
+  return (off + jolt) * k;
 }
 `;
 
@@ -279,8 +304,13 @@ mvPosition = instanceMatrix * mvPosition;
 #endif
 ${opts.stalk ? 'float hf = position.y;' : 'float hf = aHeight;'}
 ${opts.stalk ? 'vH = position.y * aHeight;' : 'vH = 0.0;'}
-mvPosition.xz += sway(aSway, hf);
-${opts.flutter ? 'mvPosition.y += sin(uTime * 3.2 + aSway.x * 5.0 + position.x * 5.0) * 0.035 * position.x;' : ''}
+#ifdef USE_INSTANCING
+vec2 bp = instanceMatrix[3].xz;
+#else
+vec2 bp = vec2(0.0);
+#endif
+mvPosition.xz += sway(aSway, hf, bp);
+${opts.flutter ? 'mvPosition.y += sin(uTime * 1.7 + aSway.x * 5.0 + position.x * 4.0) * 0.02 * position.x;' : ''}
 mvPosition = modelViewMatrix * mvPosition;
 gl_Position = projectionMatrix * mvPosition;
 `,
@@ -319,10 +349,10 @@ export function BambooWorld({ model, bounds, driver, calm, clock }: WorldProps) 
   const floorY = model.floorY;
   const { radius: R } = bounds;
   const { cx, cz, halfX, halfZ, lift } = useMemo(() => worldLayout(model), [model]);
-  const clearX = halfX + 5.2;
-  const clearZ = Math.max(halfZ + 4.8, halfX * 0.55 + 4.3) + lift * 0.6;
-  const fogNear = R * 2.6 + 10;
-  const fogFar = R * 8 + 55;
+  const { clearX, clearZ } = useMemo(() => groveClearing(model), [model]);
+  // The grove is about three times the ground it was: the haze, the hills and the bamboo behind all stand further back.
+  const fogNear = R * 2.6 + 10 + clearZ * 0.5;
+  const fogFar = R * 8 + 55 + Math.max(clearX, clearZ) * 2.2;
   const haze = '#e6e6cf';
   const time = useMemo(() => ({ value: 0 }), []);
   // The time of day, shared by every shader in the grove (the sky, the ground, the pond, the hills, the light shafts).
@@ -338,6 +368,14 @@ export function BambooWorld({ model, bounds, driver, calm, clock }: WorldProps) 
     }),
     [],
   );
+  // The paths and the pads the colony's places stand on (drawn into the ground).
+  const trails = useMemo(() => {
+    const places = pandaSpots(model).places;
+    const segs: Vector4[] = [];
+    for (const path of places.paths) for (let i = 0; i + 1 < path.length; i++) segs.push(new Vector4(path[i][0], path[i][1], path[i + 1][0], path[i + 1][1]));
+    const pads = places.pads.map(([x, z, r, kind]) => new Vector4(x, z, r, kind));
+    return { segs, pads };
+  }, [model]);
 
   const sky = useMemo(
     () =>
@@ -362,13 +400,15 @@ export function BambooWorld({ model, bounds, driver, calm, clock }: WorldProps) 
           uEarth: { value: new Color(palette.floor) },
           uTint: sky$.uTint,
           uLamps: sky$.uLamps,
+          uSeg: { value: trails.segs },
+          uPad: { value: trails.pads },
           ...fogUniforms(haze, fogNear, fogFar),
         },
         vertexShader: WORLD_VERTEX,
-        fragmentShader: `#define LAMPS ${LAMPS}\n${GROUND_FRAGMENT}`,
+        fragmentShader: `#define LAMPS ${LAMPS}\n#define SEGS ${trails.segs.length}\n#define PADS ${trails.pads.length}\n${GROUND_FRAGMENT}`,
         toneMapped: false,
       }),
-    [time, cx, cz, clearX, clearZ, palette.floor, fogNear, fogFar, sky$],
+    [time, cx, cz, clearX, clearZ, palette.floor, fogNear, fogFar, sky$, trails],
   );
 
   const scene = useMemo(() => {
@@ -383,7 +423,7 @@ export function BambooWorld({ model, bounds, driver, calm, clock }: WorldProps) 
     // ── Bamboo: clumps round the back and sides of the clearing (the front stays open to the camera).
     type Stalk = { x: number; z: number; h: number; thick: number; phase: number; amp: number; tint: number };
     const stalks: Stalk[] = [];
-    const clumps = 26;
+    const clumps = Math.round(26 * GROVE_SPREAD * 0.9);
     for (let c = 0; c < clumps; c++) {
       const a = Math.PI + (c / (clumps - 1)) * Math.PI * 1.35 - 0.17 * Math.PI;
       if (Math.sin(a) > 0.42) continue;
@@ -418,7 +458,7 @@ export function BambooWorld({ model, bounds, driver, calm, clock }: WorldProps) 
     });
     const nearStalks = stalks.length;
     // A second, deeper ring for density behind.
-    for (let i = 0; i < 46; i++) {
+    for (let i = 0; i < 96; i++) {
       const a = Math.PI + r() * Math.PI;
       const depth = 1.7 + r() * 1.3;
       stalks.push({ x: cx + Math.cos(a) * clearX * depth, z: cz + Math.sin(a) * clearZ * depth, h: 9 + r() * 8, thick: 0.16 + r() * 0.12, phase: r() * 6.28, amp: 0.05 + r() * 0.05, tint: r() });
@@ -486,7 +526,7 @@ export function BambooWorld({ model, bounds, driver, calm, clock }: WorldProps) 
     const grassGeo = keep(new ConeGeometry(0.03, 1, 3, 1));
     grassGeo.translate(0, 0.5, 0);
     const blades: number[][] = [];
-    for (let t = 0; t < 70; t++) {
+    for (let t = 0; t < 130; t++) {
       const a = r() * Math.PI * 2;
       if (Math.sin(a) > 0.35) continue;
       const d = 1.1 + Math.pow(r(), 1.4) * 0.7;
@@ -570,7 +610,7 @@ export function BambooWorld({ model, bounds, driver, calm, clock }: WorldProps) 
     });
 
     // The koi pond, behind on the right, with lily pads and three koi.
-    const px = cx - halfX * 0.45 - 1.6, pz = cz - Math.max(clearZ * 0.84, halfZ + 4.7 + lift);
+    const px = spots.pond.x, pz = spots.pond.z;
     const pondMat = keep(new ShaderMaterial({ uniforms: { uTime: time, uSplash: { value: -1 }, uTint: sky$.uTint, uNight: sky$.uNight }, vertexShader: /* glsl */ `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`, fragmentShader: POND_FRAGMENT, transparent: true, depthWrite: false, toneMapped: false }));
     const pond = new Mesh(keep(new PlaneGeometry(1, 1)), pondMat);
     pond.rotation.x = -Math.PI / 2;
@@ -626,8 +666,9 @@ export function BambooWorld({ model, bounds, driver, calm, clock }: WorldProps) 
     ].map((hl) => {
       const m = keep(new ShaderMaterial({ uniforms: { uColor: { value: new Color(hl.color) }, uSeed: { value: hl.seed }, uBase: { value: hl.base }, uAmp: { value: hl.amp } }, vertexShader: /* glsl */ `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`, fragmentShader: MOUNTAIN_FRAGMENT, side: BackSide, fog: false, depthWrite: false }));
       hillTones.push({ mat: m, day: new Color(hl.color), dusk: new Color(hl.dusk), night: new Color(hl.night) });
-      const mesh = new Mesh(keep(new CylinderGeometry(hl.r, hl.r, hl.h, 128, 1, true)), m);
-      mesh.position.set(cx, floorY + hl.h / 2 - 3, cz);
+      const reach = Math.max(1, (Math.max(clearX, clearZ) * 3.4) / 100);
+      const mesh = new Mesh(keep(new CylinderGeometry(hl.r * reach, hl.r * reach, hl.h * reach, 128, 1, true)), m);
+      mesh.position.set(cx, floorY + (hl.h * reach) / 2 - 3, cz);
       mesh.renderOrder = 2;
       mesh.layers.set(NO_SHADOW_LAYER);
       group.add(mesh);
@@ -639,10 +680,10 @@ export function BambooWorld({ model, bounds, driver, calm, clock }: WorldProps) 
     // Falling leaves.
     const fallGeo = keep(new ShapeGeometry(leafShape(0.32, 0.06), 2));
     const fallMat = keep(new MeshStandardMaterial({ color: '#ffffff', roughness: 0.7, side: DoubleSide }));
-    const falling = new InstancedMesh(fallGeo, fallMat, 46);
+    const falling = new InstancedMesh(fallGeo, fallMat, LEAVES);
     falling.instanceMatrix.setUsage(DynamicDrawUsage);
     const fallTints = [new Color('#a4c45c'), new Color('#d6c25a'), new Color('#86b14b'), new Color('#c9a64a')];
-    for (let i = 0; i < 46; i++) falling.setColorAt(i, fallTints[i % 4]);
+    for (let i = 0; i < LEAVES; i++) falling.setColorAt(i, fallTints[i % 4]);
     group.add(falling);
 
     // A shishi-odoshi: a bamboo tube that fills from a spout, tips, pours into a stone basin, and clacks back.
@@ -849,12 +890,12 @@ export function BambooWorld({ model, bounds, driver, calm, clock }: WorldProps) 
 
     // Fireflies over the grass and between the stalks after dark.
     const flies = (() => {
-      const n = 90;
+      const n = 220;
       const pos = new Float32Array(n * 3);
       const seed = new Float32Array(n * 4);
       for (let i = 0; i < n; i++) {
         const a = r() * Math.PI * 2;
-        const d = 0.35 + Math.sqrt(r()) * 0.85;
+        const d = 0.3 + Math.sqrt(r()) * 0.95;
         pos[i * 3] = cx + Math.cos(a) * clearX * d;
         pos[i * 3 + 1] = floorY + 0.25 + r() * 2.4;
         pos[i * 3 + 2] = cz + Math.sin(a) * clearZ * d;
@@ -947,11 +988,16 @@ void main() { gl_FragColor = vec4(vColor, 1.0); }`,
     const butterflies = flyer(5, 0.12, 100, ['#f4a52e', '#f7f3e3', '#e9728f', '#6fa8f0', '#f6d84a'], false);
     const birds = flyer(7, 0.8, 200, ['#2e3a3f', '#3b474b'], true);
 
+    // The colony's furniture and equipment: beds and mats, chairs, a desk, a board, the gym, the campfire, a fence, lamp posts.
+    const props = buildColonyProps(spots.places, floorY);
+    group.add(props.group);
+    disposables.push({ dispose: () => props.dispose() });
+
     group.traverse((o) => {
       o.frustumCulled = false;
     });
-    return { group, gym, snackStalks, dangle, butterflies, birds, fountain, pivot, fx, fz, stalks, stalkMesh, stalkSway, leafMesh, leafSway, leavesOf, grassMesh, rockMesh, lanterns, px, pz, pondMat, koi, falling, hillTones, swingArm, hanging, paperMats, flies, disposables };
-  }, [cx, cz, halfX, halfZ, lift, clearX, clearZ, floorY, time, model, sky$]);
+    return { group, props, gym, snackStalks, dangle, butterflies, birds, fountain, pivot, fx, fz, stalks, stalkMesh, stalkSway, leafMesh, leafSway, leavesOf, grassMesh, rockMesh, lanterns, px, pz, pondMat, koi, falling, hillTones, swingArm, hanging, paperMats, flies, disposables };
+  }, [cx, cz, clearX, clearZ, floorY, time, model, sky$]);
 
   useEffect(
     () => () => {
@@ -962,7 +1008,7 @@ void main() { gl_FragColor = vec4(vColor, 1.0); }`,
   );
 
   const motes = useMemo(() => {
-    const n = 70;
+    const n = 130;
     const pos = new Float32Array(n * 3);
     const seed = new Float32Array(n * 4);
     const r = rng(77);
@@ -1012,38 +1058,6 @@ void main() {
   const fillLight = useRef<DirectionalLight>(null);
   const hemi = useRef<HemisphereLight>(null);
   const three = useThree((s) => s.scene);
-  const camera = useThree((s) => s.camera);
-  // The moon crossing the top of the picture through the night (behind the bamboo), and the sun low down at dusk and dawn.
-  const discs = useMemo(() => {
-    const make = (color: string, glow: string, craters: number) => {
-      const material = new ShaderMaterial({
-        uniforms: { uColor: { value: new Color(color) }, uGlow: { value: new Color(glow) }, uAlpha: { value: 0 }, uCraters: { value: craters } },
-        vertexShader: /* glsl */ `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
-        fragmentShader: DISC_FRAGMENT,
-        transparent: true,
-        depthWrite: false,
-        fog: false,
-        toneMapped: false,
-      });
-      const mesh = new Mesh(new PlaneGeometry(1, 1), material);
-      mesh.frustumCulled = false;
-      // After the far hills (which write no depth): it is further away than they are. The bamboo still hides it.
-      mesh.renderOrder = 5;
-      mesh.layers.set(NO_SHADOW_LAYER);
-      mesh.visible = false;
-      return { mesh, material };
-    };
-    return { moon: make('#f3f1e4', '#9fb4ec', 1), sun: make('#ffd38a', '#ff9a52', 0) };
-  }, []);
-  useEffect(
-    () => () => {
-      for (const d of [discs.moon, discs.sun]) {
-        d.mesh.geometry.dispose();
-        d.material.dispose();
-      }
-    },
-    [discs],
-  );
   // Halos round the lanterns after dark.
   const halos = useMemo(() => {
     const tex = typeof document === 'undefined' ? null : dotTexture();
@@ -1065,7 +1079,7 @@ void main() {
   );
   const rustled = useRef<Float32Array>(new Float32Array(0));
   const bursts = useRef<{ x: number; z: number; y: number; t: number }[]>([]);
-  const events = useRef({ fountainAt: 0, koi: -100, lantern: [1, 1], lanternAt: [-100, -100], puffs: [] as { x: number; z: number; t: number }[], shakes: [] as { stalk: number; t: number }[], endAt: -1, lastK: -1 });
+  const events = useRef({ fountainAt: 0, koi: -100, lantern: [1, 1], lanternAt: [-100, -100], puffs: [] as { x: number; z: number; t: number }[], shakes: [] as { stalk: number; t: number }[], endAt: -1, lastK: -1, windAt: 0, punchAmp: 0 });
 
   useEffect(
     () =>
@@ -1076,7 +1090,10 @@ void main() {
         time.value = now;
 
         // Wind: now and then a gust sweeps through the bamboo, leaves and grass (still in calm mode).
-        WIND.value = calm ? 0 : Math.max(0, Math.sin(now * 0.31) + Math.sin(now * 0.17 + 2.0) - 0.85) * 0.55;
+        const gust = calm ? 0 : Math.max(0, Math.sin(now * 0.31) + Math.sin(now * 0.17 + 2.0) - 0.85) * 0.55;
+        const windDt = Math.min(0.1, Math.max(0, clock.now - ev.windAt));
+        WIND.value += (gust - WIND.value) * (1 - Math.exp(-windDt * 1.5));
+        ev.windAt = clock.now;
         // The time of day: the sun and the moon cross the sky, the light goes golden, then blue, then comes back.
         const day = clock.day;
         const nightW = day.night;
@@ -1091,20 +1108,24 @@ void main() {
         if (three.background instanceof Color) three.background.copy(_c);
         if (three.fog) three.fog.color.copy(_c);
         (ground.uniforms.uFogColor.value as Color).copy(_c);
-        three.environmentIntensity = palette.lights.envIntensity * (1 - 0.62 * nightW);
+        three.environmentIntensity = palette.lights.envIntensity * (1 - 0.5 * nightW);
         if (hemi.current) {
           hemi.current.color.set(palette.lights.sky).lerp(TONE.skyNight, nightW);
           hemi.current.groundColor.set(palette.lights.ground).lerp(TONE.groundNight, nightW);
-          hemi.current.intensity = palette.lights.ambient * (1 - 0.45 * nightW);
+          hemi.current.intensity = palette.lights.ambient * (1 - 0.2 * nightW);
         }
+        // The moon is a light of its own: it rims everything from behind (the pandas, the stalks, the beds), where it stands in the sky.
         if (fillLight.current) {
           fillLight.current.color.set(palette.lights.fill).lerp(TONE.fillNight, nightW);
-          fillLight.current.intensity = palette.lights.fillIntensity * (1 - 0.4 * nightW);
+          fillLight.current.intensity = palette.lights.fillIntensity * (1 + 2.2 * nightW);
+          _moonPos.set(cx + day.moon[0] * 70, floorY + Math.max(8, day.moon[1] * 70), cz + day.moon[2] * 70);
+          fillLight.current.position.lerpVectors(_fillHome.set(cx + R + 6, floorY + R * 0.6 + 3, cz - R * 0.4 - 6), _moonPos, nightW);
         }
         // Light: clouds drift over the sun, the grove brightens and dims a little; moonlight is cooler and softer.
         if (keyLight.current) {
           keyLight.current.color.set(palette.lights.key).lerp(TONE.keyDusk, duskW).lerp(TONE.keyNight, nightW);
-          keyLight.current.intensity = palette.lights.keyIntensity * (1 - 0.12 * duskW - 0.55 * nightW) * (calm ? 1 : 1 + 0.07 * Math.sin(now * 0.13) * Math.sin(now * 0.07 + 1.0));
+          // Moonlight, from the front and above: nearly as strong as the sun, cold and blue.
+          keyLight.current.intensity = palette.lights.keyIntensity * (1 - 0.12 * duskW - 0.12 * nightW) * (calm ? 1 : 1 + 0.07 * Math.sin(now * 0.13) * Math.sin(now * 0.07 + 1.0));
         }
         scene.hillTones.forEach((h) => {
           (h.mat.uniforms.uColor.value as Color).copy(h.day).lerp(h.dusk, duskW).lerp(h.night, nightW);
@@ -1112,53 +1133,6 @@ void main() {
         // Lit at dusk, glowing all night.
         const lit = Math.min(1, Math.max(nightW * 1.2, duskW * 0.55 * (1 - day.day * 0.5)));
 
-        // The moon and the low sun, placed in the camera's view (far behind the bamboo) wherever it looks from.
-        {
-          const cam = camera as PerspectiveCamera;
-          cam.getWorldDirection(_fwd);
-          _right.crossVectors(_fwd, UP).normalize();
-          _up.crossVectors(_right, _fwd).normalize();
-          const tanV = Math.tan(((cam.fov ?? 26) * Math.PI) / 360);
-          const tanH = tanV * (cam.aspect || 1.6);
-          const far = Math.min(160, fogFar * 0.9);
-          const place = (mesh: Mesh, u: number, v: number, size: number) => {
-            // Along the ray through (u, v) of the picture, out beyond the clearing, where it still floats above the
-            // far ground (the top of the picture looks a little down): the bamboo passes in front of it.
-            _p.copy(_fwd).addScaledVector(_right, u * tanH).addScaledVector(_up, v * tanV);
-            const lift = floorY + 2.5 - cam.position.y;
-            const behind = Math.hypot(cam.position.x - cx, cam.position.z - cz) + clearZ * 3.1;
-            const D = _p.y < -1e-3 ? Math.min(far, Math.max(behind, lift / _p.y)) : far;
-            mesh.position.copy(cam.position).addScaledVector(_p, D);
-            mesh.quaternion.copy(cam.quaternion);
-            mesh.scale.setScalar(size * tanV * D);
-          };
-          // Up over the bamboo on the right as night falls, across the top, down on the left before dawn.
-          const night = ((day.phase - 0.5) % 1 + 1) % 1 / 0.5;
-          const moonA = night <= 1 ? Math.min(1, night / 0.06, (1 - night) / 0.06) * (1 - day.day * 0.9) : 0;
-          discs.moon.mesh.visible = moonA > 0.003;
-          if (discs.moon.mesh.visible) {
-            place(discs.moon.mesh, 0.82 - 1.64 * night, 0.56 + 0.32 * Math.sin(Math.PI * night), 0.5);
-            discs.moon.material.uniforms.uAlpha.value = moonA;
-          }
-          // The sun: sinking on the left at dusk, rising on the right at dawn.
-          const set = (day.phase - 0.43) / 0.11;
-          const rise = ((day.phase + 0.045) % 1) / 0.075;
-          let sunA = 0, su = 0, sv = 0;
-          if (set >= 0 && set <= 1) {
-            sunA = Math.min(1, set / 0.2, (1 - set) / 0.25);
-            su = -0.55 - 0.15 * set;
-            sv = 0.95 - 0.75 * set;
-          } else if (rise >= 0 && rise <= 1) {
-            sunA = Math.min(1, rise / 0.25, (1 - rise) / 0.2);
-            su = 0.7 - 0.15 * rise;
-            sv = 0.2 + 0.75 * rise;
-          }
-          discs.sun.mesh.visible = sunA > 0.003;
-          if (discs.sun.mesh.visible) {
-            place(discs.sun.mesh, su, sv, 0.62);
-            discs.sun.material.uniforms.uAlpha.value = sunA * 0.95;
-          }
-        }
         // The rope under the beam of the gym sways with the wind.
         scene.dangle.rotation.z = calm ? 0 : 0.1 * Math.sin(now * 1.3) + WIND.value * 0.5;
         scene.dangle.rotation.x = calm ? 0 : 0.06 * Math.sin(now * 0.9 + 1);
@@ -1203,6 +1177,54 @@ void main() {
             halo.material.opacity = 0.6 * lit * flicker;
           }
         });
+        // The campfire: flames dancing, light flickering (a warm pool on the ground, a halo round it), sparks; it burns all day, but it is the night's light.
+        const props = scene.props;
+        const fl = calm ? 1 : 1 + 0.16 * Math.sin(now * 9.1) * Math.sin(now * 5.3 + 1) + 0.07 * Math.sin(now * 17.3);
+        props.fire.light.intensity = (1.6 + 16 * lit) * fl;
+        props.fire.flames.forEach((f, i) => {
+          const wob = calm ? 1 : 0.85 + 0.22 * Math.sin(now * (6.5 + f.seed) + f.seed * 3) + 0.1 * Math.sin(now * 13.7 + f.seed);
+          f.mesh.scale.y = f.base * wob;
+          f.mesh.scale.x = f.mesh.scale.z = (0.14 + 0.2 * (1 - i * 0.2)) * (0.92 + 0.12 * Math.sin(now * 8 + f.seed));
+          f.mesh.rotation.z = calm ? 0 : 0.1 * Math.sin(now * 4.4 + f.seed * 2) + WIND.value * 0.15;
+        });
+        lamps[8].set(props.fire.x, props.fire.z, 2.5 * (0.3 + 0.7 * lit) * fl);
+        const fireHalo = halos.list[8];
+        fireHalo.visible = true;
+        fireHalo.position.set(props.fire.x, floorY + 0.75, props.fire.z);
+        fireHalo.scale.setScalar((3.2 + 0.5 * lit) * (0.97 + 0.05 * fl));
+        fireHalo.material.opacity = (0.22 + 0.38 * lit) * Math.min(1.2, fl);
+        props.lamps.forEach((l, i) => {
+          const flick = calm ? 1 : 0.9 + 0.1 * Math.sin(now * 5.7 + i * 2.1) * Math.sin(now * 2.1 + i);
+          l.mat.emissiveIntensity = 0.12 + 1.5 * lit * flick;
+          lamps[9 + i].set(l.x, l.z, 0.62 * lit * flick);
+          const halo = halos.list[9 + i];
+          halo.visible = lit > 0.02;
+          if (halo.visible) {
+            halo.position.set(l.x, floorY + 1.8, l.z);
+            halo.scale.setScalar(1.5 + 0.08 * flick);
+            halo.material.opacity = 0.5 * lit * flick;
+          }
+        });
+        // The laptop's screen glows (brighter in the dark, and busier while someone types); the barbell is off its rack while it is lifted; the punching log swings when it is hit.
+        const typing = clock.colony.members.some((m) => m.act === 'type');
+        props.screen.emissiveIntensity = (0.55 + 1.5 * nightW) * (typing && !calm ? 1 + 0.12 * Math.sin(now * 11) * Math.sin(now * 2.3) : 1);
+        const lifting = clock.colony.members.some((m) => m.act === 'lift');
+        for (const bar of props.rackBar) bar.visible = !lifting;
+        const punching = clock.colony.members.some((m) => m.act === 'punch');
+        ev.punchAmp += ((punching ? 0.2 : 0) - ev.punchAmp) * 0.08;
+        for (const pl of props.punch) {
+          pl.pivot.rotation.z = calm ? 0 : -ev.punchAmp * (0.5 + 0.5 * Math.sin(now * 4.6)) + 0.03 * Math.sin(now * 0.9);
+          pl.pivot.rotation.x = calm ? 0 : 0.02 * Math.sin(now * 0.7);
+        }
+        // Sparks rise from the fire and go out.
+        if (!calm) {
+          for (let sp = 0; sp < 7; sp++) {
+            const f = (now * (0.35 + hash(sp, 91) * 0.25) + hash(sp, 92)) % 1;
+            const a = hash(sp, 93) * Math.PI * 2 + now * 0.4;
+            const rr = (0.1 + 0.3 * f) * (0.5 + hash(sp, 94));
+            pool.add(props.fire.x + Math.cos(a) * rr + WIND.value * f, floorY + 0.5 + f * 2.2, props.fire.z + Math.sin(a) * rr, 1, 0.55 + 0.3 * (1 - f), 0.18, (1 - f) * 0.9, 0.035);
+          }
+        }
         // The swing: carries whoever is on it, and drifts a little in the wind when it is empty.
         const rider = clock.colony.swing;
         scene.swingArm.rotation.x = rider.rider ? -swingAngle(now - rider.start, rider.dur) : calm ? 0 : -(0.04 * Math.sin(now * 0.9) + WIND.value * 0.12);
@@ -1301,7 +1323,7 @@ void main() {
 
         // Falling leaves: drift down across the view, tumbling.
         const span = 7;
-        for (let i = 0; i < 46; i++) {
+        for (let i = 0; i < LEAVES; i++) {
           const speed = 0.35 + hash(i, 1) * 0.35;
           const f = calm ? hash(i, 2) : (now * speed / span + hash(i, 2)) % 1;
           const x = cx + (hash(i, 3) - 0.5) * clearX * 2.3 + Math.sin(now * 0.7 + i) * 0.5;
@@ -1370,7 +1392,7 @@ void main() {
         const busy = bursts.current.length > 0 || kt < 3 || ev.puffs.length > 0 || ev.lanternAt.some((t0) => wall - t0 < 0.7);
         if (busy) invalidate();
       }),
-    [driver, model, time, scene, pool, clock, calm, cx, cz, clearX, clearZ, floorY, invalidate, sky$, ground, three, palette, camera, discs, halos, fogFar],
+    [driver, model, time, scene, pool, clock, calm, cx, cz, clearX, clearZ, floorY, invalidate, sky$, ground, three, palette, halos, fogFar, R],
   );
 
   useEffect(() => () => sky.dispose(), [sky]);
@@ -1476,8 +1498,6 @@ void main() {
         </bufferGeometry>
       </points>
       <primitive object={pool.points} />
-      <primitive object={discs.moon.mesh} />
-      <primitive object={discs.sun.mesh} />
       {halos.list.map((h, i) => (
         <primitive key={`h${i}`} object={h} />
       ))}
@@ -1487,25 +1507,26 @@ void main() {
 
 const UP = new Vector3(0, 1, 0);
 /** Lanterns that pool light on the ground at night: the two stone ones and the six paper ones. */
-const LAMPS = 8;
+const LAMPS = 15;
+/** Falling leaves (more of them, over the bigger grove). */
+const LEAVES = 70;
 /** The colours the grove's light goes through in a day: full day, the golden hour, moonlit night. */
 const TONE = {
   white: new Color(1, 1, 1),
   dusk: new Color(1.0, 0.78, 0.62),
-  night: new Color(0.3, 0.36, 0.55),
+  night: new Color(0.5, 0.6, 0.96),
   haze: new Color('#e6e6cf'),
   hazeDusk: new Color('#e8b48e'),
-  hazeNight: new Color('#141b2c'),
-  skyNight: new Color('#7f92c8'),
-  groundNight: new Color('#262d22'),
+  hazeNight: new Color('#1b2640'),
+  skyNight: new Color('#9bb0f0'),
+  groundNight: new Color('#33405c'),
   keyDusk: new Color('#ffbd85'),
-  keyNight: new Color('#a8bcff'),
-  fillNight: new Color('#6a7cb0'),
+  keyNight: new Color('#b8caff'),
+  fillNight: new Color('#8fb0ff'),
 };
 const _c = new Color();
-const _fwd = new Vector3();
-const _right = new Vector3();
-const _up = new Vector3();
+const _moonPos = new Vector3();
+const _fillHome = new Vector3();
 const FOUNTAIN_PERIOD = 7;
 const FOUNTAIN_SCALE = 1.3;
 

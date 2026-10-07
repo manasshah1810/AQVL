@@ -6,49 +6,30 @@ import type { StageSample } from '../../model/sampler';
 import type { StageDriver } from '../../three/driver';
 import type { Playhead } from '../../timeline/Playhead';
 import { IdleBrain, type Box, type IdleContext, type IdleOut, type Spots } from '../idle';
-import { buildPanda, createBlobShadow, type IdleAct, type PandaPersonality, type Rig } from './rigs';
+import { buildPanda, createBlobShadow, type IdleAct, type Rig } from './rigs';
+import { MEMBERS } from './colonyCast';
+import { gatherAt } from '../daycycle';
 import { ParticlePool, hash } from './particles';
 import { pandaSpots, worldLayout } from './layout';
 import type { WorldClock } from './WorldLayer';
 
 /**
- * The rest of the colony: eight more pandas who live in the grove alongside
+ * The rest of the colony: fifteen more pandas who live in the grove alongside
  * the crew. Three are students, with backpacks and books: the moment a run
  * plays they come and sit in a row in front of it and take notes (and clap at
- * the end). The other five get on with their lives: they eat bamboo, climb
- * the gym, go down the slide, swing, roll about, lie in the sun, wander, play
- * with each other; at night most of them sleep, the rest doze, gaze at the
- * stars, chase fireflies, or go round with a lantern. No two do the same
- * thing at the same moment (see Colony in idle.ts).
+ * the end). Three are the old residents (a big lazy one with a cane, its cub,
+ * an old one with a lantern). Nine are characters, each with a look and a
+ * routine of its own: the gym, the computer, the guitar, the classroom, the
+ * wandering, the following and the dodging (see MEMBERS). Every day at noon
+ * the one with the guitar sings by the fire and most of the colony comes to
+ * listen and dance; at night the bags come off and nearly everyone goes to
+ * bed, the rest sit by the fire, gaze at the stars, chase fireflies or go
+ * round with a lantern. No two do the same thing at the same moment (see
+ * Colony in idle.ts).
  *
  * Like the crew's idle life this is not a pure function of the run's time (it
  * is life in the grove, not the algorithm), so it lives beside the stage.
  */
-
-interface Member {
-  name: string;
-  role: 'student' | 'resident';
-  scale: number;
-  personality: PandaPersonality;
-  prop?: 'bamboo' | 'leaf';
-  bag?: string;
-  book?: string;
-  glasses?: boolean;
-  lamp?: boolean;
-}
-
-const MEMBERS: Member[] = [
-  // The students: young, quick, a little bouncy, each with its own backpack and book.
-  { name: 'Lin', role: 'student', scale: 1.14, bag: '#d4553f', book: '#2f6db5', personality: { size: 1.0, sway: 1.15, tempo: 1.12, bounce: 1.2, blink: 3.6, plump: 0.96, headSize: 1.1, ear: 1.2 } },
-  { name: 'Tao', role: 'student', scale: 1.08, bag: '#3d7cc0', book: '#e0a43a', glasses: true, personality: { size: 1.0, sway: 0.9, tempo: 1.0, bounce: 0.95, blink: 4.8, plump: 1.02, headSize: 1.08, ear: 0.9 } },
-  { name: 'Yuki', role: 'student', scale: 1.02, bag: '#e3b43a', book: '#8a4fb0', personality: { size: 1.0, sway: 1.3, tempo: 1.22, bounce: 1.35, blink: 3.1, plump: 0.94, headSize: 1.12, ear: 1.4 } },
-  // The residents: a big lazy one with a cane (it used to watch from the rocks), its cub, an old one with a lantern, two more.
-  { name: 'Dumpling', role: 'resident', scale: 1.38, prop: 'bamboo', personality: { size: 1.06, sway: 0.85, tempo: 0.82, bounce: 0.75, blink: 5.2, plump: 1.16, headSize: 0.98, ear: 0.75 } },
-  { name: 'Bean', role: 'resident', scale: 0.86, personality: { size: 1.0, sway: 1.35, tempo: 1.3, bounce: 1.45, blink: 2.9, plump: 1.0, headSize: 1.15, ear: 1.5 } },
-  { name: 'Grandpa Wu', role: 'resident', scale: 1.36, lamp: true, personality: { size: 1.0, sway: 0.8, tempo: 0.78, bounce: 0.6, blink: 5.6, plump: 1.08, headSize: 0.96, ear: 0.7 } },
-  { name: 'Peach', role: 'resident', scale: 1.18, prop: 'leaf', personality: { size: 1.0, sway: 1.1, tempo: 1.05, bounce: 1.1, blink: 4.1, plump: 0.98, headSize: 1.03, ear: 1.1 } },
-  { name: 'Momo', role: 'resident', scale: 1.25, personality: { size: 1.0, sway: 1.0, tempo: 0.95, bounce: 1.0, blink: 4.4, plump: 1.05, headSize: 1.0, ear: 1.0 } },
-];
 
 /** What a panda is up to, for the bubble when the viewer points at it. */
 const DOING: Partial<Record<IdleAct, string>> = {
@@ -76,6 +57,17 @@ const DOING: Partial<Record<IdleAct, string>> = {
   ponder: 'thinking it over',
   clap: 'clapping',
   raise: 'has a question',
+  guitar: 'singing and strumming',
+  type: 'busy on the laptop',
+  lift: 'pressing the barbell',
+  squat: 'squatting',
+  pullup: 'doing pull-ups',
+  punch: 'punching the log',
+  teach: 'teaching at the board',
+  adjust: 'adjusting those glasses',
+  glance: 'looking back',
+  unbag: 'taking the bag off',
+  rebag: 'putting the bag on',
 };
 
 /** Facing the camera (the stage camera sits a little to the left). */
@@ -141,12 +133,19 @@ export function ColonyLayer({ model, driver, calm, clock, playhead }: ColonyLaye
       pond: { at: spotsAll.pond.at, face: spotsAll.pond.face },
       slide: spotsAll.slide,
       swing: { seat: spotsAll.swing.seat, height: spotsAll.swing.height, length: spotsAll.swing.length, face: spotsAll.swing.face, approach: spotsAll.swing.approach },
+      camp: spotsAll.places.camp,
+      yard: spotsAll.places.yard,
+      beds: spotsAll.places.beds,
+      desk: spotsAll.places.desk,
+      school: spotsAll.places.school,
+      nooks: spotsAll.places.nooks,
+      paths: spotsAll.places.paths,
     }),
     [spotsAll],
   );
 
   const rigs = useMemo<Rig[]>(
-    () => MEMBERS.map((m) => buildPanda({ prop: m.prop ?? null, scale: m.scale, personality: m.personality, bag: m.bag, book: m.book, glasses: m.glasses, lamp: m.lamp })),
+    () => MEMBERS.map((m) => buildPanda({ prop: m.prop ?? null, scale: m.scale, personality: m.personality, bag: m.bag, book: m.book, glasses: m.glasses, lamp: m.lamp, ...m.look })),
     [],
   );
   const holders = useMemo(() => rigs.map(() => new Group()), [rigs]);
@@ -171,6 +170,10 @@ export function ColonyLayer({ model, driver, calm, clock, playhead }: ColonyLaye
       const b = new IdleBrain(29 + i * 7, i + 2, 'panda', m.role);
       b.lantern = !!m.lamp;
       b.height = 0.62 * m.scale;
+      b.name = m.name;
+      b.persona = m.persona;
+      b.hasBag = !!m.bag;
+      b.bed = i;
       return b;
     });
     list.forEach((b, i) => {
@@ -205,6 +208,7 @@ export function ColonyLayer({ model, driver, calm, clock, playhead }: ColonyLaye
     [zzz],
   );
 
+  const bagSpots = useRef<([number, number] | null)[]>(MEMBERS.map(() => null));
   const state = useRef({ last: 0, mounted: -1, lastPlay: -100, wasPlaying: false, endAt: -100, inClass: false, k: -1, keepOut: null as Box | null, stage: null as Box | null });
   const clickedAt = useRef<number[]>(MEMBERS.map(() => -10));
   const hovered = useRef(-1);
@@ -274,6 +278,7 @@ export function ColonyLayer({ model, driver, calm, clock, playhead }: ColonyLaye
         }
         const area: Box = { minX: layout.cx - spotsAll.clearX, maxX: layout.cx + spotsAll.clearX, minZ: layout.cz - spotsAll.clearZ, maxZ: layout.cz + spotsAll.clearZ };
         const freeFor = wall - st.mounted + 3;
+        const gather = gatherAt(clock.day);
 
         pool.begin();
         for (let i = 0; i < MEMBERS.length; i++) {
@@ -293,13 +298,14 @@ export function ColonyLayer({ model, driver, calm, clock, playhead }: ColonyLaye
               area,
               spots,
               far: true,
-              radius: 4.2,
+              radius: 6.5,
               colony: clock.colony,
               night: clock.day.night,
               now,
               obstacles: spotsAll.obstacles,
               roam: { cx: layout.cx, cz: layout.cz, rx: spotsAll.clearX, rz: spotsAll.clearZ },
               lesson: seat ? { on: lessonOn, cheer: cheer && st.inClass, seat: seat.at, face: seat.face } : undefined,
+              gather,
             };
             o = brain.update(dt, ctx);
           }
@@ -316,6 +322,11 @@ export function ColonyLayer({ model, driver, calm, clock, playhead }: ColonyLaye
           const lz = watching ? layout.cz - z : Math.cos(yaw) * 3;
           const c = Math.cos(yaw), s = Math.sin(yaw);
           const react = wall - clickedAt.current[i];
+          // The school bag, once it is off, is put down on the floor beside where it came off and stays there.
+          const bagW = o ? o.bag : 1;
+          if (!member.bag || bagW >= 0.999) bagSpots.current[i] = null;
+          else if (!bagSpots.current[i]) bagSpots.current[i] = [x + Math.cos(yaw) * 0.85 + Math.sin(yaw) * 0.25, z - Math.sin(yaw) * 0.85 + Math.cos(yaw) * 0.25];
+          const bagSpot = bagSpots.current[i];
           rig.update({
             gait: o ? o.gait : 'stand',
             gaitPhase: o ? o.gaitPhase : 0,
@@ -332,6 +343,8 @@ export function ColonyLayer({ model, driver, calm, clock, playhead }: ColonyLaye
             idle: o && o.actWeight > 0 && o.act !== 'none' ? { act: o.act, t: o.actT, weight: o.actWeight } : undefined,
             seat: o ? o.seat : 0,
             lamp: o ? o.lamp : 0,
+            bag: bagW,
+            bagAt: bagSpot ? [bagSpot[0], floor + 0.2, bagSpot[1]] : undefined,
             climb: o && o.gait === 'climb' ? { weight: o.gaitWeight, phase: o.gaitPhase, slope: o.climbSlope } : undefined,
           });
           if (react < 1.2) invalidate();
@@ -361,7 +374,7 @@ export function ColonyLayer({ model, driver, calm, clock, playhead }: ColonyLaye
             if (!sp.visible) continue;
             const f = ((now * 0.32 + k / 3 + i * 0.17) % 1 + 1) % 1;
             const side = Math.sin(3.1 + i * 2.3) > 0 ? 1 : -1;
-            sp.position.set(x + Math.sin(yaw + side * 1.2) * 0.25 + f * 0.35, floor + brain.height * 0.55 + f * 0.9, z + Math.cos(yaw + side * 1.2) * 0.25);
+            sp.position.set(x + Math.sin(yaw + side * 1.2) * 0.25 + f * 0.35, floor + y + brain.height * 0.55 + f * 0.9, z + Math.cos(yaw + side * 1.2) * 0.25);
             const scale = 0.16 + f * 0.2;
             sp.scale.set(scale, scale, 1);
             sp.material.opacity = Math.sin(f * Math.PI) * 0.9;
@@ -373,6 +386,15 @@ export function ColonyLayer({ model, driver, calm, clock, playhead }: ColonyLaye
               for (let p = 0; p < 5; p++) {
                 const f = (now * 0.9 + hash(i + 51, p)) % 1;
                 pool.add(x + Math.sin(yaw) * 0.32 * member.scale + (hash(i + 53, p) - 0.5) * 0.25, floor + 0.42 * member.scale - f * 0.4, z + Math.cos(yaw) * 0.32 * member.scale, 0.55, 0.72, 0.3, (1 - f) * 0.7, 0.04);
+              }
+            }
+            // Notes drift up from the guitar while it is played and sung.
+            if (o.act === 'guitar' && o.actWeight > 0.4) {
+              for (let p = 0; p < 4; p++) {
+                const f = (now * 0.45 + p / 4 + hash(i + 71, p) * 0.2) % 1;
+                const side = (p % 2 ? 1 : -1) * (0.3 + f * 0.5);
+                const hue = p % 3;
+                pool.add(x + Math.cos(yaw) * side + Math.sin(yaw) * 0.5, floor + y + 0.6 * member.scale + f * 1.4, z - Math.sin(yaw) * side + Math.cos(yaw) * 0.5, hue === 0 ? 1 : 0.95, hue === 1 ? 0.9 : 0.78, hue === 2 ? 0.95 : 0.4, Math.sin(f * Math.PI) * 0.9, 0.07);
               }
             }
             if (o.gait === 'roll' && o.gaitWeight > 0.2) {
@@ -398,7 +420,7 @@ export function ColonyLayer({ model, driver, calm, clock, playhead }: ColonyLaye
           if (react < 1.6) text = `I'm ${member.name}!`;
           else if (hovered.current === i) {
             const act = o?.act ?? 'none';
-            const doing = brain.doing === 'lesson' ? (act === 'notes' ? 'taking notes' : DOING[act] ?? 'at the lesson') : DOING[act] ?? (o && o.gait === 'roll' ? 'rolling about' : o && o.gait === 'climb' ? 'climbing' : o && o.gait === 'walk' ? 'out for a stroll' : 'resting');
+            const doing = brain.doing === 'lesson' ? (act === 'notes' ? 'taking notes' : DOING[act] ?? 'at the lesson') : DOING[act] ?? (o && o.gait === 'roll' ? 'rolling about' : o && o.gait === 'climb' ? 'climbing' : o && o.gait === 'walk' ? (brain.doing === 'workout' ? 'jogging round the yard' : brain.doing === 'gather' ? 'off to the fire' : brain.doing === 'evade' ? 'getting away' : brain.doing === 'tail' ? 'out for a stroll (not following anyone)' : brain.doing === 'sleep' ? 'off to bed' : 'out for a stroll') : brain.doing === 'class' ? 'in the lesson' : 'resting');
             text = `${member.name} · ${doing}`;
           }
           const el = bubbles[i];

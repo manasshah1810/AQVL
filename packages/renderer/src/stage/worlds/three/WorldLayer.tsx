@@ -37,7 +37,7 @@ export interface WorldClock {
 export function WorldLayer({ model, bounds, driver, calm, playhead }: { model: StageModel; bounds: SceneBounds; driver: StageDriver; calm: boolean; playhead: Playhead }) {
   const invalidate = useThree((s) => s.invalidate);
   const clock = useMemo<WorldClock>(
-    () => ({ now: 0, fishAt: -100, crew: Array.from({ length: 10 }, () => ({ x: 0, y: 0, z: 0, speed: 0 })), chew: Array.from({ length: 10 }, () => -1), day: dayAt(dayTime(), blankDay()), colony: new Colony() }),
+    () => ({ now: 0, fishAt: -100, crew: Array.from({ length: 24 }, () => ({ x: 0, y: 0, z: 0, speed: 0 })), chew: Array.from({ length: 24 }, () => -1), day: dayAt(dayTime(), blankDay()), colony: new Colony() }),
     [],
   );
   useFrame((_, delta) => {

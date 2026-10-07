@@ -27,6 +27,23 @@ export interface DayState {
   night: number;
   /** Golden-hour glow: peaks while the sun is near the horizon (dusk and dawn). */
   dusk: number;
+  /** Whole days since the grove opened (0 on the first morning): the noon gathering is a new one each day. */
+  count: number;
+}
+
+/** Noon, as a phase of the day (the sun is highest). */
+export const NOON = 0.25;
+/** How long the gathering round the fire lasts, in seconds of a normal-speed day (a minute and a half). */
+export const GATHER_SECONDS = 90;
+/** How long before noon the musician gets up and heads for the fire. */
+export const GATHER_LEAD = 14;
+
+/** The noon gathering: `soon` while the musician is getting ready, `on` for its minute and a half. */
+export function gatherAt(day: DayState): { on: boolean; soon: boolean; day: number } {
+  const span = GATHER_SECONDS / DAY_LENGTH;
+  const lead = GATHER_LEAD / DAY_LENGTH;
+  const on = day.phase >= NOON && day.phase < NOON + span;
+  return { on, soon: !on && day.phase >= NOON - lead && day.phase < NOON, day: day.count };
 }
 
 let elapsed = 0;
@@ -49,7 +66,7 @@ function smooth(a: number, b: number, x: number): number {
 function arc(a: number, out: [number, number, number]): void {
   // Across the back of the sky: rises on the right (+x), highest behind the clearing (-z), sets on the left.
   const x = Math.cos(a) * 0.6;
-  const y = Math.sin(a) * 0.8;
+  const y = Math.sin(a) * 0.62;
   const z = -0.8 - Math.max(0, Math.sin(a)) * 0.15;
   const l = Math.hypot(x, y, z);
   out[0] = x / l;
@@ -72,6 +89,7 @@ export function dayAt(seconds: number, out: DayState = blankDay()): DayState {
   arc(a + Math.PI, out.moon);
   const elev = Math.sin(a);
   out.phase = phase;
+  out.count = Math.floor(p);
   out.day = smooth(-0.12, 0.2, elev);
   out.night = 1 - smooth(-0.3, 0.02, elev);
   out.dusk = Math.max(0, 1 - Math.abs(elev + 0.02) / 0.3);
@@ -79,5 +97,5 @@ export function dayAt(seconds: number, out: DayState = blankDay()): DayState {
 }
 
 export function blankDay(): DayState {
-  return { phase: START, sun: [1, 0, 0], moon: [-1, 0, 0], day: 1, night: 0, dusk: 0 };
+  return { phase: START, sun: [1, 0, 0], moon: [-1, 0, 0], day: 1, night: 0, dusk: 0, count: 0 };
 }

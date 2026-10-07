@@ -5,10 +5,13 @@ import {
   CylinderGeometry,
   Group,
   Mesh,
+  Matrix4,
   MeshStandardMaterial,
+  Quaternion,
   ShaderMaterial,
   SphereGeometry,
   TorusGeometry,
+  Vector3,
   type BufferGeometry,
   type Material,
   type Object3D,
@@ -55,6 +58,9 @@ export interface RigInput {
   seat?: number;
   /** 0..1: a paper lantern carried in the right paw, lit (pandas that have one). */
   lamp?: number;
+  /** 1: the school bag is on its back; 0: taken off and put down (at `bagAt`, a world position, once it is off). */
+  bag?: number;
+  bagAt?: [number, number, number];
 }
 
 /** The small things an animal does when nothing is asked of it. */
@@ -88,10 +94,23 @@ export type IdleAct =
   | 'notes'
   | 'ponder'
   | 'clap'
-  | 'raise';
+  | 'raise'
+  // The colony's own: strumming a guitar and singing, typing at a desk, the gym (a barbell press, squats, pull-ups, a
+  // punching log), a teacher at the board, a paw to the glasses, a startled look behind, the school bag coming off and going on.
+  | 'guitar'
+  | 'type'
+  | 'lift'
+  | 'squat'
+  | 'pullup'
+  | 'punch'
+  | 'teach'
+  | 'adjust'
+  | 'glance'
+  | 'unbag'
+  | 'rebag';
 
 /** Acts a panda does sitting on its haunches (it stays down from one to the next). */
-export const SEATED_ACTS: ReadonlySet<IdleAct> = new Set<IdleAct>(['sit', 'chew', 'doze', 'stargaze', 'notes', 'ponder', 'clap', 'raise', 'slide', 'swing']);
+export const SEATED_ACTS: ReadonlySet<IdleAct> = new Set<IdleAct>(['sit', 'chew', 'doze', 'stargaze', 'notes', 'ponder', 'clap', 'raise', 'slide', 'swing', 'guitar', 'type']);
 /** How fast a swing goes back and forth (radians of its swing per second). */
 export const SWING_RATE = 2.35;
 
@@ -698,9 +717,32 @@ export interface PandaOptions {
   /** A student's things: a backpack of this colour, a book with this cover, round glasses. */
   bag?: string;
   book?: string;
-  glasses?: boolean;
+  glasses?: boolean | 'big';
   /** Carries a paper lantern about at night. */
   lamp?: boolean;
+  /** How muscular (arms, shoulders), how pear-shaped (an enormous lower half). */
+  bulk?: number;
+  pear?: number;
+  /** A brimmed hat of this colour, and no ears (a bald head under it). */
+  hat?: string;
+  bald?: boolean;
+  /** A gold chain, bracelets and shades pushed up on the head. */
+  chain?: boolean;
+  shades?: boolean;
+  /** A bun, a draped sari of this colour, a teacher's pointer. */
+  bun?: boolean;
+  sash?: string;
+  pointer?: boolean;
+  /** A bow, a flower behind the ear, a scarf (of this colour), long lashes, a headband, a headset. */
+  bow?: string;
+  flower?: string;
+  scarf?: string;
+  lashes?: boolean;
+  headband?: string;
+  headset?: boolean;
+  /** Plays a guitar; lifts a barbell. */
+  guitar?: boolean;
+  barbell?: boolean;
 }
 
 /** What an idle action asks of a panda beyond the shared joints. */
@@ -727,6 +769,11 @@ interface PandaExtras {
   write: number;
   /** Legs kicking on the swing (-1..1). */
   kick: number;
+  /** A guitar in the lap, and the singing mouth; a barbell in the paws; a pointer in the hand. */
+  guitar: number;
+  sing: number;
+  bar: number;
+  pointer: number;
 }
 
 function pandaIdle(act: IdleAct, t: number, j: Joints, x: PandaExtras, seed: number): void {
@@ -1009,16 +1056,164 @@ function pandaIdle(act: IdleAct, t: number, j: Joints, x: PandaExtras, seed: num
       j.lean -= 0.05 * w;
       break;
     }
+    case 'guitar': {
+      // Sits with a guitar across the lap: the left paw on the neck, the right strumming in time, head swaying with the
+      // tune, eyes half shut, singing a line and drawing breath for the next.
+      const w = smoothstepJ(0, 0.8, t);
+      const beat = t * 4.4 + seed;
+      x.seat = w;
+      x.guitar = w;
+      x.sing = w * smoothstepJ(0.15, 0.55, Math.sin(t * 1.15 + seed * 2));
+      x.shut = 0.35 * w * (0.5 + 0.5 * Math.sin(t * 0.7 + seed));
+      j.reachL += 1.8 * w;
+      j.raiseL += 0.1 * w;
+      j.reachR += (1.05 + 0.24 * Math.sin(beat * 2)) * w;
+      j.raiseR += 0.12 * w;
+      j.headYaw += 0.32 * Math.sin(t * 0.8) * w;
+      j.headTilt += 0.18 * Math.sin(t * 1.3 + 1) * w;
+      j.headPitch += (-0.05 + 0.06 * Math.sin(beat)) * w;
+      j.hop += 0.01 * Math.abs(Math.sin(beat)) * w;
+      break;
+    }
+    case 'type': {
+      // Hunched at the desk, both paws going on the keys, now and then a long look at the screen with the head on one side.
+      const w = smoothstepJ(0, 0.7, t);
+      const k1 = Math.sin(t * 17 + seed), k2 = Math.sin(t * 13.3 + seed * 2 + 1);
+      const read = smoothstepJ(0.2, 0.6, Math.sin(t * 0.42 + seed));
+      x.seat = w;
+      j.reachL += (1.3 + 0.07 * k1 * (1 - 0.6 * read)) * w;
+      j.reachR += (1.3 + 0.07 * k2 * (1 - 0.6 * read)) * w;
+      j.raiseL -= 0.12 * w;
+      j.raiseR -= 0.12 * w;
+      j.headPitch += (0.14 + 0.07 * Math.sin(t * 0.6 + seed) - 0.1 * read) * w;
+      j.headTilt += 0.12 * read * w;
+      j.headYaw += 0.05 * Math.sin(t * 0.4 + seed * 3) * w;
+      j.lean += 0.07 * w;
+      break;
+    }
+    case 'lift': {
+      // A barbell press: down to the chest, up over the head, a breath at the top, again.
+      const w = smoothstepJ(0, 0.7, t);
+      const u = (0.5 - 0.5 * Math.cos(t * 1.9 + seed)) * w;
+      x.bar = w;
+      j.reachL += (1.15 + 1.75 * u) * w;
+      j.reachR += (1.15 + 1.75 * u) * w;
+      j.raiseL += 0.12 * w;
+      j.raiseR += 0.12 * w;
+      j.squash += 0.045 * (1 - u) * w;
+      j.lean -= 0.09 * u * w;
+      j.headPitch -= 0.2 * u * w;
+      break;
+    }
+    case 'squat': {
+      // Down and up, arms out in front for balance, a little forward at the bottom.
+      const w = smoothstepJ(0, 0.6, t);
+      const d = (0.5 - 0.5 * Math.cos(t * 2.1 + seed)) * w;
+      j.squash += 0.15 * d;
+      j.reachL += 1.4 * w;
+      j.reachR += 1.4 * w;
+      j.lean += 0.2 * d;
+      j.headPitch -= 0.12 * w;
+      j.hop -= 0.03 * d;
+      break;
+    }
+    case 'pullup': {
+      // Hanging from the bar by both paws, pulling up till the chin clears it, and down again.
+      const w = smoothstepJ(0, 0.7, t);
+      const d = (0.5 - 0.5 * Math.cos(t * 1.5 + seed)) * w;
+      j.reachL += 2.95 * w;
+      j.reachR += 2.95 * w;
+      j.raiseL -= 0.05 * w;
+      j.raiseR -= 0.05 * w;
+      j.hop += 0.2 * d;
+      j.headPitch -= 0.25 * w;
+      j.squash -= 0.015 * (1 - d) * w;
+      break;
+    }
+    case 'punch': {
+      // Jabs and crosses at the punching log, one paw and then the other, bouncing on its feet.
+      const w = smoothstepJ(0, 0.5, t);
+      const ph = t * 4.6 + seed;
+      const l = Math.max(0, Math.sin(ph)), r = Math.max(0, Math.sin(ph + Math.PI));
+      j.reachL += (0.6 + 1.1 * Math.pow(l, 0.6)) * w;
+      j.reachR += (0.6 + 1.1 * Math.pow(r, 0.6)) * w;
+      j.raiseL += 0.3 * w;
+      j.raiseR += 0.3 * w;
+      j.lean += 0.1 * w;
+      j.hop += 0.03 * Math.abs(Math.sin(ph)) * w;
+      j.headTilt += 0.05 * Math.sin(ph) * w;
+      break;
+    }
+    case 'teach': {
+      // At the board: the pointer up at it, the other paw making the point, the head turning to the class.
+      const w = smoothstepJ(0, 0.5, t);
+      x.pointer = w;
+      const gest = Math.sin(t * 1.9 + 1);
+      j.reachR += (1.95 + 0.3 * Math.sin(t * 1.3)) * w;
+      j.raiseR += (0.25 + 0.2 * Math.sin(t * 0.8 + seed)) * w;
+      j.reachL += (0.5 + 0.35 * Math.max(0, gest)) * w;
+      j.raiseL += (0.5 + 0.3 * gest) * w;
+      j.headYaw += 0.5 * Math.sin(t * 0.7 + seed) * w;
+      j.headTilt += 0.1 * Math.sin(t * 1.1) * w;
+      j.hop += 0.015 * Math.max(0, gest) * w;
+      break;
+    }
+    case 'adjust': {
+      // A paw to the glasses: pushes them up the nose, squints, lets go.
+      const w = smoothstepJ(0, 0.35, t) * (1 - smoothstepJ(1.9, 2.5, t));
+      j.reachR += 2.2 * w;
+      j.raiseR -= 0.25 * w;
+      j.headTilt += 0.1 * w;
+      j.headPitch += (0.04 + 0.03 * Math.sin(t * 14)) * w;
+      break;
+    }
+    case 'glance': {
+      // A quick look back over the shoulder, and a start.
+      const w = smoothstepJ(0, 0.25, t) * (1 - smoothstepJ(0.75, 1.1, t));
+      j.headYaw -= 1.35 * w;
+      j.headTilt += 0.18 * w;
+      j.raiseL += 0.6 * w;
+      j.raiseR += 0.6 * w;
+      j.hop += 0.05 * w;
+      break;
+    }
+    case 'unbag':
+    case 'rebag': {
+      // Shrugs the straps off its shoulders (or back on), both paws behind it.
+      const w = smoothstepJ(0, 0.5, t) * (1 - smoothstepJ(1.6, 2.2, t));
+      j.reachL -= 0.7 * w;
+      j.reachR -= 0.7 * w;
+      j.raiseL += 0.85 * w;
+      j.raiseR += 0.85 * w;
+      j.lean += 0.12 * w;
+      j.headTilt += 0.14 * w * Math.sin(t * 2);
+      j.squash += 0.02 * w * Math.sin(t * 9);
+      break;
+    }
     default:
       break;
   }
 }
+
+/** Scratch objects for placing the school bag. */
+const _wm = new Matrix4();
+const _inv = new Matrix4();
+const _loc = new Matrix4();
+const _wp = new Vector3();
+const _ws = new Vector3();
+const _wq = new Quaternion();
+const _dp = new Vector3();
+const _dq = new Quaternion();
+const _ONE = new Vector3(1, 1, 1);
+const _DOWN = new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0), -1.2);
 
 export function buildPanda(options: PandaOptions): Rig {
   const b = new Builder();
   const root = new Group();
   const cub = !!options.cub;
   const P = options.personality ?? PANDA_PERSONALITIES[2];
+  const bulk = options.bulk ?? 0;
+  const pear = options.pear ?? 0;
   const white = b.mat('#f5f2ea', 0.88);
   const black = b.mat('#1d1d22', 0.82);
   const eyeMat = b.mat('#0b0b0e', 0.15);
@@ -1038,16 +1233,23 @@ export function buildPanda(options: PandaOptions): Rig {
   lean.add(bodyRoot);
   b.blob(bodyRoot, white, 0.33, 0.32, 0.3, 0, 0, 0, true);
   // The black band over the shoulders.
-  b.blob(bodyRoot, black, 0.337, 0.135, 0.305, 0, 0.13, -0.005, true);
+  b.blob(bodyRoot, black, 0.337 * (1 + 0.2 * bulk) * (1 - 0.12 * pear), 0.135 * (1 + 0.1 * bulk), 0.305 * (1 + 0.08 * bulk), 0, 0.13, -0.005, true);
+  // A pear: an enormous lower half (the hips, and a bottom behind), with the legs set wide under it.
+  if (pear > 0) {
+    b.blob(bodyRoot, white, 0.3 + 0.2 * pear, 0.2 + 0.05 * pear, 0.3 + 0.14 * pear, 0, -0.05, -0.02 * pear, true);
+    b.blob(bodyRoot, white, 0.3 * pear, 0.24 * pear, 0.28 * pear, 0, -0.04, -0.2 * pear);
+  }
   const tail = new Group();
-  tail.position.set(0, -0.06, -0.27);
+  tail.position.set(0, -0.06, -0.27 - 0.2 * pear);
   bodyRoot.add(tail);
   b.blob(tail, white, 0.08, 0.06, 0.07, 0, 0, 0);
 
   const legs: Group[] = [];
+  const legSpread = 0.17 + 0.09 * pear;
   for (const sx of [-1, 1]) {
     const leg = new Group();
-    leg.position.set(sx * 0.17, -0.22, 0.12);
+    leg.position.set(sx * legSpread, -0.22, 0.12);
+    leg.scale.setScalar(1 + 0.3 * pear);
     bodyRoot.add(leg);
     b.blob(leg, black, 0.12, 0.1, 0.15, 0, 0, 0.05, true);
     b.blob(leg, pad, 0.055, 0.05, 0.02, 0, 0, 0.19);
@@ -1065,7 +1267,7 @@ export function buildPanda(options: PandaOptions): Rig {
     const ear = new Group();
     ear.position.set(sx * 0.165, 0.155, -0.03);
     head.add(ear);
-    b.blob(ear, black, 0.075, 0.072, 0.05, 0, 0, 0);
+    if (!options.bald) b.blob(ear, black, 0.075, 0.072, 0.05, 0, 0, 0);
     ears.push(ear);
     const patch = b.blob(head, black, 0.062, 0.085, 0.04, sx * 0.088, 0.015, 0.182);
     patch.rotation.z = sx * 0.55;
@@ -1087,7 +1289,9 @@ export function buildPanda(options: PandaOptions): Rig {
     const arm = new Group();
     arm.position.set(sx * 0.27, 0.15, 0.05);
     bodyRoot.add(arm);
-    b.blob(arm, black, 0.085, 0.19, 0.09, sx * 0.02, -0.15, 0.02, true);
+    b.blob(arm, black, 0.085 * (1 + 0.8 * bulk), 0.19, 0.09 * (1 + 0.8 * bulk), sx * 0.02, -0.15, 0.02, true);
+    // Shoulders like boulders.
+    if (bulk > 0) b.blob(arm, black, 0.11 * bulk, 0.1 * bulk, 0.11 * bulk, sx * 0.03, -0.03, 0.01);
     arms.push(arm);
   }
 
@@ -1134,12 +1338,15 @@ export function buildPanda(options: PandaOptions): Rig {
 
   // A student's things: a backpack with a flap and two straps, a book (carried shut under the arm, open in the lap
   // at a lesson, with a pencil), and round glasses.
+  // The backpack lives in the rig's root, not on the body, so that it can come off and be put down beside the panda.
+  let bagKit: Group | null = null;
+  const straps: Mesh[] = [];
   if (options.bag) {
     const bagMat = b.mat(options.bag, 0.75);
     const flapMat = b.mat(new Color(options.bag).multiplyScalar(0.78).getStyle(), 0.75);
     const bag = new Group();
-    bag.position.set(0, 0.02, -0.29);
-    bodyRoot.add(bag);
+    bagKit = bag;
+    root.add(bag);
     b.blob(bag, bagMat, 0.2, 0.21, 0.1, 0, 0, 0);
     b.blob(bag, flapMat, 0.19, 0.09, 0.07, 0, 0.12, -0.035);
     b.blob(bag, b.mat('#f2d16b', 0.4), 0.025, 0.025, 0.02, 0, 0.07, -0.1);
@@ -1149,7 +1356,7 @@ export function buildPanda(options: PandaOptions): Rig {
       const strap = b.blob(bodyRoot, flapMat, 0.026, 0.1, 0.022, sx * 0.17, 0.16, 0.24);
       strap.rotation.x = -0.55;
       strap.rotation.z = sx * 0.2;
-      b.blob(bodyRoot, flapMat, 0.024, 0.024, 0.08, sx * 0.19, 0.24, 0.08);
+      straps.push(strap, b.blob(bodyRoot, flapMat, 0.024, 0.024, 0.08, sx * 0.19, 0.24, 0.08));
     }
   }
   let bookShut: Group | null = null;
@@ -1191,14 +1398,216 @@ export function buildPanda(options: PandaOptions): Rig {
     arms[1].add(pencil);
   }
   if (options.glasses) {
-    const rim = b.mat('#3b2f2a', 0.4);
-    const ring = b.keep(new TorusGeometry(0.042, 0.007, 6, 18));
+    const big = options.glasses === 'big';
+    const rim = b.mat(big ? '#17171c' : '#3b2f2a', 0.4);
+    const rad = big ? 0.077 : 0.042;
+    const ring = b.keep(new TorusGeometry(rad, big ? 0.014 : 0.007, big ? 8 : 6, big ? 28 : 18));
+    const gx = big ? 0.093 : 0.086;
+    const gz = big ? 0.238 : 0.232;
+    const lens = big ? b.mat('#bfe3ff', 0.05, { transparent: true, opacity: 0.2, depthWrite: false }) : null;
     for (const sx of [-1, 1]) {
       const g = new Mesh(ring, rim);
-      g.position.set(sx * 0.086, 0.025, 0.232);
+      g.position.set(sx * gx, big ? 0.028 : 0.025, gz);
       head.add(g);
+      if (lens) {
+        const disc = new Mesh(b.keep(new CircleGeometry(rad, 24)), lens);
+        disc.position.set(sx * gx, 0.028, gz + 0.001);
+        head.add(disc);
+      }
     }
-    b.blob(head, rim, 0.022, 0.006, 0.006, 0, 0.032, 0.238);
+    b.blob(head, rim, big ? 0.03 : 0.022, big ? 0.012 : 0.006, 0.006, 0, big ? 0.04 : 0.032, gz + 0.006);
+    // Arms of the glasses back to the ears (the big ones are the whole of the face).
+    if (big) for (const sx of [-1, 1]) b.blob(head, rim, 0.01, 0.01, 0.1, sx * 0.172, 0.03, 0.17);
+  }
+  const gold = b.mat('#f0b920', 0.22, { metalness: 0.85 });
+  // Tirrth's hat: a green brimmed hat with a band and a feather, a little to one side.
+  if (options.hat) {
+    const hatMat = b.mat(options.hat, 0.7);
+    const band = b.mat(new Color(options.hat).multiplyScalar(0.5).getStyle(), 0.6);
+    const hat = new Group();
+    hat.position.set(0, 0.165, 0.01);
+    hat.rotation.set(-0.06, 0.1, 0.08);
+    head.add(hat);
+    hat.add(new Mesh(b.keep(new CylinderGeometry(0.34, 0.35, 0.022, 30)), hatMat));
+    const crown = new Mesh(b.keep(new CylinderGeometry(0.15, 0.19, 0.17, 24)), hatMat);
+    crown.position.y = 0.095;
+    hat.add(crown);
+    b.blob(hat, hatMat, 0.15, 0.04, 0.18, 0, 0.18, 0);
+    const hb = new Mesh(b.keep(new CylinderGeometry(0.193, 0.196, 0.05, 24)), band);
+    hb.position.y = 0.04;
+    hat.add(hb);
+    const feather = b.blob(hat, b.mat('#f2d16b', 0.6), 0.012, 0.08, 0.03, 0.17, 0.12, 0.05);
+    feather.rotation.z = -0.45;
+  }
+  // Siddhant's jewellery: a gold chain with a pendant (and a second, finer one), bracelets, shades up on the head.
+  if (options.chain) {
+    for (const [r, y, tube] of [[0.275, 0.19, 0.017], [0.255, 0.225, 0.01]] as const) {
+      const chain = new Mesh(b.keep(new TorusGeometry(r, tube, 8, 40)), gold);
+      chain.position.set(0, y, 0.02);
+      chain.rotation.x = Math.PI / 2 + 0.25;
+      bodyRoot.add(chain);
+    }
+    b.blob(bodyRoot, gold, 0.036, 0.048, 0.016, 0, 0.115, 0.3);
+    for (const arm of arms) {
+      const bracelet = new Mesh(b.keep(new TorusGeometry(0.07, 0.013, 6, 18)), gold);
+      bracelet.position.set(arm === arms[0] ? 0.02 : -0.02, -0.3, 0.02);
+      bracelet.rotation.x = Math.PI / 2;
+      arm.add(bracelet);
+    }
+  }
+  if (options.shades) {
+    const lens = b.mat('#15151a', 0.1, { metalness: 0.3 });
+    const sh = new Group();
+    sh.position.set(0, 0.165, 0.125);
+    sh.rotation.x = -0.96;
+    head.add(sh);
+    for (const sx of [-1, 1]) {
+      b.blob(sh, lens, 0.068, 0.048, 0.012, sx * 0.075, 0, 0.004);
+      b.blob(sh, gold, 0.076, 0.056, 0.008, sx * 0.075, 0, -0.002);
+    }
+    b.blob(sh, gold, 0.03, 0.01, 0.01, 0, 0.005, 0.002);
+  }
+  // Yash's red headband (and Manas's headset).
+  if (options.headband) {
+    const hb = new Mesh(b.keep(new TorusGeometry(0.226, 0.02, 6, 28)), b.mat(options.headband, 0.6));
+    hb.position.set(0, 0.115, 0.0);
+    hb.rotation.x = Math.PI / 2 + 0.1;
+    head.add(hb);
+    const knot = b.blob(head, b.mat(options.headband, 0.6), 0.03, 0.05, 0.02, 0.05, 0.1, -0.225);
+    knot.rotation.z = 0.5;
+  }
+  if (options.headset) {
+    const hs = b.mat('#2d3340', 0.45);
+    const arc = new Mesh(b.keep(new TorusGeometry(0.255, 0.013, 6, 24, Math.PI)), hs);
+    arc.scale.set(1, 0.9, 0.9);
+    arc.position.set(0, 0.02, -0.01);
+    head.add(arc);
+    for (const sx of [-1, 1]) {
+      const cup = new Mesh(b.keep(new CylinderGeometry(0.06, 0.06, 0.05, 14)), hs);
+      cup.rotation.z = Math.PI / 2;
+      cup.position.set(sx * 0.255, 0.02, -0.01);
+      head.add(cup);
+      b.blob(head, b.mat('#5fb4ff', 0.3, { emissive: new Color('#5fb4ff'), emissiveIntensity: 0.5 }), 0.008, 0.008, 0.008, sx * 0.285, 0.02, -0.01);
+    }
+    const boom = new Mesh(b.keep(new CylinderGeometry(0.006, 0.006, 0.2, 5)), hs);
+    boom.rotation.set(Math.PI / 2 - 0.3, 0, 0.5);
+    boom.position.set(0.2, -0.04, 0.13);
+    head.add(boom);
+    b.blob(head, hs, 0.016, 0.016, 0.016, 0.16, -0.075, 0.215);
+  }
+  // Bansaree's bun and sari, with a bindi and a pointer for the board.
+  let pointer: Mesh | null = null;
+  if (options.bun) {
+    b.blob(head, black, 0.1, 0.1, 0.095, 0, 0.215, -0.1);
+    const flowers = b.mat('#fbf6e8', 0.6);
+    for (const [fx, fy, fz] of [[0.06, 0.255, -0.1], [-0.05, 0.26, -0.1], [0.0, 0.29, -0.09]]) b.blob(head, flowers, 0.026, 0.026, 0.02, fx, fy, fz);
+    b.blob(head, b.mat('#d4303a', 0.4), 0.011, 0.011, 0.006, 0, 0.1, 0.222);
+  }
+  if (options.sash) {
+    const sari = b.mat(options.sash, 0.55);
+    // The end of the sari comes over one shoulder and across the chest to the opposite hip: a band of blobs laid on the body.
+    for (let k = 0; k <= 9; k++) {
+      const t = (k / 9 - 0.5) * 2;
+      const x = t * 0.2, y = 0.03 - t * 0.2;
+      const z = 0.3 * Math.sqrt(Math.max(0.06, 1 - (x / 0.33) ** 2 - (y / 0.32) ** 2)) + 0.008;
+      const piece = b.blob(bodyRoot, sari, 0.05, 0.05, 0.026, x, y, z);
+      piece.rotation.z = 0.78;
+      piece.rotation.y = -x * 1.4;
+      const edge = b.blob(bodyRoot, gold, 0.012, 0.05, 0.027, x + 0.035, y + 0.035, z + 0.002);
+      edge.rotation.z = 0.78;
+      edge.rotation.y = -x * 1.4;
+    }
+    const waist = new Mesh(b.keep(new TorusGeometry(0.312, 0.03, 8, 32)), sari);
+    waist.position.set(0, -0.1, 0);
+    waist.rotation.x = Math.PI / 2;
+    waist.scale.set(1, 0.92, 1);
+    bodyRoot.add(waist);
+    b.blob(bodyRoot, sari, 0.1, 0.07, 0.3, 0.2, 0.2, 0);
+  }
+  if (options.pointer) {
+    pointer = new Mesh(b.keep(new CylinderGeometry(0.009, 0.012, 0.62, 6)), b.mat('#8a5a2b', 0.6));
+    pointer.position.set(0, -0.55, 0.02);
+    pointer.visible = false;
+    arms[1].add(pointer);
+    b.blob(pointer, b.mat('#d4303a', 0.5), 0.02, 0.03, 0.02, 0, -0.31, 0);
+  }
+  // Aastha's bow, Dishi's flower and scarf, long lashes; Manan's bandana.
+  if (options.bow) {
+    const bm = b.mat(options.bow, 0.5);
+    const bow = new Group();
+    bow.position.set(0.12, 0.2, 0.05);
+    bow.rotation.z = -0.5;
+    head.add(bow);
+    for (const sx of [-1, 1]) {
+      const wing = b.blob(bow, bm, 0.065, 0.042, 0.025, sx * 0.058, 0, 0);
+      wing.rotation.z = sx * 0.3;
+    }
+    b.blob(bow, bm, 0.028, 0.028, 0.028);
+  }
+  if (options.flower) {
+    const petal = b.mat(options.flower, 0.55);
+    const fl = new Group();
+    fl.position.set(-0.15, 0.205, 0.07);
+    fl.rotation.y = -0.6;
+    head.add(fl);
+    for (let k = 0; k < 5; k++) {
+      const a = (k / 5) * Math.PI * 2;
+      b.blob(fl, petal, 0.03, 0.03, 0.014, Math.cos(a) * 0.04, Math.sin(a) * 0.04, 0);
+    }
+    b.blob(fl, b.mat('#ffd84a', 0.5), 0.02, 0.02, 0.02, 0, 0, 0.008);
+  }
+  if (options.scarf) {
+    const sc = b.mat(options.scarf, 0.65);
+    const ring = new Mesh(b.keep(new TorusGeometry(0.265, 0.048, 8, 30)), sc);
+    ring.position.set(0, 0.215, 0.015);
+    ring.rotation.x = Math.PI / 2 + 0.2;
+    bodyRoot.add(ring);
+    const flap = b.blob(bodyRoot, sc, 0.07, 0.13, 0.03, 0.09, 0.09, 0.28);
+    flap.rotation.z = -0.3;
+  }
+  if (options.lashes) {
+    for (const sx of [-1, 1]) {
+      for (const [dx, dy, rz] of [[0.104, 0.052, -0.9], [0.098, 0.06, -0.5], [0.088, 0.066, -0.15]] as const) {
+        const lash = b.blob(head, black, 0.004, 0.017, 0.004, sx * dx, dy, 0.222);
+        lash.rotation.z = sx * rz;
+      }
+    }
+  }
+  // Manan's guitar: a body with a sound hole, a neck and a head, across the lap (shown while he plays).
+  let guitar: Group | null = null;
+  if (options.guitar) {
+    guitar = new Group();
+    guitar.visible = false;
+    bodyRoot.add(guitar);
+    const wood = b.mat('#c0783a', 0.45);
+    const dark = b.mat('#3a2412', 0.5);
+    b.blob(guitar, wood, 0.15, 0.19, 0.05, 0, 0, 0);
+    b.blob(guitar, wood, 0.11, 0.13, 0.05, 0, 0.19, 0);
+    b.blob(guitar, dark, 0.05, 0.05, 0.012, 0, 0.07, 0.045);
+    const neck = new Mesh(b.keep(new CylinderGeometry(0.02, 0.022, 0.62, 8)), dark);
+    neck.position.set(0, 0.55, 0.02);
+    guitar.add(neck);
+    b.blob(guitar, dark, 0.035, 0.07, 0.025, 0, 0.9, 0.02);
+    for (const y of [0.36, 0.46, 0.56, 0.66]) b.blob(guitar, gold, 0.026, 0.004, 0.026, 0, y, 0.035);
+  }
+  // Yash's barbell: a bamboo bar with a stone plate on each end (shown while he presses it).
+  let barbell: Group | null = null;
+  if (options.barbell) {
+    barbell = new Group();
+    barbell.visible = false;
+    bodyRoot.add(barbell);
+    const bar = new Mesh(b.keep(new CylinderGeometry(0.016, 0.016, 1.15, 8)), b.mat('#9bb85a', 0.45));
+    bar.rotation.z = Math.PI / 2;
+    barbell.add(bar);
+    const stone = b.mat('#6d7168', 0.9);
+    for (const sx of [-1, 1]) {
+      for (const [dx, r] of [[0.45, 0.17], [0.5, 0.12]] as const) {
+        const plate = new Mesh(b.keep(new CylinderGeometry(r, r, 0.05, 18)), stone);
+        plate.rotation.z = Math.PI / 2;
+        plate.position.x = sx * dx;
+        barbell.add(plate);
+      }
+    }
   }
   // A paper lantern on a short cane, carried in the right paw on a night walk.
   let lamp: Group | null = null;
@@ -1224,7 +1633,7 @@ export function buildPanda(options: PandaOptions): Rig {
   root.scale.setScalar((options.scale ?? (cub ? 0.62 : 1)) * P.size);
   const j = blank();
   const idleJ = blank();
-  const ex: PandaExtras = { seat: 0, snack: 0, chew: 0, scratch: 0, stretch: 0, yawn: 0, drink: 0, lie: 0, back: 0, shut: 0, book: 0, write: 0, kick: 0 };
+  const ex: PandaExtras = { seat: 0, snack: 0, chew: 0, scratch: 0, stretch: 0, yawn: 0, drink: 0, lie: 0, back: 0, shut: 0, book: 0, write: 0, kick: 0, guitar: 0, sing: 0, bar: 0, pointer: 0 };
   let lastTime = 0;
   let earTwitch = { at: -10, side: 1 };
 
@@ -1240,7 +1649,7 @@ export function buildPanda(options: PandaOptions): Rig {
       addWeighted(j, poseJoints(input.prevPose, input.poseTime + 2, side, input.lookLocal, 'panda'), input.prevWeight);
       addWeighted(j, poseJoints(input.pose, input.poseTime, side, input.lookLocal, 'panda'), input.poseWeight);
       ambient(j, input.time, input.seed);
-      ex.seat = ex.snack = ex.chew = ex.scratch = ex.stretch = ex.yawn = ex.drink = ex.lie = ex.back = ex.shut = ex.book = ex.write = ex.kick = 0;
+      ex.seat = ex.snack = ex.chew = ex.scratch = ex.stretch = ex.yawn = ex.drink = ex.lie = ex.back = ex.shut = ex.book = ex.write = ex.kick = ex.guitar = ex.sing = ex.bar = ex.pointer = 0;
       if (input.idle && input.idle.weight > 0 && input.idle.act !== 'none') {
         Object.assign(idleJ, NEUTRAL);
         idleJ.raiseL = idleJ.raiseR = 0.25;
@@ -1441,7 +1850,7 @@ export function buildPanda(options: PandaOptions): Rig {
         const climbing = gait === 'climb';
         const sp = Math.sin(stepPhase + (i === 0 ? 0 : Math.PI));
         legs[i].position.set(
-          sx * (0.17 + seat * 0.03),
+          sx * (legSpread + seat * 0.03),
           -0.22 + up * 0.065 + (climbing ? 0.07 * Math.max(0, sp) * stepAmp : 0) + seat * 0.03 + 0.05 * flail * Math.sin(input.gaitPhase * 30 + i * 2),
           0.12 + fwd * 0.1 + (climbing ? 0.05 * sp : 0) + seat * 0.2,
         );
@@ -1464,8 +1873,9 @@ export function buildPanda(options: PandaOptions): Rig {
 
       // Muzzle: works while chewing, opens wide to yawn.
       const work = ex.chew * (0.5 + 0.5 * Math.sin(input.time * 15));
-      muzzle.scale.set(0.095 * (1 + 0.12 * work), 0.068 * (1 + 0.3 * work + 0.55 * ex.yawn), 0.07);
-      mouth.scale.set(0.05, 0.001 + 0.045 * ex.yawn + 0.012 * work, 0.04);
+      const sing = ex.sing * (0.35 + 0.65 * Math.max(0, Math.sin(input.time * 8.1 + input.seed))) * (0.6 + 0.4 * Math.sin(input.time * 2.7 + input.seed * 2));
+      muzzle.scale.set(0.095 * (1 + 0.12 * work), 0.068 * (1 + 0.3 * work + 0.55 * ex.yawn + 0.25 * sing), 0.07);
+      mouth.scale.set(0.05, 0.001 + 0.045 * ex.yawn + 0.012 * work + 0.05 * sing, 0.04);
 
       // Blink every few seconds (each panda at its own rhythm); eyes shut for a yawn and a good scratch, and in sleep.
       const blink = (input.time + input.seed * 2.3) % P.blink < 0.13 || ex.yawn > 0.5 || ex.scratch > 0.6 ? 0.12 : 1;
@@ -1485,6 +1895,26 @@ export function buildPanda(options: PandaOptions): Rig {
       }
       if (pencil) pencil.visible = ex.write > 0.15;
 
+      // The guitar across the lap (it bobs with the strumming), the barbell in the paws (at the height of the hands), the pointer.
+      if (guitar) {
+        guitar.visible = ex.guitar > 0.05;
+        if (guitar.visible) {
+          const strum = Math.sin(input.time * 8.8 + input.seed);
+          guitar.position.set(0.02, -0.07 + 0.012 * strum * ex.guitar, 0.31);
+          guitar.rotation.set(0.12 + 0.03 * strum, 0, -1.05 + 0.02 * strum);
+          guitar.scale.setScalar(ex.guitar);
+        }
+      }
+      if (barbell) {
+        barbell.visible = ex.bar > 0.05;
+        if (barbell.visible) {
+          const th = (j.reachL + j.reachR) / 2;
+          barbell.position.set(0, 0.15 - 0.36 * Math.cos(th), 0.08 + 0.36 * Math.sin(th));
+          barbell.scale.setScalar(ex.bar);
+        }
+      }
+      if (pointer) pointer.visible = ex.pointer > 0.05;
+
       // The lantern: lit, and swinging gently on its cane, the paper kept upright under it.
       if (lamp && lampGlow) {
         lamp.visible = lampW > 0.02;
@@ -1492,6 +1922,30 @@ export function buildPanda(options: PandaOptions): Rig {
           const hanger = lamp.children[1];
           hanger.rotation.set(j.reachR + 0.12 * Math.sin(input.time * 2.7 + stepPhase), 0, 0.1 * Math.sin(input.time * 2.1));
           lampGlow.emissiveIntensity = (1.2 + 0.25 * Math.sin(input.time * 9.3) * Math.sin(input.time * 4.1)) * lampW;
+        }
+      }
+
+      // The bag: on the back, or (coming off, put down, going back on) carried between there and where it was put down.
+      if (bagKit) {
+        const w = Math.max(0, Math.min(1, input.bag ?? 1));
+        for (const st of straps) st.visible = w > 0.985;
+        bodyRoot.updateWorldMatrix(true, false);
+        _inv.copy(root.matrixWorld).invert();
+        _wm.multiplyMatrices(_inv, bodyRoot.matrixWorld).multiply(_loc.makeTranslation(0, 0.02, -0.29));
+        _wm.decompose(_wp, _wq, _ws);
+        if (w >= 0.999) {
+          bagKit.position.copy(_wp);
+          bagKit.quaternion.copy(_wq);
+          bagKit.scale.copy(_ws);
+        } else {
+          const e = w * w * (3 - 2 * w);
+          if (input.bagAt) _dp.set(input.bagAt[0], input.bagAt[1], input.bagAt[2]).applyMatrix4(_inv);
+          else _dp.set(0.72, 0.2, 0.15);
+          _dq.copy(_DOWN);
+          bagKit.position.lerpVectors(_dp, _wp, e);
+          bagKit.position.y += 0.32 * Math.sin(Math.PI * e) * (1 - 0.3 * e);
+          bagKit.quaternion.slerpQuaternions(_dq, _wq, e);
+          bagKit.scale.lerpVectors(_ONE, _ws, e);
         }
       }
     },
