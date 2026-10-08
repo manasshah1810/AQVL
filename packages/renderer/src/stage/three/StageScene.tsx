@@ -50,7 +50,9 @@ export function StageScene({ model, playhead, tier, calm, follow, fonts, phase, 
   const controls = useRef<OrbitControlsImpl>(null);
   // The pandas' grove and the penguins' ice shelf are large: they get ground-plane panning, a walk from the keyboard,
   // and limits that match their size.
-  const grove = model.world === 'panda' || model.world === 'penguin' ? groveNav(model) : null;
+  const grove = model.world === 'panda' || model.world === 'penguin' || model.world === 'rabbit' ? groveNav(model) : null;
+  // The cloud kingdom is explored up and down as well: the camera may dip below an island to look up at the ones above.
+  const sky = model.world === 'rabbit';
   const camera = useThree((s) => s.camera) as PerspectiveCamera;
   const size = useThree((s) => s.size);
   const invalidate = useThree((s) => s.invalidate);
@@ -161,7 +163,7 @@ export function StageScene({ model, playhead, tier, calm, follow, fonts, phase, 
         dampingFactor={grove ? 0.1 : 0.08}
         minDistance={grove ? 3 : 2}
         maxDistance={grove ? grove.maxDistance : 260}
-        maxPolarAngle={Math.PI / 2 - (grove ? 0.05 : 0.12)}
+        maxPolarAngle={sky ? Math.PI * 0.8 : Math.PI / 2 - (grove ? 0.05 : 0.12)}
         {...(grove ? { screenSpacePanning: false, panSpeed: 1.6, zoomSpeed: 1.2, rotateSpeed: 0.8 } : {})}
         onStart={() => {
           gesture.current = { active: true, moved: false };

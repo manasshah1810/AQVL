@@ -10,6 +10,8 @@ import { BambooWorld } from './BambooWorld';
 import { ReefWorld } from '../ocean/three/ReefWorld';
 import { PodLayer } from '../ocean/three/PodLayer';
 import { ColonyLayer } from './ColonyLayer';
+import { CloudKingdom } from '../rabbit/three/CloudKingdom';
+import { WarrenLayer } from '../rabbit/three/WarrenLayer';
 import { Colony } from '../idle';
 import { advanceDay, blankDay, dayAt, dayTime, type DayState } from '../daycycle';
 
@@ -46,8 +48,8 @@ export function WorldLayer({ model, bounds, driver, calm, playhead }: { model: S
     if (calm) return;
     const dt = Math.min(delta, 0.1);
     clock.now += dt;
-    // The grove and the ice shelf both have a day and a night.
-    if (model.world === 'panda' || model.world === 'penguin') {
+    // The grove, the ice shelf and the cloud kingdom all have a day and a night.
+    if (model.world === 'panda' || model.world === 'penguin' || model.world === 'rabbit') {
       advanceDay(dt);
       dayAt(dayTime(), clock.day);
     }
@@ -59,6 +61,14 @@ export function WorldLayer({ model, bounds, driver, calm, playhead }: { model: S
       <>
         <ReefWorld model={model} bounds={bounds} driver={driver} calm={calm} clock={clock} />
         <PodLayer model={model} driver={driver} calm={calm} clock={clock} playhead={playhead} />
+      </>
+    );
+  }
+  if (model.world === 'rabbit') {
+    return (
+      <>
+        <CloudKingdom model={model} bounds={bounds} driver={driver} calm={calm} clock={clock} />
+        <WarrenLayer model={model} driver={driver} calm={calm} clock={clock} playhead={playhead} />
       </>
     );
   }

@@ -3,17 +3,23 @@ import { useFrame, useThree } from '@react-three/fiber';
 import type { StageModel } from '../../model/StageModel';
 import { groveClearing } from './layout';
 import { polarClearing } from './polarLayout';
+import { kingdomOf } from '../rabbit/kingdom';
 
 /** The most the viewer can get out of the grove (as a share of the clearing), and how low the camera may go. */
 const REACH = 1.05;
 const MIN_HEIGHT = 0.9;
 
 /** Navigation limits for the (larger) grove, or the penguins' (larger) ice shelf: the same numbers feed the orbit controls and the keyboard walk. */
-export function groveNav(model: StageModel) {
+export function groveNav(model: StageModel): { reachX: number; reachZ: number; maxDistance: number; minY: number; cx: number; cz: number } {
+  if (model.world === 'rabbit') {
+    // The cloud kingdom: the whole ring of islands, and down below the plaza to the lower clouds.
+    const k = kingdomOf(model);
+    return { reachX: k.reach, reachZ: k.reach, maxDistance: k.reach * 2.2, minY: k.floorY - 26, cx: k.cx, cz: k.cz };
+  }
   const { clearX, clearZ } = model.world === 'penguin' ? polarClearing(model) : groveClearing(model);
   const reachX = clearX * REACH;
   const reachZ = clearZ * REACH;
-  return { reachX, reachZ, maxDistance: Math.max(reachX, reachZ) * 2.4 };
+  return { reachX, reachZ, maxDistance: Math.max(reachX, reachZ) * 2.4, minY: MIN_HEIGHT, cx: 0, cz: 0 };
 }
 
 interface Controls { target: { x: number; y: number; z: number; set(x: number, y: number, z: number): unknown }; update(): void }
@@ -21,15 +27,15 @@ interface Controls { target: { x: number; y: number; z: number; set(x: number, y
 /** Keep the point the camera orbits inside the grove, and the camera itself above the ground. */
 export function clampView(nav: ReturnType<typeof groveNav>, camera: { position: { x: number; y: number; z: number } }, controls: Controls) {
   const t = controls.target;
-  const x = Math.max(-nav.reachX, Math.min(nav.reachX, t.x));
-  const z = Math.max(-nav.reachZ, Math.min(nav.reachZ, t.z));
+  const x = nav.cx + Math.max(-nav.reachX, Math.min(nav.reachX, t.x - nav.cx));
+  const z = nav.cz + Math.max(-nav.reachZ, Math.min(nav.reachZ, t.z - nav.cz));
   const dx = x - t.x, dz = z - t.z;
   if (dx || dz) {
     t.set(x, t.y, z);
     camera.position.x += dx;
     camera.position.z += dz;
   }
-  if (camera.position.y < MIN_HEIGHT) camera.position.y = MIN_HEIGHT;
+  if (camera.position.y < nav.minY) camera.position.y = nav.minY;
 }
 
 /**
@@ -92,7 +98,8 @@ export function PandaNav({ model, controls, onTakeOver }: { model: StageModel; c
       const mz = (fz * f + sz * s) * speed * step;
       const my = v * speed * 0.6 * step;
       camera.position.x += mx; camera.position.z += mz; camera.position.y += my;
-      c.target.set(c.target.x + mx, c.target.y, c.target.z + mz);
+      // In the cloud kingdom the view rises and sinks with the walk (to the upper and lower islands); elsewhere it glides over the ground.
+      c.target.set(c.target.x + mx, c.target.y + (model.world === 'rabbit' ? my : 0), c.target.z + mz);
       if (turn) {
         // Swing the camera around its orbit point.
         const a = turn * 1.1 * step;

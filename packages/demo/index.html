@@ -23,7 +23,7 @@
         var w = 'studio', snow = 'on', mascots = 'on';
         try {
           var stored = localStorage.getItem('aqvl-stage-world');
-          if (stored === 'penguin' || stored === 'panda' || stored === 'ocean' || stored === 'studio') w = stored;
+          if (stored === 'penguin' || stored === 'panda' || stored === 'ocean' || stored === 'rabbit' || stored === 'studio') w = stored;
           var prefs = JSON.parse(localStorage.getItem('aqvl-settings') || '{}');
           if (prefs.snow === false) snow = 'off';
           if (prefs.mascots === false) mascots = 'off';
@@ -31,7 +31,7 @@
         document.documentElement.setAttribute('data-world', w);
         document.documentElement.setAttribute('data-snow', snow);
         document.documentElement.setAttribute('data-mascots', mascots);
-        var meta = { light: { studio: '#F7EFE9', penguin: '#F1F7FC', panda: '#F4F3E4', ocean: '#EEF8FA' }, dark: { studio: '#1E1C27', penguin: '#0C1A2B', panda: '#121C17', ocean: '#071E2C' } };
+        var meta = { light: { studio: '#F7EFE9', penguin: '#F1F7FC', panda: '#F4F3E4', ocean: '#EEF8FA', rabbit: '#F4F0FF' }, dark: { studio: '#1E1C27', penguin: '#0C1A2B', panda: '#121C17', ocean: '#071E2C', rabbit: '#1A1838' } };
         document.querySelector('meta[name="theme-color"]').setAttribute('content', meta[t][w]);
       })();
     </script>
@@ -45,6 +45,8 @@
       html[data-world='panda'][data-theme='light'], html[data-world='panda'][data-theme='light'] body { background: #f4f3e4; }
       html[data-world='ocean'], html[data-world='ocean'] body { background: #071e2c; }
       html[data-world='ocean'][data-theme='light'], html[data-world='ocean'][data-theme='light'] body { background: #eef8fa; }
+      html[data-world='rabbit'], html[data-world='rabbit'] body { background: #1a1838; }
+      html[data-world='rabbit'][data-theme='light'], html[data-world='rabbit'][data-theme='light'] body { background: #f4f0ff; }
       html[data-theme='light'] .boot path { stroke: #3a3649; }
       html[data-world='ocean'] .boot path { stroke: #bfeef2; }
       html[data-world='ocean'][data-theme='light'] .boot path { stroke: #154457; }

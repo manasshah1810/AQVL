@@ -7,7 +7,7 @@
  * worlds/ocean), so it has its own water physics and its own pod.
  * The state colours of the bodies never change between worlds.
  */
-export type StageWorld = 'studio' | 'penguin' | 'panda' | 'ocean';
+export type StageWorld = 'studio' | 'penguin' | 'panda' | 'ocean' | 'rabbit';
 
 export interface WorldInfo {
   id: StageWorld;
@@ -37,6 +37,12 @@ export const WORLDS: Record<StageWorld, WorldInfo> = {
     label: 'Whales + Ocean',
     blurb: 'A sunlit reef under the sea. A whale and her calf swim to every step, lift blocks off the seabed with a nudge and steer them through the water, and drift about the reef among fish, jellies and turtles when nothing is running.',
     crew: ['Kai', 'Nami'],
+  },
+  rabbit: {
+    id: 'rabbit',
+    label: 'Rabbits + Cloud Kingdom',
+    blurb: 'A floating kingdom of cloud islands joined by rainbow bridges. Bansaree the teacher and Deep (big glasses) act out every step while three students take notes; Yash trains at the gym, Manas codes (and naps) in his cloud office, Manan plays the noon campfire, and the rest roam, garden, bounce and slide until bedtime under a big moon.',
+    crew: ['Bansaree', 'Deep'],
   },
 };
 

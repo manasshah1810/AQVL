@@ -104,10 +104,40 @@ const REEF: StagePalette = {
   },
 };
 
+/** The cloud kingdom: a soft lavender plaza in a blue sky, dark inks; its own sky and light follow the day. */
+const CLOUD: StagePalette = {
+  background: '#cfeaff',
+  floor: '#f3ecfb',
+  floorLine: '#8f86b8',
+  plinth: '#ddd0f2',
+  plinthLine: '#a99bd0',
+  shadow: '#3b3560',
+  shadowOpacity: 0.34,
+  states: STATES,
+  edges: { idle: '#7a72a8', discarded: '#cfc8e6', ...STATE_EDGES },
+  plate: '#2b2546',
+  caption: '#4a4370',
+  tag: '#2b2546',
+  frame: '#fbf7ff',
+  frameText: '#2b2546',
+  frameTop: '#ff8fb1',
+  lights: {
+    key: '#fff3df',
+    keyIntensity: 2.4,
+    fill: '#d8e6ff',
+    fillIntensity: 0.55,
+    sky: '#eef6ff',
+    ground: '#d5c8ef',
+    ambient: 1.0,
+    envIntensity: 0.55,
+  },
+};
+
 export const WORLD_PALETTES: Record<Exclude<StageWorld, 'studio'>, StagePalette> = {
   penguin: POLAR,
   panda: GROVE,
   ocean: REEF,
+  rabbit: CLOUD,
 };
 
 /** The palette a scene is drawn in. */

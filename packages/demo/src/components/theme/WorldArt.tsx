@@ -9,6 +9,7 @@ import type { World } from '../../lib/world';
 export function WorldArt({ world }: { world: World }) {
   if (world === 'penguin') return <PenguinArt />;
   if (world === 'panda') return <PandaArt />;
+  if (world === 'rabbit') return <RabbitArt />;
   return <StudioArt />;
 }
 
@@ -19,6 +20,38 @@ const BLOCKS = [
   { x: 154, h: 58 },
   { x: 188, h: 32 },
 ];
+
+function RabbitArt() {
+  return (
+    <svg className="world-card__art" viewBox="0 0 240 150" aria-hidden="true">
+      <rect width="240" height="150" fill="#bfe0ff" />
+      <path d="M-10 150 A130 130 0 0 1 250 150" fill="none" stroke="#ff8fa3" strokeWidth="5" opacity="0.7" />
+      <path d="M-4 150 A124 124 0 0 1 244 150" fill="none" stroke="#ffe27a" strokeWidth="5" opacity="0.7" />
+      <path d="M2 150 A118 118 0 0 1 238 150" fill="none" stroke="#8cc8ff" strokeWidth="5" opacity="0.7" />
+      <circle cx="196" cy="30" r="13" fill="#fffbe8" />
+      <g fill="#ffffff">
+        <circle cx="40" cy="122" r="18" />
+        <circle cx="70" cy="128" r="22" />
+        <circle cx="110" cy="126" r="24" />
+        <circle cx="150" cy="128" r="22" />
+        <circle cx="190" cy="124" r="20" />
+        <circle cx="210" cy="126" r="14" />
+      </g>
+      <ellipse cx="124" cy="113" rx="98" ry="10" fill="#cfe8c4" />
+      {BLOCKS.map((b, i) => (
+        <rect key={i} x={b.x - 13} y={112 - b.h} width="26" height={b.h} rx="5" fill={i === 1 ? '#e9a03b' : '#f6f1ff'} stroke="#b9acd9" strokeWidth="1" />
+      ))}
+      <g transform="translate(26 92)">
+        <ellipse cx="9" cy="2" rx="3.4" ry="10" fill="#f7efe2" transform="rotate(-10 9 2)" />
+        <ellipse cx="16" cy="2" rx="3.4" ry="10" fill="#f7efe2" transform="rotate(10 16 2)" />
+        <circle cx="12.5" cy="14" r="7" fill="#f7efe2" />
+        <ellipse cx="12.5" cy="24" rx="8" ry="7" fill="#f7efe2" />
+        <circle cx="10" cy="13" r="1.1" fill="#2b2546" />
+        <circle cx="15" cy="13" r="1.1" fill="#2b2546" />
+      </g>
+    </svg>
+  );
+}
 
 function StudioArt() {
   return (

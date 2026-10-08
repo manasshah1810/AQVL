@@ -19,6 +19,7 @@ const META_COLOR: Record<World, { dark: string; light: string }> = {
   penguin: { dark: '#0C1A2B', light: '#F1F7FC' },
   panda: { dark: '#121C17', light: '#F4F3E4' },
   ocean: { dark: '#071E2C', light: '#EEF8FA' },
+  rabbit: { dark: '#1A1838', light: '#F4F0FF' },
 };
 const listeners = new Set<() => void>();
 
