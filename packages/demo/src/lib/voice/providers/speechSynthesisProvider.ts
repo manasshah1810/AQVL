@@ -1,7 +1,16 @@
 import type { SpeechRequest, TTSProvider } from '../types';
 
+let english: SpeechSynthesisVoice[] = [];
+let englishFrom: SpeechSynthesisVoice[] | null = null;
+
+/** The English voices, filtered once per voice list the browser hands out (it returns the same array until it changes). */
 function englishVoices(): SpeechSynthesisVoice[] {
-  return window.speechSynthesis.getVoices().filter((v) => /^en[-_]/i.test(v.lang));
+  const all = window.speechSynthesis.getVoices();
+  if (all !== englishFrom || all.length === 0) {
+    english = all.filter((v) => /^en[-_]/i.test(v.lang));
+    englishFrom = all;
+  }
+  return english;
 }
 
 /** The browser's built-in synthesiser: local, instant, and a good fallback when the neural model cannot load. */

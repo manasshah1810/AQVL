@@ -599,6 +599,10 @@ export class Warren {
     return { island: 'village', x, z, face: Math.atan2(fx - x, fz - z), act: 'campfire' };
   }
 
+  /** Seconds since the last round of decisions, and where each bunny sat in the audience at it. */
+  private decideAcc = 0;
+  private seatAts: number[] = [];
+
   update(input: WarrenInput): void {
     const { now, dt, day, playing, working, sample } = input;
     const restWas = this.restFor;
@@ -607,7 +611,13 @@ export class Warren {
     const started = audience && restWas >= 8;
     this.watchFor = audience ? this.watchFor + dt : 0;
     const finished = !playing && sample.k === this.model.frameCount - 1 && sample.k !== this.lastK;
-    if (sample.k !== this.lastK) this.lastK = sample.k;
+    const stepped = sample.k !== this.lastK;
+    if (stepped) this.lastK = sample.k;
+    // Who goes where is decided ten times a second (movement still runs every frame); a run starting, ending or
+    // moving on a step is decided on the spot.
+    this.decideAcc += dt;
+    const decide = started || finished || stepped || this.decideAcc >= 0.1 || this.seatAts.length === 0;
+    if (decide) this.decideAcc = 0;
     const kind = this.model.frames[Math.max(0, Math.min(sample.k, this.model.frameCount - 1))]?.event.kind;
     const settling = kind === 'settle' && sample.tau < 1.4;
     const night = day.night > 0.55;
@@ -617,18 +627,24 @@ export class Warren {
     const sinceNoon = (day.phase - NOON) * DAY_LENGTH;
 
     // A run starts: who comes over to watch, and how soon each notices.
-    if (started) {
+    if (decide && started) {
       for (const b of this.bunnies) {
         const sure = b.info.role !== 'resident';
         b.skipWatch = !sure && b.rand() < b.info.skipWatch;
         b.watchDelay = sure ? b.rand() * 1.5 : 0.5 + b.rand() * 6;
       }
     }
-    const watchers = audience ? this.bunnies.filter((b) => b.info.role !== 'crew' && !b.skipWatch && (!night || !!b.info.owl)) : [];
-    watchers.sort((a, b) => (a.info.role === 'student' ? 0 : 1) - (b.info.role === 'student' ? 0 : 1) || a.index - b.index);
-    const seats = this.seats(watchers.length);
+    let watchers: Bunny[] = [];
+    let seats: Spot[] = [];
+    if (decide) {
+      watchers = audience ? this.bunnies.filter((b) => b.info.role !== 'crew' && !b.skipWatch && (!night || !!b.info.owl)) : [];
+      watchers.sort((a, b) => (a.info.role === 'student' ? 0 : 1) - (b.info.role === 'student' ? 0 : 1) || a.index - b.index);
+      seats = this.seats(watchers.length);
+    }
 
     for (const b of this.bunnies) {
+      let seatAt = this.seatAts[b.index] ?? -1;
+      if (decide) {
       const info = b.info;
       // Wake a little apart from each other in the morning.
       const awake = !night || !!info.owl;
@@ -642,7 +658,8 @@ export class Warren {
         b.skipFire = !lead && b.rand() < info.skipFire;
       }
       const atFire = !night && !b.skipFire && sinceNoon >= b.join && sinceNoon < b.leave;
-      const seatAt = watchers.indexOf(b);
+      seatAt = watchers.indexOf(b);
+      this.seatAts[b.index] = seatAt;
 
       if (info.role === 'crew' && working) {
         if (b.intent !== 'crew') {
@@ -693,6 +710,7 @@ export class Warren {
         }
         if (b.intent === 'free') this.notice(b, input);
         if (b.intent === 'free' && now >= b.until && !b.plan.length) this.choose(b, input);
+      }
       }
       this.step(b, input, settling, seatAt);
     }

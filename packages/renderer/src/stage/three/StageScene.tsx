@@ -16,6 +16,9 @@ import { LabelLayer, type StageFonts } from './LabelLayer';
 import { NO_SHADOW_LAYER, StageEnvironment } from './StageEnvironment';
 import { NodeShadows } from './NodeShadows';
 import { FrameProbe, QUALITY, type QualityTier } from './quality';
+import { HeadroomProbe, governor, markFrame, perfCounters } from './perf';
+import { PerfMonitor } from './PerfMonitor';
+import { perfMonitorEnabled } from './perf';
 import { WorldLayer } from '../worlds/three/WorldLayer';
 import { PandaNav, clampView, groveNav } from '../worlds/three/PandaNav';
 
@@ -33,6 +36,8 @@ export interface StageSceneProps {
   phase: 'in' | 'steady' | 'out';
   onFollowChange: (follow: boolean) => void;
   onSlowFrames: () => void;
+  /** The scene has run comfortably at its target pace for a long while: quality may come back up a step. */
+  onHeadroom?: () => void;
   /** Pixels covered by UI along the top (caption) and right (side panels). */
   insets: { top: number; right: number };
 }
@@ -42,7 +47,7 @@ export interface StageSceneProps {
  * the playhead's time, places the camera, and hands the sample to every
  * part of the scene; with nothing moving, nothing is redrawn.
  */
-export function StageScene({ model, playhead, tier, calm, follow, fonts, phase, onFollowChange, onSlowFrames, insets }: StageSceneProps) {
+export function StageScene({ model, playhead, tier, calm, follow, fonts, phase, onFollowChange, onSlowFrames, onHeadroom, insets }: StageSceneProps) {
   const quality = QUALITY[tier];
   const driver = useMemo(() => new StageDriver(), []);
   const sample = useMemo(() => new StageSample(model.slots.length, model.edgeSlots.length), [model]);
@@ -57,6 +62,8 @@ export function StageScene({ model, playhead, tier, calm, follow, fonts, phase, 
   const size = useThree((s) => s.size);
   const invalidate = useThree((s) => s.invalidate);
   const probe = useMemo(() => new FrameProbe(), []);
+  const headroom = useMemo(() => new HeadroomProbe(), []);
+  const monitor = useMemo(() => perfMonitorEnabled(), []);
   const phaseStart = useRef(performance.now());
   const lastFrame = useRef(0);
   // Pointer gesture on the canvas: has it moved far enough to count as a drag?
@@ -92,9 +99,14 @@ export function StageScene({ model, playhead, tier, calm, follow, fonts, phase, 
     invalidate();
   }, [phase, invalidate]);
 
+  const lastTier = useRef(tier);
   useEffect(() => {
     probe.reset();
-  }, [tier, probe]);
+    // A tier change is a quality event: the probe that brings quality back up needs to know which way it went.
+    const order = ['low', 'medium', 'high'];
+    if (lastTier.current !== tier) headroom.changed(order.indexOf(tier) > order.indexOf(lastTier.current));
+    lastTier.current = tier;
+  }, [tier, probe, headroom]);
 
   // Redraw whenever the playhead moves; otherwise the canvas rests.
   useEffect(() => playhead.onTick(() => invalidate()), [playhead, invalidate]);
@@ -112,10 +124,18 @@ export function StageScene({ model, playhead, tier, calm, follow, fonts, phase, 
 
   useFrame(() => {
     const now = performance.now();
-    if (playhead.getSnapshot().playing && lastFrame.current > 0) {
-      if (probe.add(now - lastFrame.current)) onSlowFrames();
+    markFrame(now);
+    // Frames are continuous while the run plays or a living world is drawn; otherwise gaps are just the canvas resting.
+    const continuous = playhead.getSnapshot().playing || (model.world !== 'studio' && !calm && !perfCounters.offscreen);
+    if (continuous && lastFrame.current > 0) {
+      const ms = now - lastFrame.current;
+      if (probe.add(ms)) onSlowFrames();
+      // Already at the lightest tier and still slow: pace the ambient redraw instead (45 / 30 fps, evenly).
+      else if (tier === 'low') governor.sample(ms);
+      else if (tier !== 'high' && onHeadroom && headroom.add(ms, 1000 / 60 + 2)) onHeadroom();
     }
     lastFrame.current = now;
+    perfCounters.targetFps = governor.targetFps;
 
     const p = playhead.position();
     const elapsed = (now - phaseStart.current) / 1000;
@@ -144,6 +164,7 @@ export function StageScene({ model, playhead, tier, calm, follow, fonts, phase, 
       controls.current?.target.set(pose.target[0], pose.target[1], pose.target[2]);
     }
     driver.publish(sample);
+    perfCounters.jsMs = performance.now() - now;
   });
 
   return (
@@ -156,6 +177,7 @@ export function StageScene({ model, playhead, tier, calm, follow, fonts, phase, 
       <HaloRings driver={driver} />
       <LabelLayer model={model} driver={driver} fonts={fonts} />
       {grove && <PandaNav model={model} controls={controls} onTakeOver={() => follow && onFollowChange(false)} />}
+      {monitor && <PerfMonitor />}
       <OrbitControls
         ref={controls}
         makeDefault

@@ -45,6 +45,7 @@ import { buildColonyProps } from './colonyProps';
 import { swingAngle } from '../idle';
 import { ParticlePool, hash } from './particles';
 import type { WorldProps } from './PolarWorld';
+import { useGovernedInvalidate } from '../../three/perf';
 
 const SKY = /* glsl */ `
 uniform float uTime;
@@ -344,7 +345,7 @@ gl_Position = projectionMatrix * mvPosition;
  * swirl of leaves.
  */
 export function BambooWorld({ model, bounds, driver, calm, clock }: WorldProps) {
-  const invalidate = useThree((s) => s.invalidate);
+  const invalidate = useGovernedInvalidate();
   const palette = model.palette;
   const floorY = model.floorY;
   const { radius: R } = bounds;

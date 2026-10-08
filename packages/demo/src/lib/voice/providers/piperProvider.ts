@@ -22,6 +22,13 @@ function remember(key: string, url: string) {
   }
 }
 
+/** Syntheses already under way, so the same sentence asked for twice (a quick step back and forward) is made once. */
+interface Job {
+  wanted: number;
+  promise: Promise<string | null>;
+}
+const pending = new Map<string, Job>();
+
 // One synthesis at a time: the model runs in a single worker.
 let queue: Promise<unknown> = Promise.resolve();
 
@@ -86,19 +93,35 @@ export const piperProvider: TTSProvider = {
     let url = cache.get(key);
     if (!url) {
       const { predict } = await vits();
-      const run = queue.then(async () => {
-        if (signal.aborted) return null;
-        const blob = await predict(
-          { text, voiceId: voice.piper.voiceId as Parameters<typeof predict>[0]['voiceId'] },
-          (p) => onProgress?.(p.total > 0 ? p.loaded / p.total : 0),
+      let job = pending.get(key);
+      if (!job) {
+        const made: Job = { wanted: 0, promise: Promise.resolve(null) };
+        // Queued behind the one running; if every viewer of it has moved on by the time its turn comes, it is skipped.
+        made.promise = queue.then(async () => {
+          if (made.wanted <= 0) return null;
+          const blob = await predict(
+            { text, voiceId: voice.piper.voiceId as Parameters<typeof predict>[0]['voiceId'] },
+            (p) => onProgress?.(p.total > 0 ? p.loaded / p.total : 0),
+          );
+          return URL.createObjectURL(blob);
+        });
+        pending.set(key, made);
+        queue = made.promise.catch(() => null);
+        void made.promise.then(
+          () => pending.delete(key),
+          () => pending.delete(key),
         );
-        return URL.createObjectURL(blob);
-      });
-      queue = run.catch(() => null);
+        job = made;
+      }
+      if (signal.aborted) return;
+      const current = job;
+      current.wanted++;
+      signal.addEventListener('abort', () => void current.wanted--, { once: true });
+      const run = current.promise;
       const made = await run;
       if (!made) return;
-      remember(key, made);
-      url = made;
+      if (!cache.has(key)) remember(key, made);
+      url = cache.get(key) ?? made;
     }
     if (signal.aborted) return;
     await playUrl(url, voice, signal, onStart);

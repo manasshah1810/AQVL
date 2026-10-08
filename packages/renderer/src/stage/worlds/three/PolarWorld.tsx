@@ -39,6 +39,7 @@ import { penguinSpots, polarClearing } from './polarLayout';
 import { buildPolarColonyProps, iglooTexture } from './polarProps';
 import { ParticlePool, hash } from './particles';
 import type { WorldClock } from './WorldLayer';
+import { useGovernedInvalidate } from '../../three/perf';
 
 /**
  * The sky over the ice: by day a pale polar blue with a low white sun, rosy at dusk and dawn; by night deep blue-black
@@ -366,7 +367,7 @@ const TONE = {
  * lantern; click the snow for a puff.
  */
 export function PolarWorld({ model, bounds, driver, calm, clock }: WorldProps) {
-  const invalidate = useThree((s) => s.invalidate);
+  const invalidate = useGovernedInvalidate();
   const three = useThree((s) => s.scene);
   const palette = model.palette;
   const floorY = model.floorY;

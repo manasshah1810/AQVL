@@ -4,6 +4,7 @@ import type { StageModel } from '../../model/StageModel';
 import { groveClearing } from './layout';
 import { polarClearing } from './polarLayout';
 import { kingdomOf } from '../rabbit/kingdom';
+import { useGovernedInvalidate } from '../../three/perf';
 
 /** The most the viewer can get out of the grove (as a share of the clearing), and how low the camera may go. */
 const REACH = 1.05;
@@ -45,7 +46,7 @@ export function clampView(nav: ReturnType<typeof groveNav>, camera: { position: 
 export function PandaNav({ model, controls, onTakeOver }: { model: StageModel; controls: React.RefObject<Controls | null>; onTakeOver: () => void }) {
   const camera = useThree((s) => s.camera);
   const gl = useThree((s) => s.gl);
-  const invalidate = useThree((s) => s.invalidate);
+  const invalidate = useGovernedInvalidate();
   const keys = useRef(new Set<string>());
   const nav = groveNav(model);
 

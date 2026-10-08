@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import type { StageModel } from '../../model/StageModel';
 import type { StageDriver } from '../../three/driver';
@@ -13,6 +13,7 @@ import { ColonyLayer } from './ColonyLayer';
 import { CloudKingdom } from '../rabbit/three/CloudKingdom';
 import { WarrenLayer } from '../rabbit/three/WarrenLayer';
 import { Colony } from '../idle';
+import { perfCounters, useGovernedInvalidate } from '../../three/perf';
 import { advanceDay, blankDay, dayAt, dayTime, type DayState } from '../daycycle';
 
 /**
@@ -39,20 +40,44 @@ export interface WorldClock {
 }
 
 export function WorldLayer({ model, bounds, driver, calm, playhead }: { model: StageModel; bounds: SceneBounds; driver: StageDriver; calm: boolean; playhead: Playhead }) {
-  const invalidate = useThree((s) => s.invalidate);
+  const rawInvalidate = useThree((s) => s.invalidate);
+  const invalidate = useGovernedInvalidate();
+  const gl = useThree((s) => s.gl);
   const clock = useMemo<WorldClock>(
     () => ({ now: 0, fishAt: -100, crew: Array.from({ length: 24 }, () => ({ x: 0, y: 0, z: 0, speed: 0 })), chew: Array.from({ length: 24 }, () => -1), day: dayAt(dayTime(), blankDay()), colony: new Colony(), splashes: [] }),
     [],
   );
+  // The ambient clock only has to run while the canvas can be seen: scrolled out of view, the world rests.
+  const onScreen = useRef(true);
+  const dayAcc = useRef(0);
+  useEffect(() => {
+    const el = gl.domElement;
+    if (typeof IntersectionObserver === 'undefined') return undefined;
+    const io = new IntersectionObserver(([entry]) => {
+      const was = onScreen.current;
+      onScreen.current = entry.isIntersecting;
+      perfCounters.offscreen = !entry.isIntersecting;
+      if (!was && entry.isIntersecting) rawInvalidate();
+    });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [gl, rawInvalidate]);
   useFrame((_, delta) => {
     if (calm) return;
     const dt = Math.min(delta, 0.1);
     clock.now += dt;
-    // The grove, the ice shelf and the cloud kingdom all have a day and a night.
+    // The grove, the ice shelf and the cloud kingdom all have a day and a night. The sky changes over minutes:
+    // the colour grading is recomputed at 15 Hz, which no eye can tell from every frame.
     if (model.world === 'panda' || model.world === 'penguin' || model.world === 'rabbit') {
       advanceDay(dt);
-      dayAt(dayTime(), clock.day);
+      dayAcc.current += dt;
+      if (dayAcc.current >= 1 / 15) {
+        dayAcc.current = 0;
+        dayAt(dayTime(), clock.day);
+      }
     }
+    if (!onScreen.current) return;
+    // Ask for the next frame at the governor's pace, not at the display's.
     invalidate();
   });
   if (model.world === 'studio') return null;

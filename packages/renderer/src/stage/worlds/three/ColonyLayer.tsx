@@ -15,6 +15,8 @@ import { gatherAt } from '../daycycle';
 import { ParticlePool, hash } from './particles';
 import { pandaSpots, worldLayout } from './layout';
 import type { WorldClock } from './WorldLayer';
+import { SleepGate, ViewCuller, perfCounters } from '../../three/perf';
+import { useGovernedInvalidate } from '../../three/perf';
 
 /**
  * The rest of the colony: fifteen more pandas who live in the grove alongside
@@ -189,7 +191,7 @@ export interface ColonyLayerProps {
 }
 
 export function ColonyLayer({ model, driver, calm, clock, playhead }: ColonyLayerProps) {
-  const invalidate = useThree((s) => s.invalidate);
+  const invalidate = useGovernedInvalidate();
   const get = useThree((s) => s.get);
   const gl = useThree((s) => s.gl);
   const penguin = model.world === 'penguin';
@@ -306,6 +308,10 @@ export function ColonyLayer({ model, driver, calm, clock, playhead }: ColonyLaye
   const clickedAt = useRef<number[]>(cast.map(() => -10));
   const hovered = useRef(-1);
   const lastText = useRef<string[]>(cast.map(() => ''));
+  const culler = useMemo(() => new ViewCuller(), []);
+  const gates = useMemo(() => cast.map(() => new SleepGate(0.1)), [cast]);
+  const lastOut = useRef<(IdleOut | null)[]>(cast.map(() => null));
+  const frameNo = useRef(0);
   const bubbles = useMemo<HTMLDivElement[]>(() => {
     if (typeof document === 'undefined') return [];
     return cast.map(() => {
@@ -374,6 +380,10 @@ export function ColonyLayer({ model, driver, calm, clock, playhead }: ColonyLaye
         const gather = gatherAt(clock.day);
 
         pool.begin();
+        culler.update(camera);
+        frameNo.current++;
+        let inView = 0;
+        let awake = 0;
         for (let i = 0; i < cast.length; i++) {
           const member = cast[i];
           const brain = brains[i];
@@ -381,7 +391,15 @@ export function ColonyLayer({ model, driver, calm, clock, playhead }: ColonyLaye
           const holder = holders[i];
           const den = spotsAll.dens[i % spotsAll.dens.length];
           let o: IdleOut | null = null;
-          if (!calm) {
+          // An animal out of shot keeps living (it still walks, sits down, goes to bed) but is decided on ten times a
+          // second and not posed at all; one in view runs every frame, as before.
+          const prev = lastOut.current[i];
+          const seen = calm || !prev || culler.sees(prev.x, floor + prev.y + 0.8, prev.z, 3.4);
+          const stepDt = calm ? dt : gates[i].step(dt, seen);
+          if (seen) inView++;
+          if (!calm && stepDt <= 0 && prev) {
+            o = prev;
+          } else if (!calm) {
             const seat = member.role === 'student' ? spotsAll.seats[i % spotsAll.seats.length] : null;
             const ctx: IdleContext = {
               free: true,
@@ -400,7 +418,9 @@ export function ColonyLayer({ model, driver, calm, clock, playhead }: ColonyLaye
               lesson: seat ? { on: lessonOn, cheer: cheer && st.inClass, seat: seat.at, face: seat.face } : undefined,
               gather,
             };
-            o = brain.update(dt, ctx);
+            o = brain.update(stepDt, ctx);
+            lastOut.current[i] = o;
+            awake++;
           }
           const x = o ? o.x : den[0];
           const z = o ? o.z : den[1];
@@ -420,6 +440,7 @@ export function ColonyLayer({ model, driver, calm, clock, playhead }: ColonyLaye
           if (!member.bag || bagW >= 0.999) bagSpots.current[i] = null;
           else if (!bagSpots.current[i]) bagSpots.current[i] = [x + Math.cos(yaw) * 0.85 + Math.sin(yaw) * 0.25, z - Math.sin(yaw) * 0.85 + Math.cos(yaw) * 0.25];
           const bagSpot = bagSpots.current[i];
+          if (seen || (frameNo.current + i) % 8 === 0)
           rig.update({
             gait: o ? o.gait : 'stand',
             gaitPhase: o ? o.gaitPhase : 0,
@@ -450,7 +471,7 @@ export function ColonyLayer({ model, driver, calm, clock, playhead }: ColonyLaye
 
           // Its shadow, smaller the higher it is (up the slide, on the swing).
           const sh = shadows[i].mesh;
-          sh.visible = y > -0.02;
+          sh.visible = y > -0.02 && seen;
           sh.position.set(x, floor + 0.004, z);
           const spread = 0.86 * member.scale * (o && (o.act === 'sleep' || o.act === 'lounge') ? 1.25 : 1) / (1 + y * 1.6);
           sh.scale.set(spread, spread, 1);
@@ -484,7 +505,7 @@ export function ColonyLayer({ model, driver, calm, clock, playhead }: ColonyLaye
           }
 
           // A few touches: crumbs while it chews, leaves kicked up by a roll, a puff where it lands off the slide.
-          if (o && !calm) {
+          if (o && !calm && seen) {
             if (!penguin && o.stalk >= 0 && o.gaitWeight < 0.1) {
               for (let p = 0; p < 5; p++) {
                 const f = (now * 0.9 + hash(i + 51, p)) % 1;
@@ -541,7 +562,7 @@ export function ColonyLayer({ model, driver, calm, clock, playhead }: ColonyLaye
             text = `${member.name} · ${doing}`;
           }
           const el = bubbles[i];
-          if (el) {
+          if (el && (text !== '' || lastText.current[i] !== '')) {
             _head.set(x, floor + y + brain.height + 0.45, z).project(camera);
             const visible = text !== '' && _head.z < 1;
             if (text !== lastText.current[i]) {
@@ -553,6 +574,9 @@ export function ColonyLayer({ model, driver, calm, clock, playhead }: ColonyLaye
           }
         }
         pool.end();
+        perfCounters.animalsTotal = cast.length;
+        perfCounters.animalsVisible = inView;
+        perfCounters.animalsAwake = awake + inView;
       }),
     [driver, model, calm, clock, playhead, brains, rigs, holders, shadows, pool, zzz, bubbles, get, invalidate, spots, spotsAll, layout, cast, penguin],
   );

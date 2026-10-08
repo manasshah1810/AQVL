@@ -40,6 +40,7 @@ import type { WorldClock } from '../../three/WorldLayer';
 import { CAUSTICS, OCEAN } from '../glsl';
 import { BubblePool } from './bubbles';
 import { buildFish, buildJellies, buildTurtle, type Area } from './life';
+import { useGovernedInvalidate } from '../../../three/perf';
 
 /** Water colours (linear-ready hex): the open blue at eye level (the fog), the deep, and the light under the surface. */
 export const WATER = { haze: '#0d4d66', deep: '#03192a', shallow: '#4cc3d9' };
@@ -472,7 +473,7 @@ export interface ReefProps {
  * silt, the clam to make it open, a jelly to make it glow.
  */
 export function ReefWorld({ model, bounds, driver, calm, clock }: ReefProps) {
-  const invalidate = useThree((s) => s.invalidate);
+  const invalidate = useGovernedInvalidate();
   const palette = model.palette;
   const floorY = model.floorY;
   const { radius: R } = bounds;

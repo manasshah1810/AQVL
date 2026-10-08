@@ -30,6 +30,7 @@ import { buildPodRigs, type WhaleRig } from './whale';
 import { BubblePool } from './bubbles';
 import { reefSpots } from './ReefWorld';
 import { roamPose, trickAt, type RoamPose } from '../roam';
+import { useGovernedInvalidate } from '../../../three/perf';
 
 interface OceanDebug {
   pod?: { x: number; y: number; z: number; yaw: number; mood: PodMood; contact: number }[];
@@ -157,7 +158,7 @@ function glowMaterial(color: string): ShaderMaterial {
  * rolls and says its name.
  */
 export function PodLayer({ model, driver, calm, clock, playhead }: PodLayerProps) {
-  const invalidate = useThree((s) => s.invalidate);
+  const invalidate = useGovernedInvalidate();
   const get = useThree((s) => s.get);
   const gl = useThree((s) => s.gl);
   const names = WORLDS.ocean.crew;

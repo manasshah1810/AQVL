@@ -35,6 +35,7 @@ import { kingdomOf, liftAt, type Island, type Kingdom, type V3 } from '../kingdo
 import { buildProps } from './kingdomProps';
 import { roundCylinder, softToy } from './soft';
 import { cloudMaterial, dayUniforms, horizonColor, puffGeometry, ribbonMaterial, skyMaterial, sweep, turfMaterial, type Puff } from './clouds';
+import { useGovernedInvalidate } from '../../../three/perf';
 
 /**
  * The floating cloud kingdom: nine islands at different heights round the
@@ -423,7 +424,7 @@ export function CloudKingdom({ model, driver, calm, clock }: { model: StageModel
   const props = useMemo(() => buildProps(k), [k]);
   const sky = useMemo(() => skyMaterial(world.u), [world]);
   const three = useThree();
-  const invalidate = useThree((s) => s.invalidate);
+  const invalidate = useGovernedInvalidate();
   const hemi = useRef<HemisphereLight>(null);
   const keyLight = useRef<DirectionalLight>(null);
   const fillLight = useRef<DirectionalLight>(null);

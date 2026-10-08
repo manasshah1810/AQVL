@@ -12,6 +12,7 @@ import type { StageWorld } from './worlds/types';
 import { STAGE_FOV, StageScene } from './three/StageScene';
 import type { StageFonts } from './three/LabelLayer';
 import { QUALITY, lowerTier, type QualityTier } from './three/quality';
+import { higherTier } from './three/perf';
 
 export type StageStatus =
   | { kind: 'ready' }
@@ -133,6 +134,10 @@ export function StageCanvas(props: StageCanvasProps) {
     if (tier !== 'low') onTierChange(lowerTier(tier));
   }, [tier, onTierChange]);
 
+  const onHeadroom = useCallback(() => {
+    if (tier !== 'high') onTierChange(higherTier(tier));
+  }, [tier, onTierChange]);
+
   const quality = QUALITY[tier];
   const background = model.palette.background;
 
@@ -180,6 +185,7 @@ export function StageCanvas(props: StageCanvasProps) {
               phase={shown.phase}
               onFollowChange={onFollowChange}
               onSlowFrames={onSlowFrames}
+              onHeadroom={onHeadroom}
               insets={insets}
             />
           </Canvas>

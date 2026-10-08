@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react';
+import { perfExtras } from '@aqvl/renderer';
 import { piperProvider } from './providers/piperProvider';
 import { speechSynthesisProvider } from './providers/speechSynthesisProvider';
 import { themeVoice } from './themeVoice';
@@ -131,7 +132,13 @@ class VoiceEngineImpl {
   };
 
   private set(patch: Partial<VoiceStatus>) {
-    this.status = { ...this.status, ...patch };
+    // Progress arrives many times a second while a model downloads; the UI needs it to the percent, not to the byte.
+    if (patch.progress != null) patch = { ...patch, progress: Math.round(patch.progress * 100) / 100 };
+    const next = { ...this.status, ...patch };
+    const same = (Object.keys(next) as (keyof VoiceStatus)[]).every((k) => next[k] === this.status[k]);
+    if (same) return;
+    this.status = next;
+    perfExtras['TTS'] = `${next.phase}${next.provider ? ` (${next.provider})` : ''}`;
     this.listeners.forEach((l) => l());
   }
 }

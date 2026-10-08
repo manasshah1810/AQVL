@@ -7,9 +7,11 @@ import type { StageDriver } from '../../../three/driver';
 import type { Playhead } from '../../../timeline/Playhead';
 import { ParticlePool, hash } from '../../three/particles';
 import type { WorldClock } from '../../three/WorldLayer';
+import { ViewCuller, perfCounters } from '../../../three/perf';
 import { Warren, type Bunny, type Pose } from '../warren';
 import { buildBunny, disposeBunny, poseBunny } from './bunny';
 import { shadowDisc, shadowMaterial } from './soft';
+import { useGovernedInvalidate } from '../../../three/perf';
 
 const NOTE_COLORS = [[1, 0.56, 0.69], [1, 0.84, 0.3], [0.53, 0.7, 1], [0.71, 0.59, 0.94]];
 
@@ -58,7 +60,7 @@ const STAY = 12;
 export function WarrenLayer({ model, driver, calm, clock, playhead }: { model: StageModel; driver: StageDriver; calm: boolean; clock: WorldClock; playhead: Playhead }) {
   const warren = useMemo(() => new Warren(model, clock.day), [model, clock]);
   const rigs = useMemo(() => warren.bunnies.map((b) => buildBunny(b.info.look)), [warren]);
-  const invalidate = useThree((s) => s.invalidate);
+  const invalidate = useGovernedInvalidate();
   const get = useThree((s) => s.get);
   // A soft shadow under each rabbit (smaller and fainter as it leaves the ground).
   const shadows = useMemo(() => {
@@ -107,6 +109,8 @@ export function WarrenLayer({ model, driver, calm, clock, playhead }: { model: S
     [],
   );
   const pool = useMemo(() => new ParticlePool(260, false), []);
+  const culler = useMemo(() => new ViewCuller(), []);
+  const frame = useRef(0);
   const state = useRef({ last: 0, rest: 0, lastK: -1, gaits: [] as string[], landings: [] as { x: number; y: number; z: number; t: number }[], cheerAt: -100 });
 
   useEffect(() => () => rigs.forEach(disposeBunny), [rigs]);
@@ -130,10 +134,16 @@ export function WarrenLayer({ model, driver, calm, clock, playhead }: { model: S
 
         const now = clock.now;
         pool.begin();
+        const { camera, size } = get();
+        culler.update(camera);
+        frame.current++;
+        let inView = 0;
         warren.bunnies.forEach((b, i) => {
-          const { camera } = get();
           if (hovered.current === i) camera.position.toArray(_cam);
-          poseBunny(rigs[i], b, now, dt, calm, hovered.current === i ? _cam : null);
+          // A rabbit out of shot is not posed (a quiet touch-up every eighth frame keeps its springs warm for when it returns).
+          const seen = calm || culler.sees(b.x, b.y + 0.8, b.z, 3);
+          if (seen) inView++;
+          if (seen || (frame.current + i) % 8 === 0) poseBunny(rigs[i], b, now, dt, calm, hovered.current === i ? _cam : null);
           const grounded = b.gait === 'stand' || b.gait === 'hop';
           const lift = b.gait === 'hop' ? b.air * Math.sin((b.hop % 1) * Math.PI) : 0;
           const ss = grounded ? b.info.look.scale * 0.95 * (1 - Math.min(0.5, lift * 0.8)) : 0;
@@ -148,9 +158,8 @@ export function WarrenLayer({ model, driver, calm, clock, playhead }: { model: S
           st.gaits[i] = b.gait;
           // The bubble: its name when clicked; who it is and what it is up to when pointed at.
           const el = bubbles[i];
-          if (el) {
+          if (el && (hovered.current === i || wall - clickedAt.current[i] < 1.6 || lastText.current[i] !== '')) {
             const text = wall - clickedAt.current[i] < 1.6 ? `I'm ${b.info.name}!` : hovered.current === i ? `${b.info.name} · ${doingOf(b)}` : '';
-            const { camera, size } = get();
             _head.set(b.x, b.y + 1.25 * b.info.look.scale, b.z).project(camera);
             const visible = text !== '' && _head.z < 1;
             if (text !== lastText.current[i]) {
@@ -160,7 +169,7 @@ export function WarrenLayer({ model, driver, calm, clock, playhead }: { model: S
             el.style.opacity = visible ? '1' : '0';
             if (visible) el.style.transform = `translate(${((_head.x * 0.5 + 0.5) * size.width).toFixed(1)}px, ${((-_head.y * 0.5 + 0.5) * size.height).toFixed(1)}px) translate(-50%, -100%)`;
           }
-          if (calm) return;
+          if (calm || !seen) return;
           if (b.pose === 'sleep' || b.pose === 'nap') {
             for (let q = 0; q < 3; q++) {
               const f = (now * 0.3 + q / 3 + i * 0.13) % 1;
@@ -181,6 +190,9 @@ export function WarrenLayer({ model, driver, calm, clock, playhead }: { model: S
             pool.add(b.x + Math.sin(b.yaw) * 0.3 * s, b.y + 0.36 * s, b.z + Math.cos(b.yaw) * 0.3 * s, 1, 0.8, 0.45, 0.6 * clock.day.night, 0.35);
           }
         });
+        perfCounters.animalsTotal = warren.bunnies.length;
+        perfCounters.animalsVisible = inView;
+        perfCounters.animalsAwake = inView;
         st.landings = st.landings.filter((l) => now - l.t < 0.9);
         for (const l of st.landings) {
           const tt = now - l.t;
@@ -207,7 +219,7 @@ export function WarrenLayer({ model, driver, calm, clock, playhead }: { model: S
         pool.end();
         shadows.instanceMatrix.needsUpdate = true;
       }),
-    [driver, model, warren, rigs, pool, clock, calm, playhead, bubbles, get, shadows],
+    [driver, model, warren, rigs, pool, clock, calm, playhead, bubbles, get, shadows, culler],
   );
 
   return (

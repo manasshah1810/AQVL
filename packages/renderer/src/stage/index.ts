@@ -22,3 +22,4 @@ export type { StageWorld, WorldInfo } from './worlds/types';
 export { WORLD_PALETTES, paletteFor } from './worlds/palettes';
 export { sampleCast, stationsAt, poseFor, createCast, CREW_SIZE } from './worlds/cast';
 export type { CastMember, CastPose, CastGait, CastStyle, Station } from './worlds/cast';
+export { perfExtras, perfMonitorEnabled } from './three/perf';

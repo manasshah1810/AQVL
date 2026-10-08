@@ -15,6 +15,7 @@ import { iceMotionAt, blockAt, eagleAt, type EagleState } from '../ice';
 import { pandaSpots, polarSpots } from './layout';
 import { penguinSpots } from './polarLayout';
 import type { WorldClock } from './WorldLayer';
+import { useGovernedInvalidate } from '../../three/perf';
 
 export interface CastLayerProps {
   model: StageModel;
@@ -104,7 +105,7 @@ const CONFETTI: Record<CastStyle, string[]> = {
  * and it hops (penguin) or rolls (panda) and says its name.
  */
 export function CastLayer({ model, driver, style, calm, clock, playhead }: CastLayerProps) {
-  const invalidate = useThree((s) => s.invalidate);
+  const invalidate = useGovernedInvalidate();
   const get = useThree((s) => s.get);
   const gl = useThree((s) => s.gl);
   const names = WORLDS[style].crew;
