@@ -12,6 +12,7 @@ const ROWS: { state: keyof (typeof STAGE_PALETTES)['dark']['states']; tone: Even
   { state: 'AUXILIARY', tone: 'mark', name: 'Marked', cue: 'a dashed ring underneath' },
   { state: 'SUCCESS', tone: 'settle', name: 'Settled', cue: 'turns matte and still, locks in with a ripple' },
   { state: 'DISCARDED', tone: 'discard', name: 'Ruled out', cue: 'shrinks, greyed and matte' },
+  { state: 'ERROR', tone: 'error', name: 'Error', cue: 'a dashed ring on the cell the line reached for and could not find' },
 ];
 
 /** What each colour means, and the shape or motion that says the same thing without colour. */

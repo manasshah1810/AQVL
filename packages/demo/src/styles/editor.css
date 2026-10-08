@@ -229,6 +229,59 @@
   box-shadow: inset 2px 0 0 var(--cream);
 }
 
+/* ── The line a mistake is on ───────────────────────────────── */
+.aqvl-issue-clip {
+  z-index: 0;
+}
+
+.aqvl-issue-band {
+  --issue: #f0647d;
+  position: absolute;
+  left: 0;
+  right: 0;
+  background: color-mix(in srgb, var(--issue) 20%, transparent);
+  box-shadow: inset 3px 0 0 var(--issue);
+}
+
+.aqvl-issue-band.is-warning {
+  --issue: #e9b44c;
+}
+
+:root[data-theme='light'] .aqvl-issue-band {
+  --issue: #bf2f4d;
+}
+
+:root[data-theme='light'] .aqvl-issue-band.is-warning {
+  --issue: #8a5a00;
+}
+
+/* The tag says what the colour says, so the line reads without it. */
+.aqvl-issue-tag {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  padding: 1px 7px;
+  border-radius: 4px;
+  background: var(--issue);
+  color: #1e1c27;
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+:root[data-theme='light'] .aqvl-issue-tag {
+  color: #fff;
+}
+
+.aqvl-gutter-line.has-issue {
+  color: var(--cream);
+  font-weight: 700;
+}
+
 /* ── Autocomplete ───────────────────────────────────────────── */
 .aqvl-autocomplete {
   position: absolute;

@@ -78,6 +78,8 @@ const STATES: Record<SemanticState, StateColor> = {
   AUXILIARY: { body: '#b79be6', text: BODY_INK },
   // A role (root, leaf, view): teal, with a double ring.
   STRUCTURAL: { body: '#7fc2c8', text: BODY_INK },
+  // The access that failed (an error frame's ghost cell): a crimson rose, distinct from the coral of a change.
+  ERROR: { body: '#f0647d', text: BODY_INK },
 };
 
 const STATE_EDGES = {
@@ -161,6 +163,8 @@ export function edgeColorFor(palette: StagePalette, state: SemanticState): strin
     case 'AUXILIARY':
     case 'STRUCTURAL':
       return palette.edges.marked;
+    case 'ERROR':
+      return palette.edges.mutate;
     default:
       return palette.edges.idle;
   }

@@ -19,6 +19,9 @@ import { updateSettings, useSettings, type DockTab } from '../../lib/settings';
 import { Scrubber } from './Scrubber';
 import { VoiceControl } from './VoiceControl';
 import { useVoiceover } from './useVoiceover';
+import { useIssueTeaching } from './useIssue';
+import { IssuePanel } from './IssuePanel';
+import { voiceThemeOf } from '../../lib/voice';
 import { StageDock } from './StageDock';
 import { EVENT_META, toneChip } from './events';
 import { ToneGlyph } from './ToneGlyph';
@@ -76,6 +79,12 @@ export interface VisualizerProps {
   output?: ReactNode;
   /** Number of lines in the output (shown on the Output tab). */
   outputCount?: number;
+  /** The editor no longer holds the code this run came from, so what is explained is out of date. */
+  stale?: boolean;
+  /** "Try again": run the code as it is now. */
+  onRetry?: () => void;
+  /** "Edit code": put the cursor on the line that needs changing. */
+  onEditLine?: (line: number | null) => void;
 }
 
 /**
@@ -87,7 +96,7 @@ export interface VisualizerProps {
  * scene. Keyboard: Space, arrows, Home / End, [ ], C calm, F follow, and
  * V / K / O / S for the panel's tabs.
  */
-export function Visualizer({ trace, playhead, source, theme, reducedMotion, compact = false, output, outputCount = 0 }: VisualizerProps) {
+export function Visualizer({ trace, playhead, source, theme, reducedMotion, compact = false, output, outputCount = 0, stale = false, onRetry, onEditLine }: VisualizerProps) {
   const snap = usePlayhead(playhead);
   const world = useWorld();
   const settings = useSettings();
@@ -122,12 +131,18 @@ export function Visualizer({ trace, playhead, source, theme, reducedMotion, comp
   const [status, setStatus] = useState<StageStatus>({ kind: 'ready' });
   const panelId = useId();
 
+  // The mistake (if any) at the step on screen: one lesson for the card, the highlighted line and the voice.
+  const voiceTheme = voiceThemeOf(world);
+  const issue = useIssueTeaching(trace, playhead, snap.active, stale, voiceTheme, !compact);
+  const issueKey = issue.lesson ? `${issue.lesson.type}:${issue.lesson.line}` : '';
+
   // The caption card covers a strip of the canvas; the stage centres the picture in the rest. In narrow
   // layouts the panel slides over the stage, and the picture moves aside for it.
   const vzRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const captionRef = useRef<HTMLDivElement>(null);
   const dockRef = useRef<HTMLElement>(null);
+  const issueRef = useRef<HTMLElement>(null);
   const [insets, setInsets] = useState({ top: 0, right: 0 });
   useEffect(() => {
     const measure = () => {
@@ -137,13 +152,16 @@ export function Visualizer({ trace, playhead, source, theme, reducedMotion, comp
       let right = 0;
       const el = dockRef.current;
       if (el && getComputedStyle(el).position === 'absolute' && vp.clientWidth >= 760) right = el.getBoundingClientRect().width + 16;
+      // The teaching card sits beside the picture, so the picture is centred in what is left.
+      const card = issueRef.current;
+      if (card && vp.clientWidth >= 760) right = Math.max(right, card.getBoundingClientRect().width + 28);
       setInsets((prev) => (Math.abs(prev.top - top) < 4 && Math.abs(prev.right - right) < 4 ? prev : { top, right }));
     };
     measure();
     const ro = new ResizeObserver(measure);
-    for (const el of [vzRef.current, viewportRef.current, captionRef.current, dockRef.current]) if (el) ro.observe(el);
+    for (const el of [vzRef.current, viewportRef.current, captionRef.current, dockRef.current, issueRef.current]) if (el) ro.observe(el);
     return () => ro.disconnect();
-  }, [dock, trace]);
+  }, [dock, trace, issueKey]);
 
   // Development only: lets automated checks pin playback to an exact moment.
   useEffect(() => {
@@ -155,7 +173,7 @@ export function Visualizer({ trace, playhead, source, theme, reducedMotion, comp
   }, [playhead, trace]);
 
   // The voice reads the same frame as the stage and the code highlight.
-  const voice = useVoiceover(trace, playhead, snap.active, source, !compact);
+  const voice = useVoiceover(trace, playhead, snap.active, source, !compact, issue.issue !== null);
   const voiceOn = settings.voiceOn && !compact;
 
   const frame = trace.frames[snap.active] ?? trace.frames[0];
@@ -163,10 +181,18 @@ export function Visualizer({ trace, playhead, source, theme, reducedMotion, comp
   const meta = EVENT_META[frame.event.kind];
   const chip = toneChip(meta.tone, theme);
   const atEnd = snap.atEnd;
-  const errorVisible = atEnd && trace.error !== null;
+  // A run that ended in an error without a diagnosis (never produced now, kept so no error is ever hidden).
+  const plainError = atEnd && trace.error !== null && !trace.error.info;
 
   const stepLabel = `Step ${snap.step} of ${snap.totalSteps}${frame.caption ? `: ${frame.caption}` : ''}`;
-  const captionText = snap.active === 0 ? `${snap.totalSteps} steps recorded. Press play, or step with the arrow keys.` : (voiceOn && snap.active > 0 ? voice.explanation.text : frame.caption || meta.label);
+  const captionText =
+    snap.active === 0
+      ? `${snap.totalSteps} steps recorded. Press play, or step with the arrow keys.`
+      : issue.lesson
+        ? issue.lesson.what
+        : voiceOn && snap.active > 0
+          ? voice.explanation.text
+          : frame.caption || meta.label;
 
   const cycleSpeed = useCallback(
     (dir: 1 | -1) => {
@@ -317,10 +343,36 @@ export function Visualizer({ trace, playhead, source, theme, reducedMotion, comp
               <p className="vz-overlay__body">This browser couldn’t start WebGL ({status.message}). The timeline, captions, code highlight and variables still step through the run.</p>
             </div>
           )}
-          {errorVisible && (
+          {plainError && (
             <div className="vz-error" role="alert">
               <p className="vz-error__title">Runtime error{trace.error!.line !== null ? ` at line ${trace.error!.line}` : ''}</p>
               <p className="vz-error__body">{trace.error!.message}</p>
+            </div>
+          )}
+
+          {/* Something went wrong (or looks wrong) at the step on screen: the teaching card. */}
+          {issue.lesson && !compact && (
+            <div className="vz-issue-slot">
+              <IssuePanel
+                key={issueKey}
+                ref={issueRef}
+                lesson={issue.lesson}
+                speaking={issue.speaking}
+                stale={stale}
+                onExplain={issue.explain}
+                onStop={issue.stop}
+                onEdit={onEditLine ? () => onEditLine(issue.lesson!.line) : undefined}
+                onRetry={onRetry}
+                onContinue={
+                  issue.lesson.canContinue
+                    ? () => {
+                        issue.dismiss();
+                        playhead.play();
+                      }
+                    : undefined
+                }
+                onDismiss={issue.lesson.canContinue ? issue.dismiss : undefined}
+              />
             </div>
           )}
         </div>

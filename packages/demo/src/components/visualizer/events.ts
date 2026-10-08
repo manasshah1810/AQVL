@@ -2,7 +2,7 @@ import type { TraceEventKind } from '@aqvl/runtime';
 import { STAGE_PALETTES, type StageTheme } from '@aqvl/renderer';
 
 /** The colour family an event belongs to (the same families the 3D scene uses). */
-export type EventTone = 'compare' | 'mutate' | 'visit' | 'settle' | 'discard' | 'mark' | 'neutral';
+export type EventTone = 'compare' | 'mutate' | 'visit' | 'settle' | 'discard' | 'mark' | 'error' | 'neutral';
 
 export const EVENT_META: Record<TraceEventKind, { label: string; tone: EventTone }> = {
   init: { label: 'Start', tone: 'neutral' },
@@ -25,6 +25,7 @@ export const EVENT_META: Record<TraceEventKind, { label: string; tone: EventTone
   layout: { label: 'Layout', tone: 'neutral' },
   camera: { label: 'Camera', tone: 'neutral' },
   hold: { label: 'Wait', tone: 'neutral' },
+  error: { label: 'Error', tone: 'error' },
   none: { label: 'Step', tone: 'neutral' },
 };
 
@@ -35,6 +36,7 @@ const TONE_STATE = {
   settle: 'SUCCESS',
   discard: 'DISCARDED',
   mark: 'AUXILIARY',
+  error: 'ERROR',
   neutral: 'NEUTRAL',
 } as const;
 

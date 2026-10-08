@@ -8,6 +8,7 @@
 
 import type { SemanticState } from '@aqvl/shared';
 import type { CameraFrameState } from '../aqir/types';
+import type { ErrorInfo, FrameError } from '../diagnose/types';
 
 export interface Vec3 {
   x: number;
@@ -103,6 +104,8 @@ export type TraceEventKind =
   | 'camera'
   /** WAIT: the scene holds still for a beat. */
   | 'hold'
+  /** The run stopped here: the frame shows the moment of the error. */
+  | 'error'
   | 'none';
 
 export interface TraceEvent {
@@ -145,12 +148,24 @@ export interface TraceFrame {
   callStack: string[];
   /** CAMERA statement in effect, if any. */
   camera?: CameraFrameState;
+  /** Set on the frame that shows the moment a run stopped on an error: the diagnosis, and the cell the stage draws for the failed access. */
+  error?: FrameError;
 }
 
 export interface ExecutionTrace {
   frames: TraceFrame[];
-  /** Set when the run stopped on a runtime error (after the last recorded frame). */
-  error: { message: string; line: number | null } | null;
+  /**
+   * Set when the run stopped on a runtime error. The last frame is then the
+   * error frame (`frameIndex`), whose `line` is the exact line that failed.
+   * `info` is the structured diagnosis (present when the run was recorded with the diagnosis on).
+   */
+  error: { message: string; line: number | null; frameIndex?: number; info?: ErrorInfo } | null;
+  /**
+   * Logic problems found in a run that otherwise worked: each one sits on a
+   * frame (`frameIndex`) so playback can pause there. Only mistakes AQVL is
+   * confident about are listed.
+   */
+  diagnostics: ErrorInfo[];
   /** True when recording stopped at the step cap before the program finished. */
   truncated: boolean;
   /** Source lines that ever ran (for the editor's coverage gutter). */

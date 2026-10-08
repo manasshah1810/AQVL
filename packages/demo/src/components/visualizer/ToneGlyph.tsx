@@ -42,6 +42,14 @@ export function ToneGlyph({ tone, size = 12 }: { tone: EventTone; size?: number 
           <circle cx="6" cy="6" r="4.2" fill="none" stroke="currentColor" strokeWidth="1.6" strokeDasharray="2.2 1.6" />
         </svg>
       );
+    case 'error':
+      return (
+        <svg {...common}>
+          <path d="M6 1 L11.2 10.6 L0.8 10.6 Z" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+          <path d="M6 4.6 V7.2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+          <circle cx="6" cy="8.9" r="0.8" fill="currentColor" />
+        </svg>
+      );
     default:
       return (
         <svg {...common}>

@@ -38,4 +38,6 @@ export const STATE_TREATMENTS: Record<SemanticState, StateTreatment> = {
   AUXILIARY: { emphasisLift: 0.2, restLift: 0, scale: 1, finish: 0.4, halo: 'dashed', glow: 0, word: 'marked' },
   // A role (root, leaf, view): a double ring.
   STRUCTURAL: { emphasisLift: 0.2, restLift: 0, scale: 1, finish: 0.4, halo: 'double', glow: 0, word: 'role' },
+  // Where it went wrong: lifted, with a dashed ring, so it reads without colour.
+  ERROR: { emphasisLift: 0.34, restLift: 0, scale: 1.06, finish: 0.2, halo: 'dashed', glow: 0, word: 'error' },
 };

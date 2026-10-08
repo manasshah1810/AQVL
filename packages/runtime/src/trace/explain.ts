@@ -1,4 +1,5 @@
 import type { ExecutionTrace, TraceEvent, TraceFrame, TraceNode } from './types';
+import { teachError } from '../diagnose/lesson';
 
 /**
  * Explanations: what a recorded step means, in words, written from the
@@ -244,6 +245,8 @@ export function explainFrame(trace: ExecutionTrace, index: number, _options: Exp
       return make(`${frame.caption || 'The view changes'}.`, 'detail');
     case 'hold':
       return make('A short pause, to let you take in the picture.', 'detail');
+    case 'error':
+      return frame.error ? { ...explainError({ ...trace, frames: frames.slice(0, i + 1), error: { message: frame.error.info.message, line: frame.line, frameIndex: i, info: frame.error.info } }, _options)!, importance: 'key' } : make(`${sentence || 'The program stops here'}.`, 'key');
     case 'move':
       return make(`${plural(Math.max(1, ev.actors.length), 'element')} moved to a new position.`, 'detail');
     default: {
@@ -266,7 +269,17 @@ function sourceLine(source: string | undefined, line: number | null): string | n
  */
 export function explainError(trace: ExecutionTrace, options: ExplainOptions = {}): Explanation | null {
   if (!trace.error) return null;
-  const { message, line } = trace.error;
+  const { message, line, info } = trace.error;
+  if (info) {
+    // The recorded diagnosis already knows the expression, the values and the cause: the lesson is the explanation.
+    const lesson = teachError(info, trace.frames[trace.error.frameIndex ?? trace.frames.length - 1]);
+    const code = sourceLine(options.source, info.line);
+    const where = info.line !== null ? `on line ${info.line}${code ? `, which reads: ${code}` : ''}` : 'while the program was running';
+    const said = message.replace(/\s+/g, ' ').trim().replace(/[.\s]*$/, '');
+    // Where it stopped and what the runtime said, then the lesson's own reason and fix (its first sentence restates the line).
+    const text = `The program stopped with an error ${where}. ${said}. ${lesson.why} ${lesson.fix}`;
+    return { text, importance: 'key', operation: 'ERROR', line: info.line, context: { values: Object.entries(info.variables).slice(0, 4).map(([k, v]) => `${k} is ${v}`), indices: info.actualIndex === undefined ? [] : [info.actualIndex], structure: info.structure?.name, changedVars: {} } };
+  }
   const last = trace.frames[trace.frames.length - 1];
   const vars = last?.vars ?? {};
   const code = sourceLine(options.source, line);

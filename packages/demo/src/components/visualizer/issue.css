@@ -1,0 +1,389 @@
+@layer components {
+  /* The teaching card for a mistake. The accent is a rose that stays legible on every world's surface. */
+  .vz-issue {
+    --issue: #f0647d;
+    --issue-soft: color-mix(in srgb, var(--issue) 16%, transparent);
+    display: flex;
+    flex-direction: column;
+    width: min(380px, 100%);
+    max-height: 100%;
+    background: color-mix(in srgb, var(--ink) 92%, transparent);
+    border: 1px solid color-mix(in srgb, var(--issue) 45%, var(--line));
+    border-radius: var(--r-panel);
+    box-shadow: inset 3px 0 0 var(--issue);
+    backdrop-filter: blur(10px) saturate(1.1);
+    -webkit-backdrop-filter: blur(10px) saturate(1.1);
+    color: var(--peach);
+    font-size: 0.88rem;
+    overflow: hidden;
+  }
+
+  :root[data-theme='light'] .vz-issue {
+    --issue: #bf2f4d;
+  }
+
+  .vz-issue[data-severity='warning'] {
+    --issue: #e9b44c;
+  }
+
+  :root[data-theme='light'] .vz-issue[data-severity='warning'] {
+    --issue: #8a5a00;
+  }
+
+  .vz-issue.is-stale {
+    opacity: 0.82;
+  }
+
+  .vz-issue__head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 10px 8px 14px;
+  }
+
+  .vz-issue__badge {
+    display: inline-grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    flex: none;
+    border-radius: 50%;
+    background: var(--issue-soft);
+    color: var(--issue);
+  }
+
+  .vz-issue__titles {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .vz-issue__titles h3 {
+    margin: 0;
+    font-family: var(--font-serif);
+    font-size: 1.05rem;
+    font-weight: 560;
+    color: var(--cream);
+  }
+
+  .vz-issue__titles p {
+    margin: 1px 0 0;
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    color: var(--peach-muted);
+  }
+
+  .vz-issue__titles p b {
+    color: var(--cream);
+    font-weight: 650;
+  }
+
+  .vz-issue__mascot {
+    flex: none;
+    margin-right: -2px;
+  }
+
+  .vz-issue__min {
+    width: 28px;
+    height: 28px;
+    flex: none;
+    border-radius: var(--r-ctl);
+    color: var(--peach-muted);
+    font-size: 1.1rem;
+    line-height: 1;
+  }
+
+  .vz-issue__min:hover {
+    color: var(--cream);
+    background: var(--row-hover);
+  }
+
+  .vz-issue__body {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 2px 14px 12px;
+    overflow-y: auto;
+    min-height: 0;
+  }
+
+  .vz-issue__body > * {
+    flex: none;
+  }
+
+  .vz-issue__pointer {
+    margin: 0;
+    padding: 7px 9px;
+    border-radius: 8px;
+    background: var(--ink-deep);
+    border: 1px solid var(--line);
+    font-family: var(--font-mono);
+    font-size: 0.76rem;
+    line-height: 1.45;
+    white-space: pre;
+    overflow-x: auto;
+    color: var(--cream);
+  }
+
+  .vz-issue__ln {
+    display: inline-block;
+    min-width: 2ch;
+    margin-right: 1.2ch;
+    color: var(--gutter-fg);
+  }
+
+  .vz-issue__caret {
+    color: var(--issue);
+    font-weight: 650;
+  }
+
+  .vz-issue__part {
+    padding-left: 10px;
+    border-left: 2px solid transparent;
+    transition: border-color 160ms ease, background-color 160ms ease;
+  }
+
+  .vz-issue__part h4 {
+    margin: 0 0 2px;
+    font-family: var(--font-mono);
+    font-size: 0.66rem;
+    font-weight: 650;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--peach-muted);
+  }
+
+  .vz-issue__part p {
+    margin: 0;
+    line-height: 1.5;
+    color: var(--cream);
+  }
+
+  /* The part being spoken: a bar and a tint, so it shows without colour too. */
+  .vz-issue__part.is-speaking {
+    border-left-color: var(--issue);
+    background: var(--issue-soft);
+    border-radius: 0 6px 6px 0;
+  }
+
+  .vz-issue__right pre {
+    margin: 4px 0 0;
+    padding: 7px 9px;
+    border-radius: 8px;
+    background: var(--ink-deep);
+    border: 1px solid var(--line);
+    font-family: var(--font-mono);
+    font-size: 0.76rem;
+    line-height: 1.5;
+    overflow-x: auto;
+    color: var(--cream);
+  }
+
+  .vz-issue__part p.vz-issue__note {
+    margin-top: 4px;
+    font-size: 0.72rem;
+    color: var(--peach-muted);
+  }
+
+  .vz-issue__idea {
+    padding-top: 8px;
+    border-top: 1px solid var(--line-faint);
+    font-size: 0.78rem;
+    line-height: 1.45;
+    color: var(--peach-muted);
+  }
+
+  .vz-issue__idea summary {
+    cursor: pointer;
+    font-family: var(--font-mono);
+    font-size: 0.66rem;
+    font-weight: 650;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .vz-issue__idea p {
+    margin: 4px 0 0;
+  }
+
+  .vz-issue__stale {
+    margin: 0;
+    padding: 8px 14px;
+    border-top: 1px solid var(--line);
+    font-size: 0.78rem;
+    color: var(--cream);
+    background: var(--issue-soft);
+  }
+
+  /* Valid cells and the attempted one */
+  .vz-issue__strip {
+    margin: 0;
+    padding: 8px 10px;
+    border-radius: 8px;
+    border: 1px dashed var(--line-strong);
+  }
+
+  .vz-issue__strip figcaption {
+    margin-top: 6px;
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    color: var(--peach-muted);
+  }
+
+  .vz-issue__cells {
+    display: flex;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .vz-issue__cell {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+  }
+
+  .vz-issue__cellbox {
+    display: grid;
+    place-items: center;
+    min-width: 34px;
+    height: 30px;
+    padding: 0 6px;
+    border-radius: 6px;
+    background: var(--dusk-deep);
+    color: var(--cream);
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+  }
+
+  .vz-issue__cell.is-attempted .vz-issue__cellbox {
+    background: transparent;
+    border: 1.5px dashed var(--issue);
+    color: var(--issue);
+  }
+
+  .vz-issue__cellindex {
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    color: var(--peach-muted);
+  }
+
+  .vz-issue__cell.is-attempted .vz-issue__cellindex {
+    color: var(--issue);
+    font-weight: 650;
+  }
+
+  .vz-issue__gap {
+    align-self: flex-start;
+    padding-top: 6px;
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    color: var(--peach-muted);
+  }
+
+  /* Actions */
+  .vz-issue__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 10px 14px;
+    border-top: 1px solid var(--line);
+  }
+
+  .vz-issue__btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    height: 32px;
+    padding: 0 11px;
+    border-radius: var(--r-ctl);
+    border: 1px solid var(--line-strong);
+    color: var(--cream);
+    font-family: var(--font-mono);
+    font-size: 0.76rem;
+    font-weight: 600;
+  }
+
+  .vz-issue__btn:hover:not(:disabled) {
+    border-color: var(--cream);
+  }
+
+  .vz-issue__btn:disabled {
+    opacity: 0.5;
+  }
+
+  .vz-issue__btn--quiet {
+    border-color: transparent;
+    color: var(--peach-muted);
+  }
+
+  .vz-issue__btn--primary {
+    margin-left: auto;
+    background: var(--dusk-deep);
+    border-color: transparent;
+  }
+
+  .vz-issue--pill {
+    width: auto;
+    box-shadow: none;
+  }
+
+  .vz-issue__pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 12px;
+    color: var(--cream);
+    font-family: var(--font-mono);
+    font-size: 0.76rem;
+  }
+
+  .vz-issue__pill svg {
+    color: var(--issue);
+  }
+
+  .vz-issue__more {
+    color: var(--peach-muted);
+  }
+
+  /* Where the card sits on the stage: beside the picture on a wide stage, as a sheet from the bottom on a narrow one. */
+  .vz-issue-slot {
+    position: absolute;
+    z-index: 6;
+    right: 12px;
+    top: 12px;
+    bottom: 12px;
+    display: flex;
+    justify-content: flex-end;
+    align-items: flex-start;
+    width: min(380px, calc(100% - 24px));
+    pointer-events: none;
+  }
+
+  .vz-issue-slot > * {
+    pointer-events: auto;
+    max-height: 100%;
+  }
+
+  @media (max-width: 759px) {
+    .vz-issue-slot {
+      left: 12px;
+      right: 12px;
+      top: auto;
+      width: auto;
+      max-height: 62%;
+      align-items: flex-end;
+      justify-content: center;
+    }
+
+    .vz-issue-slot > * {
+      width: 100%;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .vz-issue__part {
+      transition: none;
+    }
+  }
+}

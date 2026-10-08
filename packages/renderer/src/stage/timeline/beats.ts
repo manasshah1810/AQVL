@@ -26,6 +26,8 @@ export const BEAT_SECONDS: Record<TraceEventKind, number> = {
   layout: 1.6,
   camera: 1.5,
   hold: 1.0,
+  // The run stops here: long enough to take in the picture before the explanation starts.
+  error: 1.4,
   none: 0.45,
 };
 

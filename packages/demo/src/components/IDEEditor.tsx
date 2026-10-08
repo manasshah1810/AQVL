@@ -226,6 +226,10 @@ interface IDEEditorProps {
   errorMarkers?: EditorErrorMarker[];
   /** 1-indexed source line the VM is currently executing, or null when nothing is running. Draws a playhead band over that line, in this same editor rather than a separate panel. */
   activeLine?: number | null;
+  /** The line a mistake is on, drawn as its own band (never mistaken for the executing line) with a short tag. Scrolled into view. */
+  issueLine?: { line: number; severity: 'error' | 'warning'; label: string } | null;
+  /** Puts the caret on a line and focuses the editor. A new `nonce` asks again for the same line. */
+  focusRequest?: { line: number; column?: number; nonce: number } | null;
 }
 
 const INDENT = '  '; // 2 spaces
@@ -284,7 +288,7 @@ function measureEditorMetrics(textarea: HTMLTextAreaElement, measureEl: HTMLSpan
   return { lineHeight, charWidth, padTop, padLeft };
 }
 
-export function IDEEditor({ initialValue: rawInitialValue, onChange, readOnly = false, errorMarkers = [], activeLine = null }: IDEEditorProps) {
+export function IDEEditor({ initialValue: rawInitialValue, onChange, readOnly = false, errorMarkers = [], activeLine = null, issueLine = null, focusRequest = null }: IDEEditorProps) {
   const initialValue = useMemo(() => normalizeNewlines(rawInitialValue), [rawInitialValue]);
   const textareaRef    = useRef<HTMLTextAreaElement>(null);
   const overlayRef     = useRef<HTMLDivElement>(null);
@@ -351,11 +355,13 @@ export function IDEEditor({ initialValue: rawInitialValue, onChange, readOnly = 
   // ── Scroll sync (textarea → overlay + gutter) ─────────────────────────────
   // Uses direct scrollTop/scrollLeft copy to overlay (overflow:auto, hidden scrollbar).
   // Uses CSS translateY on an inner gutter div (avoids overflow:hidden scrollTop bug).
+  const issueBandRef = useRef<HTMLDivElement>(null);
   const syncScroll = useCallback(() => {
     const ta = textareaRef.current;
     const ov = overlayRef.current;
     const eov = errorOverlayRef.current;
     const ph = playheadRef.current;
+    const ih = issueBandRef.current;
     const gb = gutterBodyRef.current;
     if (!ta) return;
     if (ov) {
@@ -369,6 +375,10 @@ export function IDEEditor({ initialValue: rawInitialValue, onChange, readOnly = 
     if (ph) {
       ph.style.setProperty('--scroll-y', `${ta.scrollTop}px`);
       ph.style.setProperty('--scroll-x', `${ta.scrollLeft}px`);
+    }
+    if (ih) {
+      ih.style.setProperty('--scroll-y', `${ta.scrollTop}px`);
+      ih.style.setProperty('--scroll-x', `${ta.scrollLeft}px`);
     }
     if (gb) {
       gb.style.transform = `translateY(-${ta.scrollTop}px)`;
@@ -773,7 +783,41 @@ export function IDEEditor({ initialValue: rawInitialValue, onChange, readOnly = 
   // would sit on a different line than the text beside it.
   useLayoutEffect(() => {
     syncScroll();
-  }, [activeLine, errorSquiggles, syncScroll]);
+  }, [activeLine, issueLine, errorSquiggles, syncScroll]);
+
+  // The issue band uses the same metrics as the playhead.
+  useLayoutEffect(() => {
+    const layer = issueBandRef.current;
+    if (!layer) return;
+    const m = getMetrics();
+    layer.style.setProperty('--ph-line-height', `${m.lineHeight}px`);
+    layer.style.setProperty('--ph-pad-top', `${m.padTop}px`);
+  }, [issueLine, getMetrics]);
+
+  // A mistake's line is brought into view (when it is not already) so it is never found by hunting.
+  useEffect(() => {
+    if (!issueLine) return;
+    const ta = textareaRef.current;
+    if (!ta) return;
+    const m = getMetrics();
+    const target = m.padTop + (issueLine.line - 1) * m.lineHeight;
+    if (target < ta.scrollTop || target > ta.scrollTop + ta.clientHeight - m.lineHeight * 2) {
+      ta.scrollTop = Math.max(0, target - ta.clientHeight / 2);
+    }
+  }, [issueLine, getMetrics]);
+
+  // "Edit code": caret on the line, ready to type.
+  useEffect(() => {
+    if (!focusRequest) return;
+    const ta = textareaRef.current;
+    if (!ta) return;
+    const lines = ta.value.split(String.fromCharCode(10));
+    const index = Math.min(Math.max(focusRequest.line, 1), lines.length) - 1;
+    const start = lines.slice(0, index).reduce((n, l) => n + l.length + 1, 0);
+    const col = Math.min(Math.max((focusRequest.column ?? 1) - 1, 0), lines[index].length);
+    ta.focus();
+    ta.setSelectionRange(start + col, start + col);
+  }, [focusRequest]);
 
   useEffect(() => {
     if (activeLine == null) return;
@@ -807,7 +851,7 @@ export function IDEEditor({ initialValue: rawInitialValue, onChange, readOnly = 
             return (
               <div
                 key={i + 1}
-                className={`aqvl-gutter-line${i + 1 === currentLine ? ' current' : ''}${lineErrors ? ' has-error' : ''}${i + 1 === activeLine ? ' executing' : ''}`}
+                className={`aqvl-gutter-line${i + 1 === currentLine ? ' current' : ''}${lineErrors ? ' has-error' : ''}${i + 1 === activeLine ? ' executing' : ''}${i + 1 === issueLine?.line ? ' has-issue' : ''}`}
                 title={lineErrors ? lineErrors.join('\n') : undefined}
               >
                 {lineErrors && <span className="aqvl-gutter-error-dot" />}
@@ -846,6 +890,21 @@ export function IDEEditor({ initialValue: rawInitialValue, onChange, readOnly = 
                 height: `var(--ph-line-height, ${FALLBACK_LINE_HEIGHT}px)`,
               }}
             />
+          </div>
+        )}
+
+        {/* The line a mistake is on: its own band and tag, above the playhead band. */}
+        {issueLine && (
+          <div ref={issueBandRef} className="aqvl-playhead-clip aqvl-issue-clip" aria-hidden="true">
+            <div
+              className={`aqvl-issue-band is-${issueLine.severity}`}
+              style={{
+                top: `calc(var(--ph-pad-top, ${FALLBACK_PAD_TOP}px) + ${issueLine.line - 1} * var(--ph-line-height, ${FALLBACK_LINE_HEIGHT}px) - var(--scroll-y, 0px))`,
+                height: `var(--ph-line-height, ${FALLBACK_LINE_HEIGHT}px)`,
+              }}
+            >
+              <span className="aqvl-issue-tag">{issueLine.label}</span>
+            </div>
           </div>
         )}
 

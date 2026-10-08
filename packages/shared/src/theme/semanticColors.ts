@@ -6,7 +6,9 @@ export type SemanticState =
   | 'SUCCESS' 
   | 'DISCARDED' 
   | 'AUXILIARY' 
-  | 'STRUCTURAL';
+  | 'STRUCTURAL'
+  /** The place an error happened: an access that could not be made. Only the error frame of a trace uses it. */
+  | 'ERROR';
 
 export interface SemanticColorToken {
   name: SemanticState;
@@ -71,6 +73,13 @@ export const SEMANTIC_PALETTE: Record<SemanticState, SemanticColorToken> = {
     color: '#6366f1', // Indigo Blue - hierarchy roles (Root / Leaf / Parent / Child / View)
     emissiveColor: '#818cf8',
     emissiveIntensity: 0.5,
+    opacity: 1.0,
+  },
+  ERROR: {
+    name: 'ERROR',
+    color: '#ef4444', // Signal Red - the access that failed
+    emissiveColor: '#f87171',
+    emissiveIntensity: 0.6,
     opacity: 1.0,
   },
 };
@@ -189,6 +198,9 @@ export function normalizeSemanticState(stateName?: string): SemanticState {
     case 'BOUNDARY':
     case 'DIAGONAL':
       return 'STRUCTURAL';
+
+    case 'ERROR':
+      return 'ERROR';
 
     case 'NEUTRAL':
     case 'DEFAULT':

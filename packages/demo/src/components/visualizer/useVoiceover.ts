@@ -30,7 +30,7 @@ export function explanationAt(trace: ExecutionTrace, index: number, source: stri
  * and then holds until the sentence is done, so the picture, the highlighted
  * line and the voice never drift onto different steps.
  */
-export function useVoiceover(trace: ExecutionTrace, playhead: Playhead, active: number, source: string, enabled = true) {
+export function useVoiceover(trace: ExecutionTrace, playhead: Playhead, active: number, source: string, enabled = true, suppress = false) {
   const settings = useSettings();
   const world = useWorld();
   const theme = voiceThemeOf(world);
@@ -50,6 +50,8 @@ export function useVoiceover(trace: ExecutionTrace, playhead: Playhead, active: 
 
   // Narrate the step that just began.
   useEffect(() => {
+    // A frame that carries a mistake is taught by the issue narration (its own parts, its own pacing); this stays quiet there.
+    if (suppress) return undefined;
     if (!voiceOn || voiceMode === 'manual' || active === 0) {
       VoiceEngine.cancel();
       return undefined;
@@ -72,7 +74,7 @@ export function useVoiceover(trace: ExecutionTrace, playhead: Playhead, active: 
       window.clearTimeout(timer);
       VoiceEngine.cancel();
     };
-  }, [voiceOn, voiceMode, explanation, active, theme, playhead]);
+  }, [voiceOn, voiceMode, explanation, active, theme, playhead, suppress]);
 
   // Leaving the page (or switching run) silences it.
   useEffect(() => () => VoiceEngine.cancel(), [playhead]);

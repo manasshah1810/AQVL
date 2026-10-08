@@ -575,3 +575,11 @@
     }
   }
 }
+
+@layer components {
+  /* A program that did not compile: the teaching card, centred on the empty stage. */
+  .pg-overlay--issue .pg-issue {
+    width: min(520px, 100%);
+    max-height: 100%;
+  }
+}

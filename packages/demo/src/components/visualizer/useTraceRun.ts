@@ -24,6 +24,7 @@ export function useTraceRun() {
     const id = ++latest.current;
     setTracing(0);
     const trace = await recordTrace(program, {
+      source,
       onProgress: (steps) => {
         if (latest.current === id) setTracing(steps);
       },

@@ -24,7 +24,7 @@ export const MUTATION_KINDS: ReadonlySet<TraceEventKind> = new Set(['swap', 'wri
 
 /** Events whose actors are lifted and haloed. */
 const EMPHASIS_KINDS: ReadonlySet<TraceEventKind> = new Set([
-  'compare', 'swap', 'write', 'link', 'traverse', 'visit', 'settle', 'mark', 'call', 'return', 'create', 'discard',
+  'compare', 'swap', 'write', 'link', 'traverse', 'visit', 'settle', 'mark', 'call', 'return', 'create', 'discard', 'error',
 ]);
 
 /**

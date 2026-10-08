@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { Lexer, Parser, SemanticValidator, Optimizer, AQIRGenerator, analyzeFunctions } from '@aqvl/compiler';
-import type { AQIRProgram } from '@aqvl/runtime';
+import { diagnoseCompileError, teachError, type AQIRProgram, type ErrorInfo, type RawCompileError } from '@aqvl/runtime';
 import { usePlayhead } from '@aqvl/renderer';
 
 import { IDEEditor, type EditorErrorMarker } from '../components/IDEEditor';
@@ -12,6 +12,10 @@ import { PlaygroundOutputConsole } from '../components/PlaygroundOutputConsole';
 import type { RuntimeLogEntry } from '../components/RuntimeOutputPanel';
 import { AlgoLoader } from '../components/loader/AlgoLoader';
 import { Visualizer } from '../components/visualizer/Visualizer';
+import { IssuePanel } from '../components/visualizer/IssuePanel';
+import { issueAt, useLessonNarration } from '../components/visualizer/useIssue';
+import { voiceThemeOf } from '../lib/voice';
+import { useWorld } from '../lib/world';
 import { useTraceRun } from '../components/visualizer/useTraceRun';
 import { parseHash, replaceHash } from '../lib/router';
 import { spring, usePrefersReducedMotion } from '../lib/motion';
@@ -42,20 +46,45 @@ const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(naviga
 
 const LOG_KINDS = new Set<RuntimeLogEntry['kind']>(['traversal', 'search', 'info', 'relationship', 'operation', 'step', 'result', 'swap', 'compare']);
 
-/** Lex → parse → validate → optimise → generate. Throws with editor markers attached. */
-function compileProgram(source: string, onMarkers: (m: EditorErrorMarker[]) => void): AQIRProgram {
-  const tokens = new Lexer(source).tokenize();
-  const ast = new Parser(tokens).parse();
+/** A compile failure, already described: where it is, what kind it is, and what to tell the learner. */
+class CompileIssue extends Error {
+  constructor(
+    readonly info: ErrorInfo,
+    readonly markers: EditorErrorMarker[],
+  ) {
+    super(info.message);
+  }
+}
+
+function rawOf(e: unknown, stage: string): RawCompileError {
+  const at = e as { name?: string; message?: string; lineNumber?: number; column?: number; suggestion?: string };
+  return { name: at.name ?? 'Error', message: at.message ?? String(e), line: typeof at.lineNumber === 'number' ? at.lineNumber : null, column: at.column, suggestion: at.suggestion, stage };
+}
+
+function markerFor(info: ErrorInfo): EditorErrorMarker {
+  return { line: info.line ?? 1, column: info.column, length: info.length, message: info.message };
+}
+
+/** Lex → parse → validate → optimise → generate. Throws a CompileIssue (the described failure, with editor markers). */
+function compileProgram(source: string): AQIRProgram {
+  let ast;
+  try {
+    const tokens = new Lexer(source).tokenize();
+    ast = new Parser(tokens).parse();
+  } catch (e) {
+    const info = diagnoseCompileError(rawOf(e, 'Parser'), source);
+    throw new CompileIssue(info, info.line === null ? [] : [markerFor(info)]);
+  }
   const diagnostics = new SemanticValidator().validate(ast);
   if (diagnostics.length > 0) {
-    onMarkers(diagnostics.map((d) => ({ line: d.line, column: d.column, message: d.message })));
-    throw new Error(`Semantic Validation Failed:\n${diagnostics.map((d) => `[${d.level}] Line ${d.line}, Col ${d.column}: ${d.message}`).join('\n')}`);
+    const infos = diagnostics.map((d) => diagnoseCompileError({ name: 'SemanticError', message: d.message, line: d.line, column: d.column, stage: 'Semantic' }, source));
+    throw new CompileIssue(infos[0], infos.map(markerFor));
   }
   // Calls to undeclared functions, wrong argument counts, RETURN outside a function.
   const functionErrors = analyzeFunctions(ast, source).getErrors();
   if (functionErrors.length > 0) {
-    onMarkers(functionErrors.map((e) => ({ line: e.lineNumber ?? 1, column: e.column ?? 1, message: e.message })));
-    throw functionErrors[0];
+    const infos = functionErrors.map((e) => diagnoseCompileError({ ...rawOf(e, 'Semantic'), line: e.lineNumber ?? null }, source));
+    throw new CompileIssue(infos[0], infos.map(markerFor));
   }
   const optimized = new Optimizer().optimize(ast, {});
   const generator = new AQIRGenerator();
@@ -88,8 +117,13 @@ export default function Playground() {
   const activeExample = useMemo(() => EXAMPLES.find((e) => e.source === sourceCode), [sourceCode]);
 
   const [isCompiling, setIsCompiling] = useState(false);
-  const [compileError, setCompileError] = useState<string | null>(null);
+  // A program that did not compile: the described failure, and the exact text it was found in.
+  const [compileFailure, setCompileFailure] = useState<{ info: ErrorInfo; source: string } | null>(null);
+  const compileError = compileFailure?.info.message ?? null;
   const [errorMarkers, setErrorMarkers] = useState<EditorErrorMarker[]>([]);
+  const [focusRequest, setFocusRequest] = useState<{ line: number; column?: number; nonce: number } | null>(null);
+  const world = useWorld();
+  const voiceTheme = voiceThemeOf(world);
   const [clearedThrough, setClearedThrough] = useState(0);
 
   const { run, tracing, start, clear } = useTraceRun();
@@ -99,20 +133,25 @@ export default function Playground() {
   const handleCompileAndRun = () => {
     window.clearTimeout(playTimer.current);
     setIsCompiling(true);
-    setCompileError(null);
+    setCompileFailure(null);
     setErrorMarkers([]);
     setClearedThrough(0);
     run?.playhead.pause();
 
     let program: AQIRProgram;
     try {
-      program = compileProgram(sourceCode, setErrorMarkers);
+      program = compileProgram(sourceCode);
     } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
-      setCompileError(message);
-      // Lexer/Parser errors are AQVLError instances carrying a source line/column (see @aqvl/shared).
-      const at = e as { lineNumber?: unknown; column?: number };
-      if (typeof at.lineNumber === 'number') setErrorMarkers([{ line: at.lineNumber, column: at.column, message }]);
+      // Anything that is not an already-described failure is still described, never shown as a bare stack message.
+      const issue =
+        e instanceof CompileIssue
+          ? e
+          : (() => {
+              const info = diagnoseCompileError(rawOf(e, 'Compiler'), sourceCode);
+              return new CompileIssue(info, info.line === null ? [] : [markerFor(info)]);
+            })();
+      setCompileFailure({ info: issue.info, source: sourceCode });
+      setErrorMarkers(issue.markers);
       setIsCompiling(false);
       clear();
       return;
@@ -123,7 +162,8 @@ export default function Playground() {
       if (!next) return;
       setIsCompiling(false);
       if (next.trace.error?.line != null) {
-        setErrorMarkers([{ line: next.trace.error.line, column: 1, message: next.trace.error.message }]);
+        const info = next.trace.error.info;
+        setErrorMarkers([{ line: next.trace.error.line, column: info?.column ?? 1, length: info?.length, message: next.trace.error.message }]);
       }
       // Let the previous scene clear the floor and the new one build in before playing.
       playTimer.current = window.setTimeout(() => next.playhead.play(), run ? 900 : 650);
@@ -187,6 +227,21 @@ export default function Playground() {
   const sourceLineCount = sourceCode.split('\n').length;
   const frameLine = isRuntimeReady && sourceInSync && snap.active > 0 ? run!.trace.frames[snap.active]?.line ?? null : null;
   const activeLine = frameLine !== null && frameLine >= 1 && frameLine <= sourceLineCount ? frameLine : null;
+
+  // The mistake on screen, if any: a compile failure, or the error / logic problem of the step being shown.
+  // The editor's band and the panel both come from it, so they always agree.
+  const compileStale = !!compileFailure && compileFailure.source !== sourceCode;
+  const compileLesson = useMemo(() => (compileFailure ? teachError(compileFailure.info) : null), [compileFailure]);
+  const compileNarration = useLessonNarration(compileLesson, voiceTheme, compileStale);
+  const runIssue = isRuntimeReady && sourceInSync && run ? issueAt(run.trace, snap.active) : null;
+  const issueLine = (() => {
+    if (compileFailure && !compileStale && compileFailure.info.line !== null) return { line: compileFailure.info.line, severity: 'error' as const, label: 'Error here' };
+    if (runIssue && runIssue.line !== null) return { line: runIssue.line, severity: runIssue.severity, label: runIssue.severity === 'warning' ? 'Look here' : 'Error here' };
+    return null;
+  })();
+  const editLine = (line: number | null, column?: number) => {
+    if (line !== null) setFocusRequest((prev) => ({ line, column, nonce: (prev?.nonce ?? 0) + 1 }));
+  };
 
   const statusChip = (() => {
     if (isCompiling && tracing === null) return { cls: 'compiling', label: 'Compiling…' };
@@ -287,6 +342,8 @@ export default function Playground() {
               }}
               errorMarkers={errorMarkers}
               activeLine={activeLine}
+              issueLine={issueLine}
+              focusRequest={focusRequest}
             />
           </div>
         </section>
@@ -302,6 +359,9 @@ export default function Playground() {
                 theme={theme}
                 reducedMotion={reducedMotion}
                 outputCount={logs.length}
+                stale={!sourceInSync}
+                onRetry={handleCompileAndRun}
+                onEditLine={(line) => editLine(line)}
                 output={<PlaygroundOutputConsole embedded logs={logs} onClear={() => setClearedThrough(snap.step)} />}
               />
             ) : (
@@ -319,13 +379,18 @@ export default function Playground() {
               </div>
             )}
 
-            {compileError && !busy && (
-              <div className="pg-overlay" role="alert">
-                <div className="pg-error">
-                  <p className="pg-error__title">Compilation Error</p>
-                  <pre className="pg-error__body">{compileError}</pre>
-                  <p className="mono muted">The editor marks the line. Fix it and run again.</p>
-                </div>
+            {compileLesson && !busy && (
+              <div className="pg-overlay pg-overlay--issue">
+                <IssuePanel
+                  lesson={compileLesson}
+                  speaking={compileNarration.speaking}
+                  stale={compileStale}
+                  onExplain={compileNarration.explain}
+                  onStop={compileNarration.stop}
+                  onEdit={() => editLine(compileLesson.line, compileFailure?.info.column)}
+                  onRetry={handleCompileAndRun}
+                  className="pg-issue"
+                />
               </div>
             )}
 

@@ -3,7 +3,7 @@ import type { ExecutionTrace } from '@aqvl/runtime';
 import { usePlayheadTime, type Playhead, type StageTheme } from '@aqvl/renderer';
 import { EVENT_META, toneColor } from './events';
 
-const TICK_HEIGHT: Record<string, number> = { mutate: 1, compare: 0.72, visit: 0.5, settle: 0.6, mark: 0.45, discard: 0.4, neutral: 0.3 };
+const TICK_HEIGHT: Record<string, number> = { error: 1, mutate: 1, compare: 0.72, visit: 0.5, settle: 0.6, mark: 0.45, discard: 0.4, neutral: 0.3 };
 
 /**
  * The timeline: one tick per step, coloured and sized by what the step

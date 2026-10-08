@@ -4,6 +4,8 @@ import type { SceneElement } from '../models/SceneElement';
 import { SnapTimelineEngine } from './SnapTimelineEngine';
 import { classifyStep } from './classify';
 import { getArrayRegions } from '../domains/array/regions';
+import { diagnoseRuntimeError, detectLogicalIssues, detectStall, buildErrorFrame, teachError, selfCompareCandidates, checkSelfCompare } from '../diagnose';
+import type { ErrorInfo, RawRuntimeError } from '../diagnose';
 import type {
   ExecutionTrace,
   TraceEdge,
@@ -23,6 +25,12 @@ export interface RecordTraceOptions {
   maxInstructions?: number;
   /** Called every few hundred steps with the number recorded so far. */
   onProgress?: (steps: number) => void;
+  /**
+   * The program's source text. With it, an error or a logic problem is
+   * described down to the expression on its line and the values in it
+   * (without it the diagnosis still names the line, but cannot quote it).
+   */
+  source?: string;
 }
 
 const DRAWN_SHAPES = new Set(['box', 'sphere', 'cylinder']);
@@ -277,6 +285,9 @@ export async function recordTrace(program: AQIRProgram, options: RecordTraceOpti
   let truncated = false;
   let error: ExecutionTrace['error'] = null;
   let geometryKey = '';
+  const selfCandidates = options.source ? selfCompareCandidates(options.source) : new Map<number, ReturnType<typeof selfCompareCandidates> extends Map<number, infer C> ? C : never>();
+  let selfCompare: ErrorInfo | null = null;
+  let probes = 0;
 
   let prevNodes = new Map<string, TraceNode>();
   let prevEdges = new Map<string, TraceEdge>();
@@ -286,7 +297,7 @@ export async function recordTrace(program: AQIRProgram, options: RecordTraceOpti
     return JSON.stringify([vm?.positions ?? null, vm?.camera ?? null]);
   };
 
-  const build = (kind: 'initial' | 'step' | 'hold' | 'geometry'): TraceFrame => {
+  const build = (kind: 'initial' | 'step' | 'hold' | 'geometry' | 'error'): TraceFrame => {
     const graph = engine.sceneManager.getSceneGraph() as AnyElement[];
     const vm = engine.getVMState();
     const placed: PlacedPositions | undefined = vm?.positions
@@ -314,6 +325,8 @@ export async function recordTrace(program: AQIRProgram, options: RecordTraceOpti
     } else if (kind === 'step') {
       event = classifyStep(prevNodes, nodes, prevEdges, edges, logs);
       caption = pickCaption(logs, pendingCue);
+    } else if (kind === 'error') {
+      event = { kind: 'error', actors: [], edges: [], writes: [] };
     }
     return {
       index: frames.length,
@@ -365,6 +378,27 @@ export async function recordTrace(program: AQIRProgram, options: RecordTraceOpti
     const line = instructions[pc]?.lineNumber;
     currentLine = typeof line === 'number' ? line : null;
     if (currentLine !== null) linesRun.add(currentLine);
+    // A line that compares two cells of one structure is checked against the live values, once, until it is found to compare a cell with itself.
+    // (Only the instruction that evaluates the condition counts: a block's closing jump carries the same line.)
+    const instr = instructions[pc];
+    const evaluates = instr?.opcode === 'JUMP_IF_FALSE' || (instr?.ops ?? []).some((op) => op.verb === 'contrast');
+    const candidate = evaluates && !selfCompare && currentLine !== null && probes < 5000 ? selfCandidates.get(currentLine) : undefined;
+    if (candidate) {
+      probes++;
+      const scene = build('step');
+      const found = checkSelfCompare(candidate, scene, primitiveVars(engine.getVisibleVariables()));
+      if (found) {
+        const cell = scene.nodes.find((n) => n.structure === candidate.name && n.index === found.actualIndex);
+        found.frameIndex = frames.length;
+        selfCompare = found;
+        commit({
+          ...scene,
+          logs: [],
+          event: { kind: 'compare', actors: cell ? [cell.id] : [], edges: [], writes: [], relation: '=' },
+          caption: `${candidate.x.text} is compared with ${candidate.y.text}, which is the same cell`,
+        });
+      }
+    }
   });
   engine.eventDispatcher.on('RUNTIME_LOG', (entry: { keyword?: string; message?: string; kind?: string }) => {
     pendingLogs.push({ keyword: String(entry.keyword ?? ''), message: String(entry.message ?? ''), kind: String(entry.kind ?? '') });
@@ -399,13 +433,70 @@ export async function recordTrace(program: AQIRProgram, options: RecordTraceOpti
     }
   });
 
+  /** Appends the frame that shows the moment of an error, and records the error. */
+  const recordError = (raw: RawRuntimeError, scene: TraceFrame) => {
+    const { info, ghost } = diagnoseRuntimeError({ raw, source: options.source, frame: scene, history: frames, frameIndex: frames.length });
+    const errorFrame = buildErrorFrame({ ...scene, index: frames.length, logs: [] }, info, ghost, teachError(info, scene).what);
+    frames.push(errorFrame);
+    error = { message: raw.message, line: info.line, frameIndex: errorFrame.index, info };
+  };
+
   try {
     engine.loadProgram(program);
     commit(build('initial'));
     await engine.execute();
   } catch (e) {
-    error = { message: e instanceof Error ? e.message : String(e), line: currentLine };
+    const err = e as Error & Record<string, unknown>;
+    const message = e instanceof Error ? e.message : String(e);
+    error = { message, line: currentLine };
+    try {
+      const fields: Record<string, unknown> = {};
+      for (const k of Object.keys(err)) if (typeof err[k] !== 'function') fields[k] = err[k];
+      const scene = build('error');
+      const raw: RawRuntimeError = {
+        name: e instanceof Error ? e.name : 'Error',
+        message,
+        fields,
+        line: currentLine,
+        pc: startedPc >= 0 ? startedPc : null,
+        vars: scene.vars,
+        callStack: scene.callStack,
+      };
+      recordError(raw, scene);
+    } catch {
+      // The moment could not be drawn; the error is still reported, just without its own frame.
+    }
   }
 
-  return { frames, error, truncated, linesRun: [...linesRun].sort((a, b) => a - b) };
+  // A run cut off at the step cap whose picture stopped changing is a loop that never ends.
+  if (truncated && !error) {
+    const stall = detectStall(frames);
+    if (stall) {
+      const keep = Math.min(frames.length, stall.start + stall.period * 2);
+      frames.length = keep;
+      truncated = false;
+      const scene = frames[keep - 1];
+      recordError(
+        {
+          name: 'MaxIterationsExceededError',
+          message: 'The loop never reaches its stopping condition.',
+          fields: {},
+          line: frames[stall.start].line,
+          pc: frames[stall.start].pc,
+          vars: scene.vars,
+          callStack: scene.callStack,
+        },
+        scene,
+      );
+    }
+  }
+
+  let diagnostics: ErrorInfo[] = [];
+  try {
+    diagnostics = [...(selfCompare ? [selfCompare as ErrorInfo] : []), ...detectLogicalIssues({ frames, source: options.source, completed: !error && !truncated })];
+  } catch {
+    // A detector must never take a good run down with it.
+  }
+
+  return { frames, error, truncated, linesRun: [...linesRun].sort((a, b) => a - b), diagnostics };
 }
