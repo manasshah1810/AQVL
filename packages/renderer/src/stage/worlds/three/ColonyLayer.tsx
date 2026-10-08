@@ -8,6 +8,9 @@ import type { Playhead } from '../../timeline/Playhead';
 import { IdleBrain, type Box, type IdleContext, type IdleOut, type Spots } from '../idle';
 import { buildPanda, createBlobShadow, type IdleAct, type Rig } from './rigs';
 import { MEMBERS } from './colonyCast';
+import { PENGUIN_MEMBERS } from './penguinCast';
+import { buildColonyPenguin } from './penguinRig';
+import { penguinSpots } from './polarLayout';
 import { gatherAt } from '../daycycle';
 import { ParticlePool, hash } from './particles';
 import { pandaSpots, worldLayout } from './layout';
@@ -29,6 +32,11 @@ import type { WorldClock } from './WorldLayer';
  *
  * Like the crew's idle life this is not a pure function of the run's time (it
  * is life in the grove, not the algorithm), so it lives beside the stage.
+ *
+ * The penguins' ice shelf has a colony of its own, the same characters as
+ * penguins (see PENGUIN_MEMBERS), with the shelf's own places: they swim in
+ * the pool and dive off its ledge, go down the ice slide on their bellies,
+ * help themselves to fish, and the clumsy one slips on the ice.
  */
 
 /** What a panda is up to, for the bubble when the viewer points at it. */
@@ -69,6 +77,27 @@ const DOING: Partial<Record<IdleAct, string>> = {
   unbag: 'taking the bag off',
   rebag: 'putting the bag on',
 };
+
+/** What a penguin is up to, where it differs from a panda. */
+const PENGUIN_DOING: Partial<Record<IdleAct, string>> = {
+  chase: 'chasing snowflakes',
+  chew: 'having a snack',
+  eat: 'gulping down a fish',
+  preen: 'preening',
+  drink: 'having a drink',
+  slide: 'wheee!',
+  lounge: 'lying about on the ice',
+};
+
+/** The colony as the layer needs it, whichever world it lives in. */
+interface Resident {
+  name: string;
+  role: 'student' | 'resident';
+  scale: number;
+  bag?: string;
+  lamp?: boolean;
+  persona: (typeof MEMBERS)[number]['persona'];
+}
 
 /** Facing the camera (the stage camera sits a little to the left). */
 const CAMERA_FACE = -0.16;
@@ -112,6 +141,45 @@ function zTexture(): CanvasTexture | null {
   return tex;
 }
 
+/**
+ * The little things a penguin kicks up: snow spray behind a belly slide or a roll, a wake and drops of water while it
+ * swims, a burst of droplets where it goes in or comes out, a puff of snow where it lands off the play slide.
+ */
+function penguinTouches(pool: ParticlePool, o: IdleOut, x: number, y: number, z: number, yaw: number, floor: number, now: number, i: number, scale: number): void {
+  const back = yaw + Math.PI;
+  if ((o.gait === 'glide' || o.gait === 'roll') && o.gaitWeight > 0.3 && y > -0.02 && y < 0.1) {
+    for (let p = 0; p < 9; p++) {
+      const f = (now * 2.2 + hash(i + 81, p)) % 1;
+      const a = back + (hash(i + 82, p) - 0.5) * 1.1;
+      const d = 0.2 + f * 0.7 * scale * 0.6;
+      pool.add(x + Math.sin(a) * d, floor + 0.04 + Math.sin(f * Math.PI) * 0.18, z + Math.cos(a) * d, 0.9, 0.95, 1, (1 - f) * 0.75 * o.gaitWeight, 0.05 + hash(i, p) * 0.04);
+    }
+  }
+  if (o.gait === 'swim' && y > -0.6) {
+    // The wake: two lines of ripples spreading out behind, a few drops off the flippers.
+    for (let p = 0; p < 8; p++) {
+      const f = (now * 0.9 + p / 8) % 1;
+      const side = p % 2 ? 1 : -1;
+      const a = back + side * (0.35 + f * 0.25);
+      const d = 0.3 + f * 1.1;
+      pool.add(x + Math.sin(a) * d, floor + 0.02, z + Math.cos(a) * d, 0.75, 0.9, 1, (1 - f) * 0.55, 0.06 + f * 0.05);
+    }
+    for (let p = 0; p < 3; p++) {
+      const f = (now * 1.6 + hash(i + 91, p)) % 1;
+      const side = p % 2 ? 1 : -1;
+      pool.add(x + Math.cos(yaw) * side * 0.3 * scale * 0.6, floor + 0.05 + Math.sin(f * Math.PI) * 0.22, z - Math.sin(yaw) * side * 0.3 * scale * 0.6, 0.8, 0.92, 1, (1 - f) * 0.7, 0.035);
+    }
+  }
+  if (o.act === 'slide' && o.actWeight < 0.9 && o.actWeight > 0.05) {
+    const q = 1 - o.actWeight;
+    for (let p = 0; p < 14; p++) {
+      const a = hash(i + 41, p) * Math.PI * 2;
+      const v = 0.4 + hash(i + 43, p) * 0.7;
+      pool.add(x + Math.cos(a) * v * q, floor + 0.06 + 0.3 * Math.sin(q * Math.PI) * hash(i + 47, p), z + Math.sin(a) * v * q, 0.9, 0.95, 1, (1 - q) * 0.7, 0.09);
+    }
+  }
+}
+
 export interface ColonyLayerProps {
   model: StageModel;
   driver: StageDriver;
@@ -124,10 +192,32 @@ export function ColonyLayer({ model, driver, calm, clock, playhead }: ColonyLaye
   const invalidate = useThree((s) => s.invalidate);
   const get = useThree((s) => s.get);
   const gl = useThree((s) => s.gl);
-  const spotsAll = useMemo(() => pandaSpots(model), [model]);
+  const penguin = model.world === 'penguin';
+  const cast = useMemo<Resident[]>(() => (penguin ? PENGUIN_MEMBERS.map((m) => ({ ...m, bag: m.look.bag })) : MEMBERS), [penguin]);
+  const ice = useMemo(() => (penguin ? penguinSpots(model) : null), [model, penguin]);
+  const spotsAll = useMemo(() => {
+    if (!ice) return pandaSpots(model);
+    // The ice shelf, in the shape the layer reads the grove in (its own places in `ice`).
+    return { clearX: ice.clearX, clearZ: ice.clearZ, seats: ice.seats, dens: ice.dens, obstacles: ice.obstacles } as unknown as ReturnType<typeof pandaSpots>;
+  }, [model, ice]);
   const layout = useMemo(() => worldLayout(model), [model]);
   const spots = useMemo<Spots>(
-    () => ({
+    () =>
+      ice
+        ? {
+            slide: ice.places.play.slide,
+            camp: ice.places.camp,
+            yard: ice.places.yard,
+            beds: ice.places.beds,
+            desk: ice.places.desk,
+            school: ice.places.school,
+            nooks: ice.places.nooks,
+            paths: ice.places.paths,
+            pool: ice.places.pool,
+            ramp: ice.places.ramp,
+            fish: ice.places.fish,
+          }
+        : {
       snack: spotsAll.snack.map((c) => ({ at: c.at, face: c.face })),
       gym: { base: spotsAll.gym.base, top: spotsAll.gym.top, deck: [spotsAll.gym.x, spotsAll.gym.z], height: spotsAll.gym.height, drop: spotsAll.gym.drop },
       pond: { at: spotsAll.pond.at, face: spotsAll.pond.face },
@@ -140,13 +230,16 @@ export function ColonyLayer({ model, driver, calm, clock, playhead }: ColonyLaye
       school: spotsAll.places.school,
       nooks: spotsAll.places.nooks,
       paths: spotsAll.places.paths,
-    }),
-    [spotsAll],
+    },
+    [spotsAll, ice],
   );
 
   const rigs = useMemo<Rig[]>(
-    () => MEMBERS.map((m) => buildPanda({ prop: m.prop ?? null, scale: m.scale, personality: m.personality, bag: m.bag, book: m.book, glasses: m.glasses, lamp: m.lamp, ...m.look })),
-    [],
+    () =>
+      penguin
+        ? PENGUIN_MEMBERS.map((m) => buildColonyPenguin({ scale: m.scale, personality: m.personality, ...m.look }))
+        : MEMBERS.map((m) => buildPanda({ prop: m.prop ?? null, scale: m.scale, personality: m.personality, bag: m.bag, book: m.book, glasses: m.glasses, lamp: m.lamp, ...m.look })),
+    [penguin],
   );
   const holders = useMemo(() => rigs.map(() => new Group()), [rigs]);
   useEffect(() => {
@@ -161,15 +254,15 @@ export function ColonyLayer({ model, driver, calm, clock, playhead }: ColonyLaye
     },
     [rigs, shadows],
   );
-  const pool = useMemo(() => new ParticlePool(240, false), []);
+  const pool = useMemo(() => new ParticlePool(penguin ? 520 : 240, false), [penguin]);
   useEffect(() => () => pool.dispose(), [pool]);
 
   // Their minds: each its own seed, so no two choose alike. They start where they live, already about their business.
   const brains = useMemo(() => {
-    const list = MEMBERS.map((m, i) => {
-      const b = new IdleBrain(29 + i * 7, i + 2, 'panda', m.role);
+    const list = cast.map((m, i) => {
+      const b = new IdleBrain(29 + i * 7 + (penguin ? 101 : 0), i + 2, penguin ? 'penguin' : 'panda', m.role);
       b.lantern = !!m.lamp;
-      b.height = 0.62 * m.scale;
+      b.height = (penguin ? 0.72 : 0.62) * m.scale;
       b.name = m.name;
       b.persona = m.persona;
       b.hasBag = !!m.bag;
@@ -181,7 +274,7 @@ export function ColonyLayer({ model, driver, calm, clock, playhead }: ColonyLaye
       b.reset(x, z, CAMERA_FACE + (hash(i, 3) - 0.5));
     });
     return list;
-  }, [spotsAll]);
+  }, [spotsAll, cast, penguin]);
   useEffect(() => {
     brains.forEach((b) => clock.colony.join(b));
     return () => brains.forEach((b) => clock.colony.leave(b));
@@ -208,14 +301,14 @@ export function ColonyLayer({ model, driver, calm, clock, playhead }: ColonyLaye
     [zzz],
   );
 
-  const bagSpots = useRef<([number, number] | null)[]>(MEMBERS.map(() => null));
+  const bagSpots = useRef<([number, number] | null)[]>(cast.map(() => null));
   const state = useRef({ last: 0, mounted: -1, lastPlay: -100, wasPlaying: false, endAt: -100, inClass: false, k: -1, keepOut: null as Box | null, stage: null as Box | null });
-  const clickedAt = useRef<number[]>(MEMBERS.map(() => -10));
+  const clickedAt = useRef<number[]>(cast.map(() => -10));
   const hovered = useRef(-1);
-  const lastText = useRef<string[]>(MEMBERS.map(() => ''));
+  const lastText = useRef<string[]>(cast.map(() => ''));
   const bubbles = useMemo<HTMLDivElement[]>(() => {
     if (typeof document === 'undefined') return [];
-    return MEMBERS.map(() => {
+    return cast.map(() => {
       const el = document.createElement('div');
       el.setAttribute('aria-hidden', 'true');
       Object.assign(el.style, {
@@ -237,7 +330,7 @@ export function ColonyLayer({ model, driver, calm, clock, playhead }: ColonyLaye
       } satisfies Partial<CSSStyleDeclaration>);
       return el;
     });
-  }, [model.palette]);
+  }, [model.palette, cast]);
   useEffect(() => {
     const host = gl.domElement.parentElement;
     if (!host) return undefined;
@@ -281,8 +374,8 @@ export function ColonyLayer({ model, driver, calm, clock, playhead }: ColonyLaye
         const gather = gatherAt(clock.day);
 
         pool.begin();
-        for (let i = 0; i < MEMBERS.length; i++) {
-          const member = MEMBERS[i];
+        for (let i = 0; i < cast.length; i++) {
+          const member = cast[i];
           const brain = brains[i];
           const rig = rigs[i];
           const holder = holders[i];
@@ -346,15 +439,25 @@ export function ColonyLayer({ model, driver, calm, clock, playhead }: ColonyLaye
             bag: bagW,
             bagAt: bagSpot ? [bagSpot[0], floor + 0.2, bagSpot[1]] : undefined,
             climb: o && o.gait === 'climb' ? { weight: o.gaitWeight, phase: o.gaitPhase, slope: o.climbSlope } : undefined,
+            fish: o ? o.fish : 0,
           });
+          // A splash where it goes into the water or comes out of it (the pool ripples).
+          if (o && o.splash && penguin && !calm) {
+            clock.splashes.push({ x, z, at: now });
+            if (clock.splashes.length > 6) clock.splashes.shift();
+          }
           if (react < 1.2) invalidate();
 
           // Its shadow, smaller the higher it is (up the slide, on the swing).
           const sh = shadows[i].mesh;
+          sh.visible = y > -0.02;
           sh.position.set(x, floor + 0.004, z);
           const spread = 0.86 * member.scale * (o && (o.act === 'sleep' || o.act === 'lounge') ? 1.25 : 1) / (1 + y * 1.6);
           sh.scale.set(spread, spread, 1);
 
+          if (penguin) {
+            if (o && !calm) penguinTouches(pool, o, x, y, z, yaw, floor, now, i, member.scale);
+          }
           // For the grove: where it is (bamboo rustles as it brushes past) and which stalk it is chewing.
           const slot = clock.crew[2 + i];
           if (slot) {
@@ -382,7 +485,7 @@ export function ColonyLayer({ model, driver, calm, clock, playhead }: ColonyLaye
 
           // A few touches: crumbs while it chews, leaves kicked up by a roll, a puff where it lands off the slide.
           if (o && !calm) {
-            if (o.stalk >= 0 && o.gaitWeight < 0.1) {
+            if (!penguin && o.stalk >= 0 && o.gaitWeight < 0.1) {
               for (let p = 0; p < 5; p++) {
                 const f = (now * 0.9 + hash(i + 51, p)) % 1;
                 pool.add(x + Math.sin(yaw) * 0.32 * member.scale + (hash(i + 53, p) - 0.5) * 0.25, floor + 0.42 * member.scale - f * 0.4, z + Math.cos(yaw) * 0.32 * member.scale, 0.55, 0.72, 0.3, (1 - f) * 0.7, 0.04);
@@ -397,7 +500,7 @@ export function ColonyLayer({ model, driver, calm, clock, playhead }: ColonyLaye
                 pool.add(x + Math.cos(yaw) * side + Math.sin(yaw) * 0.5, floor + y + 0.6 * member.scale + f * 1.4, z - Math.sin(yaw) * side + Math.cos(yaw) * 0.5, hue === 0 ? 1 : 0.95, hue === 1 ? 0.9 : 0.78, hue === 2 ? 0.95 : 0.4, Math.sin(f * Math.PI) * 0.9, 0.07);
               }
             }
-            if (o.gait === 'roll' && o.gaitWeight > 0.2) {
+            if (!penguin && o.gait === 'roll' && o.gaitWeight > 0.2) {
               for (let p = 0; p < 8; p++) {
                 const f = (o.gaitPhase / (Math.PI * 2) + hash(i, p)) % 1;
                 const back = yaw + Math.PI + (hash(i + 2, p) - 0.5) * 1.4;
@@ -405,7 +508,7 @@ export function ColonyLayer({ model, driver, calm, clock, playhead }: ColonyLaye
                 pool.add(x + Math.sin(back) * d, floor + 0.05 + Math.sin(f * Math.PI) * 0.25, z + Math.cos(back) * d, 0.55, 0.72, 0.3, (1 - f) * 0.8, 0.055);
               }
             }
-            if (o.act === 'slide' && o.actWeight < 0.9 && o.actWeight > 0.05) {
+            if (!penguin && o.act === 'slide' && o.actWeight < 0.9 && o.actWeight > 0.05) {
               const q = 1 - o.actWeight;
               for (let p = 0; p < 14; p++) {
                 const a = hash(i + 41, p) * Math.PI * 2;
@@ -420,7 +523,21 @@ export function ColonyLayer({ model, driver, calm, clock, playhead }: ColonyLaye
           if (react < 1.6) text = `I'm ${member.name}!`;
           else if (hovered.current === i) {
             const act = o?.act ?? 'none';
-            const doing = brain.doing === 'lesson' ? (act === 'notes' ? 'taking notes' : DOING[act] ?? 'at the lesson') : DOING[act] ?? (o && o.gait === 'roll' ? 'rolling about' : o && o.gait === 'climb' ? 'climbing' : o && o.gait === 'walk' ? (brain.doing === 'workout' ? 'jogging round the yard' : brain.doing === 'gather' ? 'off to the fire' : brain.doing === 'evade' ? 'getting away' : brain.doing === 'tail' ? 'out for a stroll (not following anyone)' : brain.doing === 'sleep' ? 'off to bed' : 'out for a stroll') : brain.doing === 'class' ? 'in the lesson' : 'resting');
+            const swimming = o && penguin && o.y < -0.02;
+            const penguinDoing = penguin
+              ? swimming
+                ? o!.y < -0.7 ? 'diving' : 'swimming'
+                : brain.doing === 'belly' && o && (o.gait === 'glide' || o.gait === 'climb')
+                  ? o.gait === 'climb' ? 'up the ice slide' : 'down the ice slide on its belly!'
+                  : brain.doing === 'slip' && o && o.gait === 'tumble'
+                    ? 'whoops! slipped on the ice'
+                    : o && o.gait === 'glide'
+                      ? 'sliding on its belly'
+                      : act !== 'none' && brain.doing !== 'lesson'
+                        ? PENGUIN_DOING[act]
+                        : undefined
+              : undefined;
+            const doing = penguinDoing ?? (brain.doing === 'lesson' ? (act === 'notes' ? 'taking notes' : DOING[act] ?? 'at the lesson') : DOING[act] ?? (o && o.gait === 'roll' ? 'rolling about' : o && o.gait === 'climb' ? 'climbing' : o && o.gait === 'walk' ? (brain.doing === 'workout' ? 'jogging round the yard' : brain.doing === 'gather' ? 'off to the fire' : brain.doing === 'evade' ? 'getting away' : brain.doing === 'tail' ? 'out for a stroll (not following anyone)' : brain.doing === 'sleep' ? 'off to bed' : 'out for a stroll') : brain.doing === 'class' ? 'in the lesson' : 'resting'));
             text = `${member.name} · ${doing}`;
           }
           const el = bubbles[i];
@@ -437,7 +554,7 @@ export function ColonyLayer({ model, driver, calm, clock, playhead }: ColonyLaye
         }
         pool.end();
       }),
-    [driver, model, calm, clock, playhead, brains, rigs, holders, shadows, pool, zzz, bubbles, get, invalidate, spots, spotsAll, layout],
+    [driver, model, calm, clock, playhead, brains, rigs, holders, shadows, pool, zzz, bubbles, get, invalidate, spots, spotsAll, layout, cast, penguin],
   );
 
   useEffect(

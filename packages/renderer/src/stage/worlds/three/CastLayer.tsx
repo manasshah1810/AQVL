@@ -13,6 +13,7 @@ import { ParticlePool, hash } from './particles';
 import { IdleBrain, type Box, type IdleContext, type Spots } from '../idle';
 import { iceMotionAt, blockAt, eagleAt, type EagleState } from '../ice';
 import { pandaSpots, polarSpots } from './layout';
+import { penguinSpots } from './polarLayout';
 import type { WorldClock } from './WorldLayer';
 
 export interface CastLayerProps {
@@ -178,9 +179,10 @@ export function CastLayer({ model, driver, style, calm, clock, playhead }: CastL
   // Idle life (penguins): what each animal does when nothing is asked of it.
   const brains = useMemo(() => [new IdleBrain(11, 0, style), new IdleBrain(11, 1, style)], [model, style]);
   // The pandas' props to walk round (the gym, the slide, the swing, the pond, lanterns, rocks).
-  const obstacles = useMemo(() => (style === 'panda' ? pandaSpots(model).obstacles : undefined), [model, style]);
+  // (and the penguins' furniture and places on the ice shelf).
+  const obstacles = useMemo(() => (style === 'panda' ? pandaSpots(model).obstacles : penguinSpots(model).obstacles), [model, style]);
   useEffect(() => {
-    if (style !== 'panda') return undefined;
+    // The crew joins the rest of the grove (or the ice shelf's colony): so nobody walks through anybody.
     brains.forEach((b) => clock.colony.join(b));
     return () => brains.forEach((b) => clock.colony.leave(b));
   }, [brains, clock, style]);
@@ -288,7 +290,7 @@ export function CastLayer({ model, driver, style, calm, clock, playhead }: CastL
             far: r.freeFor > 5,
             partner: brains[1 - i],
             radius: style === 'panda' ? 3.6 : 3.2,
-            ...(style === 'panda' ? { colony: clock.colony, night: clock.day.night, now: clock.now, obstacles } : {}),
+            ...(style === 'panda' ? { colony: clock.colony, night: clock.day.night, now: clock.now, obstacles } : { colony: clock.colony, now: clock.now, obstacles }),
           };
           return brain.update(dt, ctx);
         });

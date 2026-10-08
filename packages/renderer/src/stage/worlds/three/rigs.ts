@@ -123,7 +123,7 @@ export interface Rig {
 }
 
 /** Joint angles a pose asks for. Everything blends linearly from NEUTRAL. */
-interface Joints {
+export interface Joints {
   lean: number;
   /** Arm / flipper raise (out to the side) and reach (forward), left and right. */
   raiseL: number;
@@ -137,9 +137,9 @@ interface Joints {
   squash: number;
 }
 
-const NEUTRAL: Joints = { lean: 0, raiseL: 0.14, raiseR: 0.14, reachL: 0, reachR: 0, headYaw: 0, headPitch: 0, headTilt: 0, hop: 0, squash: 0 };
+export const NEUTRAL: Joints = { lean: 0, raiseL: 0.14, raiseR: 0.14, reachL: 0, reachR: 0, headYaw: 0, headPitch: 0, headTilt: 0, hop: 0, squash: 0 };
 
-function blank(): Joints {
+export function blank(): Joints {
   return { ...NEUTRAL };
 }
 
@@ -154,13 +154,13 @@ function nearArm(j: Joints, side: number, reach: number, raise: number): void {
   }
 }
 
-function addWeighted(out: Joints, j: Joints, w: number): void {
+export function addWeighted(out: Joints, j: Joints, w: number): void {
   if (w <= 0) return;
   for (const key of Object.keys(NEUTRAL) as (keyof Joints)[]) out[key] += (j[key] - NEUTRAL[key]) * w;
 }
 
 /** Shared pose library. `side` is +1 when the target is on the rig's left (+x), -1 on its right. */
-function poseJoints(pose: CastPose, s: number, side: number, look: [number, number, number], style: 'penguin' | 'panda'): Joints {
+export function poseJoints(pose: CastPose, s: number, side: number, look: [number, number, number], style: 'penguin' | 'panda'): Joints {
   const j = blank();
   const towardYaw = Math.max(-0.9, Math.min(0.9, Math.atan2(look[0], Math.max(0.2, look[2]))));
   const towardPitch = Math.max(-0.5, Math.min(0.6, Math.atan2(look[1] - 0.55, Math.max(0.3, Math.hypot(look[0], look[2])))));
@@ -271,7 +271,7 @@ function poseJoints(pose: CastPose, s: number, side: number, look: [number, numb
 }
 
 /** Fidgets, added to the neutral stance by the animal that is otherwise doing nothing. */
-function idleActJoints(act: IdleAct, t: number, j: Joints): void {
+export function idleActJoints(act: IdleAct, t: number, j: Joints): void {
   switch (act) {
     case 'look': {
       // A slow look to one side, a pause, the other side, and back, the body turning a little after the head.
@@ -352,13 +352,13 @@ function idleActJoints(act: IdleAct, t: number, j: Joints): void {
   }
 }
 
-function smoothstepJ(a: number, b: number, x: number): number {
+export function smoothstepJ(a: number, b: number, x: number): number {
   const t = Math.max(0, Math.min(1, (x - a) / (b - a)));
   return t * t * (3 - 2 * t);
 }
 
 /** Breathing and a slow sway, so a waiting animal is never a statue. */
-function ambient(j: Joints, time: number, seed: number): void {
+export function ambient(j: Joints, time: number, seed: number): void {
   j.squash += 0.012 * Math.sin(time * 2.1 + seed * 3);
   j.headYaw += 0.04 * Math.sin(time * 0.37 + seed * 7);
 }
@@ -369,7 +369,7 @@ function mat(color: string, roughness: number, extra: Partial<MeshStandardMateri
   return m;
 }
 
-class Builder {
+export class Builder {
   readonly geometries: BufferGeometry[] = [];
   readonly materials: Material[] = [];
   readonly sphere = this.keep(new SphereGeometry(1, 28, 20));
@@ -746,7 +746,7 @@ export interface PandaOptions {
 }
 
 /** What an idle action asks of a panda beyond the shared joints. */
-interface PandaExtras {
+export interface PandaExtras {
   /** Sitting back on its haunches, feet out in front. */
   seat: number;
   /** A length of bamboo in the paws, raised to the mouth (0..1), and chewing it (0..1). */
@@ -776,7 +776,7 @@ interface PandaExtras {
   pointer: number;
 }
 
-function pandaIdle(act: IdleAct, t: number, j: Joints, x: PandaExtras, seed: number): void {
+export function pandaIdle(act: IdleAct, t: number, j: Joints, x: PandaExtras, seed: number): void {
   switch (act) {
     case 'sit': {
       // Plops down, looks about slowly, a little sway.
@@ -1955,7 +1955,7 @@ export function buildPanda(options: PandaOptions): Rig {
   };
 }
 
-function smoothstep01(a: number, b: number, x: number): number {
+export function smoothstep01(a: number, b: number, x: number): number {
   const t = Math.max(0, Math.min(1, (x - a) / (b - a)));
   return t * t * (3 - 2 * t);
 }

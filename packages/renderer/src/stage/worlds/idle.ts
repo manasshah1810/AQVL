@@ -39,6 +39,10 @@ export interface Spots {
   school?: { board: [number, number]; teacher: Perch; seats: Perch[] };
   nooks?: (Perch & { kind: string; table: boolean })[];
   paths?: [number, number][][];
+  /** Penguins: the pool (an ellipse of open water, the places to get in and out, the diving ledge), the ice slide, crates of fish. */
+  pool?: { x: number; z: number; rx: number; rz: number; entries: Perch[]; ledge: Perch };
+  ramp?: { base: [number, number]; top: [number, number]; height: number; end: [number, number]; run: [number, number] };
+  fish?: Perch[];
 }
 
 /** Somewhere to settle: where, how high the feet are there, and which way to face. */
@@ -77,6 +81,8 @@ export interface Persona {
   sleepy?: number;
   /** Wears a school bag, which comes off before bed. */
   bag?: boolean;
+  /** Now and then slips on the ice (0..1: how often). */
+  clumsy?: number;
 }
 
 /** Something on the ground the animals walk round (a prop of the world). */
@@ -152,7 +158,8 @@ export class Colony {
 
   /** Someone to play with (free, not busy), picked at random. */
   partner(except: IdleBrain, r: number): IdleBrain | null {
-    const free = this.members.filter((m) => m !== except && m.approachable && m.roaming && !m.anchored);
+    // (The penguin crew keeps to its own corner of the ice: only the colony is asked.)
+    const free = this.members.filter((m) => m !== except && m.approachable && m.roaming && !m.anchored && (m.style === 'panda' || m.role !== 'crew'));
     return free.length ? free[Math.floor(r * free.length) % free.length] : null;
   }
 }
@@ -202,7 +209,7 @@ export interface IdleOut {
   x: number;
   z: number;
   yaw: number;
-  gait: 'stand' | 'walk' | 'glide' | 'roll' | 'climb' | 'tumble';
+  gait: 'stand' | 'walk' | 'glide' | 'roll' | 'climb' | 'tumble' | 'swim';
   gaitPhase: number;
   /** Height of the feet above the floor (on the bamboo gym's deck), the lean of a climb, and whether it is on a prop of the world (so no climbing gear is drawn). */
   y: number;
@@ -247,7 +254,10 @@ export type Task =
   | { k: 'lamp'; on: boolean }
   | { k: 'elevate'; ax: number; az: number; bx: number; bz: number; y0: number; y1: number; dur: number; t: number; face?: number }
   | { k: 'trail'; who: IdleBrain; dist: number; dur: number; t: number }
-  | { k: 'bag'; off: boolean };
+  | { k: 'bag'; off: boolean }
+  | { k: 'swim'; x: number; z: number; speed: number; t: number; dive: number }
+  | { k: 'plunge'; ax: number; az: number; bx: number; bz: number; y0: number; y1: number; dur: number; t: number; arc: number }
+  | { k: 'belly'; ax: number; az: number; ay: number; bx: number; bz: number; by: number; lx: number; lz: number; dur: number; t: number };
 
 /** Counts meetings between friends, so each can tell the other has already moved on. */
 let meetings = 0;
@@ -258,6 +268,10 @@ const STRIDE = 0.27;
 const R = 0.5;
 /** Pandas amble: a longer stride, a gentler pace, a trot rather than a slide when in a hurry. */
 const PANDA = { walk: 1.45, rush: 3.4, stride: 0.46, climb: 2.3 };
+/** How deep a swimming penguin floats (its feet below the surface of the ice), how deep it dives, how fast it swims. */
+const FLOAT = -0.32;
+const DIVE = -1.15;
+const SWIM = 1.9;
 const FALL_TIME = 0.9;
 const RECOVER_TIME = 1.25;
 
@@ -351,7 +365,18 @@ export class IdleBrain {
   }
 
   private get walkSpeed(): number {
-    return this.style === 'panda' ? PANDA.walk * (1 - 0.25 * this.night) : WALK;
+    if (this.style === 'panda') return PANDA.walk * (1 - 0.25 * this.night);
+    return this.role === 'crew' ? WALK : WALK * (1 - 0.22 * this.night);
+  }
+
+  /** Lives the colony's life (every panda, and the penguins of the colony; the penguin crew keeps its old ways). */
+  private get colonyLife(): boolean {
+    return this.style === 'panda' || this.role !== 'crew';
+  }
+
+  /** In the water (swimming, or under it). */
+  get wet(): boolean {
+    return this.y < -0.02;
   }
 
   /** The act it is in the middle of ('none' while it walks). */
@@ -361,7 +386,7 @@ export class IdleBrain {
 
   /** Somewhere it cannot just walk away from (up on the gym or the slide, on the swing, at a lesson). */
   get anchored(): boolean {
-    return this.y > 0.02 || this.doing === 'swing' || this.doing === 'lesson' || this.doing === 'sleep' || this.doing === 'gather' || this.doing === 'class';
+    return this.y > 0.02 || this.wet || this.doing === 'swim' || this.doing === 'swing' || this.doing === 'lesson' || this.doing === 'sleep' || this.doing === 'gather' || this.doing === 'class';
   }
 
   /** Forget everything (a new scene, a new run). */
@@ -403,7 +428,7 @@ export class IdleBrain {
     this.doing = doing;
     this.fish = 0;
     if (this.y > 0.02) this.tasks = [{ k: 'elevate', ax: this.x, az: this.z, bx: this.x + 0.5, bz: this.z + 0.6, y0: this.y, y1: 0, dur: 0.7, t: 0 }];
-    else this.tasks = [];
+    else this.tasks = this.surface();
     this.tasks.push({ k: 'go', x, z, speed: this.walkSpeed }, { k: 'sync', t: 0, timeout: 7, face }, ...others);
   }
 
@@ -446,9 +471,9 @@ export class IdleBrain {
       this.actName = this.linger.w > 0 ? this.linger.act : 'none';
     }
     // Stays down on its haunches from one seated act to the next; gets up smoothly when it has done.
-    const seated = SEATED_ACTS.has(out.act) && out.actWeight > 0.02 && this.style === 'panda';
+    const seated = SEATED_ACTS.has(out.act) && out.actWeight > 0.02 && this.colonyLife;
     this.seatW += ((seated ? 1 : 0) - this.seatW) * Math.min(1, dt * (seated ? 4.5 : 3.2));
-    if (out.gait !== 'stand' && out.gait !== 'climb') this.seatW = Math.max(0, this.seatW - dt * 6);
+    if (out.gait !== 'stand' && out.gait !== 'climb' && out.gait !== 'swim') this.seatW = Math.max(0, this.seatW - dt * 6);
     out.seat = this.seatW;
     this.lampW += ((this.lampOn && this.night > 0.15 ? 1 : 0) - this.lampW) * Math.min(1, dt * 2.5);
     out.lamp = this.lampW;
@@ -539,8 +564,9 @@ export class IdleBrain {
       // Down from wherever it is first (the gym, the slide, the swing), then to its seat at a trot.
       const tasks: Task[] = [];
       if (this.y > 0.02) tasks.push({ k: 'fall', x: this.x, z: this.z, tx: this.x + 0.5, tz: this.z + 0.6, y0: this.y, t: 0 });
+      tasks.push(...this.surface());
       if (this.colony?.swing.rider === this) this.colony.swing.rider = null;
-      tasks.push(...this.goVia(ctx, lesson.seat[0], lesson.seat[1], PANDA.walk * 1.7), { k: 'face', yaw: lesson.face });
+      tasks.push(...this.goVia(ctx, lesson.seat[0], lesson.seat[1], (this.style === 'panda' ? PANDA.walk : WALK) * 1.7), { k: 'face', yaw: lesson.face });
       this.tasks = tasks;
       this.doing = 'lesson';
       this.lampOn = false;
@@ -607,7 +633,11 @@ export class IdleBrain {
     this.yaw += wrap(heading - this.yaw) * Math.min(1, 9 * dt);
     this.x += (dx / d) * step;
     this.z += (dz / d) * step;
-    if (this.style === 'panda') {
+    if (this.wet) {
+      // Paddling: the flippers beat, slower than a walk.
+      this.phase += (step / 0.5) * Math.PI;
+      this.gait = 'swim';
+    } else if (this.style === 'panda') {
       this.phase += (step / PANDA.stride) * Math.PI;
       this.gait = 'walk';
     } else {
@@ -650,6 +680,13 @@ export class IdleBrain {
         if (task.goal && ctx.keepOut && this.rerouteIn <= 0 && crosses(ctx.keepOut, this.x, this.z, task.x, task.z, R + 0.15)) {
           this.rerouteIn = 0.8;
           const goal = task.goal;
+          // A penguin that keeps being turned back from somewhere tucked against the structures gives up on it.
+          this.reroutes = this.lastGoal === goal ? this.reroutes + 1 : 0;
+          this.lastGoal = goal;
+          if (this.style === 'penguin' && this.reroutes > 5) {
+            while (this.tasks.length && this.tasks[0].k === 'walk' && (this.tasks[0] as { goal?: [number, number] }).goal === goal) this.tasks.shift();
+            return;
+          }
           while (this.tasks.length && this.tasks[0].k === 'walk' && (this.tasks[0] as { goal?: [number, number] }).goal === goal) this.tasks.shift();
           this.tasks.unshift({ k: 'go', x: goal[0], z: goal[1], speed: task.speed });
           return;
@@ -688,7 +725,7 @@ export class IdleBrain {
         if (task.face !== undefined) this.yaw += wrap(task.face - this.yaw) * Math.min(1, 5 * dt);
         this.actName = task.act;
         this.actT = task.t;
-        this.actWeight = this.style === 'panda' && FADING.has(task.act) ? Math.max(0, Math.min(1, (task.dur - task.t) / (task.act === 'sleep' || task.act === 'lounge' ? 1.1 : 0.5))) : 1;
+        this.actWeight = this.colonyLife && FADING.has(task.act) ? Math.max(0, Math.min(1, (task.dur - task.t) / (task.act === 'sleep' || task.act === 'lounge' ? 1.1 : 0.5))) : 1;
         if (task.stalk !== undefined) this.stalk = task.stalk;
         if (task.fish === 'take') this.fish = task.t > 0.55 ? 1 : 0;
         else if (task.fish === 'eat') this.fish = task.t < 0.9 ? 1 : Math.max(0, 1 - (task.t - 0.9) / 0.6);
@@ -914,11 +951,18 @@ export class IdleBrain {
         }
         const dx = w.x - this.x, dz = w.z - this.z;
         const d = Math.hypot(dx, dz);
+        // A penguin can lose sight of the one it is trailing (it got too far ahead, or into the water), and gives up; and
+        // one that finds itself right beside her loses its nerve and wanders off.
+        if (this.style === 'penguin' && (d > 11 || w.wet || d < 1.1)) {
+          this.tasks.shift();
+          return;
+        }
         if (d > task.dist + 0.35) {
           const way = this.around(ctx, w.x, w.z)[0] ?? [w.x, w.z];
           const ex = way[0] - this.x, ez = way[1] - this.z;
           const ed = Math.hypot(ex, ez) || 1;
-          const speed = PANDA.walk * 1.1;
+          // (A penguin falling behind hurries to catch up: a quick little trot.)
+          const speed = this.style === 'penguin' ? (d > task.dist + 2.2 ? WALK * 1.75 : WALK * 1.05) : PANDA.walk * 1.1;
           const step = Math.min(ed, speed * dt);
           const [sx, sz] = this.steer(ctx, ex / ed, ez / ed, way[0], way[1], ed);
           this.moveTo(sx, sz, 1, step, speed);
@@ -930,15 +974,104 @@ export class IdleBrain {
         }
         return;
       }
+      case 'plunge': {
+        // A hop into the water (or out of it onto the ice): up, over the edge, and down with a splash.
+        task.t += dt;
+        const u = Math.min(1, task.t / task.dur);
+        const e = u * u * (3 - 2 * u);
+        const was = this.y;
+        this.x = task.ax + (task.bx - task.ax) * e;
+        this.z = task.az + (task.bz - task.az) * e;
+        this.y = task.y0 + (task.y1 - task.y0) * e + task.arc * Math.sin(Math.PI * u);
+        // The splash, the moment it goes through the surface.
+        if ((was >= -0.02) !== (this.y >= -0.02) && task.t > dt) this.splash = true;
+        this.gait = task.y1 < task.y0 ? 'glide' : 'walk';
+        this.gaitW = 0.4 + 0.6 * Math.sin(Math.PI * u);
+        this.phase += dt * 9;
+        if (Math.hypot(task.bx - task.ax, task.bz - task.az) > 0.05) this.yaw += wrap(Math.atan2(task.bx - task.ax, task.bz - task.az) - this.yaw) * Math.min(1, 8 * dt);
+        if (u >= 1) {
+          this.y = task.y1;
+          this.tasks.shift();
+        }
+        return;
+      }
+      case 'swim': {
+        // Swimming across the pool: strokes and glides; now and then under for a moment and up again.
+        task.t += dt;
+        const dx = task.x - this.x, dz = task.z - this.z;
+        const d = Math.hypot(dx, dz);
+        const under = task.dive > 0 ? Math.sin(Math.min(1, task.t / task.dive) * Math.PI) : 0;
+        const target = FLOAT + (DIVE - FLOAT) * under;
+        this.y += (target - this.y) * Math.min(1, dt * 4);
+        this.y = Math.min(this.y, -0.05);
+        if (d < 0.08 || task.t > 16) {
+          this.tasks.shift();
+          return;
+        }
+        const speed = task.speed * Math.min(1, 0.4 + d * 0.8) * (0.85 + 0.15 * Math.sin(task.t * 2.4));
+        this.moveTo(dx, dz, d, Math.min(d, speed * dt), speed);
+        return;
+      }
+      case 'belly': {
+        // Down the ice slide on its belly, flippers back, faster and faster; then a long glide out across the ice.
+        task.t += dt;
+        const u = Math.min(1, task.t / task.dur);
+        const ride = 0.45;
+        if (u < ride) {
+          const e = Math.pow(u / ride, 1.6);
+          this.x = task.ax + (task.bx - task.ax) * e;
+          this.z = task.az + (task.bz - task.az) * e;
+          this.y = task.ay + (task.by - task.ay) * e;
+        } else {
+          // Friction: quick at first, slowing to a stop.
+          const v = (u - ride) / (1 - ride);
+          const e = 1 - (1 - v) * (1 - v);
+          this.x = task.bx + (task.lx - task.bx) * e;
+          this.z = task.bz + (task.lz - task.bz) * e;
+          this.y = task.by * (1 - Math.min(1, v * 6));
+        }
+        this.onProp = this.y > 0.02;
+        this.gait = 'glide';
+        this.gaitW = u < 0.06 ? u / 0.06 : u > 0.92 ? (1 - u) / 0.08 : 1;
+        const toward = u < ride ? Math.atan2(task.bx - task.ax, task.bz - task.az) : Math.atan2(task.lx - task.bx, task.lz - task.bz);
+        this.yaw += wrap(toward - this.yaw) * Math.min(1, 6 * dt);
+        if (u >= 1) {
+          this.y = 0;
+          this.onProp = false;
+          this.tasks.shift();
+        }
+        return;
+      }
       default:
         return;
     }
   }
 
+  /** How often in a row it has been turned back on the way to the same place. */
+  private reroutes = 0;
+  private lastGoal: [number, number] | null = null;
+
+  /** The pool it last swam in (so it can get out of it again). */
+  private pool: Spots['pool'] | null = null;
+
+  /** Out of the water first, if it is in it: a swim to the nearest edge of the pool and a hop out. */
+  private surface(): Task[] {
+    const p = this.pool;
+    if (!this.wet || !p) return [];
+    let best = p.entries[0];
+    for (const e of p.entries) if (Math.hypot(e.at[0] - this.x, e.at[1] - this.z) < Math.hypot(best.at[0] - this.x, best.at[1] - this.z)) best = e;
+    const wx = best.at[0] + Math.sin(best.face) * 0.95, wz = best.at[1] + Math.cos(best.face) * 0.95;
+    return [
+      { k: 'swim', x: wx, z: wz, speed: SWIM * 1.3, t: 0, dive: 0 },
+      { k: 'plunge', ax: wx, az: wz, bx: best.at[0], bz: best.at[1], y0: this.y < FLOAT ? this.y : FLOAT, y1: 0, dur: 0.85, t: 0, arc: 0.4 },
+      { k: 'act', act: 'shake', dur: 1.1, t: 0 },
+    ];
+  }
+
   /** Not quite the same act as another panda at the same moment: a near relation instead, if there is one free. */
   private variant(act: IdleAct): IdleAct {
     const c = this.colony;
-    if (!c || this.style !== 'panda' || this.doing === 'gather' || this.doing === 'class' || c.acting(act, this) === 0) return act;
+    if (!c || !this.colonyLife || this.doing === 'gather' || this.doing === 'class' || c.acting(act, this) === 0) return act;
     const alt = (SWAPS[act] ?? []).filter((a) => c.acting(a, this) === 0 && (this.night > 0.4 || !NIGHT_ONLY.has(a)));
     return alt.length ? alt[Math.floor(this.rng() * alt.length)] : act;
   }
@@ -1101,7 +1234,7 @@ export class IdleBrain {
   /** The noon gathering: whoever is going goes to the fire (the musician first, to play); when it is over everyone gets on with the day. */
   private gather(ctx: IdleContext, g: Gathering): void {
     const camp = ctx.spots?.camp;
-    if (!camp || this.style !== 'panda' || this.role === 'crew') return;
+    if (!camp || !this.colonyLife || this.role === 'crew') return;
     if (!g.on && !g.soon) {
       if (this.gathering) {
         this.gathering = false;
@@ -1128,10 +1261,21 @@ export class IdleBrain {
     if (this.colony?.swing.rider === this) this.colony.swing.rider = null;
     const tasks: Task[] = [];
     if (this.y > 0.02) tasks.push({ k: 'elevate', ax: this.x, az: this.z, bx: this.x, bz: this.z + 0.8, y0: this.y, y1: 0, dur: 0.7, t: 0 });
-    if (musician) tasks.push(...this.settle(ctx, camp.stage, undefined, PANDA.walk * 1.4));
-    else {
-      const slot = camp.ring[this.colony ? this.colony.claim(this, camp.ring.length) : 0];
-      tasks.push(...this.goVia(ctx, slot.at[0], slot.at[1], PANDA.walk * 1.5), { k: 'face', yaw: slot.face });
+    if (this.style === 'panda') {
+      if (musician) tasks.push(...this.settle(ctx, camp.stage, undefined, PANDA.walk * 1.4));
+      else {
+        const slot = camp.ring[this.colony ? this.colony.claim(this, camp.ring.length) : 0];
+        tasks.push(...this.goVia(ctx, slot.at[0], slot.at[1], PANDA.walk * 1.5), { k: 'face', yaw: slot.face });
+      }
+    } else {
+      // Penguins notice the music each at its own moment: out of the water, a look round, and over at their own pace.
+      tasks.push(...this.surface());
+      if (!musician) tasks.push({ k: 'act', act: this.rng() < 0.5 ? 'look' : 'sniff', dur: 0.8 + this.rng() * 6, t: 0 });
+      if (musician) tasks.push(...this.settle(ctx, camp.stage, undefined, WALK * 1.4));
+      else {
+        const slot = camp.ring[this.colony ? this.colony.claim(this, camp.ring.length) : 0];
+        tasks.push(...this.goVia(ctx, slot.at[0], slot.at[1], WALK * (1.15 + this.rng() * 0.45)), { k: 'face', yaw: slot.face });
+      }
     }
     this.tasks = tasks;
   }
@@ -1148,6 +1292,21 @@ export class IdleBrain {
     const options: [string, number][] = inner
       ? [['sit', 5], ['clap', 2], ['wave', 0.8], ['dance', 1.4], ['look', 0.6]]
       : [['dance', 5], ['clap', 2], ['sit', 1.4], ['wave', 1.2], ['look', 0.5]];
+    if (this.style === 'penguin') {
+      // A penguin also chats with whoever stands beside it, plays about, preens, or takes a turn round the edge of the crowd.
+      options.push(['play', 1.1], ['bow', 0.6], ['preen', 0.7]);
+      if (!inner && this.rng() < 0.18) {
+        const a = Math.atan2(slot.at[1] - camp.z, slot.at[0] - camp.x) + (this.rng() < 0.5 ? -1 : 1) * (0.35 + this.rng() * 0.3);
+        const r = 3.9 + this.rng() * 0.6;
+        const px = camp.x + Math.cos(a) * r, pz = camp.z + Math.sin(a) * r;
+        this.tasks = [
+          { k: 'walk', x: px, z: pz, speed: WALK * 0.8 },
+          { k: 'act', act: 'look', dur: 2.5, t: 0, face: Math.atan2(camp.x - px, camp.z - pz) },
+          { k: 'walk', x: slot.at[0], z: slot.at[1], speed: WALK * 0.8, face: slot.face },
+        ];
+        return;
+      }
+    }
     const act = this.pick(options) as IdleAct;
     const dur = act === 'sit' ? 6 + this.rng() * 6 : act === 'dance' ? 6 + this.rng() * 7 : act === 'clap' ? 3.5 + this.rng() * 3 : 2.4;
     this.tasks = [{ k: 'act', act, dur, t: 0, face: slot.face + (this.rng() - 0.5) * 0.5 }];
@@ -1156,11 +1315,16 @@ export class IdleBrain {
 
   /** It notices the one trailing after it (when that one gets close) and gets away: a quick look back, a change of direction, now and then a run. */
   private noticeTrailer(ctx: IdleContext): void {
-    if (this.evadeCd > 0 || !this.away || this.y > 0.02 || !ctx.free) return;
+    if (this.evadeCd > 0 || !this.away || this.y > 0.02 || this.wet || !ctx.free) return;
     if (['sleep', 'lesson', 'gather', 'class', 'swing', 'evade'].includes(this.doing)) return;
     const t = this.colony?.find(this.persona.avoids ?? '');
     if (!t || t.doing !== 'tail') return;
     if (Math.hypot(t.x - this.x, t.z - this.z) > 2.7) return;
+    // A penguin does not always bother: now and then it just pretends not to have noticed.
+    if (this.style === 'penguin' && this.rng() < 0.3) {
+      this.evadeCd = 6 + this.rng() * 6;
+      return;
+    }
     const away = Math.atan2(this.x - t.x, this.z - t.z);
     const roam = ctx.roam;
     let best: [number, number] | null = null;
@@ -1180,7 +1344,7 @@ export class IdleBrain {
     this.fish = 0;
     this.tasks = [
       { k: 'act', act: 'glance', dur: 1.1, t: 0 },
-      { k: 'go', x: best[0], z: best[1], speed: this.rng() < 0.4 ? PANDA.rush : PANDA.walk * 1.6 },
+      { k: 'go', x: best[0], z: best[1], speed: this.rng() < 0.4 ? PANDA.rush : (this.style === 'panda' ? PANDA.walk : WALK) * 1.6 },
       { k: 'act', act: 'glance', dur: 1.2, t: 0 },
     ];
   }
@@ -1234,6 +1398,14 @@ export class IdleBrain {
     add('compute', 0.1 * (0.6 + 0.4 * day), colonist && !!spots?.desk);
     add('nook', 1.5 * (0.5 + 0.5 * day), colonist && !!spots?.nooks?.length);
     add('stroll', 1.3 * (1 - 0.4 * n), colonist && !!spots?.paths?.length);
+    // Penguins: a swim in the pool (a dive off the ledge now and then), a go down the ice slide on the belly, a fish from
+    // the crate, and (for the clumsy) a slip on the ice.
+    if (this.style === 'penguin') {
+      add('swim', 1.6 * lively, colonist && !!spots?.pool, true);
+      add('belly', 1.5 * lively, colonist && !!spots?.ramp);
+      add('fish', 1.2 * (1 - 0.5 * n), colonist && !!spots?.fish?.length);
+      add('slip', 2.4 * (this.persona.clumsy ?? 0) * (1 - 0.6 * n), (this.persona.clumsy ?? 0) > 0);
+    }
     const music = colony ? colony.acting('guitar', this) > 0 : false;
     add('camp', (0.4 + 2.4 * n) * (music ? 3 : 1), colonist && !!spots?.camp);
     if (this.persona.musician) add('guitar', (0.9 + 0.8 * n) * (music ? 0 : 1), !!spots?.camp && !music);
@@ -1276,8 +1448,9 @@ export class IdleBrain {
         break;
       }
       case 'fidget': {
-        const act = this.pick([['scratch', 3], ['stretch', 2.4], ['shake', 1], ['yawn', 0.6 + n * 2], ['adjust', 2.6 * like('adjust', 0)]]) as IdleAct;
-        this.tasks = [{ k: 'act', act, dur: act === 'scratch' ? 2.6 : act === 'stretch' ? 3.2 : act === 'yawn' ? 3.6 : act === 'adjust' ? 2.6 : 1.1, t: 0 }];
+        const penguin = this.style === 'penguin';
+        const act = this.pick([['scratch', penguin ? 1 : 3], ['stretch', 2.4], ['shake', penguin ? 2 : 1], ['yawn', 0.6 + n * 2], ['adjust', 2.6 * like('adjust', 0)], ['preen', penguin ? 3 : 0]]) as IdleAct;
+        this.tasks = [{ k: 'act', act, dur: act === 'scratch' ? 2.6 : act === 'stretch' ? 3.2 : act === 'yawn' ? 3.6 : act === 'adjust' ? 2.6 : act === 'preen' ? 3.2 : 1.1, t: 0 }];
         break;
       }
       case 'wander': {
@@ -1418,7 +1591,8 @@ export class IdleBrain {
         }
         const k = list[Math.floor(this.rng() * list.length)];
         const tasks: Task[] = [...this.settle(ctx, k)];
-        if (k.table) tasks.push({ k: 'act', act: 'chew', dur: 9 + this.rng() * 5, t: 0, face: k.face }, { k: 'act', act: 'sit', dur: 4 + this.rng() * 3, t: 0, face: k.face });
+        if (k.table && this.style === 'penguin') tasks.push({ k: 'act', act: 'bow', dur: 1.3, t: 0, face: k.face, fish: 'take' }, { k: 'act', act: 'eat', dur: 3.3, t: 0, face: k.face, fish: 'eat' }, { k: 'act', act: 'sit', dur: 6 + this.rng() * 5, t: 0, face: k.face });
+        else if (k.table) tasks.push({ k: 'act', act: 'chew', dur: 9 + this.rng() * 5, t: 0, face: k.face }, { k: 'act', act: 'sit', dur: 4 + this.rng() * 3, t: 0, face: k.face });
         else if (k.kind === 'mat') tasks.push({ k: 'act', act: this.rng() < 0.6 ? 'lounge' : 'sit', dur: 8 + this.rng() * 8, t: 0, face: k.face });
         else tasks.push({ k: 'act', act: n > 0.5 ? 'stargaze' : 'sit', dur: 9 + this.rng() * 8, t: 0, face: k.face }, { k: 'act', act: 'look', dur: 3.4, t: 0 });
         tasks.push(...this.unsettle(k));
@@ -1553,6 +1727,20 @@ export class IdleBrain {
         let mx = (this.x + p.x) / 2;
         let mz = (this.z + p.z) / 2;
         if (ctx.keepOut && inside(ctx.keepOut, mx, mz, 1.2)) mz = ctx.keepOut.maxZ + 1.6;
+        // Penguins meet on open ice (never on the water, against the structures or in among the furniture).
+        if (this.style === 'penguin') {
+          const open = (x: number, z: number) =>
+            !(ctx.keepOut && inside(ctx.keepOut, x, z, 2.2)) && !(ctx.obstacles ?? []).some((o) => Math.hypot(o.x - x, o.z - z) < o.r + 1.5);
+          if (!open(mx, mz)) {
+            const alt = this.freePoint(ctx, 3);
+            const spot = alt && open(alt[0], alt[1]) ? alt : open(this.x, this.z) ? ([this.x, this.z] as [number, number]) : null;
+            if (!spot) {
+              this.tasks = [{ k: 'act', act: 'wave', dur: 2, t: 0 }];
+              break;
+            }
+            [mx, mz] = spot;
+          }
+        }
         if (!ctx.roam) {
           mx = Math.min(ctx.area.maxX - 1, Math.max(ctx.area.minX + 1, mx));
           mz = Math.min(ctx.area.maxZ - 0.5, Math.max(ctx.area.minZ + 0.5, mz));
@@ -1597,6 +1785,91 @@ export class IdleBrain {
           { k: 'act', act: 'yawn', dur: 3.6, t: 0 },
           { k: 'act', act: 'sleep', dur: 45 + this.rng() * 100, t: 0, face: CAMERA_FACE + (this.rng() - 0.5) * 1.8 },
           { k: 'act', act: 'stretch', dur: 3.2, t: 0 },
+        ];
+        break;
+      }
+      case 'swim': {
+        // In at one of the edges (or off the ledge, in a dive), a few lengths of the pool with a dive or two, out again.
+        const pl = spots!.pool!;
+        this.pool = pl;
+        const open = pl.entries.filter(vacant);
+        const pickEntry = () => (open.length ? open : pl.entries)[Math.floor(this.rng() * (open.length || pl.entries.length))];
+        const inner = (e: Perch, d: number): [number, number] => [e.at[0] + Math.sin(e.face) * d, e.at[1] + Math.cos(e.face) * d];
+        const tasks: Task[] = [];
+        if (this.rng() < 0.35 && vacant(pl.ledge)) {
+          const [ix, iz] = inner(pl.ledge, 1.7);
+          tasks.push(...this.settle(ctx, pl.ledge), { k: 'act', act: 'look', dur: 1.4, t: 0, face: pl.ledge.face });
+          tasks.push({ k: 'plunge', ax: pl.ledge.at[0], az: pl.ledge.at[1], bx: ix, bz: iz, y0: pl.ledge.y, y1: FLOAT, dur: 1.0, t: 0, arc: 0.55 });
+        } else {
+          const e = pickEntry();
+          const [ix, iz] = inner(e, 0.95);
+          tasks.push(...this.goVia(ctx, e.at[0], e.at[1]), { k: 'face', yaw: e.face }, { k: 'act', act: 'sniff', dur: 1.2, t: 0, face: e.face });
+          tasks.push({ k: 'plunge', ax: e.at[0], az: e.at[1], bx: ix, bz: iz, y0: 0, y1: FLOAT, dur: 0.8, t: 0, arc: 0.3 });
+        }
+        const laps = 3 + Math.floor(this.rng() * 4);
+        for (let i = 0; i < laps; i++) {
+          const a = this.rng() * Math.PI * 2, r = Math.sqrt(this.rng()) * 0.72;
+          tasks.push({ k: 'swim', x: pl.x + Math.cos(a) * pl.rx * r, z: pl.z + Math.sin(a) * pl.rz * r, speed: SWIM * (0.8 + this.rng() * 0.5), t: 0, dive: this.rng() < 0.35 ? 1.8 + this.rng() * 1.2 : 0 });
+        }
+        const out = pickEntry();
+        const [ox, oz] = inner(out, 0.95);
+        tasks.push(
+          { k: 'swim', x: ox, z: oz, speed: SWIM, t: 0, dive: 0 },
+          { k: 'plunge', ax: ox, az: oz, bx: out.at[0], bz: out.at[1], y0: FLOAT, y1: 0, dur: 0.85, t: 0, arc: 0.4 },
+          { k: 'act', act: 'shake', dur: 1.1, t: 0 },
+          { k: 'act', act: this.rng() < 0.6 ? 'preen' : 'stretch', dur: 3.2, t: 0 },
+        );
+        this.tasks = tasks;
+        break;
+      }
+      case 'belly': {
+        // Up the steps at the back of the snow hill, a look down from the top, and down the lane on its belly: wheee.
+        const rp = spots!.ramp!;
+        const rides = 1 + (this.rng() < 0.5 ? 1 : 0);
+        const tasks: Task[] = [];
+        for (let i = 0; i < rides; i++) {
+          const lx = rp.run[0] + (this.rng() - 0.5) * 1.6, lz = rp.run[1] + (this.rng() - 0.5) * 1.4;
+          tasks.push(
+            ...this.goVia(ctx, rp.base[0], rp.base[1], this.walkSpeed * (i > 0 ? 1.3 : 1)),
+            { k: 'ascend', ax: rp.base[0], az: rp.base[1], bx: rp.top[0], bz: rp.top[1], y0: 0, y1: rp.height, dur: 1.7, t: 0 },
+            { k: 'act', act: i === 0 || this.rng() < 0.4 ? 'wave' : 'look', dur: 1.4, t: 0, face: CAMERA_FACE },
+            { k: 'belly', ax: rp.top[0], az: rp.top[1], ay: rp.height, bx: rp.end[0], bz: rp.end[1], by: 0.04, lx, lz, dur: 3.0 + this.rng() * 0.8, t: 0 },
+          );
+          tasks.push({ k: 'act', act: this.pick([['shake', 2], ['dance', 1], ['play', 1.2], ['look', 1]]) as IdleAct, dur: 1.8, t: 0 });
+        }
+        this.tasks = tasks;
+        break;
+      }
+      case 'fish': {
+        // A fish from the crate: in the beak, back goes the head, down it goes.
+        const list = spots!.fish!;
+        const free = list.filter(vacant);
+        const sp = (free.length ? free : list)[Math.floor(this.rng() * (free.length || list.length))];
+        this.tasks = [
+          ...this.goVia(ctx, sp.at[0], sp.at[1]),
+          { k: 'face', yaw: sp.face },
+          { k: 'act', act: 'bow', dur: 1.3, t: 0, fish: 'take', face: sp.face },
+          { k: 'act', act: 'eat', dur: 3.3, t: 0, fish: 'eat', face: sp.face + 0.6 },
+          { k: 'act', act: this.rng() < 0.5 ? 'preen' : 'look', dur: 3, t: 0 },
+        ];
+        break;
+      }
+      case 'slip': {
+        // Off for a waddle, and halfway there the ice wins: feet up, a bump, a dazed moment, the glasses put straight.
+        const p = somewhere();
+        if (!p) {
+          this.tasks = [{ k: 'act', act: 'adjust', dur: 2.6, t: 0 }];
+          break;
+        }
+        const mx = this.x + (p[0] - this.x) * 0.55, mz = this.z + (p[1] - this.z) * 0.55;
+        const d = Math.hypot(p[0] - this.x, p[1] - this.z) || 1;
+        this.tasks = [
+          ...this.goVia(ctx, mx, mz, this.walkSpeed * 1.15),
+          { k: 'fall', x: mx, z: mz, tx: mx + ((p[0] - this.x) / d) * 0.5, tz: mz + ((p[1] - this.z) / d) * 0.5, y0: 0, t: 0 },
+          { k: 'act', act: 'adjust', dur: 2.6, t: 0 },
+          { k: 'act', act: 'shake', dur: 1.1, t: 0 },
+          ...this.goVia(ctx, p[0], p[1], this.walkSpeed * 0.8),
+          { k: 'act', act: 'look', dur: 3, t: 0 },
         ];
         break;
       }
@@ -1645,7 +1918,12 @@ export class IdleBrain {
   }
 
   private plan(ctx: IdleContext): void {
-    if (this.style === 'panda') {
+    // Whatever comes next, it gets out of the water first.
+    if (this.wet) {
+      this.tasks = this.surface();
+      if (this.tasks.length) return;
+    }
+    if (this.colonyLife) {
       this.planPanda(ctx);
       return;
     }

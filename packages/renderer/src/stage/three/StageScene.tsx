@@ -48,8 +48,9 @@ export function StageScene({ model, playhead, tier, calm, follow, fonts, phase, 
   const sample = useMemo(() => new StageSample(model.slots.length, model.edgeSlots.length), [model]);
   const bounds = useMemo(() => model.sceneBounds(), [model]);
   const controls = useRef<OrbitControlsImpl>(null);
-  // The pandas' grove is large: it gets ground-plane panning, a walk from the keyboard, and limits that match its size.
-  const grove = model.world === 'panda' ? groveNav(model) : null;
+  // The pandas' grove and the penguins' ice shelf are large: they get ground-plane panning, a walk from the keyboard,
+  // and limits that match their size.
+  const grove = model.world === 'panda' || model.world === 'penguin' ? groveNav(model) : null;
   const camera = useThree((s) => s.camera) as PerspectiveCamera;
   const size = useThree((s) => s.size);
   const invalidate = useThree((s) => s.invalidate);

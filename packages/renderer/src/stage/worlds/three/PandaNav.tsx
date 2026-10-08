@@ -2,14 +2,15 @@ import { useEffect, useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import type { StageModel } from '../../model/StageModel';
 import { groveClearing } from './layout';
+import { polarClearing } from './polarLayout';
 
 /** The most the viewer can get out of the grove (as a share of the clearing), and how low the camera may go. */
 const REACH = 1.05;
 const MIN_HEIGHT = 0.9;
 
-/** Navigation limits for the (larger) grove: the same numbers feed the orbit controls and the keyboard walk. */
+/** Navigation limits for the (larger) grove, or the penguins' (larger) ice shelf: the same numbers feed the orbit controls and the keyboard walk. */
 export function groveNav(model: StageModel) {
-  const { clearX, clearZ } = groveClearing(model);
+  const { clearX, clearZ } = model.world === 'penguin' ? polarClearing(model) : groveClearing(model);
   const reachX = clearX * REACH;
   const reachZ = clearZ * REACH;
   return { reachX, reachZ, maxDistance: Math.max(reachX, reachZ) * 2.4 };

@@ -30,21 +30,24 @@ export interface WorldClock {
   chew: number[];
   /** The time of day (the grove has a day and a night; the other worlds ignore it). */
   day: DayState;
-  /** Every panda that goes about its own business in the grove (the crew when free, and the rest of the colony). */
+  /** Every panda that goes about its own business in the grove (the crew when free, and the rest of the colony), or every penguin of the ice shelf's colony. */
   colony: Colony;
+  /** Where (and at what ambient second) a penguin last went into the pool or came out of it: the water ripples. */
+  splashes: { x: number; z: number; at: number }[];
 }
 
 export function WorldLayer({ model, bounds, driver, calm, playhead }: { model: StageModel; bounds: SceneBounds; driver: StageDriver; calm: boolean; playhead: Playhead }) {
   const invalidate = useThree((s) => s.invalidate);
   const clock = useMemo<WorldClock>(
-    () => ({ now: 0, fishAt: -100, crew: Array.from({ length: 24 }, () => ({ x: 0, y: 0, z: 0, speed: 0 })), chew: Array.from({ length: 24 }, () => -1), day: dayAt(dayTime(), blankDay()), colony: new Colony() }),
+    () => ({ now: 0, fishAt: -100, crew: Array.from({ length: 24 }, () => ({ x: 0, y: 0, z: 0, speed: 0 })), chew: Array.from({ length: 24 }, () => -1), day: dayAt(dayTime(), blankDay()), colony: new Colony(), splashes: [] }),
     [],
   );
   useFrame((_, delta) => {
     if (calm) return;
     const dt = Math.min(delta, 0.1);
     clock.now += dt;
-    if (model.world === 'panda') {
+    // The grove and the ice shelf both have a day and a night.
+    if (model.world === 'panda' || model.world === 'penguin') {
       advanceDay(dt);
       dayAt(dayTime(), clock.day);
     }
@@ -64,7 +67,7 @@ export function WorldLayer({ model, bounds, driver, calm, playhead }: { model: S
     <>
       <World model={model} bounds={bounds} driver={driver} calm={calm} clock={clock} />
       <CastLayer model={model} driver={driver} style={model.world} calm={calm} clock={clock} playhead={playhead} />
-      {model.world === 'panda' && <ColonyLayer model={model} driver={driver} calm={calm} clock={clock} playhead={playhead} />}
+      {(model.world === 'panda' || model.world === 'penguin') && <ColonyLayer model={model} driver={driver} calm={calm} clock={clock} playhead={playhead} />}
     </>
   );
 }

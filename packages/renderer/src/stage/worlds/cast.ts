@@ -16,7 +16,7 @@ import { hasPhysics } from './types';
 
 export type CastPose = 'idle' | 'inspect' | 'push' | 'pull' | 'tap' | 'present' | 'shrug' | 'point' | 'cheer' | 'nod' | 'startle';
 /** 'push' / 'pull': walking while shoving or tugging a block along the ice. 'climb': up or down a rope or an edge; 'leap': a jump between perches. */
-export type CastGait = 'stand' | 'walk' | 'glide' | 'roll' | 'push' | 'pull' | 'climb' | 'leap' | 'tumble';
+export type CastGait = 'stand' | 'walk' | 'glide' | 'roll' | 'push' | 'pull' | 'climb' | 'leap' | 'tumble' | 'swim';
 /** How an animal travels: penguins waddle and belly-slide, pandas shuffle and roll. */
 export type CastStyle = 'penguin' | 'panda';
 
