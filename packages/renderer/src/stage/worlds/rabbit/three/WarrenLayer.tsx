@@ -1,15 +1,47 @@
 import React, { useEffect, useMemo, useRef } from 'react';
-import { Group } from 'three';
+import { useThree, type ThreeEvent } from '@react-three/fiber';
+import { Vector3 } from 'three';
 import type { StageModel } from '../../../model/StageModel';
 import type { StageSample } from '../../../model/sampler';
 import type { StageDriver } from '../../../three/driver';
 import type { Playhead } from '../../../timeline/Playhead';
 import { ParticlePool, hash } from '../../three/particles';
 import type { WorldClock } from '../../three/WorldLayer';
-import { Warren } from '../warren';
+import { Warren, type Bunny, type Pose } from '../warren';
 import { buildBunny, disposeBunny, poseBunny } from './bunny';
 
 const NOTE_COLORS = [[1, 0.56, 0.69], [1, 0.84, 0.3], [0.53, 0.7, 1], [0.71, 0.59, 0.94]];
+
+const _head = new Vector3();
+
+/** What a pose looks like it is (for the hover bubble). */
+const POSE_DOING: Partial<Record<Pose, string>> = {
+  eat: 'munching a snack', dig: 'digging', sniff: 'sniffing about', sleep: 'fast asleep', read: 'reading', gaze: 'gazing at the sky',
+  chat: 'having a chat', cheer: 'cheering!', inspect: 'inspecting the run', push: 'pushing a value along', tap: 'tapping a cell',
+  point: 'pointing it out', nod: 'nodding along', startle: 'startled!', shrug: 'shrugging', present: 'presenting the step', watch: 'watching',
+  lift: 'lifting weights', stretch: 'stretching', jumps: 'doing jumping jacks', type: 'typing at the computer', nap: 'napping',
+  lazy: 'lazing about', guitar: 'playing the guitar', sing: 'singing along', teach: 'teaching the class', notes: 'taking notes',
+  raise: 'raising a paw', ponder: 'pondering', adjust: 'adjusting those glasses', stumble: 'whoops! tripped', dance: 'dancing',
+  listen: 'listening', cool: 'looking cool', hide: 'hiding', drink: 'having a drink', roll: 'rolling about', peer: 'peering around',
+  wave: 'waving', clap: 'clapping', look: 'looking around',
+};
+
+function doingOf(b: Bunny): string {
+  if (b.gait === 'leap') return 'bouncing high';
+  if (b.gait === 'float') return 'floating on a balloon';
+  if (b.gait === 'ride') return 'riding across';
+  if (b.gait === 'slide') return 'down the slide!';
+  if (b.gait === 'hop') {
+    if (b.intent === 'fire') return 'off to the campfire';
+    if (b.intent === 'sleep' || b.intent === 'home') return 'heading home';
+    if (b.intent === 'audience' || b.intent === 'crew') return 'off to the run';
+    if (b.spot?.act === 'hide') return 'getting away';
+    if (b.spot?.act === 'follow' || b.spot?.act === 'drift') return 'out for a stroll';
+    return 'hopping about';
+  }
+  if (b.intent === 'fire' && (b.pose === 'idle' || b.pose === 'sit')) return 'by the campfire';
+  return POSE_DOING[b.pose] ?? (b.intent === 'sleep' ? 'asleep' : b.spot ? `at the ${b.spot.act}` : 'resting');
+}
 
 /** How long after the run stops (or the step last changed) the crew stays at the structures before going off to play. */
 const STAY = 12;
@@ -23,11 +55,40 @@ const STAY = 12;
 export function WarrenLayer({ model, driver, calm, clock, playhead }: { model: StageModel; driver: StageDriver; calm: boolean; clock: WorldClock; playhead: Playhead }) {
   const warren = useMemo(() => new Warren(model, clock.day), [model, clock]);
   const rigs = useMemo(() => warren.bunnies.map((b) => buildBunny(b.info.look)), [warren]);
-  const group = useMemo(() => {
-    const g = new Group();
-    rigs.forEach((r) => g.add(r.root));
-    return g;
-  }, [rigs]);
+  const invalidate = useThree((s) => s.invalidate);
+  const get = useThree((s) => s.get);
+  const gl = useThree((s) => s.gl);
+  const hovered = useRef(-1);
+  const clickedAt = useRef<number[]>(warren.bunnies.map(() => -10));
+  const lastText = useRef<string[]>(warren.bunnies.map(() => ''));
+  const bubbles = useMemo<HTMLDivElement[]>(() => {
+    if (typeof document === 'undefined') return [];
+    return warren.bunnies.map(() => {
+      const el = document.createElement('div');
+      el.setAttribute('aria-hidden', 'true');
+      Object.assign(el.style, {
+        position: 'absolute', left: '0', top: '0', whiteSpace: 'nowrap',
+        font: '600 12px/1.15 "JetBrains Mono", ui-monospace, monospace',
+        padding: '5px 9px 6px', borderRadius: '12px',
+        background: model.palette.frame, color: model.palette.frameText,
+        boxShadow: '0 6px 18px rgba(0,0,0,0.22)', opacity: '0', pointerEvents: 'none', zIndex: '5',
+        transition: 'opacity 140ms ease', willChange: 'transform',
+      } satisfies Partial<CSSStyleDeclaration>);
+      return el;
+    });
+  }, [model.palette, warren]);
+  useEffect(() => {
+    const host = gl.domElement.parentElement;
+    if (!host) return undefined;
+    bubbles.forEach((b) => host.appendChild(b));
+    return () => bubbles.forEach((b) => b.remove());
+  }, [bubbles, gl]);
+  useEffect(
+    () => () => {
+      if (typeof document !== 'undefined') document.body.style.cursor = '';
+    },
+    [],
+  );
   const pool = useMemo(() => new ParticlePool(260, false), []);
   const state = useRef({ last: 0, rest: 0, lastK: -1, gaits: [] as string[], landings: [] as { x: number; y: number; z: number; t: number }[], cheerAt: -100 });
 
@@ -58,6 +119,20 @@ export function WarrenLayer({ model, driver, calm, clock, playhead }: { model: S
           // Landing puffs: when a leap or a float ends on a cloud.
           if ((prev === 'leap' || prev === 'float') && b.gait !== 'leap' && b.gait !== 'float') st.landings.push({ x: b.x, y: b.y, z: b.z, t: now });
           st.gaits[i] = b.gait;
+          // The bubble: its name when clicked; who it is and what it is up to when pointed at.
+          const el = bubbles[i];
+          if (el) {
+            const text = wall - clickedAt.current[i] < 1.6 ? `I'm ${b.info.name}!` : hovered.current === i ? `${b.info.name} · ${doingOf(b)}` : '';
+            const { camera, size } = get();
+            _head.set(b.x, b.y + 1.25 * b.info.look.scale, b.z).project(camera);
+            const visible = text !== '' && _head.z < 1;
+            if (text !== lastText.current[i]) {
+              el.textContent = text;
+              lastText.current[i] = text;
+            }
+            el.style.opacity = visible ? '1' : '0';
+            if (visible) el.style.transform = `translate(${((_head.x * 0.5 + 0.5) * size.width).toFixed(1)}px, ${((-_head.y * 0.5 + 0.5) * size.height).toFixed(1)}px) translate(-50%, -100%)`;
+          }
           if (calm) return;
           if (b.pose === 'sleep' || b.pose === 'nap') {
             for (let q = 0; q < 3; q++) {
@@ -104,12 +179,33 @@ export function WarrenLayer({ model, driver, calm, clock, playhead }: { model: S
         }
         pool.end();
       }),
-    [driver, model, warren, rigs, pool, clock, calm, playhead],
+    [driver, model, warren, rigs, pool, clock, calm, playhead, bubbles, get],
   );
 
   return (
     <>
-      <primitive object={group} />
+      {rigs.map((r, i) => (
+        <primitive
+          key={i}
+          object={r.root}
+          onClick={(e: ThreeEvent<MouseEvent>) => {
+            e.stopPropagation();
+            clickedAt.current[i] = performance.now() / 1000;
+            invalidate();
+          }}
+          onPointerOver={(e: ThreeEvent<PointerEvent>) => {
+            e.stopPropagation();
+            hovered.current = i;
+            document.body.style.cursor = 'pointer';
+            invalidate();
+          }}
+          onPointerOut={() => {
+            if (hovered.current === i) hovered.current = -1;
+            document.body.style.cursor = '';
+            invalidate();
+          }}
+        />
+      ))}
       <primitive object={pool.points} />
     </>
   );
