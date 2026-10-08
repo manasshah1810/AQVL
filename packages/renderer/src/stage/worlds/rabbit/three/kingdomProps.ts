@@ -1,8 +1,6 @@
 import {
-  BoxGeometry,
+  Box3,
   Color,
-  ConeGeometry,
-  CylinderGeometry,
   DoubleSide,
   Group,
   InstancedBufferAttribute,
@@ -22,6 +20,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { rng } from '../../three/glsl';
 import { SCHOOL_ANGLE, clampTo, type Island, type Kingdom, type V3 } from '../kingdom';
 import { COURSE, PLAY_SLIDE, local } from '../warren';
+import { plumpCone, roundBox, roundCylinder, shadowDisc, shadowMaterial, softToy } from './soft';
 
 /**
  * The kingdom's furniture: round cloud cottages, the little castle and its
@@ -32,16 +31,18 @@ import { COURSE, PLAY_SLIDE, local } from '../warren';
  * glow, the swaying grass and flowers, balloons).
  */
 
+// Every shape has soft, rounded edges (boxes, drums and plump cones), so the furniture reads as toy-like, not geometric.
 const GEO = {
-  sphere: new SphereGeometry(1, 20, 14),
-  small: new SphereGeometry(1, 10, 8),
-  cyl: new CylinderGeometry(1, 1, 1, 20),
-  cyl8: new CylinderGeometry(1, 1, 1, 8),
-  cone: new ConeGeometry(1, 1, 20),
-  box: new BoxGeometry(1, 1, 1),
-  torus: new TorusGeometry(1, 0.12, 8, 28),
+  sphere: new SphereGeometry(1, 28, 20),
+  small: new SphereGeometry(1, 14, 10),
+  cyl: roundCylinder(0.16, 28),
+  cyl8: roundCylinder(0.3, 12, 3),
+  cone: plumpCone(28),
+  box: roundBox(0.16),
+  torus: new TorusGeometry(1, 0.12, 12, 36),
   flag: new PlaneGeometry(1, 0.62, 10, 2).translate(0.5, 0, 0),
-  blade: new ConeGeometry(0.05, 1, 4).translate(0, 0.5, 0),
+  // A grass blade: a slim, soft leaf with a rounded tip (not a spike).
+  blade: new SphereGeometry(1, 8, 8).scale(0.05, 0.5, 0.028).translate(0, 0.5, 0),
   petal: new SphereGeometry(1, 8, 6),
 };
 
@@ -81,7 +82,7 @@ export function buildProps(k: Kingdom): KingdomProps {
     const key = color + rough + JSON.stringify(Object.keys(extra));
     let m = matCache.get(key);
     if (!m) {
-      m = new MeshStandardMaterial({ color, roughness: rough, ...extra });
+      m = softToy(new MeshStandardMaterial({ color, roughness: Math.max(0.45, rough), ...extra }), extra.transparent ? 0.1 : 0.22);
       matCache.set(key, m);
       materials.push(m);
     }
@@ -125,6 +126,7 @@ export function buildProps(k: Kingdom): KingdomProps {
       );
     };
     m.customProgramCacheKey = () => 'rabbit-flag';
+    softToy(m, 0.15);
     materials.push(m);
     timed.push({ uniforms });
     return m;
@@ -172,11 +174,30 @@ export function buildProps(k: Kingdom): KingdomProps {
     add(GEO.cyl, windowMat, 0.55, 0.95, 0.8, 0.17, 0.06, 0.17, g, 0.6, Math.PI / 2);
     add(GEO.cyl, windowMat, 0, 1.05, -0.98, 0.17, 0.06, 0.17, g, 0, Math.PI / 2);
     add(GEO.cyl, mat(C.stone, 0.8), 0, 0.03, 1.15, 0.35, 0.06, 0.25, g);
-    add(GEO.box, mat(C.stoneDark, 0.8), 0.55, 2.2, -0.3, 0.22, 0.6, 0.22, g);
-    // Window boxes with flowers.
-    add(GEO.box, mat(C.wood, 0.8), -0.55, 0.78, 0.88, 0.32, 0.08, 0.1, g, -0.6);
-    add(GEO.small, mat('#ff8fb1', 0.6), -0.6, 0.85, 0.92, 0.07, 0.07, 0.07, g);
-    add(GEO.small, mat('#ffd34d', 0.6), -0.48, 0.85, 0.96, 0.06, 0.06, 0.06, g);
+    // A round chimney with a puff of smoke drifting off it.
+    add(GEO.cyl, mat(C.stoneDark, 0.8), 0.55, 2.2, -0.3, 0.13, 0.6, 0.13, g);
+    add(GEO.cyl, mat(C.stone, 0.8), 0.55, 2.52, -0.3, 0.17, 0.08, 0.17, g);
+    for (let j = 0; j < 3; j++) add(GEO.small, mat(C.white, 0.95), 0.6 + j * 0.16, 2.78 + j * 0.2, -0.32 - j * 0.05, 0.12 + j * 0.04, 0.1 + j * 0.035, 0.12 + j * 0.04, g);
+    // Icing under the eaves: a scalloped trim of little cream bobbles all the way round.
+    for (let j = 0; j < 18; j++) {
+      const a = (j / 18) * Math.PI * 2;
+      add(GEO.small, mat(C.white, 0.7), Math.sin(a) * 1.16, 1.42, Math.cos(a) * 1.16, 0.12, 0.1, 0.12, g);
+    }
+    // White frames round the windows, a heart on the door, little shutters.
+    for (const [x, y, z, ry] of [[-0.55, 0.95, 0.8, -0.6], [0.55, 0.95, 0.8, 0.6], [0, 1.05, -0.98, Math.PI]] as const) {
+      add(GEO.torus, mat(C.white, 0.6), x, y, z + (z > 0 ? 0.02 : -0.02), 0.19, 0.19, 0.4, g, ry);
+      add(GEO.box, mat(C.white, 0.6), x, y, z + (z > 0 ? 0.03 : -0.03), 0.3, 0.02, 0.02, g, ry);
+    }
+    add(GEO.small, mat('#ff8fb1', 0.5), -0.035, 0.66, 1.02, 0.045, 0.045, 0.02, g);
+    add(GEO.small, mat('#ff8fb1', 0.5), 0.035, 0.66, 1.02, 0.045, 0.045, 0.02, g);
+    add(GEO.cone, mat('#ff8fb1', 0.5), 0, 0.615, 1.02, 0.07, 0.07, 0.02, g, 0, Math.PI);
+    // Window boxes spilling over with flowers (both front windows).
+    for (const sx of [-1, 1]) {
+      add(GEO.box, mat(C.wood, 0.8), sx * 0.55, 0.76, 0.9, 0.36, 0.1, 0.12, g, sx * 0.6);
+      ['#ff8fb1', '#ffd34d', '#ffffff', '#b497f0'].forEach((c, q) => add(GEO.small, mat(c, 0.6), sx * (0.43 + q * 0.08), 0.85, 0.96 - q * 0.045 * sx * sx, 0.055, 0.055, 0.055, g));
+    }
+    // Stepping stones up to the door.
+    for (let j = 0; j < 3; j++) add(GEO.cyl, mat(j % 2 ? C.stone : '#f6eefc', 0.85), (j % 2 ? 0.08 : -0.06), 0.02, 1.55 + j * 0.42, 0.2, 0.05, 0.16, g);
   };
 
   const bench = (x: number, y: number, z: number, yaw: number, color = C.wood) => {
@@ -215,16 +236,36 @@ export function buildProps(k: Kingdom): KingdomProps {
   // Plaza: a paved stage in the middle (kept clear), a ring path, lanterns round it, flags and reading corners at the rim.
   const P = k.islands.plaza;
   {
-    const pave = add(GEO.cyl, mat('#f3ecfb', 0.9), P.x, P.y - 0.031, P.z, k.clearX + 1.2, 0.06, k.clearZ + 1.2);
+    const pave = add(GEO.cyl, mat('#f3ecfb', 0.9), P.x, P.y - 0.012, P.z, k.clearX + 1.2, 0.06, k.clearZ + 1.2);
     pave.renderOrder = -1;
     const ring = add(GEO.torus, mat('#e4d6f7', 0.85), P.x, P.y - 0.115, P.z, (k.clearX + 2.4), (k.clearZ + 2.4), 4, undefined, 0, Math.PI / 2);
     ring.scale.set(k.clearX + 2.6, k.clearZ + 2.6, 1);
+    const lampRing: [number, number, boolean][] = [];
     for (let j = 0; j < 12; j++) {
       const a = (j / 12) * Math.PI * 2 + Math.PI / 12;
       const x = P.x + Math.cos(a) * (k.clearX + 4.1), z = P.z + Math.sin(a) * (k.clearZ + 3.9);
-      if (Math.hypot((x - P.x) / P.rx, (z - P.z) / P.rz) > 0.9) continue;
-      lantern(x, P.y, z, 1.6);
+      const on = Math.hypot((x - P.x) / P.rx, (z - P.z) / P.rz) <= 0.9;
+      lampRing.push([x, z, on]);
+      if (on) lantern(x, P.y, z, 1.6);
     }
+    // Bunting: little pennants on a sagging string from lantern to lantern round the stage.
+    lampRing.forEach(([x0, z0, on0], j) => {
+      const [x1, z1, on1] = lampRing[(j + 1) % lampRing.length];
+      if (!on0 || !on1) return;
+      const n = 9;
+      const span = Math.hypot(x1 - x0, z1 - z0);
+      const yaw = Math.atan2(-(z1 - z0), x1 - x0);
+      const yAt = (t: number) => P.y + 1.55 - Math.sin(t * Math.PI) * Math.min(0.55, span * 0.09);
+      for (let q = 0; q < n; q++) {
+        const t0 = q / n, t1 = (q + 1) / n;
+        const ax = x0 + (x1 - x0) * t0, az = z0 + (z1 - z0) * t0, bx = x0 + (x1 - x0) * t1, bz = z0 + (z1 - z0) * t1;
+        const ay = yAt(t0), by = yAt(t1);
+        const l = Math.hypot(bx - ax, by - ay, bz - az);
+        add(GEO.cyl8, mat(C.white, 0.6), (ax + bx) / 2, (ay + by) / 2, (az + bz) / 2, 0.012, l, 0.012, group, yaw, 0, Math.PI / 2 + Math.atan2(by - ay, Math.hypot(bx - ax, bz - az)));
+        if (q === 0) continue;
+        add(GEO.cone, mat(['#ff8fb1', '#ffd166', '#87b2ff', '#7fdcb6', '#b497f0'][(q + j) % 5], 0.65), ax, ay - 0.14, az, 0.13, 0.26, 0.025, group, yaw, 0, Math.PI);
+      }
+    });
     for (let j = 0; j < 8; j++) {
       const a = Math.PI + (j / 7) * Math.PI;
       // Not in front of the school corner or the music corner.
@@ -752,6 +793,7 @@ export function buildProps(k: Kingdom): KingdomProps {
       );
     };
     m.customProgramCacheKey = () => `rabbit-sway-${sway}`;
+    softToy(m, 0.18, 0.16);
     materials.push(m);
     timed.push({ uniforms });
     return m;
@@ -826,19 +868,114 @@ export function buildProps(k: Kingdom): KingdomProps {
   instanced(GEO.blade, swayMat(0.8, 0.12), stems);
   instanced(GEO.petal, swayMat(0.55, 0.12), petals);
   instanced(GEO.petal, swayMat(0.6, 0.12), centres);
-  // Round bushes on the islands' edges.
+  // Bushes on the islands' edges: plump clusters of three or four balls, dotted with little blossoms.
   const bushes: Parameters<typeof instanced>[2] = [];
+  const blooms: Parameters<typeof instanced>[2] = [];
+  const nearPort = (x: number, z: number, d: number) => k.links.some((l) => [l.pts[0], l.pts[l.pts.length - 1]].some((p) => Math.hypot(p[0] - x, p[2] - z) < d));
   for (const i of Object.values(k.islands)) {
     if (i.id === 'plaza' || i.id === 'lookout') continue;
-    for (let j = 0; j < 6; j++) {
+    const count = Math.round(5 + (i.rx + i.rz) * 0.35);
+    for (let j = 0; j < count; j++) {
       const a = R() * Math.PI * 2;
       const x = i.x + Math.cos(a) * i.rx * 0.88, z = i.z + Math.sin(a) * i.rz * 0.88;
-      if (k.links.some((l) => [l.pts[0], l.pts[l.pts.length - 1]].some((p) => Math.hypot(p[0] - x, p[2] - z) < 2.2))) continue;
-      const s = 0.35 + R() * 0.3;
-      bushes.push({ x, y: i.y + s * 0.6, z, sx: s, sy: s * 0.85, sz: s, base: i.y - 1, color: ['#8ad99a', '#a5e3a0', '#ffc4d8'][j % 3] });
+      if (nearPort(x, z, 2.2)) continue;
+      const s = 0.32 + R() * 0.28;
+      const color = ['#8ad99a', '#a5e3a0', '#ffc4d8', '#9fdcae'][j % 4];
+      const flower = ['#ffffff', '#ff8fb1', '#ffd34d', '#ffffff'][j % 4];
+      const balls = 3 + (j % 2);
+      for (let q = 0; q < balls; q++) {
+        const qa = a + q * 2.1 + R() * 0.4;
+        const bs = s * (q === 0 ? 1 : 0.62 + R() * 0.2);
+        const bx = x + (q === 0 ? 0 : Math.cos(qa) * s * 0.75), bz = z + (q === 0 ? 0 : Math.sin(qa) * s * 0.75);
+        bushes.push({ x: bx, y: i.y + bs * 0.62, z: bz, sx: bs, sy: bs * 0.86, sz: bs, base: i.y - 1, color });
+        for (let f = 0; f < 3; f++) {
+          const fa = R() * Math.PI * 2, fe = 0.25 + R() * 0.9;
+          blooms.push({ x: bx + Math.cos(fa) * Math.cos(fe) * bs * 0.95, y: i.y + bs * 0.62 + Math.sin(fe) * bs * 0.82, z: bz + Math.sin(fa) * Math.cos(fe) * bs * 0.95, sx: 0.05, sy: 0.04, sz: 0.05, base: i.y - 1, color: flower });
+        }
+      }
     }
   }
   instanced(GEO.sphere, swayMat(0.9, 0.01), bushes);
+  instanced(GEO.small, swayMat(0.6, 0.01), blooms);
+  // Little toadstools tucked about (pink and red caps with white spots), and clover.
+  const R3 = rng(61);
+  const stalks: Parameters<typeof instanced>[2] = [];
+  const caps: Parameters<typeof instanced>[2] = [];
+  const spots: Parameters<typeof instanced>[2] = [];
+  for (const i of Object.values(k.islands)) {
+    if (i.id === 'plaza') continue;
+    const n = Math.round(3 + (i.rx + i.rz) * 0.2);
+    for (let j = 0; j < n; j++) {
+      const a = R3() * Math.PI * 2, r = 0.6 + R3() * 0.3;
+      const cx = i.x + Math.cos(a) * r * i.rx, cz = i.z + Math.sin(a) * r * i.rz;
+      if (nearPort(cx, cz, 1.8)) continue;
+      for (let q = 0; q < 1 + (j % 3); q++) {
+        const x = cx + (q ? (R3() - 0.5) * 0.5 : 0), z = cz + (q ? (R3() - 0.5) * 0.5 : 0);
+        const h = (0.14 + R3() * 0.12) * (q ? 0.7 : 1);
+        stalks.push({ x, y: i.y + h / 2, z, sx: h * 0.32, sy: h / 2, sz: h * 0.32, base: i.y, color: '#fff6ea' });
+        const cr = h * 0.85;
+        caps.push({ x, y: i.y + h, z, sx: cr, sy: cr * 0.62, sz: cr, base: i.y, color: j % 2 ? '#ff6f8f' : '#ff9fc2' });
+        for (let d = 0; d < 4; d++) {
+          const da = d * 1.7 + R3(), de = 0.5 + R3() * 0.5;
+          spots.push({ x: x + Math.cos(da) * Math.cos(de) * cr * 0.92, y: i.y + h + Math.sin(de) * cr * 0.6, z: z + Math.sin(da) * Math.cos(de) * cr * 0.92, sx: cr * 0.16, sy: cr * 0.1, sz: cr * 0.16, base: i.y, color: '#ffffff' });
+        }
+      }
+    }
+  }
+  instanced(GEO.sphere, swayMat(0.85, 0.02), stalks);
+  instanced(GEO.sphere, swayMat(0.55, 0.02), caps);
+  instanced(GEO.small, swayMat(0.6, 0.02), spots);
+  // Paths: stepping stones from where each bridge lands in towards the middle of the island.
+  const stones: Parameters<typeof instanced>[2] = [];
+  const pathCols = ['#fff6ea', '#f6e9ff', '#ffeef4'];
+  for (const l of k.links) {
+    for (const [id, p] of [[l.a, l.pts[0]], [l.b, l.pts[l.pts.length - 1]]] as const) {
+      const i = k.islands[id];
+      if (!i || i.id === 'plaza') continue;
+      const dx = i.x - p[0], dz = i.z - p[2];
+      const d = Math.hypot(dx, dz) || 1;
+      const steps = Math.floor(Math.min(d * 0.55, 6) / 0.62);
+      for (let j = 1; j <= steps; j++) {
+        const t = j * 0.62;
+        const wob = Math.sin(j * 1.9 + l.length) * 0.22;
+        const x = p[0] + (dx / d) * t - (dz / d) * wob, z = p[2] + (dz / d) * t + (dx / d) * wob;
+        if (Math.hypot((x - i.x) / i.rx, (z - i.z) / i.rz) > 0.95) continue;
+        const s = 0.2 + ((j * 7 + l.length * 3) % 5) * 0.025;
+        stones.push({ x, y: i.y + 0.012, z, sx: s, sy: 0.03, sz: s * 0.8, base: i.y + 1, color: pathCols[j % 3], ry: j * 0.9 });
+      }
+    }
+  }
+  instanced(GEO.cyl, swayMat(0.85, 0), stones);
+
+  // Soft contact shadows under each piece of furniture (sitting it down on the cloud).
+  {
+    const box = new Box3();
+    const list: { x: number; y: number; z: number; sx: number; sz: number }[] = [];
+    group.updateMatrixWorld(true);
+    for (const o of group.children) {
+      if (!(o as Group).isGroup || o.userData.keep) continue;
+      box.setFromObject(o);
+      const w = box.max.x - box.min.x, d = box.max.z - box.min.z;
+      if (w > 9 || d > 9 || box.min.y > o.position.y + 0.6) continue;
+      list.push({ x: (box.min.x + box.max.x) / 2, y: o.position.y + 0.015, z: (box.min.z + box.max.z) / 2, sx: w * 1.2 + 0.4, sz: d * 1.2 + 0.4 });
+    }
+    const geo = shadowDisc();
+    const sm = shadowMaterial('#5b4a8c', 0.24);
+    geometries.push(geo);
+    materials.push(sm);
+    const im = new InstancedMesh(geo, sm, Math.max(1, list.length));
+    const o = new Object3D();
+    list.forEach((it, i) => {
+      o.position.set(it.x, it.y, it.z);
+      o.scale.set(it.sx, 1, it.sz);
+      o.updateMatrix();
+      im.setMatrixAt(i, o.matrix);
+    });
+    im.count = list.length;
+    im.frustumCulled = false;
+    im.renderOrder = 1;
+    group.add(im);
+  }
 
   mergeStatic(group, geometries);
 

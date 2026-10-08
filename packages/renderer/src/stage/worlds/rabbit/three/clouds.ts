@@ -46,45 +46,95 @@ export interface Puff {
   tint: string;
 }
 
-let unit: BufferGeometry | null = null;
-function unitPuff(): BufferGeometry {
-  if (!unit) {
-    const g = mergeVertices(new IcosahedronGeometry(1, 3));
+const units: BufferGeometry[] = [];
+/** The big puffs (far-off clouds, distant islands) get a finer mesh so their silhouettes stay round. */
+const BIG = 3.2;
+/**
+ * A cloud puff: a ball covered in smaller billows (a cauliflower, not a
+ * sphere), flattened a little underneath. Three variants, so neighbours differ.
+ */
+function unitPuff(variant: number): BufferGeometry {
+  if (!units[variant]) {
+    const g = mergeVertices(new IcosahedronGeometry(1, variant >= 3 ? 5 : 3));
     g.deleteAttribute('uv');
-    // Lumpy, not a perfect ball.
+    let seed = 17 + (variant % 3) * 131;
+    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    const bumps: [number, number, number, number, number][] = [];
+    for (let j = 0; j < 11; j++) {
+      // Billows mostly on the top and sides.
+      const u = rnd() * 1.6 - 0.6, a = rnd() * Math.PI * 2, r = Math.sqrt(1 - u * u);
+      bumps.push([Math.cos(a) * r, u, Math.sin(a) * r, 0.1 + rnd() * 0.1, 3 + rnd() * 4]);
+    }
     const p = g.attributes.position as BufferAttribute;
     for (let i = 0; i < p.count; i++) {
       const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
-      const k = 1 + 0.07 * Math.sin(x * 5.1 + y * 3.3) + 0.05 * Math.sin(z * 6.7 - x * 2.1) + 0.04 * Math.sin(y * 9.1 + z * 4.3);
-      p.setXYZ(i, x * k, y * k, z * k);
+      let k = 1 + 0.035 * Math.sin(x * 7.1 + y * 5.3 + variant) + 0.03 * Math.sin(z * 8.7 - x * 4.1);
+      for (const [bx, by, bz, h, sharp] of bumps) k += h * Math.max(0, x * bx + y * by + z * bz) ** sharp;
+      // A flatter, tucked-in underside.
+      const yy = y < -0.2 ? y * (0.82 + 0.18 * (1 + y)) : y;
+      p.setXYZ(i, x * k, yy * k, z * k);
     }
     g.computeVertexNormals();
-    unit = g;
+    units[variant] = g;
   }
-  return unit;
+  return units[variant];
 }
 
-/** One geometry for many puffs (one draw call), each tinted. */
+/**
+ * One geometry for many puffs (one draw call), each tinted. Each vertex
+ * also records how buried it is among the neighbouring puffs (the creases
+ * where puffs meet read darker and cooler, so a heap of puffs reads as one
+ * soft volume rather than a pile of balls).
+ */
 export function puffGeometry(puffs: Puff[]): BufferGeometry {
-  const base = unitPuff();
   const parts: BufferGeometry[] = [];
   const c = new Color();
-  for (const pf of puffs) {
-    const g = base.clone();
+  // A coarse grid of the puffs, for finding the neighbours of each vertex.
+  const cell = 4;
+  const grid = new Map<number, number[]>();
+  const hashOf = (gx: number, gy: number, gz: number) => (gx + 512) * 1048576 + (gy + 512) * 1024 + (gz + 512);
+  const keyOf = (x: number, y: number, z: number) => hashOf(Math.floor(x / cell), Math.floor(y / cell), Math.floor(z / cell));
+  puffs.forEach((pf, idx) => {
+    const r = pf.r * 1.25;
+    for (let gx = Math.floor((pf.x - r) / cell); gx <= Math.floor((pf.x + r) / cell); gx++)
+      for (let gy = Math.floor((pf.y - r) / cell); gy <= Math.floor((pf.y + r) / cell); gy++)
+        for (let gz = Math.floor((pf.z - r) / cell); gz <= Math.floor((pf.z + r) / cell); gz++) {
+          const key = hashOf(gx, gy, gz);
+          let l = grid.get(key);
+          if (!l) grid.set(key, (l = []));
+          l.push(idx);
+        }
+  });
+  puffs.forEach((pf, idx) => {
+    const g = unitPuff((Math.abs(Math.floor(pf.x * 3.1 + pf.z * 1.7 + pf.y)) % 3) + (pf.r > BIG ? 3 : 0)).clone();
     g.scale(pf.r, pf.r * (pf.sy ?? 1), pf.r);
     g.rotateY(pf.x * 1.7 + pf.z);
     g.translate(pf.x, pf.y, pf.z);
-    const n = g.attributes.position.count;
+    const pos = g.attributes.position as BufferAttribute;
+    const n = pos.count;
     const col = new Float32Array(n * 3);
+    const occ = new Float32Array(n);
     c.set(pf.tint);
     for (let i = 0; i < n; i++) {
       col[i * 3] = c.r;
       col[i * 3 + 1] = c.g;
       col[i * 3 + 2] = c.b;
+      const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+      let o = 0;
+      for (const j of grid.get(keyOf(x, y, z)) ?? []) {
+        if (j === idx) continue;
+        const q = puffs[j];
+        const sy = q.sy ?? 1;
+        const d = Math.hypot(x - q.x, (y - q.y) / sy, z - q.z) / (q.r * 1.12);
+        o += Math.max(0, 1 - Math.max(0, d - 0.75) / 0.5);
+        if (o >= 1) break;
+      }
+      occ[i] = Math.min(1, o);
     }
     g.setAttribute('color', new BufferAttribute(col, 3));
+    g.setAttribute('aOcc', new BufferAttribute(occ, 1));
     parts.push(g);
-  }
+  });
   const merged = parts.length ? mergeGeometries(parts, false) : new BufferGeometry();
   parts.forEach((g) => g.dispose());
   return merged;
@@ -92,14 +142,17 @@ export function puffGeometry(puffs: Puff[]): BufferGeometry {
 
 const CLOUD_VERTEX = /* glsl */ `
 attribute vec3 color;
+attribute float aOcc;
 varying vec3 vN;
 varying vec3 vW;
 varying vec3 vC;
+varying float vOcc;
 void main() {
   vec4 w = modelMatrix * vec4(position, 1.0);
   vW = w.xyz;
   vN = normalize(mat3(modelMatrix) * normal);
   vC = color;
+  vOcc = aOcc;
   gl_Position = projectionMatrix * viewMatrix * w;
 }
 `;
@@ -117,19 +170,34 @@ uniform float uGlow;
 varying vec3 vN;
 varying vec3 vW;
 varying vec3 vC;
+varying float vOcc;
+${NOISE}
 void main() {
   vec3 n = normalize(vN);
   vec3 v = normalize(cameraPosition - vW);
+  float dist = length(vW - cameraPosition);
+  // Fine fluff: the surface normal ruffled by a little noise (fading out with distance, where it would only shimmer).
+  vec3 q = vW * 0.9;
+  vec3 ruffle = vec3(vnoise(q.yz + 3.1), vnoise(q.zx + 7.3), vnoise(q.xy + 1.7)) - 0.5;
+  n = normalize(n + ruffle * 0.3 * (1.0 - smoothstep(20.0, 90.0, dist)));
   float sd = dot(n, uSun) * 0.5 + 0.5;
   float md = dot(n, uMoon) * 0.5 + 0.5;
   float rim = pow(1.0 - max(0.0, dot(n, v)), 2.4);
   float up = smoothstep(-0.4, 1.0, n.y);
-  // Day: bright white tops, soft lilac in the shade.
-  vec3 day = mix(vec3(0.78, 0.78, 0.94), vec3(1.0, 0.995, 0.985), smoothstep(0.1, 0.85, sd) * 0.7 + up * 0.3);
+  float occ = smoothstep(0.0, 1.0, vOcc);
+  // Day: bright creamy tops, soft periwinkle-lilac in the shade (light wraps well round a cloud).
+  vec3 day = mix(vec3(0.83, 0.84, 0.97), vec3(1.04, 1.03, 1.01), smoothstep(0.1, 0.8, sd) * 0.6 + up * 0.4);
+  // Creases where puffs meet: cooler and a touch darker.
+  day = mix(day, day * vec3(0.86, 0.86, 0.97), occ * 0.7);
+  // Underneath: a faint rosy glow bounced up from below.
+  day += vec3(0.07, 0.025, 0.06) * smoothstep(0.1, -0.8, n.y);
+  // A silver lining: the sun shining through thin edges when the cloud is between it and us.
+  day += vec3(1.0, 0.94, 0.82) * rim * pow(max(0.0, dot(-v, uSun)), 3.0) * 0.55;
   // Sunset: pink and gold.
   day = mix(day, day * vec3(1.0, 0.8, 0.76) + vec3(0.1, 0.03, 0.05), uDusk * 0.85);
   // Night: deep blue, silvered where the moon reaches.
   vec3 night = mix(vec3(0.15, 0.18, 0.38), vec3(0.56, 0.63, 0.94), smoothstep(0.25, 0.95, md) * 0.75 + up * 0.25);
+  night *= 1.0 - occ * 0.25;
   vec3 col = mix(night, day, uDay) * vC;
   col += vec3(0.62, 0.74, 1.0) * rim * (0.3 + 0.7 * md) * uNight * 0.85;
   col += vec3(0.45, 0.58, 1.0) * smoothstep(0.4, 1.0, n.y) * uNight * 0.18;
@@ -137,7 +205,6 @@ void main() {
   col += vec3(1.0, 0.72, 0.55) * rim * uDusk * 0.3;
   // A faint glow from within at night (the clouds of a magic kingdom).
   col += vec3(0.32, 0.26, 0.6) * uNight * uGlow * (1.0 - up * 0.6);
-  float dist = length(vW - cameraPosition);
   col = mix(col, uFogColor, smoothstep(uFogNear, uFogFar, dist));
   gl_FragColor = vec4(col, 1.0);
   #include <tonemapping_fragment>
@@ -179,8 +246,8 @@ float hash13(vec3 p) {
 void main() {
   vec3 d = normalize(vDir);
   float h = d.y;
-  vec3 zen = mix(vec3(0.03, 0.05, 0.17), vec3(0.33, 0.62, 0.98), uDay);
-  vec3 hor = mix(vec3(0.13, 0.19, 0.42), vec3(0.8, 0.9, 1.0), uDay);
+  vec3 zen = mix(vec3(0.03, 0.05, 0.17), vec3(0.3, 0.58, 0.97), uDay);
+  vec3 hor = mix(vec3(0.13, 0.19, 0.42), vec3(0.7, 0.84, 1.0), uDay);
   zen = mix(zen, vec3(0.38, 0.4, 0.78), uDusk * 0.55);
   hor = mix(hor, vec3(1.0, 0.68, 0.58), uDusk * 0.85);
   vec3 col = mix(hor, zen, smoothstep(-0.02, 0.6, h));
@@ -236,7 +303,7 @@ export function skyMaterial(u: DayUniforms): ShaderMaterial {
 
 /** The colour of the sky at the horizon (the fog, the background), from the day. */
 export function horizonColor(day: number, dusk: number, out: Color): Color {
-  const n = new Color(0.13, 0.19, 0.42), dd = new Color(0.8, 0.9, 1.0), ds = new Color(1.0, 0.68, 0.58);
+  const n = new Color(0.13, 0.19, 0.42), dd = new Color(0.7, 0.84, 1.0), ds = new Color(1.0, 0.68, 0.58);
   return out.copy(n).lerp(dd, day).lerp(ds, dusk * 0.85);
 }
 
@@ -250,7 +317,11 @@ export function turfMaterial(color: string, u: DayUniforms): MeshStandardMateria
     sh.fragmentShader = `uniform float uTime;\nuniform float uDay;\nvarying vec3 vTurf;\n${NOISE}\n` + sh.fragmentShader.replace(
       '#include <map_fragment>',
       `#include <map_fragment>
-      diffuseColor.rgb *= 0.93 + 0.12 * fbm(vTurf.xz * 0.45);
+      // Soft patches: lighter, sunnier clover here and there, a deeper green elsewhere.
+      float turfP = fbm(vTurf.xz * 0.22 + 4.0);
+      diffuseColor.rgb *= 0.92 + 0.14 * fbm(vTurf.xz * 0.45);
+      diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(1.1, 1.08, 0.86), smoothstep(0.5, 0.75, turfP) * 0.7);
+      diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.9, 0.96, 0.95), smoothstep(0.45, 0.2, turfP) * 0.6);
       float shade = smoothstep(0.52, 0.7, fbm(vTurf.xz * 0.045 + vec2(uTime * 0.012, uTime * 0.007)));
       diffuseColor.rgb *= 1.0 - shade * 0.2 * uDay;`,
     );

@@ -5,6 +5,7 @@ import {
   DoubleSide,
   Group,
   Mesh,
+  MeshPhysicalMaterial,
   MeshStandardMaterial,
   SphereGeometry,
   TorusGeometry,
@@ -13,6 +14,7 @@ import {
   type Object3D,
 } from 'three';
 import type { Accessory, Bunny, BunnyLook, GearAt, Held, Pose } from '../warren';
+import { softToy } from './soft';
 
 /**
  * A rabbit: a round body and a round head, long ears (or lop ears), a puff
@@ -28,8 +30,24 @@ import type { Accessory, Bunny, BunnyLook, GearAt, Held, Pose } from '../warren'
  * (put down beside the bed at night), a pointer, dumbbells, a notebook.
  */
 
-const SPHERE = new SphereGeometry(1, 22, 16);
-const SMALL = new SphereGeometry(1, 12, 9);
+const SPHERE = new SphereGeometry(1, 32, 24);
+const SMALL = new SphereGeometry(1, 16, 12);
+/** An ear: narrow where it joins the head, widest a little above the middle, a soft rounded tip. */
+const EAR = (() => {
+  const g = new SphereGeometry(1, 20, 18);
+  const p = g.attributes.position;
+  for (let i = 0; i < p.count; i++) {
+    const t = (p.getY(i) + 1) / 2;
+    const w = 0.55 + 0.45 * Math.sin(Math.PI * Math.min(1, t * 0.95 + 0.05)) ** 0.7 + 0.12 * t;
+    p.setX(i, p.getX(i) * w);
+    // Cupped: the middle of the front face sits back a little.
+    p.setZ(i, p.getZ(i) - 0.25 * (1 - Math.abs(p.getX(i))) * Math.max(0, p.getZ(i)));
+  }
+  g.computeVertexNormals();
+  return g;
+})();
+/** Half a ring (a little smile, one side of the "w" mouth). */
+const ARC = new TorusGeometry(1, 0.2, 6, 14, Math.PI);
 const TORUS = new TorusGeometry(1, 0.32, 10, 28);
 const THIN = new TorusGeometry(1, 0.07, 6, 36);
 const CYL = new CylinderGeometry(1, 1, 1, 18);
@@ -45,8 +63,12 @@ const OPEN = new SphereGeometry(1, 22, 14, Math.PI / 2 + 0.55, Math.PI * 2 - 1.1
 const DOME = new SphereGeometry(1, 18, 9, 0, Math.PI * 2, 0, Math.PI / 2);
 
 const shared = {
-  eye: new MeshStandardMaterial({ color: '#221c2c', roughness: 0.25, metalness: 0 }),
-  shine: new MeshStandardMaterial({ color: '#ffffff', emissive: '#ffffff', emissiveIntensity: 0.6 }),
+  eye: new MeshPhysicalMaterial({ color: '#1c1526', roughness: 0.18, clearcoat: 1, clearcoatRoughness: 0.08 }),
+  iris: new MeshStandardMaterial({ color: '#5a3f78', roughness: 0.3, emissive: '#3a2458', emissiveIntensity: 0.25 }),
+  shine: new MeshStandardMaterial({ color: '#ffffff', emissive: '#ffffff', emissiveIntensity: 0.9 }),
+  mouth: new MeshStandardMaterial({ color: '#7a4a5e', roughness: 0.6 }),
+  tooth: new MeshStandardMaterial({ color: '#fffdf8', roughness: 0.35 }),
+  bean: new MeshStandardMaterial({ color: '#ffadc6', roughness: 0.55 }),
   nose: new MeshStandardMaterial({ color: '#ff8fae', roughness: 0.5 }),
   carrot: new MeshStandardMaterial({ color: '#ff8a2b', roughness: 0.6 }),
   leaf: new MeshStandardMaterial({ color: '#58c25e', roughness: 0.7 }),
@@ -62,7 +84,7 @@ const shared = {
   pencil: new MeshStandardMaterial({ color: '#ffd166', roughness: 0.5 }),
   lens: new MeshStandardMaterial({ color: '#e8f4ff', roughness: 0.05, transparent: true, opacity: 0.28 }),
   dark: new MeshStandardMaterial({ color: '#2a2230', roughness: 0.4 }),
-  blush: new MeshStandardMaterial({ color: '#ffb0c4', roughness: 0.9, transparent: true, opacity: 0.8 }),
+  blush: new MeshStandardMaterial({ color: '#ff9fbb', roughness: 0.9, transparent: true, opacity: 0.55, depthWrite: false }),
 };
 
 type Geo = BufferGeometry;
@@ -115,7 +137,10 @@ export interface BunnyRig {
   footR: Mesh;
   eyeL: Mesh;
   eyeR: Mesh;
+  /** The eyes' open height (bigger behind enormous glasses). */
+  eyeY: number;
   nose: Mesh;
+  tail: Group;
   held: Record<HeldKey, Object3D[]>;
   gear: { obj: Group; kind: 'bag' | 'guitar'; at: GearAt | null; extra: Object3D | null } | null;
   lanternLight: Mesh;
@@ -138,10 +163,16 @@ export function buildBunny(look: BunnyLook): BunnyRig {
     return m;
   };
   const col = (a: Accessory) => look.colors?.[a] ?? look.accColor;
-  const fur = mat(look.fur, 0.92);
-  const belly = mat(look.belly, 0.95);
-  const inner = mat(look.inner, 0.8);
-  const patch = look.patch ? mat(look.patch, 0.92) : null;
+  // Fur: velvety (a sheen that catches the light at grazing angles, like soft plush), shaded softly underneath.
+  const plush = (color: string, sheen = 1) => {
+    const m = softToy(new MeshPhysicalMaterial({ color, roughness: 0.82, sheen, sheenRoughness: 0.42, sheenColor: '#ffffff' }), 0.16, 0.2);
+    materials.push(m);
+    return m;
+  };
+  const fur = plush(look.fur);
+  const belly = plush(look.belly, 0.8);
+  const inner = softToy(mat(look.inner, 0.65), 0.1, 0.1);
+  const patch = look.patch ? plush(look.patch) : null;
   const skin = look.skin ? mat(look.skin, 0.42) : null;
   const build = look.build ?? 'normal';
   const has = (a: Accessory) => look.acc.includes(a);
@@ -160,7 +191,19 @@ export function buildBunny(look: BunnyLook): BunnyRig {
     for (const sx of [-1, 1]) mesh(SPHERE, belly, [sx * 0.1, 0.43, 0.17], [0.12, 0.085, 0.08], body);
     mesh(CYL, fur, [0, 0.52, 0.04], [0.12, 0.12, 0.11], body);
   }
-  mesh(SPHERE, belly, [0, 0.36, -0.36], 0.1, body);
+  // Round hind haunches: the sitting-rabbit silhouette.
+  const haunch = build === 'cartoon' ? 0.8 : build === 'muscle' ? 1.12 : build === 'chubby' ? 1.12 : 1;
+  for (const sx of [-1, 1]) mesh(SPHERE, fur, [sx * 0.16 * haunch, 0.17, -0.1], [0.15 * haunch, 0.15 * haunch, 0.2 * haunch], body);
+  // A cotton-ball tail: a cluster of puffs (it wiggles).
+  const tail = new Group();
+  tail.position.set(0, 0.26, -0.33 - (build === 'chubby' ? 0.04 : 0));
+  body.add(tail);
+  mesh(SPHERE, belly, [0, 0, 0], 0.085, tail);
+  for (let j = 0; j < 6; j++) {
+    const a = (j / 6) * Math.PI * 2;
+    mesh(SPHERE, belly, [Math.cos(a) * 0.05, Math.sin(a) * 0.05, -0.02], 0.055, tail);
+  }
+  mesh(SPHERE, belly, [0, 0.01, -0.06], 0.06, tail);
   if (patch) {
     mesh(SPHERE, patch, [0.14, 0.38, -0.1], [0.2, 0.18, 0.2], body);
     mesh(SPHERE, patch, [-0.12, 0.3, -0.18], [0.16, 0.15, 0.16], body);
@@ -168,6 +211,11 @@ export function buildBunny(look: BunnyLook): BunnyRig {
   const feet = build === 'cartoon' ? 1.3 : build === 'muscle' ? 1.12 : 1;
   const footL = mesh(SPHERE, fur, [-0.15, 0.06, 0.02], [0.08 * feet, 0.055, 0.17 * feet], body);
   const footR = mesh(SPHERE, fur, [0.15, 0.06, 0.02], [0.08 * feet, 0.055, 0.17 * feet], body);
+  // Toe beans: a pink pad on each sole and three little ones at the toes (they show when a foot kicks up).
+  for (const f of [footL, footR]) {
+    mesh(SMALL, shared.bean, [0, -0.72, -0.25], [0.5, 0.3, 0.42], f);
+    for (const tx of [-0.45, 0, 0.45]) mesh(SMALL, shared.bean, [tx, -0.62, 0.58 + (tx ? -0.06 : 0)], [0.2, 0.22, 0.13], f);
+  }
   const arm = (side: number) => {
     const g = new Group();
     const wide = build === 'muscle' ? 0.16 : build === 'chubby' ? 0.17 : build === 'cartoon' ? 0.1 : 0.11;
@@ -184,19 +232,46 @@ export function buildBunny(look: BunnyLook): BunnyRig {
   const armL = arm(-1), armR = arm(1);
 
   const head = new Group();
-  const hs = build === 'cartoon' ? 1.38 : build === 'muscle' ? 0.95 : build === 'chubby' ? 1.03 : 1;
-  head.position.set(0, 0.64 + (hs - 1) * 0.16 + (build === 'muscle' ? 0.04 : 0), 0.14);
+  // A big round head on a small body (the bigger the head, the cuter).
+  const hs = (build === 'cartoon' ? 1.38 : build === 'muscle' ? 0.95 : build === 'chubby' ? 1.03 : 1) * 1.12;
+  head.position.set(0, 0.66 + (hs - 1) * 0.16 + (build === 'muscle' ? 0.04 : 0), 0.13);
   head.scale.setScalar(hs);
   body.add(head);
-  mesh(SPHERE, skin ?? fur, [0, 0, 0], [0.23 * (build === 'chubby' ? 1.06 : 1), 0.215, 0.22], head);
-  mesh(SPHERE, belly, [-0.1, -0.06, 0.12], 0.085 * (build === 'chubby' ? 1.15 : 1), head);
-  mesh(SPHERE, belly, [0.1, -0.06, 0.12], 0.085 * (build === 'chubby' ? 1.15 : 1), head);
-  mesh(SPHERE, belly, [0, -0.07, 0.16], [0.07, 0.055, 0.06], head);
-  const nose = mesh(SMALL, shared.nose, [0, -0.02, 0.215], [0.032, 0.024, 0.02], head);
-  const eyeL = mesh(SMALL, shared.eye, [-0.095, 0.035, 0.175], [0.042, 0.05, 0.03], head);
-  const eyeR = mesh(SMALL, shared.eye, [0.095, 0.035, 0.175], [0.042, 0.05, 0.03], head);
-  mesh(SMALL, shared.shine, [-0.08, 0.055, 0.2], 0.012, head);
-  mesh(SMALL, shared.shine, [0.11, 0.055, 0.2], 0.012, head);
+  // A soft round head, a little wider at the cheeks.
+  mesh(SPHERE, skin ?? fur, [0, 0, 0], [0.235 * (build === 'chubby' ? 1.06 : 1), 0.215, 0.215], head);
+  const cheek = 0.09 * (build === 'chubby' ? 1.15 : 1);
+  for (const sx of [-1, 1]) {
+    mesh(SPHERE, skin ?? fur, [sx * 0.12, -0.065, 0.06], [cheek * 1.05, cheek * 0.9, cheek], head);
+    mesh(SPHERE, belly, [sx * 0.058, -0.075, 0.15], [0.068, 0.055, 0.06], head);
+  }
+  mesh(SPHERE, belly, [0, -0.1, 0.15], [0.05, 0.04, 0.045], head);
+  const nose = mesh(SMALL, shared.nose, [0, -0.035, 0.208], [0.03, 0.022, 0.018], head);
+  mesh(SMALL, shared.shine, [-0.008, -0.028, 0.224], [0.009, 0.006, 0.004], head);
+  // The "w" mouth: a little line down from the nose and two tiny smiles; two buck teeth peeking out.
+  mesh(BOX, shared.mouth, [0, -0.06, 0.207], [0.005, 0.028, 0.006], head);
+  for (const sx of [-1, 1]) {
+    const m = mesh(ARC, shared.mouth, [sx * 0.019, -0.073, 0.2], [0.019, 0.019, 0.02], head);
+    m.rotation.set(-0.25, 0, Math.PI);
+  }
+  for (const sx of [-0.0085, 0.0085]) mesh(BOX, shared.tooth, [sx, -0.098, 0.192], [0.014, 0.02, 0.008], head);
+  // Big, glossy eyes set low and wide: a dark eye, a violet glow low in the iris, a big highlight and a small one
+  // (all children of the eye, so they close with it when it blinks).
+  const eyeY = look.acc.includes('bigglasses') ? 0.074 : 0.057;
+  const eye = (sx: number) => {
+    const e = mesh(SMALL, shared.eye, [sx * 0.098, 0.03, 0.172], [eyeY * 0.82, eyeY, 0.034], head);
+    e.rotation.y = sx * 0.28;
+    mesh(SMALL, shared.iris, [0, -0.32, 0.72], [0.7, 0.5, 0.35], e);
+    mesh(SMALL, shared.shine, [sx * -0.28 + 0.06, 0.38, 0.84], [0.32, 0.3, 0.25], e);
+    mesh(SMALL, shared.shine, [sx * 0.3, -0.38, 0.86], [0.15, 0.14, 0.15], e);
+    return e;
+  };
+  const eyeL = eye(-1), eyeR = eye(1);
+  // Rosy cheeks on everyone.
+  if (!look.acc.includes('blush')) for (const sx of [-1, 1]) mesh(SPHERE, shared.blush, [sx * 0.14, -0.05, 0.15], [0.045, 0.026, 0.012], head).rotation.y = sx * 0.6;
+  // A tuft of fluff on top, when there is nothing on its head.
+  if (!look.acc.some((a) => ['hat', 'crown', 'cap', 'beanie', 'fedora', 'bun', 'flowers', 'bow', 'sweatband', 'headband'].includes(a))) {
+    for (const [x, y, z, r] of [[0, 0.205, 0.07, 0.045], [-0.03, 0.2, 0.1, 0.035], [0.035, 0.2, 0.095, 0.032]] as const) mesh(SPHERE, skin ?? fur, [x, y, z], r, head);
+  }
   if (patch && !skin) mesh(SPHERE, patch, [0.09, 0.07, 0.08], [0.11, 0.1, 0.12], head);
 
   // Ears: ordinary, lop, or short ones poking out sideways from under a hat brim.
@@ -206,8 +281,8 @@ export function buildBunny(look: BunnyLook): BunnyRig {
     const g = new Group();
     g.position.set(side * (hatted ? 0.17 : 0.085), hatted ? 0.07 : 0.15, -0.03);
     const len = (look.lop ? 0.22 : 0.27) * (look.ears ?? 1);
-    mesh(SPHERE, skin ?? (side > 0 && patch ? patch : fur), [0, len, 0], [0.07, len, 0.035], g);
-    mesh(SPHERE, inner, [0, len * 0.98, 0.022], [0.042, len * 0.78, 0.016], g);
+    mesh(EAR, skin ?? (side > 0 && patch ? patch : fur), [0, len, 0], [0.07, len, 0.038], g);
+    mesh(EAR, inner, [0, len * 1.0, 0.017], [0.045, len * 0.8, 0.02], g);
     head.add(g);
     return g;
   };
@@ -244,8 +319,8 @@ export function buildBunny(look: BunnyLook): BunnyRig {
         break;
       }
       case 'glasses': {
-        const gl = mesh(TORUS, am, [-0.095, 0.035, 0.205], [0.06, 0.06, 0.04], head);
-        const gr = mesh(TORUS, am, [0.095, 0.035, 0.205], [0.06, 0.06, 0.04], head);
+        const gl = mesh(TORUS, am, [-0.098, 0.03, 0.21], [0.072, 0.072, 0.04], head);
+        const gr = mesh(TORUS, am, [0.098, 0.03, 0.21], [0.072, 0.072, 0.04], head);
         gl.scale.z = gr.scale.z = 0.05;
         mesh(BOX, am, [0, 0.04, 0.21], [0.07, 0.012, 0.012], head);
         break;
@@ -253,11 +328,11 @@ export function buildBunny(look: BunnyLook): BunnyRig {
       case 'specs': {
         // Squarish frames (the tech rabbit's).
         for (const sx of [-1, 1]) {
-          mesh(BOX, am, [sx * 0.095, 0.075, 0.212], [0.12, 0.016, 0.014], head);
-          mesh(BOX, am, [sx * 0.095, -0.005, 0.212], [0.12, 0.016, 0.014], head);
-          mesh(BOX, am, [sx * 0.155, 0.035, 0.206], [0.016, 0.095, 0.014], head);
-          mesh(BOX, am, [sx * 0.035, 0.035, 0.214], [0.016, 0.095, 0.014], head);
-          mesh(BOX, shared.lens, [sx * 0.095, 0.035, 0.212], [0.11, 0.075, 0.004], head);
+          mesh(BOX, am, [sx * 0.098, 0.09, 0.214], [0.13, 0.016, 0.014], head);
+          mesh(BOX, am, [sx * 0.098, -0.03, 0.214], [0.13, 0.016, 0.014], head);
+          mesh(BOX, am, [sx * 0.162, 0.03, 0.208], [0.016, 0.135, 0.014], head);
+          mesh(BOX, am, [sx * 0.034, 0.03, 0.216], [0.016, 0.135, 0.014], head);
+          mesh(BOX, shared.lens, [sx * 0.098, 0.03, 0.214], [0.12, 0.11, 0.004], head);
           mesh(BOX, am, [sx * 0.17, 0.05, 0.11], [0.012, 0.012, 0.2], head);
         }
         break;
@@ -273,12 +348,11 @@ export function buildBunny(look: BunnyLook): BunnyRig {
         }
         mesh(BOX, am, [0, 0.07, 0.225], [0.05, 0.016, 0.016], head);
         // His eyes, magnified behind them.
-        eyeL.scale.set(0.058, 0.066, 0.03);
-        eyeR.scale.set(0.058, 0.066, 0.03);
+        eyeL.scale.x = eyeR.scale.x = 0.07;
         break;
       }
       case 'shades': {
-        for (const sx of [-1, 1]) mesh(SPHERE, mat(col('shades'), 0.15), [sx * 0.095, 0.035, 0.205], [0.068, 0.05, 0.02], head);
+        for (const sx of [-1, 1]) mesh(SPHERE, mat(col('shades'), 0.15), [sx * 0.098, 0.03, 0.208], [0.076, 0.062, 0.022], head);
         mesh(BOX, mat(col('shades'), 0.15), [0, 0.055, 0.216], [0.06, 0.014, 0.012], head);
         for (const sx of [-1, 1]) mesh(BOX, mat(col('shades'), 0.15), [sx * 0.17, 0.05, 0.11], [0.012, 0.012, 0.2], head);
         break;
@@ -503,7 +577,7 @@ export function buildBunny(look: BunnyLook): BunnyRig {
   }
 
   return {
-    root, body, torso, torsoBase, head, earL, earR, earOut, armL, armR, footL, footR, eyeL, eyeR, nose,
+    root, body, torso, torsoBase, head, earL, earR, earOut, armL, armR, footL, footR, eyeL, eyeR, eyeY, nose, tail,
     held: { carrot: [carrot], book: [book], lantern: [lantern], balloon: [balloon], telescope: [telescope], dumbbell: bells, bottle: [bottle], pointer: [pointer], notebook: [notebook, pencil] },
     gear, lanternLight, look, p: { ...ZERO }, materials,
   };
@@ -555,7 +629,7 @@ function wrap(a: number): number {
 }
 
 /** Places the rig where the rabbit is and moves it into its pose. */
-export function poseBunny(rig: BunnyRig, b: Bunny, now: number, dt: number, calm: boolean): void {
+export function poseBunny(rig: BunnyRig, b: Bunny, now: number, dt: number, calm: boolean, attend: [number, number, number] | null = null): void {
   const t = now + b.index * 1.37;
   Object.assign(target, ZERO);
   let lift = 0;
@@ -954,12 +1028,24 @@ export function poseBunny(rig: BunnyRig, b: Bunny, now: number, dt: number, calm
   }
   if (target.spreadL === 0) target.spreadL = target.spread;
 
-  // Blink now and then.
-  if (!calm && target.eyes > 0.5 && (t % 4.3) < 0.12) target.eyes = 0.1;
+  // Idle moments: a curious tilt of the head now and then.
+  const still = b.gait === 'stand' && (pose === 'idle' || pose === 'sit' || pose === 'watch' || pose === 'gaze' || pose === 'sniff');
+  if (still && !calm) target.headRoll += 0.2 * Math.max(0, Math.sin(t * 0.31 + b.index)) ** 6 * (b.index % 2 ? 1 : -1);
 
+  // Blink now and then (sometimes a double blink).
+  if (!calm && target.eyes > 0.5 && ((t % 4.3) < 0.12 || (b.index % 3 === 0 && (t % 4.3) > 0.24 && (t % 4.3) < 0.34))) target.eyes = 0.1;
+
+  // Pointed at: it perks up (ears up, eyes wide) and looks round at whoever is looking.
+  const focus = attend && b.gait !== 'slide' && pose !== 'sleep' && pose !== 'nap' ? attend : b.look;
+  if (attend && focus === attend) {
+    target.earBack = Math.min(target.earBack, -0.12);
+    target.earSpread -= 0.06;
+    target.eyes = Math.max(target.eyes, 1.15);
+    target.bodyY += 0.02;
+  }
   // Turn the head towards what it is looking at.
-  if (b.look) {
-    const dx = b.look[0] - b.x, dz = b.look[2] - b.z, dy = b.look[1] - (b.y + 0.7);
+  if (focus) {
+    const dx = focus[0] - b.x, dz = focus[2] - b.z, dy = focus[1] - (b.y + 0.7);
     const yaw = wrap(Math.atan2(dx, dz) - b.yaw);
     target.headYaw = Math.max(-0.9, Math.min(0.9, yaw));
     target.headPitch += Math.max(-0.7, Math.min(0.4, -Math.atan2(dy, Math.hypot(dx, dz)) * 0.8));
@@ -983,11 +1069,18 @@ export function poseBunny(rig: BunnyRig, b: Bunny, now: number, dt: number, calm
   const lop = look.lop;
   const wob = calm ? 0 : Math.sin(t * 3.1) * 0.05;
   const out = rig.earOut;
-  rig.earL.rotation.set(lop ? 0.25 + p.earBack * 0.3 : -0.12 - p.earBack * (out ? 0.3 : 1), 0, lop ? 2.0 - p.earSpread * 0.8 + wob : 0.18 + out + p.earSpread + wob);
-  rig.earR.rotation.set(lop ? 0.25 + p.earBack * 0.3 : -0.12 - p.earBack * (out ? 0.3 : 1), 0, lop ? -2.0 + p.earSpread * 0.8 - wob : -0.18 - out - p.earSpread - wob);
-  const eyeY = look.acc.includes('bigglasses') ? 0.066 : 0.05;
-  rig.eyeL.scale.y = rig.eyeR.scale.y = eyeY * Math.max(0.08, p.eyes);
-  rig.nose.scale.x = 0.032 * (1 + (calm ? 0 : Math.max(0, Math.sin(t * 13)) * 0.18));
+  // Now and then one ear flicks (a quick twitch, first one side, then later the other).
+  const flickL = calm ? 0 : Math.max(0, Math.sin(t * 0.83 + 1.3)) ** 40 * 0.35;
+  const flickR = calm ? 0 : Math.max(0, Math.sin(t * 0.71 + 4.1)) ** 40 * 0.35;
+  rig.earL.rotation.set((lop ? 0.25 + p.earBack * 0.3 : -0.12 - p.earBack * (out ? 0.3 : 1)) - flickL * 0.6, flickL, lop ? 2.0 - p.earSpread * 0.8 + wob : 0.18 + out + p.earSpread + wob + flickL);
+  rig.earR.rotation.set((lop ? 0.25 + p.earBack * 0.3 : -0.12 - p.earBack * (out ? 0.3 : 1)) - flickR * 0.6, -flickR, lop ? -2.0 + p.earSpread * 0.8 - wob : -0.18 - out - p.earSpread - wob - flickR);
+  rig.eyeL.scale.y = rig.eyeR.scale.y = rig.eyeY * Math.max(0.08, p.eyes);
+  // The nose twitches; the tail wiggles (quick and happy on the move, the odd waggle when still).
+  const twitch = calm ? 0 : Math.max(0, Math.sin(t * 13)) * Math.max(0, Math.sin(t * 0.9)) * 0.22;
+  rig.nose.scale.set(0.03 * (1 + twitch), 0.022 * (1 + twitch * 0.6), 0.018);
+  const moving = b.gait === 'hop' || pose === 'cheer' || pose === 'jumps';
+  const wag = calm ? 0 : moving ? Math.sin(t * 16) * 0.35 : Math.sin(t * 14) * Math.max(0, Math.sin(t * 0.45 + b.index)) ** 12 * 0.4;
+  rig.tail.rotation.set(0, wag, wag * 0.5);
 
   for (const [key, list] of Object.entries(rig.held) as [HeldKey, Object3D[]][]) {
     const on = b.held === key;

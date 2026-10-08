@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import { useThree, type ThreeEvent } from '@react-three/fiber';
-import { Vector3 } from 'three';
+import { InstancedMesh, Object3D, Vector3 } from 'three';
 import type { StageModel } from '../../../model/StageModel';
 import type { StageSample } from '../../../model/sampler';
 import type { StageDriver } from '../../../three/driver';
@@ -9,10 +9,13 @@ import { ParticlePool, hash } from '../../three/particles';
 import type { WorldClock } from '../../three/WorldLayer';
 import { Warren, type Bunny, type Pose } from '../warren';
 import { buildBunny, disposeBunny, poseBunny } from './bunny';
+import { shadowDisc, shadowMaterial } from './soft';
 
 const NOTE_COLORS = [[1, 0.56, 0.69], [1, 0.84, 0.3], [0.53, 0.7, 1], [0.71, 0.59, 0.94]];
 
 const _head = new Vector3();
+const _o = new Object3D();
+const _cam: [number, number, number] = [0, 0, 0];
 
 /** What a pose looks like it is (for the hover bubble). */
 const POSE_DOING: Partial<Record<Pose, string>> = {
@@ -57,6 +60,20 @@ export function WarrenLayer({ model, driver, calm, clock, playhead }: { model: S
   const rigs = useMemo(() => warren.bunnies.map((b) => buildBunny(b.info.look)), [warren]);
   const invalidate = useThree((s) => s.invalidate);
   const get = useThree((s) => s.get);
+  // A soft shadow under each rabbit (smaller and fainter as it leaves the ground).
+  const shadows = useMemo(() => {
+    const im = new InstancedMesh(shadowDisc(), shadowMaterial('#4d3f80', 0.3), warren.bunnies.length);
+    im.frustumCulled = false;
+    im.renderOrder = 2;
+    return im;
+  }, [warren]);
+  useEffect(
+    () => () => {
+      shadows.geometry.dispose();
+      (shadows.material as { dispose: () => void }).dispose();
+    },
+    [shadows],
+  );
   const gl = useThree((s) => s.gl);
   const hovered = useRef(-1);
   const clickedAt = useRef<number[]>(warren.bunnies.map(() => -10));
@@ -114,7 +131,17 @@ export function WarrenLayer({ model, driver, calm, clock, playhead }: { model: S
         const now = clock.now;
         pool.begin();
         warren.bunnies.forEach((b, i) => {
-          poseBunny(rigs[i], b, now, dt, calm);
+          const { camera } = get();
+          if (hovered.current === i) camera.position.toArray(_cam);
+          poseBunny(rigs[i], b, now, dt, calm, hovered.current === i ? _cam : null);
+          const grounded = b.gait === 'stand' || b.gait === 'hop';
+          const lift = b.gait === 'hop' ? b.air * Math.sin((b.hop % 1) * Math.PI) : 0;
+          const ss = grounded ? b.info.look.scale * 0.95 * (1 - Math.min(0.5, lift * 0.8)) : 0;
+          _o.position.set(b.x, b.y + 0.02, b.z);
+          _o.rotation.set(0, b.yaw, 0);
+          _o.scale.set(ss * 0.85, 1, ss * 1.05);
+          _o.updateMatrix();
+          shadows.setMatrixAt(i, _o.matrix);
           const prev = st.gaits[i];
           // Landing puffs: when a leap or a float ends on a cloud.
           if ((prev === 'leap' || prev === 'float') && b.gait !== 'leap' && b.gait !== 'float') st.landings.push({ x: b.x, y: b.y, z: b.z, t: now });
@@ -178,8 +205,9 @@ export function WarrenLayer({ model, driver, calm, clock, playhead }: { model: S
           }
         }
         pool.end();
+        shadows.instanceMatrix.needsUpdate = true;
       }),
-    [driver, model, warren, rigs, pool, clock, calm, playhead, bubbles, get],
+    [driver, model, warren, rigs, pool, clock, calm, playhead, bubbles, get, shadows],
   );
 
   return (
@@ -206,6 +234,7 @@ export function WarrenLayer({ model, driver, calm, clock, playhead }: { model: S
           }}
         />
       ))}
+      <primitive object={shadows} />
       <primitive object={pool.points} />
     </>
   );

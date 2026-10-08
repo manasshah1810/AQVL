@@ -33,6 +33,7 @@ import { ParticlePool, hash } from '../../three/particles';
 import type { WorldClock } from '../../three/WorldLayer';
 import { kingdomOf, liftAt, type Island, type Kingdom, type V3 } from '../kingdom';
 import { buildProps } from './kingdomProps';
+import { roundCylinder, softToy } from './soft';
 import { cloudMaterial, dayUniforms, horizonColor, puffGeometry, ribbonMaterial, skyMaterial, sweep, turfMaterial, type Puff } from './clouds';
 
 /**
@@ -59,6 +60,11 @@ const TONE = {
   groundNight: new Color('#272a5a'),
   fillDay: new Color('#d8e6ff'),
   fillNight: new Color('#8a8fe8'),
+  backDay: new Color('#ffd9ef'),
+  backNight: new Color('#8fa2ff'),
+  mistDay: new Color('#ffffff'),
+  mistDusk: new Color('#ffd2d6'),
+  mistNight: new Color('#4c5aa0'),
 };
 
 function islandPuffs(i: Island, k: Kingdom, seed: number): Puff[] {
@@ -101,6 +107,11 @@ function islandPuffs(i: Island, k: Kingdom, seed: number): Puff[] {
   }
   const tip = Math.min(i.rx, i.rz) * 0.32;
   out.push({ x: i.x, y: i.y - i.depth - 0.4, z: i.z, r: tip, sy: 1.1, tint: tintAt(0.9) });
+  // Nothing under the turf may bulge up through it (only the rim puffs billow over the edge).
+  for (const p of out.slice(n)) {
+    const inside = Math.hypot((p.x - i.x) / (i.rx + 0.3), (p.z - i.z) / (i.rz + 0.3));
+    if (inside < 1) p.y = Math.min(p.y, i.y - 0.4 - p.r * (p.sy ?? 1) * 1.32);
+  }
   return out;
 }
 
@@ -146,10 +157,11 @@ function buildWorld(k: Kingdom) {
     puffs.push(...islandPuffs(i, k, n + 1));
     const turf = turfMaterial(i.turf, u);
     materials.push(turf);
-    const geo = new CylinderGeometry(1, 1, 0.6, 64);
+    // A pillowy top: the turf's edge rounds over softly into the cloud.
+    const geo = roundCylinder(0.07, 72, 5);
     geometries.push(geo);
     const m = new Mesh(geo, turf);
-    m.scale.set(i.rx, 1, i.rz);
+    m.scale.set(i.rx, 0.6, i.rz);
     m.position.set(i.x, i.y - 0.302, i.z);
     m.layers.set(NO_SHADOW_LAYER);
     group.add(m);
@@ -229,13 +241,15 @@ function buildWorld(k: Kingdom) {
 
   // Islets: little clouds that bob, some with a tree.
   const islets: { obj: Group; y: number; seed: number }[] = [];
-  const leafMat = new MeshStandardMaterial({ color: '#8ad99a', roughness: 0.85 });
-  const blossomMat = new MeshStandardMaterial({ color: '#ffc4d8', roughness: 0.85 });
-  const trunkMat = new MeshStandardMaterial({ color: '#c99a6b', roughness: 0.8 });
+  const leafMat = softToy(new MeshStandardMaterial({ color: '#8ad99a', roughness: 0.85 }));
+  const blossomMat = softToy(new MeshStandardMaterial({ color: '#ffc4d8', roughness: 0.85 }));
+  const trunkMat = softToy(new MeshStandardMaterial({ color: '#c99a6b', roughness: 0.8 }));
   const isletTurf = new MeshStandardMaterial({ color: '#c8eebd', roughness: 0.95 });
+  const dotMat = softToy(new MeshStandardMaterial({ color: '#ffffff', roughness: 0.6 }), 0.1);
+  materials.push(dotMat);
   materials.push(leafMat, blossomMat, trunkMat, isletTurf);
-  const sphere = new SphereGeometry(1, 16, 12);
-  const cyl = new CylinderGeometry(1, 1, 1, 24);
+  const sphere = new SphereGeometry(1, 22, 16);
+  const cyl = roundCylinder(0.2, 24);
   const cone = new ConeGeometry(1, 1, 12);
   geometries.push(sphere, cyl, cone);
   for (const it of k.islets) {
@@ -262,10 +276,21 @@ function buildWorld(k: Kingdom) {
       tr.scale.set(0.12, 1.2, 0.12);
       tr.position.y = 0.6;
       g.add(tr);
-      const crown = new Mesh(sphere, it.seed % 2 ? blossomMat : leafMat);
-      crown.scale.set(0.75, 0.65, 0.75);
-      crown.position.y = 1.45;
-      g.add(crown);
+      // A fluffy crown: a cluster of round puffs, dotted with blossoms.
+      const cm = it.seed % 2 ? blossomMat : leafMat;
+      for (const [cx, cy, cz, cr] of [[0, 1.5, 0, 0.62], [0.42, 1.32, 0.1, 0.42], [-0.4, 1.35, -0.08, 0.45], [0.05, 1.3, 0.42, 0.4], [-0.05, 1.86, -0.05, 0.4]] as const) {
+        const crown = new Mesh(sphere, cm);
+        crown.scale.set(cr, cr * 0.9, cr);
+        crown.position.set(cx, cy, cz);
+        g.add(crown);
+      }
+      for (let j = 0; j < 9; j++) {
+        const a = j * 2.4, e = 0.2 + R() * 0.9;
+        const d = new Mesh(sphere, dotMat);
+        d.scale.setScalar(0.06);
+        d.position.set(Math.cos(a) * Math.cos(e) * 0.66, 1.5 + Math.sin(e) * 0.56, Math.sin(a) * Math.cos(e) * 0.66);
+        g.add(d);
+      }
     } else {
       for (let j = 0; j < 3; j++) {
         const f = new Mesh(sphere, j % 2 ? blossomMat : leafMat);
@@ -402,6 +427,7 @@ export function CloudKingdom({ model, driver, calm, clock }: { model: StageModel
   const hemi = useRef<HemisphereLight>(null);
   const keyLight = useRef<DirectionalLight>(null);
   const fillLight = useRef<DirectionalLight>(null);
+  const backLight = useRef<DirectionalLight>(null);
   const palette = model.palette;
 
   const halos = useMemo(() => {
@@ -417,6 +443,29 @@ export function CloudKingdom({ model, driver, calm, clock }: { model: StageModel
     });
     return { tex, list };
   }, [props]);
+  // Mist: soft banks of haze drifting between the islands and below them (depth between near and far).
+  const mist = useMemo(() => {
+    const tex = typeof document === 'undefined' ? null : dotTexture();
+    const R = rng(515);
+    // Always well below every island's underside (they never cover the kingdom), or far out beyond it.
+    const isl = Object.values(k.islands);
+    const bottom = Math.min(...isl.map((i) => i.y - i.depth)) - 4;
+    const list = Array.from({ length: 30 }, (_, j) => {
+      const m = new SpriteMaterial({ map: tex, color: new Color('#ffffff'), transparent: true, depthWrite: false, opacity: 0.2, fog: true });
+      const sp = new Sprite(m);
+      const a = (j / 30) * Math.PI * 2 + R() * 0.4;
+      const far = j % 2 === 0;
+      const d = far ? k.reach * (1.25 + R() * 0.8) : k.reach * (0.2 + R() * 1.0);
+      const sz = (far ? 30 : 34) + R() * 16;
+      const h = sz * 0.3;
+      sp.position.set(k.cx + Math.cos(a) * d, far ? k.floorY - 4 - R() * 18 : bottom - h / 2 - R() * 14, k.cz + Math.sin(a) * d);
+      sp.scale.set(sz * 1.9, h, 1);
+      sp.renderOrder = 3;
+      sp.layers.set(NO_SHADOW_LAYER);
+      return { sp, base: sp.position.clone(), seed: R() * 10, alpha: (far ? 0.2 : 0.3) + R() * 0.1 };
+    });
+    return { tex, list };
+  }, [k]);
   const fireflies = useMemo(() => new ParticlePool(160, true), []);
   const motes = useMemo(() => new ParticlePool(440, false), []);
 
@@ -428,11 +477,13 @@ export function CloudKingdom({ model, driver, calm, clock }: { model: StageModel
       props.geometries.forEach((g) => g.dispose());
       halos.tex?.dispose();
       halos.list.forEach((h) => h.material.dispose());
+      mist.tex?.dispose();
+      mist.list.forEach((m) => m.sp.material.dispose());
       fireflies.dispose();
       motes.dispose();
       sky.dispose();
     },
-    [world, props, halos, fireflies, motes, sky],
+    [world, props, halos, mist, fireflies, motes, sky],
   );
 
   const F = k.floorY;
@@ -473,12 +524,20 @@ export function CloudKingdom({ model, driver, calm, clock }: { model: StageModel
           keyLight.current.target.position.set(k.cx, F, k.cz);
           keyLight.current.target.updateMatrixWorld();
           keyLight.current.color.copy(TONE.keyDay).lerp(TONE.keyDusk, dusk * 0.8).lerp(TONE.keyNight, night);
-          keyLight.current.intensity = palette.lights.keyIntensity * (1 - 0.3 * dusk) * (1 - 0.48 * night) * (0.55 + 0.45 * Math.abs(1 - 2 * s));
+          keyLight.current.intensity = 1.15 * palette.lights.keyIntensity * (1 - 0.3 * dusk) * (1 - 0.48 * night) * (0.55 + 0.45 * Math.abs(1 - 2 * s));
+          // A soft back light from the other side: a rim round everything, lifting it off the sky.
+          if (backLight.current) {
+            backLight.current.position.set(k.cx - _v.x, F + 35, k.cz - _v.z);
+            backLight.current.target.position.set(k.cx, F, k.cz);
+            backLight.current.target.updateMatrixWorld();
+            backLight.current.color.copy(TONE.backDay).lerp(TONE.keyDusk, dusk * 0.6).lerp(TONE.backNight, night);
+            backLight.current.intensity = 0.75 + 0.15 * dusk;
+          }
         }
         if (hemi.current) {
           hemi.current.color.copy(TONE.skyDay).lerp(TONE.skyNight, night);
           hemi.current.groundColor.copy(TONE.groundDay).lerp(TONE.groundNight, night);
-          hemi.current.intensity = palette.lights.ambient * (1 - 0.38 * night);
+          hemi.current.intensity = 0.82 * palette.lights.ambient * (1 - 0.38 * night);
         }
         if (fillLight.current) {
           fillLight.current.color.copy(TONE.fillDay).lerp(TONE.fillNight, night);
@@ -491,6 +550,11 @@ export function CloudKingdom({ model, driver, calm, clock }: { model: StageModel
         props.windowMat.emissiveIntensity = 0.05 + 1.7 * glow;
         world.rainbowGlow.value = 0.04 + 0.4 * night;
         world.walkGlow.value = 0.12 * night;
+        mist.list.forEach((m, i) => {
+          m.sp.position.set(m.base.x + Math.sin(now * 0.02 + m.seed) * 6, m.base.y + Math.sin(now * 0.05 + i) * 0.6, m.base.z + Math.cos(now * 0.017 + m.seed) * 6);
+          m.sp.material.color.copy(TONE.mistDay).lerp(TONE.mistDusk, dusk * 0.8).lerp(TONE.mistNight, night);
+          m.sp.material.opacity = m.alpha * (1 - 0.45 * night);
+        });
         halos.list.forEach((h, i) => {
           const flick = calm ? 1 : 0.9 + 0.1 * Math.sin(now * 7 + i * 1.7) * Math.sin(now * 3.1 + i);
           h.material.opacity = glow * 0.85 * flick;
@@ -638,7 +702,7 @@ export function CloudKingdom({ model, driver, calm, clock }: { model: StageModel
         motes.end();
         if (!calm) invalidate();
       }),
-    [driver, world, props, halos, fireflies, motes, clock, calm, three, palette, k, F, fogNear, fogFar, invalidate],
+    [driver, world, props, halos, mist, fireflies, motes, clock, calm, three, palette, k, F, fogNear, fogFar, invalidate],
   );
 
   return (
@@ -651,6 +715,7 @@ export function CloudKingdom({ model, driver, calm, clock }: { model: StageModel
       <hemisphereLight ref={hemi} args={[palette.lights.sky, palette.lights.ground, palette.lights.ambient]} />
       <directionalLight ref={keyLight} color={palette.lights.key} intensity={palette.lights.keyIntensity} position={[k.cx - 30, F + 60, k.cz + 40]} />
       <directionalLight ref={fillLight} color={palette.lights.fill} intensity={palette.lights.fillIntensity} position={[k.cx + 40, F + 20, k.cz + 30]} />
+      <directionalLight ref={backLight} color="#ffd9ef" intensity={0.75} position={[k.cx + 30, F + 35, k.cz - 40]} />
       <Environment resolution={128} frames={1} environmentIntensity={palette.lights.envIntensity}>
         <Lightformer form="rect" color="#fff6e8" intensity={2} position={[-3, 7, 8]} scale={[14, 6, 1]} target={[0, 0, 0]} />
         <Lightformer form="rect" color="#d8e8ff" intensity={1.2} position={[8, 4, 2]} scale={[3, 8, 1]} target={[0, 0, 0]} />
@@ -661,6 +726,9 @@ export function CloudKingdom({ model, driver, calm, clock }: { model: StageModel
       <primitive object={props.group} />
       <primitive object={fireflies.points} />
       <primitive object={motes.points} />
+      {mist.list.map((m, i) => (
+        <primitive key={`m${i}`} object={m.sp} />
+      ))}
       {halos.list.map((h, i) => (
         <primitive key={`h${i}`} object={h} />
       ))}
