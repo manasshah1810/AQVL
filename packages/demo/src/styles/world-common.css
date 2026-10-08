@@ -1,0 +1,128 @@
+/* ============================================================
+   Shared world layer: every non-studio world supplies --w-accent and
+   --w-glow, and this file applies them to the parts of the site the
+   per-world files don't touch: hover/active states, links, inputs,
+   modals and scrims, notifications, loaders, empty states, the Tasks
+   command center and the Developer gateway.
+   ============================================================ */
+
+:root[data-world='penguin'] {
+  --w-accent: #8fd3ff;
+  --w-glow: var(--ice-glow);
+  --w-shape: 10px;
+}
+:root[data-world='penguin'][data-theme='light'] {
+  --w-accent: #2f7fc0;
+}
+:root[data-world='panda'] {
+  --w-accent: var(--bamboo);
+  --w-glow: var(--grove-glow);
+  --w-shape: 6px;
+}
+:root[data-world='rabbit'] {
+  --w-accent: var(--blossom);
+  --w-glow: var(--sky-glow);
+  --w-shape: 14px;
+}
+
+/* Hover / active states glow in the world's accent. */
+html:is([data-world='penguin'], [data-world='panda'], [data-world='rabbit']) .btn:hover,
+html:is([data-world='penguin'], [data-world='panda'], [data-world='rabbit']) .panel:hover,
+html:is([data-world='penguin'], [data-world='panda'], [data-world='rabbit']) .world-card:hover {
+  box-shadow:
+    0 0 0 1px var(--w-accent),
+    0 8px 28px -12px var(--w-glow);
+}
+html:is([data-world='penguin'], [data-world='panda'], [data-world='rabbit']) .btn:active {
+  transform: translateY(1px) scale(0.99);
+}
+html:is([data-world='penguin'], [data-world='panda'], [data-world='rabbit']) a:not(.btn):hover {
+  text-decoration-color: var(--w-accent);
+}
+html:is([data-world='penguin'], [data-world='panda'], [data-world='rabbit']) :focus-visible {
+  outline-color: var(--w-accent);
+}
+html:is([data-world='penguin'], [data-world='panda'], [data-world='rabbit']) ::selection {
+  background: var(--w-accent);
+  color: var(--ink-deep);
+}
+html:is([data-world='penguin'], [data-world='panda'], [data-world='rabbit']) .panel,
+html:is([data-world='penguin'], [data-world='panda'], [data-world='rabbit']) .world-card {
+  border-radius: var(--w-shape);
+}
+html:is([data-world='penguin'], [data-world='panda'], [data-world='rabbit']) input:focus-visible,
+html:is([data-world='penguin'], [data-world='panda'], [data-world='rabbit']) select:focus-visible,
+html:is([data-world='penguin'], [data-world='panda'], [data-world='rabbit']) textarea:focus-visible {
+  box-shadow: 0 0 0 3px var(--w-glow);
+}
+
+/* Modals, notifications, empty states, form controls. */
+html:is([data-world='penguin'], [data-world='panda'], [data-world='rabbit']) :is([role='dialog'], [role='alertdialog'], [role='status'], [role='alert']) {
+  border-color: var(--w-accent);
+  box-shadow: 0 18px 50px -20px var(--w-glow);
+}
+html:is([data-world='penguin'], [data-world='panda'], [data-world='rabbit']) [class*='empty'] {
+  background-image: radial-gradient(260px 120px at 50% 0%, var(--w-glow), transparent 75%);
+}
+html:is([data-world='penguin'], [data-world='panda'], [data-world='rabbit']) :is(progress, input[type='range'], input[type='checkbox'], input[type='radio']) {
+  accent-color: var(--w-accent);
+}
+
+/* Command center and Developer gateway: their own neo-brutalist palette, re-inked per world. */
+html[data-world='penguin'] .tk-root[data-theme='dark'] {
+  --bg: #08121f;
+  --surface: #112740;
+  --surface-2: #163049;
+  --surface-3: #1c3b5a;
+  --line-soft: #2e4c6b;
+  --focus: #8fd3ff;
+  --select-bg: #8fd3ff;
+  --scroll-track: #0c1a2b;
+  --ink-3: #8fb0c9;
+}
+html[data-world='panda'] .tk-root[data-theme='dark'] {
+  --bg: #0d1511;
+  --surface: #1a2a21;
+  --surface-2: #1d2d24;
+  --surface-3: #25392d;
+  --line-soft: #38523f;
+  --focus: #b5e07a;
+  --select-bg: #8cc152;
+  --scroll-track: #121c17;
+  --ink-3: #a0b895;
+}
+html[data-world='rabbit'] .tk-root[data-theme='dark'] {
+  --bg: #13112b;
+  --surface: #231f48;
+  --surface-2: #2a2652;
+  --surface-3: #342f63;
+  --line-soft: #4a4586;
+  --focus: #ff9ec2;
+  --select-bg: #ff9ec2;
+  --scroll-track: #1a1838;
+  --ink-3: #a9a2d6;
+}
+html[data-world='penguin'] .tk-root:not([data-theme='dark']) {
+  --bg: #eef5fb;
+  --surface-2: #e4eef7;
+  --surface-3: #d6e6f3;
+  --line-soft: #c3d7e8;
+  --focus: #2f7fc0;
+  --select-bg: #bfe3ff;
+}
+html[data-world='panda'] .tk-root:not([data-theme='dark']) {
+  --bg: #f1f1de;
+  --surface-2: #eaebd4;
+  --surface-3: #dde4c4;
+  --line-soft: #cbd6b0;
+  --focus: #55822d;
+  --select-bg: #cfe9a6;
+}
+html[data-world='rabbit'] .tk-root:not([data-theme='dark']) {
+  --bg: #f4f0ff;
+  --surface-2: #ece6fb;
+  --surface-3: #e0d8f5;
+  --line-soft: #d0c6ee;
+  --focus: #e0578a;
+  --select-bg: #ffc6dc;
+}

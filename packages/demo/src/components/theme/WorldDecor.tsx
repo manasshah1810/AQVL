@@ -74,6 +74,7 @@ export function WorldFall() {
   const world = useWorld();
   if (world === 'penguin') return <WorldSnow />;
   if (world === 'panda') return <WorldLeaves />;
+  if (world === 'rabbit') return <WorldClouds />;
   return null;
 }
 
@@ -95,6 +96,13 @@ export function Mascot({ pose = 'stand', size = 64, className = '', scarf }: { p
     return (
       <span className={`mascot mascot--penguin inline-block ${className}`} aria-hidden="true">
         <Penguin size={size} pose={(pose === 'eat' || pose === 'roll' ? 'stand' : pose) as PenguinPose} scarf={scarf} className={pose === 'walk' ? 'pen--walk' : undefined} />
+      </span>
+    );
+  }
+  if (world === 'rabbit') {
+    return (
+      <span className="mascot mascot--rabbit inline-block" aria-hidden="true">
+        <Bunny size={size} />
       </span>
     );
   }
@@ -133,5 +141,57 @@ export function FooterIce() {
         <Penguin size={26} pose="stand" scarf={['#2f5d9e', '#f2c14e']} className="pen--walk" />
       </div>
     </div>
+  );
+}
+
+/** Clouds drifting across, and a few blossom sparkles, behind the page (rabbit world only; hidden by CSS elsewhere). */
+export function WorldClouds({ count = 7 }: { count?: number }) {
+  const items = useMemo(() => {
+    const r = rng(777);
+    return {
+      clouds: Array.from({ length: count }, () => ({
+        y: `${(4 + r() * 78).toFixed(0)}%`,
+        s: `${(110 + r() * 150).toFixed(0)}px`,
+        o: (0.14 + r() * 0.22).toFixed(2),
+        d: `${(70 + r() * 70).toFixed(0)}s`,
+        delay: `${(-r() * 120).toFixed(0)}s`,
+      })),
+      sparks: Array.from({ length: 12 }, () => ({
+        x: `${(r() * 100).toFixed(0)}%`,
+        y: `${(r() * 100).toFixed(0)}%`,
+        delay: `${(-r() * 5).toFixed(1)}s`,
+      })),
+    };
+  }, [count]);
+  return (
+    <div className="world-clouds" aria-hidden="true">
+      {items.clouds.map((c, i) => (
+        <i key={i} style={{ '--y': c.y, '--s': c.s, '--o': c.o, '--d': c.d, '--delay': c.delay } as React.CSSProperties} />
+      ))}
+      {items.sparks.map((s, i) => (
+        <b key={i} style={{ '--x': s.x, '--y': s.y, '--delay': s.delay } as React.CSSProperties} />
+      ))}
+    </div>
+  );
+}
+
+/** The cloud kingdom's mascot: a small bunny. */
+export function Bunny({ size = 64 }: { size?: number }) {
+  return (
+    <svg className="bny" width={size} height={size} viewBox="0 0 64 64" aria-hidden="true">
+      <g className="bny__body">
+        <ellipse className="bny__ear" cx="23" cy="14" rx="5" ry="13" fill="#f7efe2" />
+        <ellipse className="bny__ear bny__ear--r" cx="41" cy="14" rx="5" ry="13" fill="#f7efe2" />
+        <ellipse cx="23" cy="15" rx="2.4" ry="8" fill="#ffb3c8" />
+        <ellipse cx="41" cy="15" rx="2.4" ry="8" fill="#ffb3c8" />
+        <ellipse cx="32" cy="50" rx="17" ry="12" fill="#f7efe2" />
+        <circle cx="32" cy="34" r="14" fill="#f7efe2" />
+        <circle cx="26.5" cy="32" r="1.8" fill="#2b2546" />
+        <circle cx="37.5" cy="32" r="1.8" fill="#2b2546" />
+        <ellipse cx="32" cy="37" rx="2.2" ry="1.6" fill="#ff8fb1" />
+        <circle cx="22" cy="37" r="2.6" fill="#ffb3c8" opacity="0.6" />
+        <circle cx="42" cy="37" r="2.6" fill="#ffb3c8" opacity="0.6" />
+      </g>
+    </svg>
   );
 }
