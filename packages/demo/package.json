@@ -16,6 +16,7 @@
     "@aqvl/renderer": "workspace:*",
     "@aqvl/runtime": "workspace:*",
     "@aqvl/shared": "workspace:*",
+    "@diffusionstudio/vits-web": "1.0.3",
     "@fontsource-variable/jetbrains-mono": "5.3.0",
     "@fontsource-variable/newsreader": "5.3.0",
     "@fontsource/jetbrains-mono": "5.3.0",

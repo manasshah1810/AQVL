@@ -183,6 +183,16 @@ const MAX_HISTORY = 500;
 //  Autocomplete
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** Offset of the first character of the line containing `pos`. (`lastIndexOf(.., -1)` would wrongly look at index 0.) */
+function lineStartOf(value: string, pos: number): number {
+  return pos <= 0 ? 0 : value.lastIndexOf('\n', pos - 1) + 1;
+}
+
+/** The textarea always holds LF newlines; keep our copy identical so offsets and line numbers agree with the DOM and the compiler. */
+function normalizeNewlines(text: string): string {
+  return text.replace(/\r\n?/g, '\n');
+}
+
 function getWordBefore(text: string, cursor: number): string {
   let i = cursor - 1;
   while (i >= 0 && isIdentPart(text[i])) i--;
@@ -274,7 +284,8 @@ function measureEditorMetrics(textarea: HTMLTextAreaElement, measureEl: HTMLSpan
   return { lineHeight, charWidth, padTop, padLeft };
 }
 
-export function IDEEditor({ initialValue, onChange, readOnly = false, errorMarkers = [], activeLine = null }: IDEEditorProps) {
+export function IDEEditor({ initialValue: rawInitialValue, onChange, readOnly = false, errorMarkers = [], activeLine = null }: IDEEditorProps) {
+  const initialValue = useMemo(() => normalizeNewlines(rawInitialValue), [rawInitialValue]);
   const textareaRef    = useRef<HTMLTextAreaElement>(null);
   const overlayRef     = useRef<HTMLDivElement>(null);
   const errorOverlayRef = useRef<HTMLDivElement>(null);     // squiggly-underline layer (scroll-synced)
@@ -352,12 +363,12 @@ export function IDEEditor({ initialValue, onChange, readOnly = false, errorMarke
       ov.scrollLeft = ta.scrollLeft;
     }
     if (eov) {
-      eov.scrollTop  = ta.scrollTop;
-      eov.scrollLeft = ta.scrollLeft;
+      eov.style.setProperty('--scroll-y', `${ta.scrollTop}px`);
+      eov.style.setProperty('--scroll-x', `${ta.scrollLeft}px`);
     }
     if (ph) {
-      ph.scrollTop  = ta.scrollTop;
-      ph.scrollLeft = ta.scrollLeft;
+      ph.style.setProperty('--scroll-y', `${ta.scrollTop}px`);
+      ph.style.setProperty('--scroll-x', `${ta.scrollLeft}px`);
     }
     if (gb) {
       gb.style.transform = `translateY(-${ta.scrollTop}px)`;
@@ -531,7 +542,7 @@ export function IDEEditor({ initialValue, onChange, readOnly = false, errorMarke
       e.preventDefault();
       if (e.shiftKey) {
         // Shift+Tab: dedent selected lines
-        const lineStart = value.lastIndexOf('\n', selStart - 1) + 1;
+        const lineStart = lineStartOf(value, selStart);
         // If selection ends at the very start of a line (after \n), don't include that empty line
         const adjustedSelEnd = (selEnd > selStart && value[selEnd - 1] === '\n') ? selEnd - 1 : selEnd;
         const lineEnd   = adjustedSelEnd;
@@ -547,7 +558,7 @@ export function IDEEditor({ initialValue, onChange, readOnly = false, errorMarke
         }
       } else if (hasSelection) {
         // Tab with selection: indent all selected lines
-        const lineStart = value.lastIndexOf('\n', selStart - 1) + 1;
+        const lineStart = lineStartOf(value, selStart);
         const adjustedSelEnd = (selEnd > selStart && value[selEnd - 1] === '\n') ? selEnd - 1 : selEnd;
         const lineEnd   = adjustedSelEnd;
         const selected  = value.slice(lineStart, lineEnd);
@@ -570,7 +581,7 @@ export function IDEEditor({ initialValue, onChange, readOnly = false, errorMarke
     if (e.key === 'Enter') {
       e.preventDefault();
       // Get the current line's leading whitespace
-      const lineStart = value.lastIndexOf('\n', selStart - 1) + 1;
+      const lineStart = lineStartOf(value, selStart);
       const currentLine = value.slice(lineStart, selStart);
       const indentMatch = currentLine.match(/^(\s*)/);
       const baseIndent  = indentMatch ? indentMatch[1] : '';
@@ -587,7 +598,7 @@ export function IDEEditor({ initialValue, onChange, readOnly = false, errorMarke
 
     // ── Backspace (smart dedent) ───────────────────────────────────────────
     if (e.key === 'Backspace' && !hasSelection) {
-      const lineStart   = value.lastIndexOf('\n', selStart - 1) + 1;
+      const lineStart   = lineStartOf(value, selStart);
       const colOffset   = selStart - lineStart;
       const charsBefore = value.slice(lineStart, selStart);
 
@@ -757,6 +768,13 @@ export function IDEEditor({ initialValue, onChange, readOnly = false, errorMarke
     layer.style.setProperty('--ph-pad-top', `${m.padTop}px`);
   }, [activeLine, getMetrics]);
 
+  // The playhead and squiggle layers mount lazily. One that appears while the
+  // editor is already scrolled must start at the same offset, or its band
+  // would sit on a different line than the text beside it.
+  useLayoutEffect(() => {
+    syncScroll();
+  }, [activeLine, errorSquiggles, syncScroll]);
+
   useEffect(() => {
     if (activeLine == null) return;
     const ta = textareaRef.current;
@@ -824,7 +842,7 @@ export function IDEEditor({ initialValue, onChange, readOnly = false, errorMarke
             <div
               className="aqvl-playhead-overlay"
               style={{
-                top: `calc(var(--ph-pad-top, ${FALLBACK_PAD_TOP}px) + ${activeLine - 1} * var(--ph-line-height, ${FALLBACK_LINE_HEIGHT}px))`,
+                top: `calc(var(--ph-pad-top, ${FALLBACK_PAD_TOP}px) + ${activeLine - 1} * var(--ph-line-height, ${FALLBACK_LINE_HEIGHT}px) - var(--scroll-y, 0px))`,
                 height: `var(--ph-line-height, ${FALLBACK_LINE_HEIGHT}px)`,
               }}
             />
@@ -839,8 +857,8 @@ export function IDEEditor({ initialValue, onChange, readOnly = false, errorMarke
                 key={sq.key}
                 className="aqvl-error-squiggle"
                 style={{
-                  top: `calc(var(--sq-pad-top) + ${sq.lineIndex} * var(--sq-line-height))`,
-                  left: `calc(var(--sq-pad-left) + ${sq.startCol} * var(--sq-char-width))`,
+                  top: `calc(var(--sq-pad-top) + ${sq.lineIndex} * var(--sq-line-height) - var(--scroll-y, 0px))`,
+                  left: `calc(var(--sq-pad-left) + ${sq.startCol} * var(--sq-char-width) - var(--scroll-x, 0px))`,
                   width: `calc(${sq.length} * var(--sq-char-width))`,
                 }}
                 title={sq.message}

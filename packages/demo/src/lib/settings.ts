@@ -21,7 +21,15 @@ export interface Settings {
   focusStage: boolean;
   /** The panel last open beside the stage (null: closed). */
   dock: DockTab | null;
+  /** Narrate the run aloud (off until asked: it needs a user gesture and may download a voice). */
+  voiceOn: boolean;
+  /** full: every step; key: the steps that matter; manual: only when asked. */
+  voiceMode: VoiceMode;
+  /** neural: Piper in the browser (falling back to the browser's voice); browser: the built-in voice only. */
+  voiceEngine: 'neural' | 'browser';
 }
+
+export type VoiceMode = 'full' | 'key' | 'manual';
 
 export type DockTab = 'watch' | 'key' | 'output' | 'stage';
 
@@ -33,6 +41,9 @@ export const DEFAULT_SETTINGS: Settings = {
   mascots: true,
   focusStage: false,
   dock: null,
+  voiceOn: false,
+  voiceMode: 'key',
+  voiceEngine: 'neural',
 };
 
 const KEY = 'aqvl-settings';
@@ -56,8 +67,10 @@ function sanitize(p: Partial<Settings>): Partial<Settings> {
   const out: Partial<Settings> = {};
   if (p.quality === 'auto' || p.quality === 'high' || p.quality === 'medium' || p.quality === 'low') out.quality = p.quality;
   if (p.calm === 'auto' || p.calm === 'on' || p.calm === 'off') out.calm = p.calm;
-  for (const key of ['follow', 'snow', 'mascots', 'focusStage'] as const) if (typeof p[key] === 'boolean') out[key] = p[key];
+  for (const key of ['follow', 'snow', 'mascots', 'focusStage', 'voiceOn'] as const) if (typeof p[key] === 'boolean') out[key] = p[key];
   if (p.dock === null || p.dock === 'watch' || p.dock === 'key' || p.dock === 'output' || p.dock === 'stage') out.dock = p.dock;
+  if (p.voiceMode === 'full' || p.voiceMode === 'key' || p.voiceMode === 'manual') out.voiceMode = p.voiceMode;
+  if (p.voiceEngine === 'neural' || p.voiceEngine === 'browser') out.voiceEngine = p.voiceEngine;
   return out;
 }
 

@@ -17,6 +17,8 @@ import { spring } from '../../lib/motion';
 import { useWorld } from '../../lib/world';
 import { updateSettings, useSettings, type DockTab } from '../../lib/settings';
 import { Scrubber } from './Scrubber';
+import { VoiceControl } from './VoiceControl';
+import { useVoiceover } from './useVoiceover';
 import { StageDock } from './StageDock';
 import { EVENT_META, toneChip } from './events';
 import { ToneGlyph } from './ToneGlyph';
@@ -152,6 +154,10 @@ export function Visualizer({ trace, playhead, source, theme, reducedMotion, comp
     };
   }, [playhead, trace]);
 
+  // The voice reads the same frame as the stage and the code highlight.
+  const voice = useVoiceover(trace, playhead, snap.active, source, !compact);
+  const voiceOn = settings.voiceOn && !compact;
+
   const frame = trace.frames[snap.active] ?? trace.frames[0];
   const shownFrame = trace.frames[snap.step] ?? trace.frames[0];
   const meta = EVENT_META[frame.event.kind];
@@ -160,7 +166,7 @@ export function Visualizer({ trace, playhead, source, theme, reducedMotion, comp
   const errorVisible = atEnd && trace.error !== null;
 
   const stepLabel = `Step ${snap.step} of ${snap.totalSteps}${frame.caption ? `: ${frame.caption}` : ''}`;
-  const captionText = snap.active === 0 ? `${snap.totalSteps} steps recorded. Press play, or step with the arrow keys.` : frame.caption || meta.label;
+  const captionText = snap.active === 0 ? `${snap.totalSteps} steps recorded. Press play, or step with the arrow keys.` : (voiceOn && snap.active > 0 ? voice.explanation.text : frame.caption || meta.label);
 
   const cycleSpeed = useCallback(
     (dir: 1 | -1) => {
@@ -354,6 +360,8 @@ export function Visualizer({ trace, playhead, source, theme, reducedMotion, comp
               </button>
             ))}
           </div>
+
+          {!compact && <VoiceControl theme={voice.theme} onExplain={voice.explainNow} />}
 
           {!compact && (
             <button

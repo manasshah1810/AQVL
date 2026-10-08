@@ -180,7 +180,13 @@ export default function Playground() {
     return out;
   }, [run, snap.step, clearedThrough]);
 
-  const activeLine = isRuntimeReady && snap.active > 0 ? run!.trace.frames[snap.active]?.line ?? null : null;
+  // The one source of truth for the executing line: the recorded frame on screen.
+  // It is only meaningful for the exact text that was compiled, so once the
+  // editor has diverged from that text no line is highlighted (never a stale one).
+  const sourceInSync = run?.source === sourceCode;
+  const sourceLineCount = sourceCode.split('\n').length;
+  const frameLine = isRuntimeReady && sourceInSync && snap.active > 0 ? run!.trace.frames[snap.active]?.line ?? null : null;
+  const activeLine = frameLine !== null && frameLine >= 1 && frameLine <= sourceLineCount ? frameLine : null;
 
   const statusChip = (() => {
     if (isCompiling && tracing === null) return { cls: 'compiling', label: 'Compiling…' };
@@ -188,6 +194,7 @@ export default function Playground() {
     if (compileError) return { cls: 'error', label: 'Compile Error' };
     if (run?.trace.error && snap.atEnd) return { cls: 'error', label: 'Runtime Error' };
     if (snap.playing) return { cls: 'running', label: 'Running' };
+    if (isRuntimeReady && !sourceInSync) return { cls: 'idle', label: 'Edited' };
     if (isRuntimeReady) return { cls: 'idle', label: 'Ready' };
     return { cls: 'idle', label: 'Idle' };
   })();

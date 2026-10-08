@@ -128,6 +128,8 @@ export { recordTrace } from './trace/recordTrace';
 export type { RecordTraceOptions } from './trace/recordTrace';
 export { SnapTimelineEngine } from './trace/SnapTimelineEngine';
 export { classifyStep } from './trace/classify';
+export { explainFrame, explainError } from './trace/explain';
+export type { Explanation, ExplanationContext, ExplanationImportance, ExplainOptions } from './trace/explain';
 export type {
   ExecutionTrace,
   TraceFrame,

@@ -360,11 +360,11 @@ export async function recordTrace(program: AQIRProgram, options: RecordTraceOpti
   engine.eventDispatcher.on('INSTRUCTION_START', (pc: number) => {
     startedPc = pc;
     visibleThisInstruction = false;
+    // Exactly the started instruction's own line: an instruction the compiler
+    // gave no line leaves no highlight, never the previous instruction's.
     const line = instructions[pc]?.lineNumber;
-    if (typeof line === 'number') {
-      currentLine = line;
-      linesRun.add(line);
-    }
+    currentLine = typeof line === 'number' ? line : null;
+    if (currentLine !== null) linesRun.add(currentLine);
   });
   engine.eventDispatcher.on('RUNTIME_LOG', (entry: { keyword?: string; message?: string; kind?: string }) => {
     pendingLogs.push({ keyword: String(entry.keyword ?? ''), message: String(entry.message ?? ''), kind: String(entry.kind ?? '') });

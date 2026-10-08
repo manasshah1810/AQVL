@@ -227,7 +227,6 @@
   right: 0;
   background: rgb(102 99 121 / 0.32);
   box-shadow: inset 2px 0 0 var(--cream);
-  transition: top 380ms var(--spring-snappy);
 }
 
 /* ── Autocomplete ───────────────────────────────────────────── */
