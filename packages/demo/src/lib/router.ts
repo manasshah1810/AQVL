@@ -17,6 +17,7 @@ export type RouteName =
   | 'settings'
   | 'tasks'
   | 'developer'
+  | 'rs'
   | 'notfound';
 
 export interface Route {
@@ -36,6 +37,7 @@ const NAMES: Record<string, RouteName> = {
   settings: 'settings',
   tasks: 'tasks',
   developer: 'developer',
+  rs: 'rs',
 };
 
 export function parseHash(hash: string): Route {
