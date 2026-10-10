@@ -23,6 +23,12 @@ export interface RecordTraceOptions {
   maxSteps?: number;
   /** Most instructions to execute (guards against non-terminating loops). */
   maxInstructions?: number;
+  /**
+   * Most nodes to keep across all frames (each frame stores the whole scene).
+   * A program that keeps growing its structures stops here (truncated) long
+   * before the page runs out of memory.
+   */
+  maxRecordedNodes?: number;
   /** Called every few hundred steps with the number recorded so far. */
   onProgress?: (steps: number) => void;
   /**
@@ -118,6 +124,7 @@ function toNode(el: AnyElement, placed: PlacedPositions | undefined): TraceNode 
     scale: { x: scale.x || 1, y: scale.y || 1, z: scale.z || 1 },
     opacity: typeof el.opacity === 'number' ? el.opacity : 1,
     detached: el.inHeap === true,
+    ...(typeof el.order === 'number' ? { order: el.order } : {}),
   };
 }
 
@@ -166,12 +173,14 @@ function structuresOf(graph: AnyElement[], nodes: TraceNode[], placed: PlacedPos
         const s = ensure(name, 'TREE');
         s.anchor = restingPosition(el, placed);
         if (!el.rootId) s.note = 'root = NULL';
+        else s.head = String(el.rootId);
         break;
       }
       case 'LINKEDLIST': {
         const s = ensure(name, 'LINKED_LIST');
         s.anchor = restingPosition(el, placed);
         if (!el.headId) s.note = 'head = NULL';
+        else s.head = String(el.headId);
         break;
       }
       case 'CONTAINER': {
@@ -258,6 +267,8 @@ const INIT_EVENT: TraceEvent = { kind: 'init', actors: [], edges: [], writes: []
  */
 export async function recordTrace(program: AQIRProgram, options: RecordTraceOptions = {}): Promise<ExecutionTrace> {
   const maxSteps = options.maxSteps ?? 4000;
+  const maxRecordedNodes = options.maxRecordedNodes ?? 1_000_000;
+  let recordedNodes = 0;
   const engine = new ExecutionEngine({ headless: true, timelineEngine: new SnapTimelineEngine(150) });
   engine.setMaxExecutionIterations(options.maxInstructions ?? 200_000);
 
@@ -364,7 +375,8 @@ export async function recordTrace(program: AQIRProgram, options: RecordTraceOpti
     pendingCue = null;
     geometryKey = keyOfGeometry();
     if (frames.length % 250 === 0) options.onProgress?.(frames.length - 1);
-    if (frames.length - 1 >= maxSteps) {
+    recordedNodes += last.nodes.length + last.edges.length;
+    if (frames.length - 1 >= maxSteps || recordedNodes >= maxRecordedNodes) {
       truncated = true;
       engine.pause();
     }
@@ -441,10 +453,15 @@ export async function recordTrace(program: AQIRProgram, options: RecordTraceOpti
     error = { message: raw.message, line: info.line, frameIndex: errorFrame.index, info };
   };
 
+  let final: ExecutionTrace['final'];
   try {
     engine.loadProgram(program);
     commit(build('initial'));
     await engine.execute();
+    if (!truncated) {
+      const end = build('initial');
+      final = { vars: end.vars, nodes: end.nodes, edges: end.edges, structures: end.structures };
+    }
   } catch (e) {
     const err = e as Error & Record<string, unknown>;
     const message = e instanceof Error ? e.message : String(e);
@@ -498,5 +515,5 @@ export async function recordTrace(program: AQIRProgram, options: RecordTraceOpti
     // A detector must never take a good run down with it.
   }
 
-  return { frames, error, truncated, linesRun: [...linesRun].sort((a, b) => a - b), diagnostics };
+  return { frames, error, truncated, linesRun: [...linesRun].sort((a, b) => a - b), diagnostics, ...(final && !error && !truncated ? { final } : {}) };
 }

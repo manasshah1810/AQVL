@@ -142,4 +142,5 @@ export type {
   TraceEventKind,
   TraceLog,
   TraceShape,
+  TraceFinal,
 } from './trace/types';

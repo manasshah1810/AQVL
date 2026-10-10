@@ -9,6 +9,7 @@ const NAV: { route: RouteName; label: string; href: string; blurb: string }[] = 
   { route: 'engine', label: 'Engine', href: '#/engine', blurb: 'How layouts and the camera arrange a scene' },
   { route: 'docs', label: 'Docs', href: '#/docs', blurb: 'The .aqvl language, structure by structure' },
   { route: 'examples', label: 'Examples', href: '#/examples', blurb: 'Every program that ships with AQVL' },
+  { route: 'challenges', label: 'Challenges', href: '#/challenges', blurb: 'Complete an algorithm and watch your version run' },
 ];
 
 interface SiteHeaderProps {

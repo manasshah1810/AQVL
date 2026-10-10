@@ -43,6 +43,8 @@ export interface StageDockProps {
   /** The run's printed output (the Playground supplies it). */
   output?: ReactNode;
   outputCount: number;
+  /** The stage is pinned to one world (challenges use the plain studio): no world picker. */
+  worldLocked?: boolean;
 }
 
 /**
@@ -125,27 +127,36 @@ function Variables({ frame, previous }: { frame: TraceFrame; previous: TraceFram
   return <WatchPanel frame={frame} previous={previous} />;
 }
 
-function StageSettings({ world, calm, onCalm, follow, onFollow, quality, tier }: StageDockProps) {
+function StageSettings({ world, calm, onCalm, follow, onFollow, quality, tier, worldLocked = false }: StageDockProps) {
   const pick = (w: World, e: React.MouseEvent<HTMLButtonElement>) => {
     const r = e.currentTarget.getBoundingClientRect();
     setWorld(w, { x: r.left + r.width / 2, y: r.top + r.height / 2 });
   };
   return (
     <div className="vz-set">
-      <section aria-labelledby="vzs-world">
-        <h3 id="vzs-world" className="vz-dock__title">
-          World
-        </h3>
-        <div className="vz-set__worlds" role="radiogroup" aria-label="World">
-          {WORLD_IDS.map((w) => (
-            <button key={w} type="button" role="radio" aria-checked={w === world} className="vz-set__world" onClick={(e) => pick(w, e)} title={WORLDS[w].blurb}>
-              <WorldArt world={w} />
-              <span>{WORLDS[w].label}</span>
-            </button>
-          ))}
-        </div>
-        <p className="vz-set__blurb">{WORLDS[world].blurb}</p>
-      </section>
+      {worldLocked ? (
+        <section aria-labelledby="vzs-world">
+          <h3 id="vzs-world" className="vz-dock__title">
+            World
+          </h3>
+          <p className="vz-set__blurb">This stage always uses the plain {WORLDS[world].label} world, so the focus stays on the data.</p>
+        </section>
+      ) : (
+        <section aria-labelledby="vzs-world">
+          <h3 id="vzs-world" className="vz-dock__title">
+            World
+          </h3>
+          <div className="vz-set__worlds" role="radiogroup" aria-label="World">
+            {WORLD_IDS.map((w) => (
+              <button key={w} type="button" role="radio" aria-checked={w === world} className="vz-set__world" onClick={(e) => pick(w, e)} title={WORLDS[w].blurb}>
+                <WorldArt world={w} />
+                <span>{WORLDS[w].label}</span>
+              </button>
+            ))}
+          </div>
+          <p className="vz-set__blurb">{WORLDS[world].blurb}</p>
+        </section>
+      )}
 
       <section aria-labelledby="vzs-motion">
         <h3 id="vzs-motion" className="vz-dock__title">

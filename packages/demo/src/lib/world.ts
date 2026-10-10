@@ -85,6 +85,26 @@ export function setWorld(world: World, origin?: { x: number; y: number }) {
     .catch(() => {});
 }
 
+/**
+ * Shows the site in `world` until the returned function is called, without
+ * changing the visitor's stored choice (challenges always use the plain
+ * studio). Releasing puts back whatever was on screen before.
+ */
+export function pinWorld(world: World): () => void {
+  if (typeof document === 'undefined') return () => {};
+  const root = document.documentElement;
+  const before = getWorld();
+  const show = (w: World) => {
+    root.setAttribute('data-world', w);
+    const dark = root.getAttribute('data-theme') !== 'light';
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', META_COLOR[w][dark ? 'dark' : 'light']);
+    syncFavicon(w);
+    listeners.forEach((l) => l());
+  };
+  show(world);
+  return () => show(before);
+}
+
 /** Re-applies the theme-colour meta after the light / dark mode changes. */
 export function syncWorldMeta() {
   const world = getWorld();

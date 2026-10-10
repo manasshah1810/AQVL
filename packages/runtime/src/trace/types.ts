@@ -44,6 +44,8 @@ export interface TraceNode {
   opacity: number;
   /** Outside its structure: a list / tree node sitting in heap memory. */
   detached: boolean;
+  /** A stack / queue item's place in its container (bottom → top, front → rear). */
+  order?: number;
 }
 
 /** A drawn connection between two nodes. */
@@ -70,6 +72,17 @@ export interface TraceStructure {
   nodeIds: string[];
   /** Where the structure's anchor sits (used for the name plate of an empty structure). */
   anchor?: Vec3;
+  /** A tree's root / a linked list's head node id (absent when it is NULL). */
+  head?: string;
+}
+
+/** The program's state once it has finished: everything, including what changed after the last visible step. */
+export interface TraceFinal {
+  /** Variables of the outermost scope (numbers, strings, booleans only). */
+  vars: Record<string, number | string | boolean>;
+  nodes: TraceNode[];
+  edges: TraceEdge[];
+  structures: TraceStructure[];
 }
 
 export interface TraceRegions {
@@ -170,4 +183,6 @@ export interface ExecutionTrace {
   truncated: boolean;
   /** Source lines that ever ran (for the editor's coverage gutter). */
   linesRun: number[];
+  /** The state the program finished in (absent when it stopped on an error or at the step cap). */
+  final?: TraceFinal;
 }

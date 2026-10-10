@@ -19,6 +19,7 @@ const Tasks = lazy(() => import('./pages/tasks/TasksPage.tsx'));
 const Developer = lazy(() => import('./pages/developer/DeveloperPage.tsx'));
 const NotFound = lazy(() => import('./pages/NotFound.tsx'));
 const RSPage = lazy(() => import('./pages/rs/RSPage.tsx'));
+const Challenges = lazy(() => import('./pages/challenges/ChallengesPage.tsx'));
 
 type Chrome = 'site' | 'app' | 'none';
 
@@ -42,6 +43,7 @@ const ROUTES: Record<RouteName, RouteDef> = {
   tasks: { Page: Tasks, chrome: 'none', title: 'AQVL · Command Center', wait: 'Loading the command center' },
   developer: { Page: Developer, chrome: 'none', title: 'Developer', wait: 'Loading' },
   rs: { Page: RSPage, chrome: 'site', title: 'Diagnostic · AQVL', wait: 'Loading the diagnostic' },
+  challenges: { Page: Challenges, chrome: 'app', title: 'Challenges · AQVL', wait: 'Loading the challenges' },
   notfound: { Page: NotFound, chrome: 'site', title: 'Not found · AQVL', wait: 'Loading' },
 };
 

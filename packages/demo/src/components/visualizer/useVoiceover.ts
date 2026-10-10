@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo } from 'react';
 import { explainError, explainFrame, type Explanation, type ExecutionTrace } from '@aqvl/runtime';
 import type { Playhead } from '@aqvl/renderer';
 import { useSettings } from '../../lib/settings';
-import { useWorld } from '../../lib/world';
+import { useWorld, type World } from '../../lib/world';
 import { VoiceEngine, voiceThemeOf } from '../../lib/voice';
 
 /** Wait for the viewer to settle on a step before synthesising it, so scrubbing past 200 steps speaks none of them. */
@@ -30,9 +30,10 @@ export function explanationAt(trace: ExecutionTrace, index: number, source: stri
  * and then holds until the sentence is done, so the picture, the highlighted
  * line and the voice never drift onto different steps.
  */
-export function useVoiceover(trace: ExecutionTrace, playhead: Playhead, active: number, source: string, enabled = true, suppress = false) {
+export function useVoiceover(trace: ExecutionTrace, playhead: Playhead, active: number, source: string, enabled = true, suppress = false, pinnedWorld?: World) {
   const settings = useSettings();
-  const world = useWorld();
+  const siteWorld = useWorld();
+  const world = pinnedWorld ?? siteWorld;
   const theme = voiceThemeOf(world);
   const { voiceMode, voiceEngine } = settings;
   const voiceOn = settings.voiceOn && enabled;

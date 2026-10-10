@@ -36,6 +36,15 @@ export function useTraceRun() {
     return next;
   }, []);
 
+  /** Plays a trace that was already recorded (a graded challenge run), superseding anything still recording. */
+  const adopt = useCallback((trace: ExecutionTrace, source: string): TraceRun => {
+    const id = ++latest.current;
+    const next: TraceRun = { id, trace, playhead: new Playhead(trace), source };
+    setRun(next);
+    setTracing(null);
+    return next;
+  }, []);
+
   const clear = useCallback(() => {
     latest.current++;
     setTracing(null);
@@ -55,5 +64,5 @@ export function useTraceRun() {
 
   useEffect(() => () => previous.current?.playhead.dispose(), []);
 
-  return { run, tracing, start, clear };
+  return { run, tracing, start, adopt, clear };
 }

@@ -14,7 +14,7 @@ import monoFont from '@fontsource/jetbrains-mono/files/jetbrains-mono-latin-500-
 import monoItalicFont from '@fontsource/jetbrains-mono/files/jetbrains-mono-latin-400-italic.woff?url';
 import monoStrongFont from '@fontsource/jetbrains-mono/files/jetbrains-mono-latin-600-normal.woff?url';
 import { spring } from '../../lib/motion';
-import { useWorld } from '../../lib/world';
+import { useWorld, type World } from '../../lib/world';
 import { updateSettings, useSettings, type DockTab } from '../../lib/settings';
 import { Scrubber } from './Scrubber';
 import { VoiceControl } from './VoiceControl';
@@ -85,6 +85,8 @@ export interface VisualizerProps {
   onRetry?: () => void;
   /** "Edit code": put the cursor on the line that needs changing. */
   onEditLine?: (line: number | null) => void;
+  /** Pin the stage to one world whatever the site's world is (challenges use the plain studio). */
+  world?: World;
 }
 
 /**
@@ -96,9 +98,10 @@ export interface VisualizerProps {
  * scene. Keyboard: Space, arrows, Home / End, [ ], C calm, F follow, and
  * V / K / O / S for the panel's tabs.
  */
-export function Visualizer({ trace, playhead, source, theme, reducedMotion, compact = false, output, outputCount = 0, stale = false, onRetry, onEditLine }: VisualizerProps) {
+export function Visualizer({ trace, playhead, source, theme, reducedMotion, compact = false, output, outputCount = 0, stale = false, onRetry, onEditLine, world: pinnedWorld }: VisualizerProps) {
   const snap = usePlayhead(playhead);
-  const world = useWorld();
+  const siteWorld = useWorld();
+  const world = pinnedWorld ?? siteWorld;
   const settings = useSettings();
 
   // Calm follows the setting (auto: the OS preference).
@@ -173,7 +176,7 @@ export function Visualizer({ trace, playhead, source, theme, reducedMotion, comp
   }, [playhead, trace]);
 
   // The voice reads the same frame as the stage and the code highlight.
-  const voice = useVoiceover(trace, playhead, snap.active, source, !compact, issue.issue !== null);
+  const voice = useVoiceover(trace, playhead, snap.active, source, !compact, issue.issue !== null, pinnedWorld);
   const voiceOn = settings.voiceOn && !compact;
 
   const frame = trace.frames[snap.active] ?? trace.frames[0];
@@ -455,6 +458,7 @@ export function Visualizer({ trace, playhead, source, theme, reducedMotion, comp
             previous={trace.frames[snap.step - 1]}
             output={output}
             outputCount={outputCount}
+            worldLocked={pinnedWorld !== undefined}
           />
         )}
       </AnimatePresence>
