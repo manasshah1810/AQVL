@@ -63,16 +63,32 @@ export function useVoiceover(trace: ExecutionTrace, playhead: Playhead, active: 
     let live = true;
     // Let this step's animation play out in full, then hold at its end while the sentence is spoken.
     const gated = playhead.getSnapshot().playing;
-    if (gated) playhead.stepForward();
+    // We hold playback only while the sentence is spoken, and always hand it back: whether the speech ends, fails, hangs,
+    // or this effect is torn down mid-sentence (a setting or step changed), a run must never be left paused by the narration.
+    let held = false;
+    const release = () => {
+      if (!held) return;
+      held = false;
+      if (!playhead.getSnapshot().atEnd) playhead.play();
+    };
+    if (gated) {
+      playhead.stepForward();
+      held = true;
+    }
+    let watchdog = 0;
     const timer = window.setTimeout(() => {
-      void VoiceEngine.speak({ text: explanation.text, theme }).then(() => {
-        if (live && gated && !playhead.getSnapshot().atEnd) playhead.play();
-      });
+      if (held) watchdog = window.setTimeout(() => live && release(), Math.min(20000, 6000 + explanation.text.length * 90));
+      void VoiceEngine.speak({ text: explanation.text, theme }).then(
+        () => live && release(),
+        () => live && release(),
+      );
     }, gated ? 0 : SETTLE_MS);
     return () => {
       live = false;
       window.clearTimeout(timer);
+      window.clearTimeout(watchdog);
       VoiceEngine.cancel();
+      release();
     };
   }, [voiceOn, voiceMode, explanation, active, theme, playhead, suppress]);
 

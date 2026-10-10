@@ -16,7 +16,6 @@ export function usePlayhead(playhead: Playhead | null): PlayheadSnapshot {
 /**
  * Calls `onTime` with the exact time on every frame the playhead moves,
  * for things that follow it smoothly (a scrubber thumb) without React renders.
- * Also pauses playback while the tab is hidden.
  */
 export function usePlayheadTime(playhead: Playhead | null, onTime: (t: number) => void): void {
   useEffect(() => {
@@ -24,13 +23,4 @@ export function usePlayheadTime(playhead: Playhead | null, onTime: (t: number) =
     onTime(playhead.time);
     return playhead.onTick(onTime);
   }, [playhead, onTime]);
-
-  useEffect(() => {
-    if (!playhead) return undefined;
-    const onVisibility = () => {
-      if (document.hidden) playhead.pause();
-    };
-    document.addEventListener('visibilitychange', onVisibility);
-    return () => document.removeEventListener('visibilitychange', onVisibility);
-  }, [playhead]);
 }
