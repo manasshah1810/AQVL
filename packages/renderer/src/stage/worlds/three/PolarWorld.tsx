@@ -27,6 +27,7 @@ import {
   Vector4,
   type DirectionalLight,
   type HemisphereLight,
+  type Object3D,
 } from 'three';
 import type { StageModel } from '../../model/StageModel';
 import type { StageSample } from '../../model/sampler';
@@ -37,6 +38,7 @@ import { FOG, NOISE, dotTexture, fogUniforms, rng } from './glsl';
 import { polarSpots, worldLayout } from './layout';
 import { penguinSpots, polarClearing } from './polarLayout';
 import { buildPolarColonyProps, iglooTexture } from './polarProps';
+import { batchStatic } from '../../three/batch';
 import { ParticlePool, hash } from './particles';
 import type { WorldClock } from './WorldLayer';
 import { useGovernedInvalidate } from '../../three/perf';
@@ -662,6 +664,8 @@ export function PolarWorld({ model, bounds, driver, calm, clock }: WorldProps) {
     water.layers.set(NO_SHADOW_LAYER);
     group.add(water);
 
+    // The still scenery (igloo, pool, bucket, lanterns...) becomes a few meshes per material; the fish stays apart.
+    batchStatic(group, { dynamic: new Set<Object3D>([fish]), keep: new Set<Object3D>([colony.group]), onGeometry: (geo) => disposables.push(geo) });
     group.traverse((o) => {
       o.frustumCulled = false;
     });

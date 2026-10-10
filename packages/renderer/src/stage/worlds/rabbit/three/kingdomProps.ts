@@ -1,4 +1,6 @@
+import { dedupeMaterials } from '../../../three/batch';
 import {
+  Vector3,
   Box3,
   Color,
   DoubleSide,
@@ -33,11 +35,11 @@ import { plumpCone, roundBox, roundCylinder, shadowDisc, shadowMaterial, softToy
 
 // Every shape has soft, rounded edges (boxes, drums and plump cones), so the furniture reads as toy-like, not geometric.
 const GEO = {
-  sphere: new SphereGeometry(1, 28, 20),
+  sphere: new SphereGeometry(1, 20, 14),
   small: new SphereGeometry(1, 14, 10),
-  cyl: roundCylinder(0.16, 28),
+  cyl: roundCylinder(0.16, 22),
   cyl8: roundCylinder(0.3, 12, 3),
-  cone: plumpCone(28),
+  cone: plumpCone(22),
   box: roundBox(0.16),
   torus: new TorusGeometry(1, 0.12, 12, 36),
   flag: new PlaneGeometry(1, 0.62, 10, 2).translate(0.5, 0, 0),
@@ -798,27 +800,40 @@ export function buildProps(k: Kingdom): KingdomProps {
     timed.push({ uniforms });
     return m;
   };
+  // Instanced scenery is cut into spatial chunks: the kingdom is far wider than any view of it, and a mesh that
+  // spans all of it can never be skipped, so every blade and petal would be sent to the GPU on every frame.
   const instanced = (geo: BufferGeometry, m: Material, list: { x: number; y: number; z: number; sx: number; sy: number; sz: number; base: number; color: string; ry?: number; rx?: number; rz?: number }[]) => {
-    const im = new InstancedMesh(geo, m, Math.max(1, list.length));
-    const base = new Float32Array(Math.max(1, list.length));
+    const cells = new Map<string, typeof list>();
+    for (const it of list) {
+      const key = cellKey(it.x, it.y, it.z);
+      let cell = cells.get(key);
+      if (!cell) cells.set(key, (cell = []));
+      cell.push(it);
+    }
     const o = new Object3D();
     const c = new Color();
-    list.forEach((it, i) => {
-      o.position.set(it.x, it.y, it.z);
-      o.rotation.set(it.rx ?? 0, it.ry ?? 0, it.rz ?? 0);
-      o.scale.set(it.sx, it.sy, it.sz);
-      o.updateMatrix();
-      im.setMatrixAt(i, o.matrix);
-      im.setColorAt(i, c.set(it.color));
-      base[i] = it.base;
-    });
-    im.count = list.length;
-    im.geometry = geo.clone();
-    im.geometry.setAttribute('aBase', new InstancedBufferAttribute(base, 1));
-    geometries.push(im.geometry);
-    im.frustumCulled = false;
-    group.add(im);
-    return im;
+    for (const part of cells.values()) {
+      const im = new InstancedMesh(geo, m, part.length);
+      const base = new Float32Array(part.length);
+      part.forEach((it, i) => {
+        o.position.set(it.x, it.y, it.z);
+        o.rotation.set(it.rx ?? 0, it.ry ?? 0, it.rz ?? 0);
+        o.scale.set(it.sx, it.sy, it.sz);
+        o.updateMatrix();
+        im.setMatrixAt(i, o.matrix);
+        im.setColorAt(i, c.set(it.color));
+        base[i] = it.base;
+      });
+      im.count = part.length;
+      im.geometry = geo.clone();
+      im.geometry.setAttribute('aBase', new InstancedBufferAttribute(base, 1));
+      geometries.push(im.geometry);
+      // The sway moves tips a little past the instances' own bounds.
+      im.computeBoundingSphere();
+      if (im.boundingSphere) im.boundingSphere.radius += 1.5;
+      im.frustumCulled = true;
+      group.add(im);
+    }
   };
 
   // Grass tufts over every island's turf (not on the plaza's paved middle, nor under the props' busiest spots).
@@ -977,6 +992,8 @@ export function buildProps(k: Kingdom): KingdomProps {
     group.add(im);
   }
 
+  // The same look is one material (the lamps and windows glow by name and stay as they are), so the merge below has few buckets.
+  dedupeMaterials(group, [lampMat, windowMat]);
   mergeStatic(group, geometries);
 
   return { group, lamps, lampMat, windowMat, timed, clock, fountains, balloons, basket, pads, fire: { flames, pos: k.fire }, materials, geometries };
@@ -985,7 +1002,9 @@ export function buildProps(k: Kingdom): KingdomProps {
 /** Merges every prop that never moves into one mesh per material (a few dozen draw calls instead of hundreds). */
 function mergeStatic(group: Group, geometries: BufferGeometry[]): void {
   group.updateMatrixWorld(true);
-  const buckets = new Map<Material, BufferGeometry[]>();
+  // Indexed and non-indexed geometries (rounded boxes are non-indexed) cannot be merged together: one bucket each.
+  const buckets = new Map<string, { mat: Material; list: BufferGeometry[] }>();
+  const ids = new Map<Material, number>();
   const drop: Mesh[] = [];
   const kept = (o: Object3D | null): boolean => {
     for (let p = o; p && p !== group; p = p.parent) if (p.userData.keep) return true;
@@ -996,20 +1015,34 @@ function mergeStatic(group: Group, geometries: BufferGeometry[]): void {
     if (!m.isMesh || (m as unknown as InstancedMesh).isInstancedMesh || kept(m)) return;
     const mat = m.material as Material;
     const g = m.geometry.clone().applyMatrix4(m.matrixWorld);
-    if (g.index === null || !g.attributes.uv) return;
-    let list = buckets.get(mat);
-    if (!list) buckets.set(mat, (list = []));
-    list.push(g);
+    if (!g.attributes.uv) return;
+    if (!ids.has(mat)) ids.set(mat, ids.size);
+    g.computeBoundingBox();
+    g.boundingBox!.getCenter(_mid);
+    const key = `${ids.get(mat)}|${g.index ? 'i' : 'n'}|${cellKey(_mid.x, _mid.y, _mid.z)}`;
+    let bucket = buckets.get(key);
+    if (!bucket) buckets.set(key, (bucket = { mat, list: [] }));
+    bucket.list.push(g);
     drop.push(m);
   });
   for (const m of drop) m.removeFromParent();
-  for (const [mat, list] of buckets) {
+  for (const { mat, list } of buckets.values()) {
     const merged = mergeGeometries(list, false);
     list.forEach((g) => g.dispose());
     if (!merged) continue;
     geometries.push(merged);
+    merged.computeBoundingSphere();
     const mesh = new Mesh(merged, mat);
-    mesh.frustumCulled = false;
+    // Merged per material and per patch of the kingdom, so a patch that is out of view is not drawn.
+    mesh.frustumCulled = true;
     group.add(mesh);
   }
+}
+
+const _mid = new Vector3();
+
+/** The kingdom is cut into cubes of this size for culling (big enough to keep draw calls few, small enough to skip what is off to the side). */
+const CELL = 26;
+function cellKey(x: number, y: number, z: number): string {
+  return `${Math.floor(x / CELL)},${Math.floor(y / CELL)},${Math.floor(z / CELL)}`;
 }

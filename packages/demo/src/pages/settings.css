@@ -1,7 +1,8 @@
 /* Settings: the world picker and the choices that outlast a visit. */
 @layer components {
+  .set-section { margin-top: clamp(24px, 4vw, 40px); }
   .set-section + .set-section {
-    margin-top: clamp(40px, 6vw, 72px);
+    margin-top: clamp(24px, 4vw, 40px);
   }
 
   .set-head {

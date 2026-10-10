@@ -23,6 +23,7 @@ import {
   InstancedBufferAttribute,
   InstancedMesh,
   Matrix4,
+  type Object3D,
   Mesh,
   MeshStandardMaterial,
   PlaneGeometry,
@@ -42,6 +43,8 @@ import { NO_SHADOW_LAYER } from '../../three/StageEnvironment';
 import { FOG, NOISE, dotTexture, fogUniforms, rng } from './glsl';
 import { FOUNTAIN_YAW, GROVE_SPREAD, groveClearing, pandaSpots, worldLayout } from './layout';
 import { buildColonyProps } from './colonyProps';
+import { batchStatic } from '../../three/batch';
+import { LightPool } from '../../three/lightPool';
 import { swingAngle } from '../idle';
 import { ParticlePool, hash } from './particles';
 import type { WorldProps } from './PolarWorld';
@@ -278,6 +281,7 @@ const WIND = { value: 0 };
 const _m = new Matrix4();
 const _q = new Quaternion();
 const _p = new Vector3();
+const _focus = new Vector3();
 const _s = new Vector3();
 const _e = new Euler();
 
@@ -603,8 +607,10 @@ export function BambooWorld({ model, bounds, driver, calm, clock }: WorldProps) 
       }
       add(new ConeGeometry(0.52, 0.32, 4), 1.53, stoneMat, Math.PI / 4);
       add(new SphereGeometry(0.075, 10, 8), 1.74);
+      // A source for the light pool (hidden: the pool lends a real light to the ones that matter).
       const light = new PointLight('#ffb760', 3.2, 6, 1.6);
       light.position.y = 1.2;
+      light.visible = false;
       g.add(light);
       group.add(g);
       return { group: g, glowMat, box, light, x, z };
@@ -883,6 +889,7 @@ export function BambooWorld({ model, bounds, driver, calm, clock }: WorldProps) 
       if (i === 0 || i === 3 || i === 5) {
         light = new PointLight('#ffa552', 0, 7, 1.6);
         light.position.set(0, 1.75, 0.54);
+        light.visible = false;
         g.add(light);
       }
       group.add(g);
@@ -994,10 +1001,21 @@ void main() { gl_FragColor = vec4(vColor, 1.0); }`,
     group.add(props.group);
     disposables.push({ dispose: () => props.dispose() });
 
+    // Seven lanterns and fires, three real lights: the pool lends them to whichever matter most to where the camera looks.
+    const lightPool = new LightPool(3);
+    group.add(...lightPool.lights);
+    const lightSources = [...lanterns.map((l) => l.light), ...hanging.flatMap((h) => (h.light ? [h.light] : [])), props.fire.light];
+    // The still scenery (stone lanterns, fountain, slide, swing frame, gym) becomes a few meshes per material;
+    // what the world moves stays its own object. The colony props were batched when they were built.
+    batchStatic(group, {
+      dynamic: new Set<Object3D>([dangle, pivot, swingArm, ...koi, ...hanging.map((h) => h.hang)]),
+      keep: new Set<Object3D>([props.group]),
+      onGeometry: (geo) => disposables.push(geo),
+    });
     group.traverse((o) => {
       o.frustumCulled = false;
     });
-    return { group, props, gym, snackStalks, dangle, butterflies, birds, fountain, pivot, fx, fz, stalks, stalkMesh, stalkSway, leafMesh, leafSway, leavesOf, grassMesh, rockMesh, lanterns, px, pz, pondMat, koi, falling, hillTones, swingArm, hanging, paperMats, flies, disposables };
+    return { group, props, lightPool, lightSources, gym, snackStalks, dangle, butterflies, birds, fountain, pivot, fx, fz, stalks, stalkMesh, stalkSway, leafMesh, leafSway, leavesOf, grassMesh, rockMesh, lanterns, px, pz, pondMat, koi, falling, hillTones, swingArm, hanging, paperMats, flies, disposables };
   }, [cx, cz, clearX, clearZ, floorY, time, model, sky$]);
 
   useEffect(
@@ -1059,6 +1077,10 @@ void main() {
   const fillLight = useRef<DirectionalLight>(null);
   const hemi = useRef<HemisphereLight>(null);
   const three = useThree((s) => s.scene);
+  const controls = useThree((s) => s.controls) as { target?: Vector3 } | null;
+  const focus = useRef<Vector3 | null>(null);
+  focus.current = controls?.target ?? null;
+  const poolAt = useRef(0);
   // Halos round the lanterns after dark.
   const halos = useMemo(() => {
     const tex = typeof document === 'undefined' ? null : dotTexture();
@@ -1209,6 +1231,9 @@ void main() {
         // The laptop's screen glows (brighter in the dark, and busier while someone types); the barbell is off its rack while it is lifted; the punching log swings when it is hit.
         const typing = clock.colony.members.some((m) => m.act === 'type');
         props.screen.emissiveIntensity = (0.55 + 1.5 * nightW) * (typing && !calm ? 1 + 0.12 * Math.sin(now * 11) * Math.sin(now * 2.3) : 1);
+        // The few real lights go to the lanterns and the fire that matter to where the camera looks.
+        scene.lightPool.update(Math.min(0.1, Math.max(0, now - poolAt.current)), scene.lightSources, focus.current ?? _focus.set(cx, floorY, cz));
+        poolAt.current = now;
         const lifting = clock.colony.members.some((m) => m.act === 'lift');
         for (const bar of props.rackBar) bar.visible = !lifting;
         const punching = clock.colony.members.some((m) => m.act === 'punch');

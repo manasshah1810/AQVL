@@ -57,18 +57,23 @@ describe('settings store', () => {
 });
 
 describe('Settings page', () => {
-  it('offers the three worlds, the ice world marked primary, and switching applies at once', () => {
+  it('offers the four worlds as a dome to travel through; browsing previews, and moving in applies at once', () => {
     render(<Settings />);
-    const group = screen.getByRole('radiogroup', { name: 'World' });
-    const radios = Array.from(group.querySelectorAll('[role="radio"]'));
-    expect(radios.map((r) => r.textContent)).toEqual([expect.stringContaining('Studio'), expect.stringContaining('Penguins + Ice'), expect.stringContaining('Pandas + Bamboo')]);
-    expect(radios[1].textContent).toMatch(/Primary/i);
-    expect(radios[0].getAttribute('aria-checked')).toBe('true');
-    fireEvent.click(radios[1]);
+    const group = screen.getByRole('radiogroup', { name: 'Choose a world to visit' });
+    const orbs = Array.from(group.querySelectorAll('[role="radio"]'));
+    expect(orbs.map((r) => r.getAttribute('aria-label'))).toEqual(['Bamboo Grove', 'Aurora Ice Shelf', 'Cloud Kingdom', 'The Studio']);
+    expect(orbs[3].getAttribute('aria-checked')).toBe('true');
+    expect(screen.getByRole('button', { name: /You live in The Studio/ }).getAttribute('aria-disabled')).toBe('true');
+    // Browsing only previews: the site stays where it is.
+    fireEvent.click(orbs[1]);
+    expect(getWorld()).toBe('studio');
+    expect(orbs[1].getAttribute('aria-checked')).toBe('true');
+    fireEvent.click(screen.getByRole('button', { name: /Move in to Aurora Ice Shelf/ }));
     expect(document.documentElement.getAttribute('data-world')).toBe('penguin');
-    expect(radios[1].getAttribute('aria-checked')).toBe('true');
-    fireEvent.click(radios[2]);
-    expect(getWorld()).toBe('panda');
+    fireEvent.click(screen.getByRole('button', { name: 'Next world' }));
+    expect(orbs[2].getAttribute('aria-checked')).toBe('true');
+    fireEvent.click(screen.getByRole('button', { name: /Move in to Cloud Kingdom/ }));
+    expect(getWorld()).toBe('rabbit');
   });
 
   it('the ice world brings its own switches: snow and mascots, and the quality and calm choices are kept', () => {
@@ -89,7 +94,7 @@ describe('Settings page', () => {
 });
 
 describe('the panda world carries across the site', () => {
-  it('shows panda-specific switches, a panda mascot and the tab icon, and drops them again in the studio', () => {
+  it('shows panda-specific switches and the tab icon, and drops them again in the studio', () => {
     const link = document.createElement('link');
     link.setAttribute('rel', 'icon');
     link.setAttribute('href', '/favicon.svg');
@@ -98,10 +103,9 @@ describe('the panda world carries across the site', () => {
     expect(link.getAttribute('href')).toMatch(/^data:image\/svg\+xml/);
     expect(document.documentElement.getAttribute('data-world')).toBe('panda');
     expect(document.querySelector('meta[name="theme-color"]')?.getAttribute('content')).toBe('#121C17');
-    const { container } = render(<Settings />);
+    render(<Settings />);
     expect(screen.getByRole('switch', { name: /Falling leaves/ })).toBeTruthy();
     expect(screen.getByRole('switch', { name: /Panda mascots/ })).toBeTruthy();
-    expect(container.querySelector('.pnd')).toBeTruthy();
     setWorld('studio');
     expect(link.getAttribute('href')).toBe('/favicon.svg');
     link.remove();

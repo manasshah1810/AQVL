@@ -14,7 +14,9 @@ import {
   TorusGeometry,
   type BufferGeometry,
   type Material,
+  type Object3D,
 } from 'three';
+import { batchStatic, dedupeMaterials } from '../../three/batch';
 import type { PolarPlaces, PolarProp } from './polarLayout';
 
 /**
@@ -484,6 +486,13 @@ export function buildPolarColonyProps(places: PolarPlaces, lanterns: [number, nu
     lamps.push({ mat: glow, x: lx, z: lz });
   }
 
+  // The same look is one material (the screen, the lamps and the doorways are animated by name and stay as they are).
+  dedupeMaterials(root, [screen, ...lamps.map((l) => l.mat), ...doors]);
+  // Hundreds of small ice and snow pieces become a few meshes per material; only what the world moves stays apart.
+  batchStatic(root, {
+    dynamic: new Set<Object3D>([...flames.map((f) => f.mesh), ...rackBar, ...punch.map((p) => p.pivot), ...floes.map((f) => f.mesh), ...(theBall ? [theBall] : [])]),
+    onGeometry: (geo) => geos.push(geo),
+  });
   root.traverse((o) => {
     o.frustumCulled = false;
   });

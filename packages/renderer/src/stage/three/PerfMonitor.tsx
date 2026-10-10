@@ -9,6 +9,14 @@ import { governor, perfCounters, perfExtras } from './perf';
  */
 export function PerfMonitor() {
   const gl = useThree((s) => s.gl);
+  const scene = useThree((s) => s.scene);
+  const camera = useThree((s) => s.camera);
+  // Profiling hook: lets a harness walk the scene graph and attribute draw calls and GPU time to subtrees.
+  useEffect(() => {
+    const w = window as unknown as { __aqvlScene?: unknown; __aqvl?: unknown };
+    w.__aqvlScene = scene;
+    w.__aqvl = { scene, gl, camera };
+  }, [scene, gl, camera]);
   const box = useRef<HTMLPreElement | null>(null);
   const acc = useRef({ frames: 0, ms: 0, worst: 0, since: performance.now() });
 
@@ -50,6 +58,7 @@ export function PerfMonitor() {
       `FPS         ${fps.toFixed(0)}  (target ${perfCounters.targetFps}, pace ${governor.pace})`,
       `Frame       ${(a.ms / a.frames).toFixed(1)} ms avg, ${a.worst.toFixed(1)} ms worst`,
       `JS / frame  ${perfCounters.jsMs.toFixed(2)} ms`,
+      `Pixels      ${gl.domElement.width}x${gl.domElement.height} (ratio ${gl.getPixelRatio().toFixed(2)})`,
       `Draw calls  ${info.render.calls}`,
       `Triangles   ${info.render.triangles}`,
       `Geometries  ${info.memory.geometries}   Textures ${info.memory.textures}`,

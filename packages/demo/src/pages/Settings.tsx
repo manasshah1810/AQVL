@@ -1,12 +1,12 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { motion } from 'motion/react';
-import { WORLDS, WORLD_IDS, type QualityTier } from '@aqvl/renderer';
+import { type QualityTier } from '@aqvl/renderer';
 import { setWorld, useWorld, type World } from '../lib/world';
 import { setTheme, useTheme } from '../lib/theme';
 import { DEFAULT_SETTINGS, resetSettings, updateSettings, useSettings } from '../lib/settings';
 import { spring } from '../lib/motion';
-import { WorldArt } from '../components/theme/WorldArt';
-import { Mascot } from '../components/theme/WorldDecor';
+import { WorldPortal } from '../components/portal/WorldPortal';
+import { DOME_WORLDS, PORTAL, worldToIndex } from '../components/portal/portalWorlds';
 import { Segmented, Toggle } from '../components/theme/Controls';
 import './settings.css';
 
@@ -27,82 +27,42 @@ export default function Settings() {
   const theme = useTheme();
   const settings = useSettings();
 
-  const pick = (w: World, e: React.MouseEvent<HTMLButtonElement>) => {
+  const [preview, setPreview] = useState(() => worldToIndex(world));
+  const target = DOME_WORLDS[preview];
+  const lives = target === world;
+
+  const moveIn = (e: React.MouseEvent<HTMLButtonElement>) => {
+    if (lives) return;
     const r = e.currentTarget.getBoundingClientRect();
-    setWorld(w, { x: r.left + r.width / 2, y: r.top + r.height / 2 });
+    setWorld(target as World, { x: r.left + r.width / 2, y: r.top + r.height / 2 });
   };
 
   return (
     <div className="page flex-1 py-10 md:py-16">
-      <header className="mb-12 grid items-end gap-6 md:grid-cols-12">
-        <div className="md:col-span-8">
-          <p className="margin-num mb-3">Settings</p>
-          <h1 className="headline">
-            Pick a <span className="italic text-cream">world</span> to work in.
-          </h1>
-          <p className="lede mt-5">The 3D stage takes the world you choose, and the whole site follows it. Changes apply at once and stay in this browser.</p>
-        </div>
-        <Mascot pose="wave" size={110} className="justify-self-end max-md:hidden md:col-span-4" />
-      </header>
+      <motion.header className="mb-8 max-w-[46rem]" initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0, transition: spring.gentle }}>
+        <p className="margin-num mb-3">Settings</p>
+        <h1 className="headline">
+          Choose where AQVL <span className="italic text-cream">lives.</span>
+        </h1>
+        <p className="lede mt-4">Drag the globe, or use the arrows, to visit each world. When you find the one you love, move in: the whole site follows.</p>
+      </motion.header>
 
-      {/* ── World ─────────────────────────────────────────────── */}
-      <section className="set-section" aria-labelledby="set-world">
-        <div className="set-head">
-          <h2 id="set-world" className="title">
-            World
-          </h2>
-          <p className="muted">Three places for the same algorithms. The state colours never change between them. Your choice carries across the whole site.</p>
-        </div>
-        <div className="set-grid" role="radiogroup" aria-label="World">
-          {WORLD_IDS.map((w, i) => {
-            const info = WORLDS[w];
-            const on = w === world;
-            return (
-              <motion.button
-                key={w}
-                type="button"
-                role="radio"
-                aria-checked={on}
-                className="world-card"
-                onClick={(e) => pick(w, e)}
-                initial={{ opacity: 0, y: 14 }}
-                animate={{ opacity: 1, y: 0, transition: { ...spring.gentle, delay: 0.05 * i } }}
-              >
-                <WorldArt world={w} />
-                <span className="world-card__body">
-                  <span className="flex items-center gap-2">
-                    <span className="title !text-[1.25rem]">{info.label}</span>
-                    {w === 'penguin' && <span className="badge">Primary</span>}
-                    {w === 'panda' && <span className="badge">Full theme</span>}
-                    {on && <span className="mono muted">· on</span>}
-                  </span>
-                  <span className="text-[0.98rem] leading-snug muted">{info.blurb}</span>
-                </span>
-              </motion.button>
-            );
-          })}
-        </div>
-        {world === 'penguin' && (
-          <p className="set-note">
-            <Mascot pose="peek" size={52} />
-            <span>
-              In the ice world the whole site turns to ice: a polar-night palette, snow drifting behind the pages, and a penguin or two. Switch either off below if you want the quiet version.
-            </span>
-          </p>
-        )}
-        {world === 'panda' && (
-          <p className="set-note">
-            <Mascot pose="eat" size={52} />
-            <span>
-              In the bamboo grove the whole site turns to forest: a quiet green palette, leaves drifting behind the pages, a panda or two munching along the footer, and the pandas of the 3D stage
-              pushing, climbing and carrying for every step. Switch either decoration off below for the quiet version.
-            </span>
-          </p>
-        )}
-      </section>
+      <motion.div initial={{ opacity: 0, scale: 0.97, y: 24 }} animate={{ opacity: 1, scale: 1, y: 0, transition: { ...spring.gentle, delay: 0.1 } }}>
+        <WorldPortal
+          index={preview}
+          onIndex={setPreview}
+          footer={
+            <div className="mt-2 flex flex-wrap items-center gap-3">
+              <button type="button" className="ws-cta" aria-disabled={lives} onClick={moveIn}>
+                {lives ? <>✓ You live in {PORTAL[target].name}</> : <>Move in to {PORTAL[target].name} <span aria-hidden="true">→</span></>}
+              </button>
+            </div>
+          }
+        />
+      </motion.div>
 
       {/* ── Appearance ────────────────────────────────────────── */}
-      <section className="set-section" aria-labelledby="set-look">
+      <section className="set-section glass" aria-labelledby="set-look">
         <div className="set-head">
           <h2 id="set-look" className="title">
             Appearance
@@ -142,7 +102,7 @@ export default function Settings() {
       </section>
 
       {/* ── Visualization ─────────────────────────────────────── */}
-      <section className="set-section" aria-labelledby="set-viz">
+      <section className="set-section glass" aria-labelledby="set-viz">
         <div className="set-head">
           <h2 id="set-viz" className="title">
             Visualization

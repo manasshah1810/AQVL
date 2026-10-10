@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { memo, useEffect, useMemo, useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import { PerspectiveCamera } from 'three';
@@ -16,7 +16,7 @@ import { LabelLayer, type StageFonts } from './LabelLayer';
 import { NO_SHADOW_LAYER, StageEnvironment } from './StageEnvironment';
 import { NodeShadows } from './NodeShadows';
 import { FrameProbe, QUALITY, type QualityTier } from './quality';
-import { HeadroomProbe, governor, markFrame, perfCounters } from './perf';
+import { HeadroomProbe, ResolutionGovernor, resolutionGovernorEnabled, governor, markFrame, perfCounters, resolution } from './perf';
 import { PerfMonitor } from './PerfMonitor';
 import { perfMonitorEnabled } from './perf';
 import { WorldLayer } from '../worlds/three/WorldLayer';
@@ -35,6 +35,8 @@ export interface StageSceneProps {
   /** 'out' plays this scene's exit (a new program is replacing it). */
   phase: 'in' | 'steady' | 'out';
   onFollowChange: (follow: boolean) => void;
+  /** Where the resolution governor reports a change (the canvas redraws at the new pixel ratio). */
+  onResolution: (index: number) => void;
   onSlowFrames: () => void;
   /** The scene has run comfortably at its target pace for a long while: quality may come back up a step. */
   onHeadroom?: () => void;
@@ -47,7 +49,7 @@ export interface StageSceneProps {
  * the playhead's time, places the camera, and hands the sample to every
  * part of the scene; with nothing moving, nothing is redrawn.
  */
-export function StageScene({ model, playhead, tier, calm, follow, fonts, phase, onFollowChange, onSlowFrames, onHeadroom, insets }: StageSceneProps) {
+export const StageScene = memo(function StageScene({ model, playhead, tier, calm, follow, fonts, phase, onFollowChange, onResolution, onSlowFrames, onHeadroom, insets }: StageSceneProps) {
   const quality = QUALITY[tier];
   const driver = useMemo(() => new StageDriver(), []);
   const sample = useMemo(() => new StageSample(model.slots.length, model.edgeSlots.length), [model]);
@@ -63,7 +65,9 @@ export function StageScene({ model, playhead, tier, calm, follow, fonts, phase, 
   const invalidate = useThree((s) => s.invalidate);
   const probe = useMemo(() => new FrameProbe(), []);
   const headroom = useMemo(() => new HeadroomProbe(), []);
+  const drs = useMemo(() => new ResolutionGovernor(19.5, resolution.index), [])
   const monitor = useMemo(() => perfMonitorEnabled(), []);
+  const drsOn = useMemo(() => resolutionGovernorEnabled(), []);
   const phaseStart = useRef(performance.now());
   const lastFrame = useRef(0);
   // Pointer gesture on the canvas: has it moved far enough to count as a drag?
@@ -129,10 +133,17 @@ export function StageScene({ model, playhead, tier, calm, follow, fonts, phase, 
     const continuous = playhead.getSnapshot().playing || (model.world !== 'studio' && !calm && !perfCounters.offscreen);
     if (continuous && lastFrame.current > 0) {
       const ms = now - lastFrame.current;
-      if (probe.add(ms)) onSlowFrames();
-      // Already at the lightest tier and still slow: pace the ambient redraw instead (45 / 30 fps, evenly).
-      else if (tier === 'low') governor.sample(ms);
-      else if (tier !== 'high' && onHeadroom && headroom.add(ms, 1000 / 60 + 2)) onHeadroom();
+      // First resort: fewer pixels (the cost is mostly per pixel). Only when that is spent, or does not help, change tier or pace.
+      const stepped = drsOn ? drs.add(ms, now) : null;
+      if (stepped !== null) {
+        resolution.index = drs.index;
+        onResolution(drs.index);
+        probe.reset();
+      } else if (!drsOn || drs.exhausted(now)) {
+        if (probe.add(ms)) onSlowFrames();
+        // Already at the lightest tier and still slow: pace the ambient redraw instead (45 / 30 fps, evenly).
+        else if (tier === 'low') governor.sample(ms);
+      } else if (drs.index === 0 && tier !== 'high' && tier !== 'low' && onHeadroom && headroom.add(ms, 1000 / 60 + 2)) onHeadroom();
     }
     lastFrame.current = now;
     perfCounters.targetFps = governor.targetFps;
@@ -202,4 +213,4 @@ export function StageScene({ model, playhead, tier, calm, follow, fonts, phase, 
       />
     </>
   );
-}
+});

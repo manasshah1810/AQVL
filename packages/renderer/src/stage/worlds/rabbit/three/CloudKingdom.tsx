@@ -34,6 +34,7 @@ import type { WorldClock } from '../../three/WorldLayer';
 import { kingdomOf, liftAt, type Island, type Kingdom, type V3 } from '../kingdom';
 import { buildProps } from './kingdomProps';
 import { roundCylinder, softToy } from './soft';
+import { splitByCell } from '../../../three/batch';
 import { cloudMaterial, dayUniforms, horizonColor, puffGeometry, ribbonMaterial, skyMaterial, sweep, turfMaterial, type Puff } from './clouds';
 import { useGovernedInvalidate } from '../../../three/perf';
 
@@ -227,18 +228,23 @@ function buildWorld(k: Kingdom) {
     const g = mergeGeometries(parts.map((p) => (p.attributes.normal ? p : (p.computeVertexNormals(), p))), false);
     parts.forEach((p) => p.dispose());
     if (!g) continue;
-    geometries.push(g);
-    const m = new Mesh(g, mat);
-    m.frustumCulled = false;
-    group.add(m);
+    // In patches, so the ones off to the side of the view are not sent to the GPU at all.
+    for (const part of splitByCell(g, CULL_CELL)) {
+      geometries.push(part);
+      const m = new Mesh(part, mat);
+      group.add(m);
+    }
+    if (g.attributes.position) geometries.push(g);
   }
 
   const cloudGeo = puffGeometry(puffs);
   geometries.push(cloudGeo);
-  const clouds = new Mesh(cloudGeo, cloud);
-  clouds.frustumCulled = false;
-  clouds.layers.set(NO_SHADOW_LAYER);
-  group.add(clouds);
+  for (const part of splitByCell(cloudGeo, CULL_CELL)) {
+    geometries.push(part);
+    const clouds = new Mesh(part, cloud);
+    clouds.layers.set(NO_SHADOW_LAYER);
+    group.add(clouds);
+  }
 
   // Islets: little clouds that bob, some with a tree.
   const islets: { obj: Group; y: number; seed: number }[] = [];
@@ -417,6 +423,9 @@ function buildWorld(k: Kingdom) {
 
   return { u, group, materials, geometries, rainbowGlow, walkGlow, islets, far, birds, flies };
 }
+
+/** The kingdom's meshes are cut into patches of this size, so the ones outside the view are skipped. */
+const CULL_CELL = 26;
 
 export function CloudKingdom({ model, driver, calm, clock }: { model: StageModel; bounds: SceneBounds; driver: StageDriver; calm: boolean; clock: WorldClock }) {
   const k = useMemo(() => kingdomOf(model), [model]);

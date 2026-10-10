@@ -18,6 +18,7 @@ import {
 } from 'three';
 import type { CastGait, CastPose } from '../cast';
 import { ROLL_RADIUS } from '../cast';
+import { batchStatic, probeDynamic } from '../../three/batch';
 
 /**
  * The two animals, built from soft primitives (no model files). Each rig
@@ -369,10 +370,32 @@ function mat(color: string, roughness: number, extra: Partial<MeshStandardMateri
   return m;
 }
 
+/**
+ * Animals of one kind look alike, so they share materials: a colony of twelve
+ * pandas is one set of white/black/eye materials, not twelve. Every material
+ * the renderer switches to costs a program change and a uniform upload, which
+ * is most of the CPU time of drawing an animal. Materials are counted and freed
+ * with the last animal that uses them.
+ */
+const sharedMaterials = new Map<string, { mat: MeshStandardMaterial; refs: number }>();
+
+function materialKey(color: string, roughness: number, extra: Partial<MeshStandardMaterial>): string | null {
+  const parts: string[] = [new Color(color).getHexString(), String(roughness)];
+  for (const k of Object.keys(extra).sort()) {
+    const v = (extra as Record<string, unknown>)[k];
+    if (v instanceof Color) parts.push(`${k}=${v.getHexString()}`);
+    else if (typeof v === 'number' || typeof v === 'boolean' || typeof v === 'string') parts.push(`${k}=${String(v)}`);
+    else return null; // something we cannot describe: not shared
+  }
+  return parts.join('|');
+}
+
 export class Builder {
   readonly geometries: BufferGeometry[] = [];
   readonly materials: Material[] = [];
-  readonly sphere = this.keep(new SphereGeometry(1, 28, 20));
+  private readonly shared: string[] = [];
+  // 20 x 14 reads as a smooth ball at the size an animal is drawn, with about half the triangles of 28 x 20.
+  readonly sphere = this.keep(new SphereGeometry(1, 20, 14));
   readonly hit: Object3D[] = [];
 
   keep<T extends BufferGeometry>(g: T): T {
@@ -380,7 +403,18 @@ export class Builder {
     return g;
   }
 
+  /** A material this animal shares with its kind. Use `own` for one that this animal alone animates. */
   mat(color: string, roughness: number, extra: Partial<MeshStandardMaterial> = {}): MeshStandardMaterial {
+    const key = materialKey(color, roughness, extra);
+    if (key === null) return this.own(color, roughness, extra);
+    let entry = sharedMaterials.get(key);
+    if (!entry) sharedMaterials.set(key, (entry = { mat: mat(color, roughness, extra), refs: 0 }));
+    entry.refs++;
+    this.shared.push(key);
+    return entry.mat;
+  }
+
+  own(color: string, roughness: number, extra: Partial<MeshStandardMaterial> = {}): MeshStandardMaterial {
     const m = mat(color, roughness, extra);
     this.materials.push(m);
     return m;
@@ -398,6 +432,13 @@ export class Builder {
   dispose(): void {
     for (const g of this.geometries) g.dispose();
     for (const m of this.materials) m.dispose();
+    for (const key of this.shared) {
+      const entry = sharedMaterials.get(key);
+      if (entry && --entry.refs <= 0) {
+        entry.mat.dispose();
+        sharedMaterials.delete(key);
+      }
+    }
   }
 }
 
@@ -437,7 +478,7 @@ export interface PenguinOptions {
   personality?: Personality;
 }
 
-export function buildPenguin(options: PenguinOptions): Rig {
+export function buildPenguinRaw(options: PenguinOptions): Rig {
   const b = new Builder();
   const root = new Group();
   const scale = options.scale ?? 1;
@@ -1207,7 +1248,7 @@ const _dq = new Quaternion();
 const _ONE = new Vector3(1, 1, 1);
 const _DOWN = new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0), -1.2);
 
-export function buildPanda(options: PandaOptions): Rig {
+export function buildPandaRaw(options: PandaOptions): Rig {
   const b = new Builder();
   const root = new Group();
   const cub = !!options.cub;
@@ -1624,7 +1665,7 @@ export function buildPanda(options: PandaOptions): Rig {
     const hanger = new Group();
     hanger.position.z = 0.26;
     lamp.add(hanger);
-    lampGlow = b.mat('#c2412d', 0.7, { emissive: new Color('#ffb04a'), emissiveIntensity: 1.6 });
+    lampGlow = b.own('#c2412d', 0.7, { emissive: new Color('#ffb04a'), emissiveIntensity: 1.6 });
     b.blob(hanger, lampGlow, 0.065, 0.08, 0.065, 0, -0.1, 0);
     b.blob(hanger, black, 0.04, 0.012, 0.04, 0, -0.02, 0);
     b.blob(hanger, black, 0.04, 0.012, 0.04, 0, -0.18, 0);
@@ -2106,4 +2147,55 @@ export function buildEagle(scale = 1): EagleRig {
       b.dispose();
     },
   };
+}
+
+export function buildPenguin(options: PenguinOptions): Rig {
+  return mergeRigParts(buildPenguinRaw(options));
+}
+
+export function buildPanda(options: PandaOptions): Rig {
+  return mergeRigParts(buildPandaRaw(options));
+}
+
+const PROBE_ACTS: IdleAct[] = ['none', 'look', 'preen', 'eat', 'shake', 'play', 'wave', 'bow', 'sniff', 'sit', 'chew', 'scratch', 'stretch', 'drink', 'sleep', 'doze', 'stargaze', 'yawn', 'lounge', 'dance', 'chase', 'slide', 'swing', 'notes', 'ponder', 'clap', 'raise', 'guitar', 'type', 'lift', 'squat', 'pullup', 'punch', 'teach', 'adjust', 'glance', 'unbag', 'rebag'];
+const PROBE_POSES: CastPose[] = ['idle', 'inspect', 'push', 'pull', 'tap', 'present', 'shrug', 'point', 'cheer', 'nod', 'startle'];
+const PROBE_GAITS: CastGait[] = ['stand', 'walk', 'glide', 'roll', 'push', 'pull', 'climb', 'leap', 'tumble', 'swim'];
+
+/** Inputs that between them move every joint, show every prop and play every fidget an animal has. */
+export function rigProbeInputs(): RigInput[] {
+  const base = (): RigInput => ({ gait: 'stand', gaitPhase: 0, gaitWeight: 0, pose: 'idle', poseWeight: 0, poseTime: 0, prevPose: 'idle', prevWeight: 0, lookLocal: [0, 0.4, 3], react: -1, time: 0, seed: 0 });
+  const out: RigInput[] = [base()];
+  // Ambient time alone: breathing, blinking (a blink is brief, so step finely over several blink periods), sway.
+  for (let i = 1; i <= 90; i++) out.push({ ...base(), time: i * 0.1, seed: i % 3 });
+  for (const gait of PROBE_GAITS) for (const ph of [0.7, 2.1, 4.0]) out.push({ ...base(), gait, gaitPhase: ph, gaitWeight: 1, time: ph });
+  for (const pose of PROBE_POSES) for (const t of [0.15, 0.6, 1.4]) out.push({ ...base(), pose, poseWeight: 1, poseTime: t, prevPose: 'nod', prevWeight: 0.4, lookLocal: [t - 0.8, 0.8, 2], time: t });
+  for (const act of PROBE_ACTS) for (const t of [0.2, 0.8, 1.6, 2.6, 4]) out.push({ ...base(), idle: { act, t, weight: 1 }, time: t * 1.3, seed: 1.7 });
+  for (const lookLocal of [[2, 0.5, 0.5], [-2, 1.2, 1], [0, 2, -1]] as [number, number, number][]) out.push({ ...base(), lookLocal });
+  out.push({ ...base(), react: 0.3 }, { ...base(), react: 1.1 });
+  out.push({ ...base(), fish: 1 }, { ...base(), fish: 0.4 }, { ...base(), effort: 1 }, { ...base(), climb: { weight: 1, phase: 1.3, slope: 0.4 } }, { ...base(), carry: 1 }, { ...base(), seat: 1 }, { ...base(), lamp: 1 }, { ...base(), bag: 0, bagAt: [0.4, 0, 0.3] }, { ...base(), bag: 1 });
+  // And back to rest, long enough for any easing inside the rig to settle where a fresh animal starts.
+  for (let i = 0; i < 40; i++) out.push({ ...base(), time: 100 + i * 0.25 });
+  return out;
+}
+
+/**
+ * Collapses an animal's still parts into a few meshes per joint. An animal is a
+ * few dozen soft blobs; only some of them ever move relative to their joint (the
+ * eyes blink, an ear flicks), so everything else in a joint can be one mesh per
+ * material. Which parts move is found by running the rig through every pose,
+ * gait, fidget and prop it has and seeing what changes: nothing is listed by hand,
+ * so a part added to a rig later is handled correctly.
+ */
+export function mergeRigParts(rig: Rig): Rig {
+  const inputs = rigProbeInputs();
+  const dynamic = probeDynamic(rig.root, (i) => rig.update(inputs[i]), inputs.length);
+  const extra: BufferGeometry[] = [];
+  batchStatic(rig.root, { dynamic, keep: new Set(rig.hit), onGeometry: (g) => extra.push(g) });
+  rig.update(inputs[0]);
+  const dispose = rig.dispose.bind(rig);
+  rig.dispose = () => {
+    extra.forEach((g) => g.dispose());
+    dispose();
+  };
+  return rig;
 }

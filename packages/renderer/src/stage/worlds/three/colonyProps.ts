@@ -16,8 +16,10 @@ import {
   Vector3,
   type BufferGeometry,
   type Material,
+  type Object3D,
 } from 'three';
 import type { ColonyPlaces, Prop } from './layout';
+import { batchStatic, dedupeMaterials } from '../../three/batch';
 
 /**
  * Everything the colony has set out in the grove, built from bamboo: beds and
@@ -359,6 +361,8 @@ export function buildColonyProps(places: ColonyPlaces, floorY: number): ColonyPr
   kettle.position.y = 1.0;
   const light = new PointLight('#ff8a3a', 0, 14, 1.5);
   light.position.set(0, 0.8, 0);
+  // A source for the world's light pool: hidden itself, a real light is lent to it while it matters.
+  light.visible = false;
   fire.add(light);
 
   // Lamp posts at the places: a bamboo post with a paper lantern (the world lights them at night).
@@ -380,6 +384,13 @@ export function buildColonyProps(places: ColonyPlaces, floorY: number): ColonyPr
     lamps.push({ mat: paper, x, z: z + 0.44 });
   }
 
+  // The same look is one material (the screen and the lamps are animated by name and stay as they are).
+  dedupeMaterials(root, [screen, ...lamps.map((l) => l.mat)]);
+  // Hundreds of bamboo primitives become a few meshes per material; only what the world moves stays apart.
+  batchStatic(root, {
+    dynamic: new Set<Object3D>([...flames.map((f) => f.mesh), ...rackBar, ...punch.map((p) => p.pivot)]),
+    onGeometry: (geo) => geos.push(geo),
+  });
   root.traverse((o) => {
     o.frustumCulled = false;
   });

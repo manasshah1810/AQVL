@@ -55,8 +55,18 @@ export function advanceDay(dt: number): void {
 
 /** Seconds of grove time since the page opened. */
 export function dayTime(): number {
-  return elapsed;
+  return elapsed + debugOffset;
 }
+
+/** `?daytime=<seconds>` starts the day that many seconds in (to look at dusk or night without waiting for it). */
+const debugOffset = (() => {
+  try {
+    const v = typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get('daytime');
+    return v === null ? 0 : Number(v) || 0;
+  } catch {
+    return 0;
+  }
+})();
 
 function smooth(a: number, b: number, x: number): number {
   const t = Math.min(1, Math.max(0, (x - a) / (b - a)));

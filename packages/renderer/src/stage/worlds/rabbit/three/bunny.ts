@@ -15,6 +15,7 @@ import {
 } from 'three';
 import type { Accessory, Bunny, BunnyLook, GearAt, Held, Pose } from '../warren';
 import { softToy } from './soft';
+import { batchStatic } from '../../../three/batch';
 
 /**
  * A rabbit: a round body and a round head, long ears (or lop ears), a puff
@@ -147,6 +148,8 @@ export interface BunnyRig {
   look: BunnyLook;
   p: Params;
   materials: Material[];
+  /** Geometries made by merging the still parts (freed with the rig). */
+  merged: BufferGeometry[];
 }
 
 export function buildBunny(look: BunnyLook): BunnyRig {
@@ -576,10 +579,20 @@ export function buildBunny(look: BunnyLook): BunnyRig {
     if (extra) root.add(extra);
   }
 
+  const held = { carrot: [carrot], book: [book], lantern: [lantern], balloon: [balloon], telescope: [telescope], dumbbell: bells, bottle: [bottle], pointer: [pointer], notebook: [notebook, pencil] };
+
+  // poseBunny moves exactly these (and nothing else): the joints, the props that are shown or hidden, and the gear.
+  // Whatever else a joint carries (a hat, glasses, a fluff of fur) never moves against it, so it is baked into one mesh per material.
+  const merged: BufferGeometry[] = [];
+  batchStatic(root, {
+    dynamic: new Set<Object3D>([body, torso, head, earL, earR, armL, armR, footL, footR, eyeL, eyeR, nose, tail, lanternLight, ...Object.values(held).flat(), ...(gear ? [gear.obj, ...(gear.extra ? [gear.extra] : [])] : [])]),
+    onGeometry: (g) => merged.push(g),
+  });
+
   return {
     root, body, torso, torsoBase, head, earL, earR, earOut, armL, armR, footL, footR, eyeL, eyeR, eyeY, nose, tail,
-    held: { carrot: [carrot], book: [book], lantern: [lantern], balloon: [balloon], telescope: [telescope], dumbbell: bells, bottle: [bottle], pointer: [pointer], notebook: [notebook, pencil] },
-    gear, lanternLight, look, p: { ...ZERO }, materials,
+    held,
+    gear, lanternLight, look, p: { ...ZERO }, materials, merged,
   };
 }
 
@@ -1093,4 +1106,5 @@ export function poseBunny(rig: BunnyRig, b: Bunny, now: number, dt: number, calm
 
 export function disposeBunny(rig: BunnyRig): void {
   rig.materials.forEach((m) => m.dispose());
+  rig.merged.forEach((g) => g.dispose());
 }

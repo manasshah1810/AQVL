@@ -97,6 +97,113 @@ export class FrameGovernor {
 /** The one pace-keeper of the page's stage. */
 export const governor = new FrameGovernor();
 
+// ── Dynamic resolution ───────────────────────────────────────────────────
+
+/** Fractions of the tier's pixel ratio the stage may be drawn at. */
+export const RES_STEPS = [1, 0.85, 0.72, 0.62, 0.52] as const;
+
+/**
+ * Keeps the frame inside its budget by drawing fewer pixels, not by drawing
+ * less. Most of the stage's cost is per pixel (every pixel runs the lights),
+ * so on a weak or shared GPU the pixel count is the one dial that moves frame
+ * time in proportion. It steps down quickly when frames run long, climbs back
+ * slowly when they have been clean for a long time, and backs off from climbing
+ * if a climb was followed by a drop (no flapping). If a step down did not make
+ * frames any faster, the machine is waiting on the CPU rather than the GPU: the
+ * step is undone and the dial is left alone for a while.
+ */
+export class ResolutionGovernor {
+  private ema = 16.7;
+  private bad = 0;
+  private good = 0;
+  private settle = 0;
+  private upBanUntil = 0;
+  private banMs = 30000;
+  private probation: { index: number; before: number; frames: number } | null = null;
+  private cpuBoundUntil = 0;
+  index = 0;
+
+  constructor(private readonly budgetMs = 19.5, start = 0) {
+    this.index = Math.max(0, Math.min(RES_STEPS.length - 1, start));
+  }
+
+  get scale(): number {
+    return RES_STEPS[this.index];
+  }
+
+  /** True when there is nothing left to give up here (floor reached, or the CPU is what is slow). */
+  exhausted(now = performance.now()): boolean {
+    return this.index === RES_STEPS.length - 1 || now < this.cpuBoundUntil;
+  }
+
+  /** Feed the time between two drawn frames. Returns the new scale when it changed. */
+  add(ms: number, now = performance.now()): number | null {
+    if (ms > 250) return null;
+    this.ema += (ms - this.ema) * 0.12;
+    if (this.settle > 0) {
+      this.settle--;
+      return null;
+    }
+    if (this.probation && ++this.probation.frames >= 40) {
+      const p = this.probation;
+      this.probation = null;
+      // Fewer pixels and barely faster: pixels were not the cost.
+      if (this.ema > p.before * 0.94) {
+        this.index = p.index;
+        this.cpuBoundUntil = now + 90000;
+        this.settle = 40;
+        this.bad = 0;
+        return this.scale;
+      }
+    }
+    if (this.ema > this.budgetMs) {
+      this.good = 0;
+      // One step at a time: wait for the last one to prove itself before taking another.
+      if (!this.probation && ++this.bad >= 18 && this.index < RES_STEPS.length - 1 && now >= this.cpuBoundUntil) {
+        this.bad = 0;
+        this.probation = { index: this.index, before: this.ema, frames: 0 };
+        this.index++;
+        this.settle = 20;
+        // A drop soon after a climb says the climb was a mistake.
+        if (now - this.lastUpAt < 8000) {
+          this.banMs = Math.min(10 * 60000, this.banMs * 2);
+          this.upBanUntil = now + this.banMs;
+        }
+        return this.scale;
+      }
+      return null;
+    }
+    this.bad = 0;
+    // Clean at (or very near) the display's pace: after a long while, try a step back up.
+    if (this.ema < this.budgetMs - 2.5 && this.index > 0) {
+      if (++this.good >= 900 && now >= this.upBanUntil) {
+        this.good = 0;
+        this.index--;
+        this.settle = 40;
+        this.lastUpAt = now;
+        return this.scale;
+      }
+    } else this.good = 0;
+    return null;
+  }
+
+  private lastUpAt = -1e9;
+}
+
+/** The resolution governor can be switched off for measurement: `?drs=0` in the address, or `localStorage['aqvl.drs'] = '0'`. */
+export function resolutionGovernorEnabled(): boolean {
+  if (typeof window === 'undefined') return true;
+  try {
+    if (new URLSearchParams(window.location.search).get('drs') === '0') return false;
+    return window.localStorage.getItem('aqvl.drs') !== '0';
+  } catch {
+    return true;
+  }
+}
+
+/** What the page learned about this machine: a new stage starts where the last one settled. */
+export const resolution = { index: 0 };
+
 // ── Quality auto-tuning ──────────────────────────────────────────────────
 
 const TIERS: QualityTier[] = ['low', 'medium', 'high'];

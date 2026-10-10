@@ -1,5 +1,5 @@
 /// <reference path="./three/troika-three-text.d.ts" />
-import React, { Component, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import React, { Component, memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { NeutralToneMapping, SRGBColorSpace } from 'three';
 import { preloadFont } from 'troika-three-text';
@@ -12,7 +12,7 @@ import type { StageWorld } from './worlds/types';
 import { STAGE_FOV, StageScene } from './three/StageScene';
 import type { StageFonts } from './three/LabelLayer';
 import { QUALITY, lowerTier, type QualityTier } from './three/quality';
-import { higherTier } from './three/perf';
+import { RES_STEPS, higherTier, resolution } from './three/perf';
 
 export type StageStatus =
   | { kind: 'ready' }
@@ -88,15 +88,18 @@ function useFontsReady(fonts: StageFonts): { ready: boolean; error: string | nul
 /**
  * The 3D stage. Draws `trace` at `playhead`'s time, in the site's palette
  * for `theme`. A new trace makes the old scene leave (staggered, to a clean
- * floor) before the new one builds in. Handles WebGL context loss by
+ * floor) before the new one builds in. It is memoised: the page around it
+ * re-renders on every step of the run, and that must not re-render the scene.
+ * Handles WebGL context loss by
  * rebuilding the canvas, and drops quality tiers when frames run long.
  */
-export function StageCanvas(props: StageCanvasProps) {
+export const StageCanvas = memo(function StageCanvas(props: StageCanvasProps) {
   const { trace, playhead, source, theme, world = 'studio', calm, follow, onFollowChange, tier, onTierChange, fonts, onStatus } = props;
   const insets = useMemo(() => props.insets ?? { top: 0, right: 0 }, [props.insets]);
   const model = useMemo(() => new StageModel(trace, theme, source, world), [trace, theme, source, world]);
   const [shown, setShown] = useState<Shown>(() => ({ model, playhead, phase: 'in' }));
   const [canvasKey, setCanvasKey] = useState(0);
+  const [resIndex, setResIndex] = useState(() => resolution.index);
   const [lost, setLost] = useState(false);
   const [noWebgl, setNoWebgl] = useState<string | null>(null);
   const fontState = useFontsReady(fonts);
@@ -139,6 +142,9 @@ export function StageCanvas(props: StageCanvasProps) {
   }, [tier, onTierChange]);
 
   const quality = QUALITY[tier];
+  // The pixel ratio the tier allows on this display, scaled by the resolution governor (it draws fewer pixels when frames run long).
+  const deviceDpr = typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1;
+  const dpr = Math.round(Math.min(Math.max(deviceDpr, quality.dpr[0]), quality.dpr[1]) * RES_STEPS[resIndex] * 100) / 100;
   const background = model.palette.background;
 
   return (
@@ -148,7 +154,7 @@ export function StageCanvas(props: StageCanvasProps) {
           <Canvas
             key={canvasKey}
             frameloop="demand"
-            dpr={quality.dpr}
+            dpr={dpr}
             camera={{ position: [0, 4, 14], fov: STAGE_FOV }}
             gl={{ antialias: true, powerPreference: 'high-performance', alpha: false, stencil: false }}
             onCreated={({ gl }) => {
@@ -184,6 +190,7 @@ export function StageCanvas(props: StageCanvasProps) {
               fonts={fonts}
               phase={shown.phase}
               onFollowChange={onFollowChange}
+              onResolution={setResIndex}
               onSlowFrames={onSlowFrames}
               onHeadroom={onHeadroom}
               insets={insets}
@@ -193,4 +200,4 @@ export function StageCanvas(props: StageCanvasProps) {
       </WebGLBoundary>
     </div>
   );
-}
+});

@@ -301,11 +301,20 @@ export function IDEEditor({ initialValue: rawInitialValue, onChange, readOnly = 
   // Reads real layout metrics straight off the live DOM on every call — no
   // caching, so there's no risk of a stale value from a render that raced a
   // stylesheet or webfont still loading (see measureEditorMetrics's doc comment).
+  // The several layout effects of one commit share a single reading (each reading forces layout); it is dropped as soon as the
+  // current task ends, so no later render can see a value from before a stylesheet or webfont arrived.
+  const metricsNow = useRef<EditorMetrics | null>(null);
   const getMetrics = useCallback((): EditorMetrics => {
     const ta = textareaRef.current;
     const probe = measureRef.current;
     if (!ta || !probe) return FALLBACK_METRICS;
-    return measureEditorMetrics(ta, probe);
+    if (metricsNow.current) return metricsNow.current;
+    const m = measureEditorMetrics(ta, probe);
+    metricsNow.current = m;
+    queueMicrotask(() => {
+      metricsNow.current = null;
+    });
+    return m;
   }, []);
 
   // Local value — uncontrolled to preserve cursor. Event handlers read the

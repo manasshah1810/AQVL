@@ -8,6 +8,7 @@ import {
   ambient,
   blank,
   idleActJoints,
+  mergeRigParts,
   pandaIdle,
   poseJoints,
   smoothstep01,
@@ -83,7 +84,7 @@ const _DOWN = new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0), -1.2);
 /** Height of the body's centre above the feet. */
 const MID = 0.31;
 
-export function buildColonyPenguin(options: ColonyPenguinOptions): Rig {
+export function buildColonyPenguinRaw(options: ColonyPenguinOptions): Rig {
   const b = new Builder();
   const root = new Group();
   const P = options.personality ?? PERSONALITIES[2];
@@ -782,4 +783,8 @@ export function buildColonyPenguin(options: ColonyPenguinOptions): Rig {
       b.dispose();
     },
   };
+}
+
+export function buildColonyPenguin(options: ColonyPenguinOptions): Rig {
+  return mergeRigParts(buildColonyPenguinRaw(options));
 }

@@ -2,6 +2,10 @@ import React from 'react';
 import { motion } from 'motion/react';
 import { SplitWords } from '../components/reactbits/SplitWords';
 import { Magnet } from '../components/reactbits/Magnet';
+import { HomeHero } from '../components/landing/HomeHero';
+import { WorldTour } from '../components/landing/WorldTour';
+import { FeatureBento } from '../components/landing/FeatureBento';
+import { StepsRail } from '../components/landing/StepsRail';
 import { HeroTrace } from '../components/landing/HeroTrace';
 import { ReadingSection } from '../components/landing/ReadingSection';
 import { PipelineTrack } from '../components/landing/PipelineTrack';
@@ -9,83 +13,54 @@ import { LayoutMorph } from '../components/landing/LayoutMorph';
 import { StructureIndex } from '../components/landing/StructureIndex';
 import { useSmoothScroll } from '../lib/smoothScroll';
 import { spring } from '../lib/motion';
-import { Mascot } from '../components/theme/WorldDecor';
+import './landing.css';
 
-const NOTES = [
-  { k: 'Nothing to install', v: 'The compiler, the virtual machine and the 3D renderer all run in this page.' },
-  { k: 'Real code', v: 'Pointer walks, loops, functions and recursion, written the way you would write them anywhere.' },
-  { k: 'Both directions', v: 'Step backwards through a run as easily as forwards.' },
-];
+const TOPICS = ['Sorting', 'Searching', 'Stacks', 'Queues', 'Linked lists', 'Trees', 'Graphs', 'Recursion', 'Pointers', 'Loops'];
 
 export default function Landing() {
   useSmoothScroll();
 
   return (
     <>
-      {/* ── Hero ───────────────────────────────────────────── */}
-      <section aria-labelledby="hero-title" className="relative pt-14 pb-20 md:pt-24 md:pb-28">
-        <div className="page grid gap-12 lg:grid-cols-12 lg:gap-10">
-          <div className="lg:col-span-8">
-            <h1 id="hero-title" className="display">
-              <SplitWords as="span" text="Write a sort." className="block" span={0.18} />
-              <SplitWords as="span" text="Watch it sort." className="block italic text-cream" span={0.18} delay={0.22} />
-            </h1>
-            <motion.p
-              className="lede mt-8 md:mt-10"
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0, transition: { ...spring.gentle, delay: 0.5 } }}
-            >
-              AQVL is a small language for data structures and algorithms. Write a <span className="ic">.aqvl</span>{' '}
-              program and it runs as an animated 3D scene, one step at a time, in your browser.
-            </motion.p>
-            <motion.div
-              className="mt-10 flex flex-wrap items-center gap-x-8 gap-y-5"
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0, transition: { ...spring.gentle, delay: 0.62 } }}
-            >
-              <Magnet>
-                <a href="#/playground" className="btn">
-                  Open the playground
-                  <span className="arrow" aria-hidden="true">
-                    →
-                  </span>
-                </a>
-              </Magnet>
-              <a href="#/docs" className="ulink mono text-[0.875rem]">
-                or read the language guide
-              </a>
-              <Mascot pose="wave" size={64} className="max-sm:hidden" />
-            </motion.div>
-          </div>
+      <HomeHero />
 
-          <aside aria-label="At a glance" className="lg:col-span-4 lg:pt-4">
-            <dl className="border-t border-[var(--line)]">
-              {NOTES.map((n, i) => (
-                <motion.div
-                  key={n.k}
-                  className="border-b border-[var(--line)] py-5"
-                  initial={{ opacity: 0, x: 16 }}
-                  animate={{ opacity: 1, x: 0, transition: { ...spring.gentle, delay: 0.7 + i * 0.09 } }}
-                >
-                  <dt className="mono text-cream">{n.k}</dt>
-                  <dd className="mt-1.5 text-[1.02rem] leading-snug">{n.v}</dd>
-                </motion.div>
-              ))}
-            </dl>
-          </aside>
+      {/* A slow ribbon of what there is to explore. */}
+      <div className="home-marquee" aria-label="Things to explore">
+        <div className="home-marquee__track" aria-hidden="true">
+          {[...TOPICS, ...TOPICS, ...TOPICS, ...TOPICS].map((t, i) => (
+            <span key={i}>
+              {t}
+              <i />
+            </span>
+          ))}
         </div>
+      </div>
 
-        <motion.div
-          className="page mt-16 md:mt-20"
-          initial={{ opacity: 0, y: 30 }}
-          animate={{ opacity: 1, y: 0, transition: { ...spring.gentle, delay: 0.85 } }}
-        >
-          <HeroTrace />
-          <p className="mono muted mt-4">
-            A flat preview of the program above, traced line by line. In the playground the same program runs as a 3D
-            scene.
-          </p>
-        </motion.div>
+      <WorldTour />
+      <FeatureBento />
+      <StepsRail />
+
+      {/* ── For the curious ────────────────────────────────── */}
+      <section aria-labelledby="hood-title" className="border-t border-[var(--line)] pt-20 pb-6 md:pt-28">
+        <div className="page grid gap-10 lg:grid-cols-12">
+          <div className="lg:col-span-5">
+            <p className="margin-num mb-3">For the curious</p>
+            <SplitWords as="h2" inView text="And under the hood, a real language." className="headline" span={0.4} />
+            <span id="hood-title" className="sr-only">
+              Under the hood, a real language.
+            </span>
+            <p className="lede mt-6">
+              Everything you watch is written in AQVL, a small language for data structures and algorithms. Write a <span className="ic">.aqvl</span> program and it runs as an animated 3D scene, one step at a time, right in your browser.
+            </p>
+            <a href="#/docs" className="ulink mono mt-6 inline-block text-[0.875rem]">
+              Read the language guide
+            </a>
+          </div>
+          <div className="lg:col-span-7">
+            <HeroTrace />
+            <p className="mono muted mt-4">A flat preview of a real program, traced line by line. In the playground the same program runs as a 3D scene.</p>
+          </div>
+        </div>
       </section>
 
       <ReadingSection />
@@ -94,38 +69,40 @@ export default function Landing() {
       <StructureIndex />
 
       {/* ── Close ──────────────────────────────────────────── */}
-      <section aria-labelledby="start-title" className="border-t border-[var(--line)] py-24 md:py-32">
-        <div className="page grid gap-12 md:grid-cols-12 md:items-end">
-          <div className="md:col-span-7">
-            <span className="margin-num">05</span>
-            <SplitWords
-              as="h2"
-              inView
-              text="Start from a working program, or from a blank page."
-              className="headline mt-3"
-              span={0.4}
-            />
-          </div>
-          <div className="flex flex-col gap-6 md:col-span-4 md:col-start-9">
-            <a href="#/examples" className="index-row group block border-t border-[var(--line)] px-3 pt-5 pb-4">
-              <span className="flex items-baseline justify-between gap-4">
-                <span className="font-serif text-[1.6rem]">Browse examples</span>
-                <span className="index-arrow mono" aria-hidden="true">
-                  →
-                </span>
-              </span>
-              <span className="mono muted mt-1 block">Sorted by topic, each with a short description</span>
+      <section aria-labelledby="start-title" className="home-close">
+        <div className="page relative z-10 flex flex-col items-center gap-8 py-24 text-center md:py-36">
+          <SplitWords as="h2" inView text="Pick a world. Press play." className="display !text-white" span={0.35} />
+          <span id="start-title" className="sr-only">
+            Pick a world. Press play.
+          </span>
+          <motion.p
+            className="max-w-[36ch] text-[1.25rem] leading-relaxed text-white/85"
+            initial={{ opacity: 0, y: 14 }}
+            whileInView={{ opacity: 1, y: 0, transition: { ...spring.gentle, delay: 0.3 } }}
+            viewport={{ once: true }}
+          >
+            Your first algorithm is a few seconds away.
+          </motion.p>
+          <motion.div
+            className="flex flex-wrap items-center justify-center gap-5"
+            initial={{ opacity: 0, y: 14 }}
+            whileInView={{ opacity: 1, y: 0, transition: { ...spring.gentle, delay: 0.4 } }}
+            viewport={{ once: true }}
+          >
+            <Magnet>
+              <a href="#/playground" className="ws-cta">
+                Open the playground <span aria-hidden="true">→</span>
+              </a>
+            </Magnet>
+            <a href="#/examples" className="home-link">
+              Browse examples
             </a>
-            <a href="#/playground" className="index-row group block border-t border-[var(--line)] px-3 pt-5 pb-4">
-              <span className="flex items-baseline justify-between gap-4">
-                <span className="font-serif text-[1.6rem]">Open the playground</span>
-                <span className="index-arrow mono" aria-hidden="true">
-                  →
-                </span>
-              </span>
-              <span className="mono muted mt-1 block">Editor, compiler and 3D viewport side by side</span>
-            </a>
-          </div>
+          </motion.div>
+        </div>
+        <div className="home-close__orbs" aria-hidden="true">
+          <i />
+          <i />
+          <i />
         </div>
       </section>
     </>
