@@ -1,7 +1,7 @@
 /**
  * The three kinds of challenge on /challenges. Each is a section with its own
- * route segment; only Complete the Algorithm is built so far, the other two
- * have their place ready (their designs are in docs/challenges/).
+ * route segment; Complete the Algorithm and Ghost Move are built; Fork the Future
+ * has its place ready (their designs are in docs/challenges/).
  */
 export interface ChallengeSection {
   id: 'complete' | 'ghost' | 'fork';
@@ -24,7 +24,7 @@ export const SECTIONS: ChallengeSection[] = [
     number: '02',
     title: 'Ghost Move',
     blurb: 'The run pauses before a step. Drag a ghost of the moving piece to where you think it lands, then watch the real step.',
-    status: 'soon',
+    status: 'live',
   },
   {
     id: 'fork',

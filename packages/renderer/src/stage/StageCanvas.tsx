@@ -9,7 +9,7 @@ import { ENVELOPE_SECONDS } from './model/sampler';
 import type { Playhead } from './timeline/Playhead';
 import type { StageTheme } from './look/palette';
 import type { StageWorld } from './worlds/types';
-import { STAGE_FOV, StageScene } from './three/StageScene';
+import { STAGE_FOV, StageScene, type StageProjector } from './three/StageScene';
 import type { StageFonts } from './three/LabelLayer';
 import { QUALITY, lowerTier, type QualityTier } from './three/quality';
 import { RES_STEPS, higherTier, resolution } from './three/perf';
@@ -39,6 +39,8 @@ export interface StageCanvasProps {
   onStatus?: (status: StageStatus) => void;
   /** Pixels of the canvas covered by UI along the top and right; the picture is centred in the rest. */
   insets?: { top: number; right: number };
+  /** Filled every frame with a world → canvas-pixel projection of the live camera (for layers drawn over the stage). */
+  projectorRef?: React.MutableRefObject<StageProjector | null>;
 }
 
 interface Shown {
@@ -94,7 +96,7 @@ function useFontsReady(fonts: StageFonts): { ready: boolean; error: string | nul
  * rebuilding the canvas, and drops quality tiers when frames run long.
  */
 export const StageCanvas = memo(function StageCanvas(props: StageCanvasProps) {
-  const { trace, playhead, source, theme, world = 'studio', calm, follow, onFollowChange, tier, onTierChange, fonts, onStatus } = props;
+  const { trace, playhead, source, theme, world = 'studio', calm, follow, onFollowChange, tier, onTierChange, fonts, onStatus, projectorRef } = props;
   const insets = useMemo(() => props.insets ?? { top: 0, right: 0 }, [props.insets]);
   const model = useMemo(() => new StageModel(trace, theme, source, world), [trace, theme, source, world]);
   const [shown, setShown] = useState<Shown>(() => ({ model, playhead, phase: 'in' }));
@@ -194,6 +196,7 @@ export const StageCanvas = memo(function StageCanvas(props: StageCanvasProps) {
               onSlowFrames={onSlowFrames}
               onHeadroom={onHeadroom}
               insets={insets}
+              projectorRef={projectorRef}
             />
           </Canvas>
         )}

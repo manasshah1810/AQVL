@@ -83,6 +83,11 @@ describe('Complete the Algorithm catalogue', () => {
         expect(report.passed, why(report)).toBe(true);
         // Every expectation reads a value the run really produced.
         for (const r of report.results) expect(r.trace?.final, `${k.id} test ${r.test.index}`).toBeTruthy();
+        // Every visible run has steps to play and something drawn on the stage (a run with nothing to show is a blank stage).
+        for (const r of report.results.filter((x) => !x.test.hidden)) {
+          expect(r.trace!.frames.length, `${k.id} test ${r.test.index}: no steps to play`).toBeGreaterThan(1);
+          expect(r.trace!.frames.some((f) => f.nodes.length > 0), `${k.id} test ${r.test.index}: nothing on the stage`).toBe(true);
+        }
       }, 120_000);
 
       it('every wrong blank option fails a test', async () => {

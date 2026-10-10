@@ -939,3 +939,360 @@
     }
   }
 }
+
+/* ============================================================
+   Ghost Move: the drag layer over the stage, the prediction
+   tracker, and the verdict. Hits and misses use the site's own
+   green and red tokens.
+   ============================================================ */
+@layer components {
+  .gm-how {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .gm-skipped {
+    margin-top: 28px;
+    max-width: 70ch;
+    font-size: 0.9rem;
+  }
+
+  .gm-steps {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 16px 0 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .gm-step {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    min-height: 30px;
+    padding: 0 10px 0 6px;
+    border-radius: var(--r-ctl);
+    border: 1px solid var(--line);
+    color: var(--peach-muted);
+    font-size: 0.78rem;
+  }
+
+  .gm-step__n {
+    display: inline-grid;
+    place-items: center;
+    width: 20px;
+    height: 20px;
+    border-radius: 999px;
+    background: var(--panel);
+    font-size: 0.7rem;
+  }
+
+  .gm-step.is-now {
+    border-color: var(--cream);
+    color: var(--cream);
+  }
+
+  .gm-step.is-hit {
+    border-color: var(--green);
+    color: var(--cream);
+  }
+
+  .gm-step.is-hit .gm-step__n {
+    background: var(--green);
+    color: var(--ink-deep, #000);
+  }
+
+  .gm-step.is-near {
+    border-color: var(--peach);
+    color: var(--cream);
+  }
+
+  .gm-step.is-miss {
+    border-color: var(--red);
+    color: var(--cream);
+  }
+
+  .gm-step.is-miss .gm-step__n {
+    background: var(--red);
+    color: var(--ink-deep, #000);
+  }
+
+  .gm-card {
+    margin-top: 16px;
+  }
+
+  .gm-question,
+  .gm-verdict {
+    padding: 14px 16px;
+    border-radius: var(--r-panel);
+    background: var(--panel);
+    box-shadow: inset 3px 0 0 var(--cream);
+  }
+
+  .gm-verdict.is-hit {
+    box-shadow: inset 3px 0 0 var(--green);
+  }
+
+  .gm-verdict.is-miss {
+    box-shadow: inset 3px 0 0 var(--red);
+  }
+
+  .gm-question__text {
+    margin-top: 4px;
+    font-family: var(--font-serif);
+    font-size: 1.2rem;
+    line-height: 1.3;
+    color: var(--cream);
+  }
+
+  .gm-question__cap {
+    margin-top: 10px;
+    font-size: 0.74rem;
+  }
+
+  .gm-asks {
+    display: grid;
+    gap: 6px;
+    margin: 12px 0 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .gm-asks li {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    font-size: 0.88rem;
+  }
+
+  .gm-asks__ghost {
+    min-width: 54px;
+    padding: 2px 9px;
+    border-radius: 999px;
+    border: 1px dashed var(--line-strong);
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    text-align: center;
+    color: var(--peach-muted);
+  }
+
+  .gm-asks .is-set .gm-asks__ghost {
+    border-style: solid;
+    color: var(--cream);
+  }
+
+  .gm-cats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 18px;
+    margin: 10px 0 0;
+    padding: 0;
+    list-style: none;
+    font-size: 0.88rem;
+  }
+
+  .gm-cats li {
+    display: flex;
+    gap: 8px;
+  }
+
+  /* ── The layer over the stage ───────────────────────────── */
+  .gm-layer {
+    position: absolute;
+    inset: 0;
+    z-index: 4;
+    overflow: hidden;
+    pointer-events: none;
+    touch-action: none;
+  }
+
+  .gm-layer > * {
+    pointer-events: auto;
+  }
+
+  .gm-layer .gm-lines,
+  .gm-layer .gm-hint {
+    pointer-events: none;
+  }
+
+  .gm-lines {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+
+  .gm-lines line {
+    stroke: var(--red);
+    stroke-width: 2;
+    stroke-dasharray: 6 5;
+  }
+
+  .gm-lines text {
+    fill: var(--cream);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    paint-order: stroke;
+    stroke: var(--ink);
+    stroke-width: 4px;
+  }
+
+  .gm-target {
+    position: absolute;
+    width: 34px;
+    height: 34px;
+    margin: -17px 0 0 -17px;
+    padding: 0;
+    border-radius: 999px;
+    border: 2px dashed color-mix(in srgb, var(--cream) 55%, transparent);
+    background: color-mix(in srgb, var(--cream) 6%, transparent);
+    cursor: copy;
+    transition:
+      transform 0.14s ease,
+      border-color 0.14s ease,
+      background 0.14s ease;
+  }
+
+  .gm-target.is-open {
+    border-color: var(--cream);
+  }
+
+  .gm-target:hover,
+  .gm-target:focus-visible,
+  .gm-target.is-near {
+    transform: scale(1.25);
+    border-style: solid;
+    border-color: var(--cream);
+    background: color-mix(in srgb, var(--cream) 18%, transparent);
+    outline: none;
+  }
+
+  .gm-target.is-held {
+    border-style: solid;
+  }
+
+  .gm-target.is-answer {
+    border-style: solid;
+    border-color: var(--green);
+    background: color-mix(in srgb, var(--green) 22%, transparent);
+    box-shadow: 0 0 18px 4px color-mix(in srgb, var(--green) 55%, transparent);
+  }
+
+  .gm-layer.is-locked .gm-target:not(.is-answer) {
+    opacity: 0.35;
+  }
+
+  .gm-pin {
+    position: absolute;
+    transform: translate(-50%, -150%);
+    transition:
+      left 0.35s ease,
+      top 0.35s ease;
+  }
+
+  .gm-chip {
+    min-width: 52px;
+    padding: 6px 14px;
+    border-radius: 999px;
+    border: 1.5px dashed var(--cream);
+    background: color-mix(in srgb, var(--ink) 68%, transparent);
+    backdrop-filter: blur(3px);
+    color: var(--cream);
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    font-weight: 600;
+    opacity: 0.88;
+    cursor: grab;
+    touch-action: none;
+    user-select: none;
+    box-shadow: 0 6px 18px rgb(0 0 0 / 0.25);
+    transition:
+      opacity 0.2s ease,
+      border-color 0.2s ease,
+      box-shadow 0.2s ease;
+  }
+
+  .gm-chip:hover:not(:disabled),
+  .gm-chip.is-selected {
+    opacity: 1;
+    border-style: solid;
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--cream) 30%, transparent);
+  }
+
+  .gm-chip.is-drag {
+    cursor: grabbing;
+  }
+
+  .gm-chip:disabled {
+    cursor: default;
+  }
+
+  .gm-chip.is-hit {
+    opacity: 1;
+    border-style: solid;
+    border-color: var(--green);
+    box-shadow: 0 0 20px 5px color-mix(in srgb, var(--green) 60%, transparent);
+  }
+
+  .gm-chip.is-miss {
+    border-color: var(--red);
+    color: var(--red);
+    opacity: 0.5;
+  }
+
+  .gm-tray {
+    position: absolute;
+    left: 50%;
+    bottom: 76px;
+    transform: translateX(-50%);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    max-width: calc(100% - 32px);
+    padding: 10px 14px;
+    border-radius: var(--r-panel);
+    border: 1px solid var(--line);
+    background: color-mix(in srgb, var(--ink) 82%, transparent);
+    backdrop-filter: blur(6px);
+  }
+
+  .gm-tray__hint,
+  .gm-tray__done {
+    color: var(--peach-muted);
+    font-size: 0.78rem;
+  }
+
+  .gm-hint {
+    position: absolute;
+    left: 50%;
+    top: 62px;
+    transform: translateX(-50%);
+    max-width: 80%;
+    padding: 4px 10px;
+    border-radius: var(--r-ctl);
+    background: var(--ink);
+    color: var(--cream);
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+  }
+
+  .gm-hint:empty {
+    display: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .gm-pin,
+    .gm-target,
+    .gm-chip {
+      transition: none;
+    }
+  }
+
+  @media (max-width: 900px) {
+    .gm-how {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+}

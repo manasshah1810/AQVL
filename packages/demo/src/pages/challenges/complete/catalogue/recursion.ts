@@ -15,11 +15,18 @@ export const RECURSION_KERNELS: Kernel[] = [
     source: `SCENE Factorial
 
 DECLARE
+  STACK calls = []
+
   FUNCTION factorial(n)
+    PUSH calls "factorial(" + n + ")"
+    answer = 0
     IF n [[<=]] 1
-      RETURN [[1]]
+      answer = [[1]]
+    ELSE
+      answer = n * factorial([[n - 1]])
     END
-    RETURN n * factorial([[n - 1]])
+    done = POP(calls)
+    RETURN answer
   END
 
 SEQUENCE
@@ -32,13 +39,13 @@ END`,
       ['n', 'n + 1'],
     ],
     bug: {
-      find: 'RETURN n * factorial(n - 1)',
-      replace: 'RETURN n * factorial(n - 2)',
-      fixes: ['RETURN n + factorial(n - 1)', 'RETURN factorial(n - 1)'],
+      find: 'answer = n * factorial(n - 1)',
+      replace: 'answer = n * factorial(n - 2)',
+      fixes: ['answer = n + factorial(n - 1)', 'answer = factorial(n - 1)'],
       why: 'Each call skipped a number on the way down, so only every other factor was multiplied in.',
     },
-    core: { first: 'IF n <= 1', last: 'RETURN n * factorial(n - 1)' },
-    hints: ['A recursive function needs a base case that stops it (0! and 1! are 1), and a step that shrinks the problem: n! = n × (n - 1)!.', 'RETURN n * factorial(n - 1).'],
+    core: { first: 'IF n <= 1', last: 'END' },
+    hints: ['A recursive function needs a base case that stops it (0! and 1! are 1), and a step that shrinks the problem: n! = n × (n - 1)!. The calls stack shows every call still waiting for its answer.', 'answer = n * factorial(n - 1).'],
     visible: [{ n: 5 }, { n: 3 }, { n: 1 }],
     hidden: [
       { category: 'edge case: zero', input: { n: 0 } },
@@ -56,11 +63,18 @@ END`,
     source: `SCENE Fibonacci
 
 DECLARE
+  STACK calls = []
+
   FUNCTION fib(n)
+    PUSH calls "fib(" + n + ")"
+    answer = 0
     IF n [[<]] 2
-      RETURN [[n]]
+      answer = [[n]]
+    ELSE
+      answer = fib(n - 1) [[+]] fib(n - 2)
     END
-    RETURN fib(n - 1) [[+]] fib(n - 2)
+    done = POP(calls)
+    RETURN answer
   END
 
 SEQUENCE
@@ -73,13 +87,13 @@ END`,
       ['-', '*'],
     ],
     bug: {
-      find: 'RETURN fib(n - 1) + fib(n - 2)',
-      replace: 'RETURN fib(n - 1) + fib(n - 1)',
-      fixes: ['RETURN fib(n - 2) + fib(n - 2)', 'RETURN fib(n) + fib(n - 1)'],
+      find: 'answer = fib(n - 1) + fib(n - 2)',
+      replace: 'answer = fib(n - 1) + fib(n - 1)',
+      fixes: ['answer = fib(n - 2) + fib(n - 2)', 'answer = fib(n) + fib(n - 1)'],
       why: 'Both calls asked for fib(n - 1), so each number doubled the one before instead of adding the two before it.',
     },
-    core: { first: 'IF n < 2', last: 'RETURN fib(n - 1) + fib(n - 2)' },
-    hints: ['fib(0) is 0 and fib(1) is 1; every later number is the sum of the two before it.', 'RETURN fib(n - 1) + fib(n - 2).'],
+    core: { first: 'IF n < 2', last: 'END' },
+    hints: ['fib(0) is 0 and fib(1) is 1; every later number is the sum of the two before it. Watch the calls stack: each call waits for both of its smaller calls.', 'answer = fib(n - 1) + fib(n - 2).'],
     visible: [{ n: 6 }, { n: 1 }, { n: 8 }],
     hidden: [
       { category: 'edge case: zero', input: { n: 0 } },
@@ -97,11 +111,18 @@ END`,
     source: `SCENE EuclidGCD
 
 DECLARE
+  STACK calls = []
+
   FUNCTION gcd(a, b)
+    PUSH calls "gcd(" + a + ", " + b + ")"
+    answer = 0
     IF b == [[0]]
-      RETURN a
+      answer = a
+    ELSE
+      answer = gcd([[b]], a % b)
     END
-    RETURN gcd([[b]], a % b)
+    done = POP(calls)
+    RETURN answer
   END
 
 SEQUENCE
@@ -114,13 +135,13 @@ END`,
       ['a', 'a % b'],
     ],
     bug: {
-      find: 'RETURN gcd(b, a % b)',
-      replace: 'RETURN gcd(b, a - b)',
-      fixes: ['RETURN gcd(a, a % b)', 'RETURN gcd(a % b, b)'],
+      find: 'answer = gcd(b, a % b)',
+      replace: 'answer = gcd(b, a - b)',
+      fixes: ['answer = gcd(a, a % b)', 'answer = gcd(a % b, b)'],
       why: 'Subtracting once is not the remainder: the numbers can go negative and the recursion never reaches its base case.',
     },
-    core: { first: 'IF b == 0', last: 'RETURN gcd(b, a % b)' },
-    hints: ["When b is 0, the answer is a. Otherwise the answer does not change if you replace (a, b) by (b, the remainder of a divided by b).", 'RETURN gcd(b, a % b).'],
+    core: { first: 'IF b == 0', last: 'END' },
+    hints: ["When b is 0, the answer is a. Otherwise the answer does not change if you replace (a, b) by (b, the remainder of a divided by b).", 'answer = gcd(b, a % b).'],
     visible: [
       { a: 48, b: 18 },
       { a: 17, b: 5 },
@@ -142,15 +163,23 @@ END`,
     source: `SCENE FastPower
 
 DECLARE
+  STACK calls = []
+
   FUNCTION power(base, exp)
+    PUSH calls "power(" + base + ", " + exp + ")"
+    answer = 0
     IF exp == 0
-      RETURN 1
+      answer = 1
+    ELSE
+      half = power(base, (exp - exp % 2) / 2)
+      IF exp % 2 == 0
+        answer = half [[*]] half
+      ELSE
+        answer = half * half * [[base]]
+      END
     END
-    half = power(base, (exp - exp % 2) / 2)
-    IF exp % 2 == 0
-      RETURN half [[*]] half
-    END
-    RETURN half * half * [[base]]
+    done = POP(calls)
+    RETURN answer
   END
 
 SEQUENCE
@@ -168,8 +197,8 @@ END`,
       fixes: ['IF exp < 0', 'IF exp == 2'],
       why: 'The base case was moved to exp = 1 and returned 1 there, so every result lost its last factor (and exp = 0 never stopped).',
     },
-    core: { first: 'IF exp == 0', last: 'RETURN half * half * base' },
-    hints: ['b^e = (b^(e/2))² when e is even, and (b^(e/2))² × b when e is odd. Anything to the power 0 is 1.', 'For an odd exp: RETURN half * half * base.'],
+    core: { first: 'IF exp == 0', last: 'END' },
+    hints: ['b^e = (b^(e/2))² when e is even, and (b^(e/2))² × b when e is odd. Anything to the power 0 is 1.', 'For an odd exp: answer = half * half * base.'],
     visible: [
       { base: 2, exp: 10 },
       { base: 3, exp: 5 },

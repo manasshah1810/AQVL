@@ -61,27 +61,55 @@ describe('Challenges page', () => {
     expect(within(nav).getByText('Complete the Algorithm')).toBeInTheDocument();
     expect(within(nav).getByText('Ghost Move')).toBeInTheDocument();
     expect(within(nav).getByText('Fork the Future')).toBeInTheDocument();
-    expect(within(nav).getAllByText('Coming next')).toHaveLength(2);
+    expect(within(nav).getAllByText('Coming next')).toHaveLength(1);
     for (const topic of TOPICS) expect(screen.getByRole('heading', { name: topic, level: 2 })).toBeInTheDocument();
     // Every algorithm offers all five modes.
-    expect(screen.getAllByRole('link', { name: /Fill the Blank/ })).toHaveLength(CATALOGUE.length);
-    expect(screen.getAllByRole('link', { name: /Boss Round/ })).toHaveLength(CATALOGUE.length);
+    expect(screen.getAllByRole('link', { name: /: Fill the Blank,/ })).toHaveLength(CATALOGUE.length);
+    expect(screen.getAllByRole('link', { name: /: Boss Round,/ })).toHaveLength(CATALOGUE.length);
+    expect(screen.getByText(`All ${CATALOGUE.length * 5} challenges`)).toBeInTheDocument();
+    // The score starts empty.
+    expect(within(screen.getByRole('region', { name: 'Your score' })).getByText('Newcomer')).toBeInTheDocument();
+  });
+
+  it('searches, filters by topic and status, and keeps the filters in the address', () => {
+    go('/challenges/complete');
+    render(<ChallengesPage />);
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search challenges' }), { target: { value: 'bubble' } });
+    expect(screen.getAllByRole('link', { name: /^Bubble sort: / })).toHaveLength(5);
+    expect(screen.queryAllByRole('link', { name: /^Selection sort: / })).toHaveLength(0);
+    expect(screen.getByText('5 of 265 challenges')).toBeInTheDocument();
+    expect(window.location.hash).toBe('#/challenges/complete?q=bubble');
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search challenges' }), { target: { value: 'spot the bug heap' } });
+    for (const link of screen.getAllByRole('link', { name: /: Spot the Bug,/ })) expect(link.closest('section')!.id).toBe('topic-heaps');
+    fireEvent.click(screen.getAllByRole('button', { name: 'Clear filters' })[0]);
+    fireEvent.click(screen.getAllByRole('button', { name: /^Tries/ })[0]);
+    expect(screen.getByRole('heading', { name: 'Tries', level: 2 })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Sorting', level: 2 })).toBeNull();
+    fireEvent.click(within(screen.getByRole('radiogroup', { name: 'Status' })).getByRole('radio', { name: 'Solved' }));
+    expect(screen.getByText('Nothing matches.')).toBeInTheDocument();
+  });
+
+  it('opens with the filters a link carries', () => {
+    go('/challenges/complete?mode=write&level=Hard');
+    render(<ChallengesPage />);
+    expect(screen.queryAllByRole('link', { name: /: Fill the Blank,/ })).toHaveLength(0);
+    for (const link of screen.getAllByRole('link', { name: /: Write the Core,/ })) expect(link.getAttribute('aria-label')).toMatch(/Hard/);
   });
 
   it('filters by mode and difficulty', () => {
     go('/challenges/complete');
     render(<ChallengesPage />);
     fireEvent.click(within(screen.getByRole('radiogroup', { name: 'Mode' })).getByRole('radio', { name: 'Spot the Bug' }));
-    expect(screen.queryAllByRole('link', { name: /Fill the Blank/ })).toHaveLength(0);
+    expect(screen.queryAllByRole('link', { name: /: Fill the Blank,/ })).toHaveLength(0);
     expect(screen.getAllByRole('link', { name: /Spot the Bug/ }).length).toBeGreaterThan(0);
     fireEvent.click(within(screen.getByRole('radiogroup', { name: 'Difficulty' })).getByRole('radio', { name: 'Easy' }));
     for (const link of screen.queryAllByRole('link', { name: /Spot the Bug/ })) expect(link.getAttribute('aria-label')).toMatch(/Easy/);
   });
 
   it('a section that is not built yet says so', () => {
-    go('/challenges/ghost');
+    go('/challenges/fork');
     render(<ChallengesPage />);
-    expect(screen.getByText('Ghost Move is next.')).toBeInTheDocument();
+    expect(screen.getByText('Fork the Future is next.')).toBeInTheDocument();
   });
 
   it('shows the plain studio while open and puts the visitor’s world back after', () => {
@@ -106,6 +134,9 @@ describe('Fill the Blank', () => {
     // The stage plays on the studio world, whatever the site's world was.
     expect(screen.getByTestId('stage-stub').getAttribute('data-world')).toBe('studio');
     expect(JSON.parse(localStorage.getItem('aqvl-challenges')!)['sort-bubble.blank'].stars).toBe(3);
+    // Three stars on an Easy challenge: 30 points, saved with the result.
+    expect(screen.getByText('+30 points')).toBeInTheDocument();
+    expect(JSON.parse(localStorage.getItem('aqvl-challenges')!)['sort-bubble.blank'].points).toBe(30);
   }, 60_000);
 
   it('a wrong pick fails, shows expected against actual, and replays the failing case', async () => {
@@ -120,18 +151,41 @@ describe('Fill the Blank', () => {
     expect(screen.getAllByText('got').length).toBeGreaterThan(0);
     // Hidden tests name their category only.
     expect(screen.getByText('Hidden test · edge case: duplicates')).toBeInTheDocument();
+    // The run plays up to the first step that goes wrong, stops there, and says why.
+    await waitFor(() => expect(screen.getByText(/Your program · test 1/)).toBeInTheDocument(), { timeout: 10_000 });
+    const playhead = () => (window as unknown as { __aqvl: { playhead: import('@aqvl/renderer').Playhead } }).__aqvl.playhead;
+    await waitFor(() => expect(playhead().getSnapshot().playing).toBe(true), { timeout: 5_000 });
+    for (let i = 0; i < 600 && playhead().getSnapshot().playing; i++) act(() => playhead().advance(0.1));
+    expect(await screen.findByText('arr goes wrong here')).toBeInTheDocument();
+    expect(playhead().getSnapshot().atEnd).toBe(false);
+    expect(screen.getByText('[5, 9, 2, 1]')).toBeInTheDocument();
+    expect(screen.getByText('[2, 5, 9, 1]')).toBeInTheDocument();
+    // The free note under the hints says the same.
+    expect(screen.getByText(/Test 1 fails\. Arr goes wrong here at step 3/)).toBeInTheDocument();
+    // Continue plays to the end, where the verdict card shows expected against what the run left.
+    fireEvent.click(screen.getByRole('button', { name: 'Continue the run' }));
+    for (let i = 0; i < 600 && !playhead().getSnapshot().atEnd; i++) act(() => playhead().advance(0.1));
+    expect(await screen.findByText('Test 1 fails')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Show where it went wrong' }));
+    expect(await screen.findByText('arr goes wrong here')).toBeInTheDocument();
     const replay = screen.getAllByRole('button', { name: /Replay Test \d in 3D/ });
     fireEvent.click(replay[replay.length - 1]);
     await waitFor(() => expect(screen.getByText(/Your program · test 3/)).toBeInTheDocument());
   }, 60_000);
 
-  it('each hint level costs a star', async () => {
+  it('each hint level costs a star, reads the gaps on screen, and stays counted', async () => {
     go('/challenges/complete/rec-factorial.blank');
-    render(<ChallengesPage />);
+    const { unmount } = render(<ChallengesPage />);
     fireEvent.click(screen.getByRole('button', { name: /Show a nudge/ }));
-    fireEvent.click(screen.getByRole('button', { name: /Show one line/ }));
-    expect(screen.getByText(getChallenge('rec-factorial.blank')!.kernel.hints[1])).toBeInTheDocument();
+    unmount();
+    // Leaving and coming back does not refund a hint.
+    render(<ChallengesPage />);
+    fireEvent.click(screen.getByRole('button', { name: /Show pinpoint/ }));
+    expect(screen.getByText(/Gaps 1, 2 and 3 are still empty\./)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Gap 1'), { target: { value: '==' } });
+    expect(screen.getByText(/Gap 1 is not right yet\. Gaps 2 and 3 are still empty\./)).toBeInTheDocument();
     fillBlanks('rec-factorial.blank');
+    expect(screen.getByText(/Every gap you picked is right/)).toBeInTheDocument();
     fireEvent.click(RUN());
     await passed();
     expect(screen.getAllByRole('img', { name: '1 of 3 stars' }).length).toBeGreaterThan(0);

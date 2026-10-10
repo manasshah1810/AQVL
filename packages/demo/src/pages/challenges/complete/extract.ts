@@ -151,13 +151,14 @@ export function expectedActual(exp: Expectation): Actual {
   }
 }
 
-function key(a: Actual): string {
+/** A string equal for equal results (a map's entries in any order). */
+export function actualKey(a: Actual): string {
   if (a.kind === 'map') return JSON.stringify(Object.entries(a.value).sort(([x], [y]) => (x < y ? -1 : x > y ? 1 : 0)));
   return JSON.stringify(a);
 }
 
 export function sameActual(a: Actual, b: Actual): boolean {
-  return key(a) === key(b);
+  return actualKey(a) === actualKey(b);
 }
 
 /** How an expectation or a result reads in the test list: `[1, 2, 5]`, `1 → 2 → NULL`, `found = TRUE`. */

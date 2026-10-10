@@ -46,6 +46,8 @@ export interface TestResult {
   trace?: ExecutionTrace;
   /** The exact program that ran. */
   source: string;
+  /** What the run was checked against (the reference's expectations for this input). */
+  expectations: Expectation[];
 }
 
 const RUNAWAY = /maximum allowed iteration count|never reaches its stopping condition|likely an infinite loop/i;
@@ -53,17 +55,18 @@ const RUNAWAY = /maximum allowed iteration count|never reaches its stopping cond
 /** Runs `template` (slots in place) on one test and grades it. */
 export async function runTest(template: string, kernel: Kernel, test: TestCase): Promise<TestResult> {
   const source = fillSlots(template, test.input);
+  const expectations = kernel.expect(test.input);
   const compiled = compileOrIssue(source);
-  if ('issue' in compiled) return { test, outcome: { status: 'compile-error', info: compiled.issue.info }, steps: 0, source };
+  if ('issue' in compiled) return { test, outcome: { status: 'compile-error', info: compiled.issue.info }, steps: 0, source, expectations };
   const trace = await recordTrace(compiled.program, { source, maxSteps: STEP_CAP, maxRecordedNodes: NODE_CAP });
   const steps = Math.max(0, trace.frames.length - 1);
-  if (trace.truncated) return { test, outcome: { status: 'did-not-finish' }, steps, trace, source };
+  if (trace.truncated) return { test, outcome: { status: 'did-not-finish' }, steps, trace, source, expectations };
   if (trace.error) {
-    if (RUNAWAY.test(trace.error.message)) return { test, outcome: { status: 'did-not-finish' }, steps, trace, source };
-    return { test, outcome: { status: 'runtime-error', message: trace.error.info?.message ?? trace.error.message, line: trace.error.line }, steps, trace, source };
+    if (RUNAWAY.test(trace.error.message)) return { test, outcome: { status: 'did-not-finish' }, steps, trace, source, expectations };
+    return { test, outcome: { status: 'runtime-error', message: trace.error.info?.message ?? trace.error.message, line: trace.error.line }, steps, trace, source, expectations };
   }
   const final = trace.final;
-  const checks: Check[] = kernel.expect(test.input).map((expectation) => {
+  const checks: Check[] = expectations.map((expectation) => {
     const want = expectedActual(expectation);
     const got = final ? readActual(final, expectation) : null;
     return {
@@ -74,7 +77,7 @@ export async function runTest(template: string, kernel: Kernel, test: TestCase):
     };
   });
   const ok = checks.every((c) => c.ok);
-  return { test, outcome: { status: ok ? 'pass' : 'fail', checks }, steps, trace, source };
+  return { test, outcome: { status: ok ? 'pass' : 'fail', checks }, steps, trace, source, expectations };
 }
 
 export interface GradeReport {
@@ -141,4 +144,17 @@ export function compareLine(steps: number, par: number): string {
   if (steps === par) return 'Same result, same number of steps as the reference.';
   const d = Math.abs(steps - par);
   return steps < par ? `Same result, ${d} fewer step${d === 1 ? '' : 's'} than the reference.` : `Same result, ${d} more step${d === 1 ? '' : 's'} than the reference.`;
+}
+
+const refRunCache = new Map<string, Promise<TestResult>>();
+
+/** The reference solution's run on one test's input (for finding where a failing run parts from it). */
+export function referenceRun(kernel: Kernel, test: TestCase): Promise<TestResult> {
+  const key = `${kernel.id}:${JSON.stringify(test.input)}`;
+  let cached = refRunCache.get(key);
+  if (!cached) {
+    cached = runTest(solutionTemplate(kernel), kernel, test);
+    refRunCache.set(key, cached);
+  }
+  return cached;
 }

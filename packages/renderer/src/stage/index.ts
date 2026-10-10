@@ -1,5 +1,6 @@
 export { StageCanvas } from './StageCanvas';
 export type { StageCanvasProps, StageStatus } from './StageCanvas';
+export type { StageProjector } from './three/StageScene';
 export { Playhead } from './timeline/Playhead';
 export type { PlayheadSnapshot } from './timeline/Playhead';
 export { buildBeatTable, locate, completedStep, beatSeconds, BEAT_SECONDS, STAGGER_SECONDS } from './timeline/beats';

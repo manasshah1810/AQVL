@@ -8,6 +8,22 @@ import { parseHash, replaceHash } from '../lib/router';
 type Difficulty = Example['difficulty'];
 const DIFFICULTIES: Difficulty[] = ['Easy', 'Medium', 'Hard'];
 
+/** The Challenges topic that practises each category (categories with no challenges are left out). */
+const CHALLENGE_TOPIC: Partial<Record<ExampleCategory, string>> = {
+  Arrays: 'Arrays',
+  Sorting: 'Sorting',
+  Searching: 'Searching',
+  'Recursion & Functions': 'Recursion',
+  Stacks: 'Stacks',
+  Queues: 'Queues',
+  'Linked Lists': 'Linked Lists',
+  Trees: 'Trees',
+  Graphs: 'Graphs',
+  Heaps: 'Heaps',
+  'Hash Maps': 'Hash Maps',
+  Tries: 'Tries',
+};
+
 function initialCategory(): ExampleCategory | 'All' {
   const c = parseHash(window.location.hash).params.get('category');
   return c && (EXAMPLE_CATEGORIES as string[]).includes(c) ? (c as ExampleCategory) : 'All';
@@ -208,12 +224,19 @@ export default function Examples() {
                   <span className="mono muted shrink-0">{preview.category}</span>
                 </div>
                 <CodeBlock code={excerpt(preview.source)} label={`${preview.id}.aqvl`} lineNumbers copy={false} className="max-h-[62vh] overflow-hidden" />
-                <a href={`#/playground?example=${encodeURIComponent(preview.id)}`} className="btn mt-5">
-                  Run this in the playground
-                  <span className="arrow" aria-hidden="true">
-                    →
-                  </span>
-                </a>
+                <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-3">
+                  <a href={`#/playground?example=${encodeURIComponent(preview.id)}`} className="btn">
+                    Run this in the playground
+                    <span className="arrow" aria-hidden="true">
+                      →
+                    </span>
+                  </a>
+                  {CHALLENGE_TOPIC[preview.category] && (
+                    <a href={`#/challenges/complete?topic=${encodeURIComponent(CHALLENGE_TOPIC[preview.category]!)}`} className="ulink mono">
+                      Practise {CHALLENGE_TOPIC[preview.category]!.toLowerCase()} as challenges
+                    </a>
+                  )}
+                </div>
               </motion.div>
             </AnimatePresence>
           </div>

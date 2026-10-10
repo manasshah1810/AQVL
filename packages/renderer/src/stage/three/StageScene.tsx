@@ -1,7 +1,7 @@
 import React, { memo, useEffect, useMemo, useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
-import { PerspectiveCamera } from 'three';
+import { PerspectiveCamera, Vector3 } from 'three';
 type OrbitControlsImpl = React.ComponentRef<typeof OrbitControls>;
 import type { StageModel } from '../model/StageModel';
 import { ENVELOPE_SECONDS, StageSample, sampleStage } from '../model/sampler';
@@ -25,7 +25,16 @@ import { PandaNav, clampView, groveNav } from '../worlds/three/PandaNav';
 /** A long-ish lens: little perspective distortion, so rows stay rows and columns stay upright. */
 export const STAGE_FOV = 26;
 
+/** The live camera as a function: world point → pixel in the canvas (and whether it is in front of the camera). */
+export interface StageProjector {
+  model: StageModel;
+  width: number;
+  height: number;
+  project: (x: number, y: number, z: number) => { x: number; y: number; visible: boolean };
+}
+
 export interface StageSceneProps {
+  projectorRef?: React.MutableRefObject<StageProjector | null>;
   model: StageModel;
   playhead: Playhead;
   tier: QualityTier;
@@ -49,7 +58,7 @@ export interface StageSceneProps {
  * the playhead's time, places the camera, and hands the sample to every
  * part of the scene; with nothing moving, nothing is redrawn.
  */
-export const StageScene = memo(function StageScene({ model, playhead, tier, calm, follow, fonts, phase, onFollowChange, onResolution, onSlowFrames, onHeadroom, insets }: StageSceneProps) {
+export const StageScene = memo(function StageScene({ model, playhead, tier, calm, follow, fonts, phase, onFollowChange, onResolution, onSlowFrames, onHeadroom, insets, projectorRef }: StageSceneProps) {
   const quality = QUALITY[tier];
   const driver = useMemo(() => new StageDriver(), []);
   const sample = useMemo(() => new StageSample(model.slots.length, model.edgeSlots.length), [model]);
@@ -76,11 +85,30 @@ export const StageScene = memo(function StageScene({ model, playhead, tier, calm
   const scene = useThree((s) => s.scene);
   // Compile every shader the scene needs in parallel with the GPU driver (KHR_parallel_shader_compile), off the render path,
   // so the first frames do not freeze while programs link. Re-runs when the model changes (new materials) and after lazy worlds load.
+  // (three's own compileAsync polls `currentProgram.isReady()` and throws, uncaught, when a material is disposed while it
+  // waits, which happens whenever the stage swaps runs quickly; its promise then never settles and the repaint never comes.
+  // So the same wait is done here, treating a disposed material as done.)
   useEffect(() => {
     let dead = false;
+    const polls: number[] = [];
     const warm = () => {
-      if (dead || typeof gl.compileAsync !== 'function') return;
-      gl.compileAsync(scene, camera).then(() => !dead && invalidate(), () => undefined);
+      if (dead) return;
+      let pending: Set<unknown>;
+      try {
+        pending = gl.compile(scene, camera);
+      } catch {
+        return;
+      }
+      const check = () => {
+        if (dead) return;
+        for (const material of pending) {
+          const program = (gl.properties.get(material) as { currentProgram?: { isReady?: () => boolean } } | undefined)?.currentProgram;
+          if (!program?.isReady || program.isReady()) pending.delete(material);
+        }
+        if (pending.size === 0) invalidate();
+        else polls.push(window.setTimeout(check, 16));
+      };
+      polls.push(window.setTimeout(check, 0));
     };
     const t1 = window.setTimeout(warm, 50);
     const t2 = window.setTimeout(warm, 600);
@@ -88,6 +116,7 @@ export const StageScene = memo(function StageScene({ model, playhead, tier, calm
       dead = true;
       window.clearTimeout(t1);
       window.clearTimeout(t2);
+      polls.forEach((t) => window.clearTimeout(t));
     };
   }, [gl, scene, camera, model, invalidate]);
   useEffect(() => {
@@ -190,6 +219,19 @@ export const StageScene = memo(function StageScene({ model, playhead, tier, calm
       camera.position.set(pose.position[0], pose.position[1], pose.position[2]);
       camera.lookAt(pose.target[0], pose.target[1], pose.target[2]);
       controls.current?.target.set(pose.target[0], pose.target[1], pose.target[2]);
+    }
+    if (projectorRef) {
+      camera.updateMatrixWorld();
+      const v = new Vector3();
+      projectorRef.current = {
+        model,
+        width: w,
+        height: h,
+        project: (x, y, z) => {
+          v.set(x, y, z).project(camera);
+          return { x: ((v.x + 1) / 2) * w, y: ((1 - v.y) / 2) * h, visible: v.z < 1 };
+        },
+      };
     }
     driver.publish(sample);
     perfCounters.jsMs = performance.now() - now;

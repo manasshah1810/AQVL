@@ -240,9 +240,10 @@ END`,
     visible: [
       { arr: [3, 1, 3, 4, 3], target: 3 },
       { arr: [5, 5, 2, 5, 5], target: 5 },
-      { arr: [1, 2, 3], target: 9 },
+      { arr: [1, 2, 3, 2], target: 2 },
     ],
     hidden: [
+      { category: 'edge case: target not present', input: { arr: [1, 2, 3], target: 9 } },
       { category: 'edge case: every value is the target', input: { arr: [6, 6, 6], target: 6 } },
       { category: 'edge case: empty array', input: { arr: [], target: 1 } },
     ],

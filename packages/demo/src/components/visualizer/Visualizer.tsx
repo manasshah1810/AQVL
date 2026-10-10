@@ -7,6 +7,7 @@ import {
   usePlayhead,
   type Playhead,
   type QualityTier,
+  type StageProjector,
   type StageStatus,
   type StageTheme,
 } from '@aqvl/renderer';
@@ -87,6 +88,10 @@ export interface VisualizerProps {
   onEditLine?: (line: number | null) => void;
   /** Pin the stage to one world whatever the site's world is (challenges use the plain studio). */
   world?: World;
+  /** Receives the live camera's projection (a layer drawn over the stage uses it to sit on the nodes). */
+  projectorRef?: React.MutableRefObject<StageProjector | null>;
+  /** Drawn over the canvas, inside the stage's frame. */
+  overlay?: ReactNode;
 }
 
 /**
@@ -98,7 +103,7 @@ export interface VisualizerProps {
  * scene. Keyboard: Space, arrows, Home / End, [ ], C calm, F follow, and
  * V / K / O / S for the panel's tabs.
  */
-export function Visualizer({ trace, playhead, source, theme, reducedMotion, compact = false, output, outputCount = 0, stale = false, onRetry, onEditLine, world: pinnedWorld }: VisualizerProps) {
+export function Visualizer({ trace, playhead, source, theme, reducedMotion, compact = false, output, outputCount = 0, stale = false, onRetry, onEditLine, world: pinnedWorld, projectorRef, overlay }: VisualizerProps) {
   const snap = usePlayhead(playhead);
   const siteWorld = useWorld();
   const world = pinnedWorld ?? siteWorld;
@@ -288,7 +293,9 @@ export function Visualizer({ trace, playhead, source, theme, reducedMotion, comp
             fonts={FONTS}
             onStatus={setStatus}
             insets={insets}
+            projectorRef={projectorRef}
           />
+          {overlay}
 
           {/* What just happened: one quiet line (the whole sentence on hover or focus). */}
           <div className="vz-caption" ref={captionRef} aria-live={snap.playing ? 'off' : 'polite'}>

@@ -17,6 +17,7 @@ import {
   withBlanks,
   withCore,
 } from './program';
+import type { WorkState } from './hints';
 import type { Input, Kernel } from './types';
 
 /**
@@ -31,20 +32,23 @@ export interface WorkspaceProps {
   /** The program line the stage is on. */
   activeLine: number | null;
   onTemplate: (template: string | null) => void;
+  /** Hears what the workspace holds (the hints read it). */
+  onState?: (state: WorkState) => void;
 }
 
 const PLACEHOLDER = '___';
 
 /* ── A. Fill the Blank ─────────────────────────────────────────────────── */
 
-export function FillBlank({ kernel, displayInput, activeLine, onTemplate }: WorkspaceProps) {
+export function FillBlank({ kernel, displayInput, activeLine, onTemplate, onState }: WorkspaceProps) {
   const answers = useMemo(() => blankAnswers(kernel), [kernel]);
   const options = useMemo(() => kernel.blanks.map((wrong, i) => shuffled([answers[i], ...wrong], `${kernel.id}:${i}`)), [kernel, answers]);
   const [picks, setPicks] = useState<(string | null)[]>(() => answers.map(() => null));
 
   useEffect(() => {
     onTemplate(picks.every((p) => p !== null) ? withBlanks(kernel, picks as string[]) : null);
-  }, [picks, kernel, onTemplate]);
+    onState?.({ mode: 'blank', picks });
+  }, [picks, kernel, onTemplate, onState]);
 
   const code = fillSlots(gappedTemplate(kernel), displayInput);
   return (
@@ -86,7 +90,7 @@ interface Tile {
   text: string;
 }
 
-export function Assemble({ kernel, displayInput, activeLine, onTemplate }: WorkspaceProps) {
+export function Assemble({ kernel, displayInput, activeLine, onTemplate, onState }: WorkspaceProps) {
   const split = useMemo(() => splitCore(kernel), [kernel]);
   const [tiles, setTiles] = useState<Tile[]>(() =>
     shuffleLines(
@@ -104,7 +108,8 @@ export function Assemble({ kernel, displayInput, activeLine, onTemplate }: Works
 
   useEffect(() => {
     onTemplate(withCore(kernel, indented.join('\n')));
-  }, [indented.join('\n'), kernel, onTemplate]); // eslint-disable-line react-hooks/exhaustive-deps
+    onState?.({ mode: 'order', lines: tiles.map((t) => t.text) });
+  }, [indented.join('\n'), kernel, onTemplate, onState]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const move = (from: number, to: number) => {
     if (to < 0 || to >= tiles.length) return;
@@ -156,7 +161,7 @@ export interface SpotBugProps extends WorkspaceProps {
   onFound?: () => void;
 }
 
-export function SpotBug({ kernel, displayInput, activeLine, onTemplate, onFound }: SpotBugProps) {
+export function SpotBug({ kernel, displayInput, activeLine, onTemplate, onFound, onState }: SpotBugProps) {
   const target = bugLine(kernel) + 1;
   const fixes = useMemo(() => shuffled([kernel.bug.find, ...kernel.bug.fixes], `${kernel.id}:fix`), [kernel]);
   const [wrong, setWrong] = useState<number[]>([]);
@@ -165,7 +170,8 @@ export function SpotBug({ kernel, displayInput, activeLine, onTemplate, onFound 
 
   useEffect(() => {
     onTemplate(found && fix !== null ? fixedTemplate(kernel, fix) : null);
-  }, [found, fix, kernel, onTemplate]);
+    onState?.({ mode: 'bug', found, wrongPicks: wrong, fix });
+  }, [found, fix, wrong, kernel, onTemplate, onState]);
 
   const pick = (line: number) => {
     if (found) return;
@@ -212,13 +218,14 @@ export interface WriteCoreProps extends WorkspaceProps {
   errorMarkers?: EditorErrorMarker[];
 }
 
-export function WriteCore({ kernel, displayInput, activeLine, onTemplate, errorMarkers = [] }: WriteCoreProps) {
+export function WriteCore({ kernel, displayInput, activeLine, onTemplate, onState, errorMarkers = [] }: WriteCoreProps) {
   const split = useMemo(() => splitCore(kernel), [kernel]);
   const [text, setText] = useState(() => writeScaffold(kernel));
 
   useEffect(() => {
     onTemplate(withCore(kernel, text));
-  }, [text, kernel, onTemplate]);
+    onState?.({ mode: 'write', text });
+  }, [text, kernel, onTemplate, onState]);
 
   const offset = split.before.length;
   const lineCount = text.replace(/\s+$/, '').split('\n').length;

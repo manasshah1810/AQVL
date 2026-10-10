@@ -4,6 +4,10 @@ import { pinWorld } from '../../lib/world';
 import { CompleteHub } from './complete/Hub';
 import { Runner } from './complete/Runner';
 import { getChallenge } from './complete/modes';
+import { lastHubPath } from './complete/nav';
+import { GhostHub } from './ghost/GhostHub';
+import { GhostRunner } from './ghost/GhostRunner';
+import { findKernel } from './ghost/puzzle';
 import { SECTIONS, type ChallengeSection } from './sections';
 import './challenges.css';
 
@@ -12,6 +16,7 @@ import './challenges.css';
  *   #/challenges                         the sections (Complete the Algorithm open)
  *   #/challenges/<section>               one section
  *   #/challenges/complete/<challenge id> a Complete the Algorithm challenge
+ *   #/challenges/ghost/<puzzle id>       a Ghost Move puzzle (<algorithm>.<run>)
  * Challenges always use the plain studio world, so the whole page shows it
  * while it is open (the visitor's own choice is put back on the way out).
  */
@@ -29,8 +34,25 @@ export default function ChallengesPage() {
         <div className="page ch-page">
           <h1 className="headline">No such challenge.</h1>
           <p className="muted mt-4">
-            <a className="ulink" href={href('/challenges/complete')}>
+            <a className="ulink" href={href(lastHubPath())}>
               See every challenge
+            </a>
+          </p>
+        </div>
+      </Scroll>
+    );
+  }
+
+  if (sectionId === 'ghost' && challengeId) {
+    const found = findKernel(challengeId);
+    if (found) return <GhostRunner key={challengeId} kernel={found.kernel} run={found.run} />;
+    return (
+      <Scroll>
+        <div className="page ch-page">
+          <h1 className="headline">No such puzzle.</h1>
+          <p className="muted mt-4">
+            <a className="ulink" href={href('/challenges/ghost')}>
+              See every Ghost Move puzzle
             </a>
           </p>
         </div>
@@ -44,8 +66,8 @@ export default function ChallengesPage() {
       <div className="page ch-page">
         <header className="ch-intro">
           <p className="mono muted">Challenges</p>
-          <h1 className="headline">Watching teaches how it behaves. Writing it teaches whether you understood.</h1>
-          <p className="lede muted mt-4">Make the decisions an algorithm makes, then watch the consequence of each one on the plain studio stage.</p>
+          <h1 className="ch-intro__title">Watching teaches how it behaves. Writing it teaches whether you understood.</h1>
+          <p className="ch-intro__lede muted">Make the decisions an algorithm makes, then watch the consequence of each one on the plain studio stage.</p>
         </header>
 
         <nav className="ch-sections" aria-label="Kinds of challenge">
@@ -55,7 +77,11 @@ export default function ChallengesPage() {
         </nav>
 
         {section.status === 'live' ? (
-          <CompleteHub />
+          section.id === 'ghost' ? (
+            <GhostHub />
+          ) : (
+            <CompleteHub params={route.params} />
+          )
         ) : (
           <div className="ch-soon">
             <p className="title">{section.title} is next.</p>
