@@ -73,6 +73,23 @@ export const StageScene = memo(function StageScene({ model, playhead, tier, calm
   // Pointer gesture on the canvas: has it moved far enough to count as a drag?
   const gesture = useRef({ active: false, moved: false });
   const gl = useThree((s) => s.gl);
+  const scene = useThree((s) => s.scene);
+  // Compile every shader the scene needs in parallel with the GPU driver (KHR_parallel_shader_compile), off the render path,
+  // so the first frames do not freeze while programs link. Re-runs when the model changes (new materials) and after lazy worlds load.
+  useEffect(() => {
+    let dead = false;
+    const warm = () => {
+      if (dead || typeof gl.compileAsync !== 'function') return;
+      gl.compileAsync(scene, camera).then(() => !dead && invalidate(), () => undefined);
+    };
+    const t1 = window.setTimeout(warm, 50);
+    const t2 = window.setTimeout(warm, 600);
+    return () => {
+      dead = true;
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+    };
+  }, [gl, scene, camera, model, invalidate]);
   useEffect(() => {
     const el = gl.domElement;
     let x0 = 0, y0 = 0;

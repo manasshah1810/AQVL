@@ -1,17 +1,18 @@
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { Suspense, lazy, useEffect, useMemo, useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import type { StageModel } from '../../model/StageModel';
 import type { StageDriver } from '../../three/driver';
 import type { SceneBounds } from '../../three/StageEnvironment';
-import { CastLayer } from './CastLayer';
+// Each world's scene code loads on first use, so the stage opens without parsing the five worlds it is not showing.
+const CastLayer = lazy(() => import('./CastLayer').then((m) => ({ default: m.CastLayer })));
+const PolarWorld = lazy(() => import('./PolarWorld').then((m) => ({ default: m.PolarWorld })));
+const BambooWorld = lazy(() => import('./BambooWorld').then((m) => ({ default: m.BambooWorld })));
+const ReefWorld = lazy(() => import('../ocean/three/ReefWorld').then((m) => ({ default: m.ReefWorld })));
+const PodLayer = lazy(() => import('../ocean/three/PodLayer').then((m) => ({ default: m.PodLayer })));
+const ColonyLayer = lazy(() => import('./ColonyLayer').then((m) => ({ default: m.ColonyLayer })));
+const CloudKingdom = lazy(() => import('../rabbit/three/CloudKingdom').then((m) => ({ default: m.CloudKingdom })));
+const WarrenLayer = lazy(() => import('../rabbit/three/WarrenLayer').then((m) => ({ default: m.WarrenLayer })));
 import type { Playhead } from '../../timeline/Playhead';
-import { PolarWorld } from './PolarWorld';
-import { BambooWorld } from './BambooWorld';
-import { ReefWorld } from '../ocean/three/ReefWorld';
-import { PodLayer } from '../ocean/three/PodLayer';
-import { ColonyLayer } from './ColonyLayer';
-import { CloudKingdom } from '../rabbit/three/CloudKingdom';
-import { WarrenLayer } from '../rabbit/three/WarrenLayer';
 import { Colony } from '../idle';
 import { perfCounters, useGovernedInvalidate } from '../../three/perf';
 import { advanceDay, blankDay, dayAt, dayTime, type DayState } from '../daycycle';
@@ -83,26 +84,26 @@ export function WorldLayer({ model, bounds, driver, calm, playhead }: { model: S
   if (model.world === 'studio') return null;
   if (model.world === 'ocean') {
     return (
-      <>
+      <Suspense fallback={null}>
         <ReefWorld model={model} bounds={bounds} driver={driver} calm={calm} clock={clock} />
         <PodLayer model={model} driver={driver} calm={calm} clock={clock} playhead={playhead} />
-      </>
+      </Suspense>
     );
   }
   if (model.world === 'rabbit') {
     return (
-      <>
+      <Suspense fallback={null}>
         <CloudKingdom model={model} bounds={bounds} driver={driver} calm={calm} clock={clock} />
         <WarrenLayer model={model} driver={driver} calm={calm} clock={clock} playhead={playhead} />
-      </>
+      </Suspense>
     );
   }
   const World = model.world === 'penguin' ? PolarWorld : BambooWorld;
   return (
-    <>
+    <Suspense fallback={null}>
       <World model={model} bounds={bounds} driver={driver} calm={calm} clock={clock} />
       <CastLayer model={model} driver={driver} style={model.world} calm={calm} clock={clock} playhead={playhead} />
       {(model.world === 'panda' || model.world === 'penguin') && <ColonyLayer model={model} driver={driver} calm={calm} clock={clock} playhead={playhead} />}
-    </>
+    </Suspense>
   );
 }
